@@ -13,7 +13,7 @@ git config --global --add safe.directory /var/www/html
 git config --global --add safe.directory /var/www/html/apps-extra/libresign
 cd /var/www/html/apps-extra/libresign
 git submodule update --init --recursive
-if [[ ! -d "vendor" ]]; then
+if [[ ! -f "vendor/autoload.php" ]]; then
 	composer install
 fi
 occ app:enable libresign
