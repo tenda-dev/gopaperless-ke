@@ -23,3 +23,21 @@
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.06);
 }
+
+/**
+ * Nextcloud renders #content as position: fixed.
+ *
+ * This causes overlay-based components such as:
+ * - vue-sonner toasts
+ * - onboarding popovers
+ * - floating UI elements
+ *
+ * to render beneath the Nextcloud header.
+ *
+ * Force a local stacking context for LibreSign pages.
+ */
+#content.app-libresign {
+	position: relative !important;
+}
+
+

@@ -192,7 +192,14 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	{
 		try {
 
-			$result = $this->dpo->verifyToken($reference);
+			$result = $this->dpo->verifyToken($reference, false);
+
+			$this->logger->info('[DPO] verifyStatus result', [
+				'reference' => $reference,
+				'status' => $result->status,
+				'resultCode' => $result->resultCode,
+				'explanation' => $result->explanation,
+			]);
 
 			return $result->status;
 		} catch (Throwable $e) {

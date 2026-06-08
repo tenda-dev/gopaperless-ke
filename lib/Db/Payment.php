@@ -6,6 +6,7 @@ namespace OCA\Libresign\Db;
 
 use DateTimeInterface;
 use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\PaymentMetadataDTO;
 use OCP\AppFramework\Db\Entity;
@@ -43,6 +44,12 @@ use OCP\AppFramework\Db\Entity;
  *
  * @method void setCurrency(string $currency)
  * @method string getCurrency()
+ *
+ * @method void setProductCode(string $productCode)
+ * @method string getProductCode()
+ *
+ * @method void setProductUses(int $productUses)
+ * @method int getProductUses()
  *
  * @method void setStatus(string $status)
  * @method string getStatus()
@@ -107,6 +114,14 @@ use OCP\AppFramework\Db\Entity;
  * @method void setLastErrorAt(?\DateTimeInterface|string $date)
  * @method ?\DateTimeInterface|string getLastErrorAt()
  *
+ * @method void setPurpose(string $purpose)
+ * @method string getPurpose()
+ *
+ * @method void setQuantity(int $quantity)
+ * @method int getQuantity()
+ *
+ * @method void setUnitAmount(int $unitAmount)
+ * @method int getUnitAmount()
  */
 class Payment extends Entity
 {
@@ -142,7 +157,10 @@ class Payment extends Entity
 	protected DateTimeInterface|string|null $lastErrorAt = null;
 
 	protected int $amount = 0;
+	protected int $unitAmount = 0;
 	protected string $currency = '';
+	protected string $productCode = '';
+	protected int $productUses = 0;
 
 	protected ?string $displayCurrency = null;
 	protected ?int $displayAmount = null;
@@ -162,6 +180,9 @@ class Payment extends Entity
 	protected DateTimeInterface|string|null $paidAt = null;
 	protected DateTimeInterface|string|null $updatedAt = null;
 	protected DateTimeInterface|string|null $expiresAt = null;
+
+	protected string $purpose = PaymentPurpose::SIGN_REQUEST->value;
+	protected int $quantity = 1;
 
 	/**
 	 * @throws \Exception
@@ -185,8 +206,11 @@ class Payment extends Entity
 		// integer fields
 		$this->addType('transactionId', 'integer');
 		$this->addType('amount', 'integer');
+		$this->addType('unitAmount', 'integer');
 		$this->addType('displayAmount', 'integer');
 		$this->addType('verificationRetryCount', 'integer');
+		$this->addType('productUses', 'integer');
+		$this->addType('quantity', 'integer');
 
 		// datetime fields
 		$this->addType('createdAt', 'datetime');
@@ -207,6 +231,7 @@ class Payment extends Entity
 		$this->addType('providerMetadata', 'string');
 		$this->addType('currency', 'string');
 		$this->addType('status', 'string');
+		$this->addType('productCode', 'string');
 		$this->addType('displayCurrency', 'string');
 		$this->addType('fxRate', 'string');
 		$this->addType('fxRateSource', 'string');
@@ -217,6 +242,7 @@ class Payment extends Entity
 		$this->addType('lastErrorCode', 'string');
 		$this->addType('lastErrorMessage', 'string');
 		$this->addType('transactionReference', 'string');
+		$this->addType('purpose', 'string');
 	}
 
 	/**
@@ -233,27 +259,33 @@ class Payment extends Entity
 		if ($this->provider === '') {
 			throw new \InvalidArgumentException('provider is required');
 		}
-		if ($this->transactionId === 0) {
-			throw new \InvalidArgumentException('transactionId is required');
-		}
 		if ($this->amount <= 0) {
 			throw new \InvalidArgumentException('amount is required');
+		}
+
+		if ($this->unitAmount <= 0) {
+			throw new \InvalidArgumentException('Unit amount is required');
+		}
+
+		if ($this->quantity <= 0) {
+			throw new \InvalidArgumentException('quantity is required');
 		}
 	}
 
 	public function touch(): self
 	{
-		$this->setUpdatedAt($this->now());
+		$this->setUpdatedAt(
+			$this->nowString()
+		);
 
 		return $this;
 	}
 
 	public function markPaid(): self
 	{
-		$now = $this->now();
 
 		$this->setPaymentStatus(PaymentStatus::PAID);
-		$this->setPaidAt($now);
+		$this->setPaidAt($this->nowString());
 
 		$this->clearVerificationState();
 
@@ -267,7 +299,7 @@ class Payment extends Entity
 		?string $errorMessage = null
 	): self {
 
-		$now = $this->now();
+		$now = $this->nowString();
 
 		$this->setPaymentStatus(PaymentStatus::FAILED);
 
@@ -293,6 +325,17 @@ class Payment extends Entity
 		return $this;
 	}
 
+
+	public function getPaymentPurpose(): PaymentPurpose
+	{
+		return PaymentPurpose::from($this->purpose);
+	}
+
+	public function setPaymentPurpose(PaymentPurpose $purpose): void
+	{
+		$this->setPurpose($purpose->value);
+	}
+
 	public function getPaymentStatus(): PaymentStatus
 	{
 		return PaymentStatus::from($this->status);
@@ -311,6 +354,11 @@ class Payment extends Entity
 	public function setPaymentProvider(PaymentProvider $provider): void
 	{
 		$this->setProvider($provider->value);
+	}
+
+	public function getProviderEnum(): PaymentProvider
+	{
+		return PaymentProvider::from($this->provider);
 	}
 
 	public function getProviderMetadataDecoded(): array
@@ -356,7 +404,7 @@ class Payment extends Entity
 			json_encode($dto->toArray(), JSON_THROW_ON_ERROR)
 		);
 
-		$this->setUpdatedAt($now);
+		$this->setUpdatedAt($this->nowString());
 	}
 
 	/**
@@ -367,7 +415,7 @@ class Payment extends Entity
 	 */
 	public function lockVerification(): self
 	{
-		$this->setVerificationLockedAt($this->now());
+		$this->setVerificationLockedAt($this->nowString());
 		$this->touch();
 
 		return $this;
@@ -425,22 +473,35 @@ class Payment extends Entity
 	 * Uses lightweight progressive backoff
 	 * to avoid excessive provider polling.
 	 */
-	public function scheduleNextVerification(int $retryCount): self
-	{
-		$delay = match (true) {
-			$retryCount === 0 => 10,
-			$retryCount === 1 => 30,
-			$retryCount === 2 => 60,
-			$retryCount === 3 => 120,
-			default => 300,
-		};
+	public function scheduleNextVerification(
+		int $retryCount
+	): self {
 
-		$nextVerification = (new \DateTimeImmutable(
-			'now',
-			new \DateTimeZone('UTC')
-		))->modify("+{$delay} seconds");
+		// $delay = match ($retryCount) {
+		// 	1 => 15,   // First retry
+		// 	2 => 30,   // Second retry
+		// 	3 => 60,   // Third retry
+		// 	4 => 120,  // Fourth retry
+		// 	default => 300, // Afterwards
+		// };
 
-		$this->setNextVerificationAt($nextVerification);
+		$delay = 15;
+
+		$nextVerification = (
+			new \DateTimeImmutable(
+				'now',
+				new \DateTimeZone('UTC')
+			)
+		)->modify(
+			"+{$delay} seconds"
+		);
+
+		$this->setNextVerificationAt(
+			$nextVerification->format(
+				'Y-m-d H:i:s'
+			)
+		);
+
 		$this->touch();
 
 		return $this;
@@ -520,12 +581,24 @@ class Payment extends Entity
 	}
 
 
-	/**
-	 * Determine whether payment is eligible
-	 * for background verification.
-	 */
 	public function isReadyForVerification(): bool
 	{
+		if (
+			in_array(
+				$this->getPaymentStatus(),
+				[
+					PaymentStatus::PAID,
+					PaymentStatus::FAILED,
+					PaymentStatus::EXPIRED,
+					PaymentStatus::CANCELLED,
+					PaymentStatus::INITIATION_FAILED,
+				],
+				true
+			)
+		) {
+			return false;
+		}
+
 		if ($this->isLocked()) {
 			return false;
 		}
@@ -534,18 +607,17 @@ class Payment extends Entity
 			return true;
 		}
 
-		$nextVerificationAt = $this->asDateTime($this->nextVerificationAt);
+		$nextVerificationAt =
+			$this->asDateTime($this->nextVerificationAt);
 
 		if ($nextVerificationAt === null) {
 			return true;
 		}
 
-		$now = new \DateTimeImmutable(
+		return $nextVerificationAt <= new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC')
 		);
-
-		return $nextVerificationAt <= $now;
 	}
 
 	public function getUpdatedAtImmutable(): ?\DateTimeImmutable
@@ -619,5 +691,10 @@ class Payment extends Entity
 			'now',
 			new \DateTimeZone('UTC'),
 		);
+	}
+
+	private function nowString(): string
+	{
+		return $this->now()->format(DATE_ATOM);
 	}
 }

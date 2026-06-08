@@ -89,7 +89,7 @@ export async function chargeMobilePayment({
 			reference,
 			phone,
 			mno,
-			mnoCountry,
+			country: mnoCountry,
 		},
 		{ timeout: 10000 }
 	)

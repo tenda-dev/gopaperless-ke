@@ -60,7 +60,6 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 		<job>OCA\Libresign\BackgroundJob\CleanupStaleSigningStatus</job>
 		<job>OCA\Libresign\BackgroundJob\SignFileJob</job>
 		<job>OCA\Libresign\BackgroundJob\SignSingleFileJob</job>
-		<job>OCA\Libresign\BackgroundJob\VerifyPayments</job>
 	</background-jobs>
 	<repair-steps>
 		<post-migration>
@@ -78,8 +77,10 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 		<command>OCA\Libresign\Command\Crl\Revoke</command>
 		<command>OCA\Libresign\Command\Developer\Reset</command>
 		<command>OCA\Libresign\Command\Developer\SignSetup</command>
+		<command>OCA\Libresign\Command\Developer\TestRabbitMq</command>
 		<command>OCA\Libresign\Command\Install</command>
 		<command>OCA\Libresign\Command\Uninstall</command>
+		<command>OCA\Libresign\Command\PaymentVerificationWorker</command>
 	</commands>
 	<settings>
 		<admin>OCA\Libresign\Settings\Admin</admin>

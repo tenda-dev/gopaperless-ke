@@ -25,6 +25,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { t } from '@nextcloud/l10n'
 
 import { useFilesStore } from '../store/files.js'
 import { useSidebarStore } from '../store/sidebar.js'

@@ -21,8 +21,8 @@ class VerifyPayments extends TimedJob
 	) {
 		parent::__construct($time);
 
-		// Run every 5 minutes (tuned from 15s to reduce DB load)
-		$this->setInterval(300);
+		// Run every 1 minute (tuned from 15s to reduce DB load)
+		$this->setInterval(30);
 		$this->setTimeSensitivity(IJob::TIME_SENSITIVE);
 	}
 
@@ -32,8 +32,15 @@ class VerifyPayments extends TimedJob
 	#[\Override]
 	public function run($argument): void
 	{
+		$this->logger->info('[VerifyPayments] job started');
+
 		// small batch → controlled load
 		$payments = $this->paymentMapper->findPendingForVerification(100);
+
+
+		$this->logger->info('[VerifyPayments] payments found', [
+			'count' => count($payments),
+		]);
 
 		foreach ($payments as $payment) {
 
@@ -48,9 +55,16 @@ class VerifyPayments extends TimedJob
 				$payment->lockVerification();
 				$this->paymentMapper->update($payment);
 
+				$this->logger->info('[VerifyPayments] processing payment', [
+					'paymentId' => $payment->getId(),
+					'provider' => $payment->getProvider(),
+					'status' => $payment->getStatus(),
+					'reference' => $payment->getProviderReference(),
+					'retryCount' => $payment->getVerificationRetryCount(),
+				]);
+
 				// delegate actual verification
 				$this->paymentService->syncPaymentStatus($payment);
-
 			} catch (\Throwable $e) {
 
 				$this->logger->error('[VerifyPayments] failed', [
@@ -58,6 +72,7 @@ class VerifyPayments extends TimedJob
 					'provider' => $payment->getProvider(),
 					'reference' => $payment->getProviderReference(),
 					'error' => $e->getMessage(),
+					'trace' => $e->getTraceAsString(),
 					'exception' => get_class($e),
 				]);
 

@@ -9,7 +9,7 @@ import {
 } from './helpers'
 
 import { showSuccess, showError, showInfo } from '@/services/toast'
-import type { InitiateResponse, MnoOption, PaymentFlow, PaymentProvider, PaymentResponse, StartPaymentPayload } from './types'
+import type { InitiateResponse, MnoOption, PaymentFlow, PaymentProvider, PaymentResponse, StartPaymentPayload, PaymentTerminalStatus } from './types'
 import { computed } from 'vue'
 import { useNetworkState } from '@/composables/useNetworkState'
 import { persistPaymentSession, clearPersistedPaymentSession } from '@/utils/paymentPersistence'
@@ -111,6 +111,7 @@ export type PaymentState =
 	| 'success'
 	| 'error'
 	| 'timeout'
+	| 'cancelled'
 
 interface ChargePayload {
 	reference: string
@@ -233,7 +234,6 @@ export function usePayment() {
 	 */
 	async function initiateOnly(payload: StartPaymentPayload): Promise<InitiateResponse> {
 		// Intentionally does NOT set state to 'initiating'
-		console.log(`xxxxx payload`, payload)
 		try {
 			const res: InitiateResponse = await paymentDriver.startPayment(payload)
 
@@ -271,7 +271,9 @@ export function usePayment() {
 	 * Prevents duplicate initiate calls.
 	 */
 	async function chargeExistingReference(
-		payload: ChargePayload): Promise<void> {
+		payload: ChargePayload,
+		onTerminal?: (status: PaymentTerminalStatus) => void
+	): Promise<void> {
 		if (!payload.reference) {
 			throw new Error('Missing payment reference')
 		}
@@ -297,7 +299,11 @@ export function usePayment() {
 			alreadyCharged.value = true
 			state.value = 'processing'
 
-			startPolling(payload.reference, 'mobile_direct')
+			startPolling(
+				payload.reference,
+				'mobile_direct',
+				onTerminal
+			)
 
 		} catch (err: any) {
 			if (isNetworkError(err)) {
@@ -348,14 +354,17 @@ export function usePayment() {
 	 * - Backend-directed continuation flows
 	 *
 	 */
-	async function startPayment(payload: StartPaymentPayload): Promise<PaymentResponse | undefined> {
+	async function startPayment(
+		payload: StartPaymentPayload,
+		onTerminal?: (status: PaymentTerminalStatus) => void
+	): Promise<PaymentResponse | undefined> {
 		try {
 			state.value = 'initiating'
 			error.value = null
 
 			const res: PaymentResponse = await paymentDriver.startPayment(payload)
 
-			await handleBackendDirectedFlow(res, payload)
+			await handleBackendDirectedFlow(res, payload, onTerminal)
 
 			return res
 		} catch (err: any) {
@@ -386,7 +395,11 @@ export function usePayment() {
 	* - recovery
 	* - resumed session
 	*/
-	async function handleBackendDirectedFlow(res: PaymentResponse, payload?: any): Promise<void> {
+	async function handleBackendDirectedFlow(
+		res: PaymentResponse,
+		payload?: any,
+		onTerminal?: (status: PaymentTerminalStatus) => void
+	): Promise<void> {
 		console.log('[executeFlow]', {
 			flow: res.flow,
 			status: res.status,
@@ -396,12 +409,21 @@ export function usePayment() {
 
 		if (res.status === 'SUCCESS') {
 			state.value = 'success'
+			onTerminal?.('SUCCESS')
 			return
 		}
 
 		if (res.status === 'FAILED') {
 			state.value = 'error'
 			error.value = res.failureReason || 'Payment failed'
+			onTerminal?.('FAILED')
+			return
+		}
+
+		if (res.status === 'CANCELLED') {
+			state.value = 'cancelled'
+			error.value = null
+			onTerminal?.('CANCELLED')
 			return
 		}
 
@@ -457,7 +479,7 @@ export function usePayment() {
 
 			// 1. ALREADY CHARGED
 			if (alreadyCharged) {
-				startPolling(reference, flow)
+				startPolling(reference, flow, onTerminal)
 				return
 			}
 
@@ -472,7 +494,7 @@ export function usePayment() {
 		 */
 		if (flow === 'callback') {
 			state.value = 'processing'
-			startPolling(reference, flow)
+			startPolling(reference, flow, onTerminal)
 			return
 		}
 	}
@@ -495,21 +517,49 @@ export function usePayment() {
 	 * - Does NOT mean provider failure
 	 * - User may still complete payment later
 	 */
-	function startPolling(reference: string, flow: PaymentFlow) {
+	function startPolling(
+		reference: string,
+		flow: PaymentFlow,
+	    onTerminal?: (status: PaymentTerminalStatus) => void
+	) {
 		stopPolling()
 
 		processingStartedAt.value = Date.now()
 		const MAX_POLL_DURATION = 90_000 // 90s
-		const DARAJA_QUERY_THRESHOLD = 30_000 // 30s - after this, we trigger a Daraja query in case the callback was delayed (common issue)
+		const DARAJA_QUERY_INTERVAL = 20_000 // 20s - after this, we trigger a Daraja query in case the callback was delayed (common issue)
+        const INITIAL_DARAJA_QUERY_DELAY = 15_000
 
-		let hasTriggeredFallback = false
+		const DPO_VERIFY_INTERVAL = 30_000
+		const INITIAL_DPO_VERIFY_DELAY = 30_000
+
+		let lastDarajaQueryAt = 0
+		let lastDpoVerificationAt = 0
+
 		let isPolling = false
 		let pollingWasInterrupted = false
 
 		const poll = async () => {
+
 			if (processingStartedAt.value) {
 				pollingElapsedMs.value = Date.now() - processingStartedAt.value
 			}
+
+            const shouldTriggerDarajaQuery =
+				flow === 'callback' &&
+				pollingElapsedMs.value >=
+				INITIAL_DARAJA_QUERY_DELAY &&
+				Date.now() - lastDarajaQueryAt >=
+				DARAJA_QUERY_INTERVAL
+
+
+			const shouldTriggerDpoVerification =
+				flow === 'mobile_direct' &&
+				pollingElapsedMs.value >=
+				INITIAL_DPO_VERIFY_DELAY &&
+				Date.now() - lastDpoVerificationAt >=
+				DPO_VERIFY_INTERVAL
+
+
 			console.log('[Payment] poll tick', {
 				reference,
 				retryCount: retryCount.value,
@@ -533,25 +583,44 @@ export function usePayment() {
 			try {
 				let res
 
-				/**
-				 * Daraja fallback (~20s)
-				 * Trigger STK query once if callback delays
-				 */
-				if (
-					flow === 'callback' &&
-					!hasTriggeredFallback &&
-					pollingElapsedMs.value >= DARAJA_QUERY_THRESHOLD
-				) {
-					hasTriggeredFallback = true
-
+				// Periodically trigger Daraja reconciliation
+				// if callback delivery is delayed
+				if (shouldTriggerDarajaQuery) {
+					lastDarajaQueryAt = Date.now()
 					try {
+						console.log('[Payment] triggering daraja reconciliation')
+
 						res = await paymentDriver.queryDarajaPayment(reference)
+
 					} catch (err) {
-						console.warn('[Payment] Daraja fallback failed', err)
+
+						console.warn('[Payment] Daraja reconciliation failed', err)
+
 						res = await paymentDriver.getPaymentStatus(reference)
 					}
+				} else if (shouldTriggerDpoVerification) {
+
+						lastDpoVerificationAt = Date.now()
+
+						try {
+
+							console.log('[Payment] triggering backup reconciliation')
+
+							await paymentDriver.verifyPayment(reference)
+
+						} catch (err) {
+
+							console.warn(
+								'[Payment] DPO verification failed',
+								err
+							)
+						}
+
+						res = await paymentDriver.getPaymentStatus(reference)
+
 				} else {
-					res = await paymentDriver.getPaymentStatus(reference)
+
+						res = await paymentDriver.getPaymentStatus(reference)
 				}
 
 				// Network recovery confirmed
@@ -566,6 +635,8 @@ export function usePayment() {
 					clearPersistedPaymentSession()
 
 					showSuccess(`Payment processed successfully`)
+
+					onTerminal?.('SUCCESS')
 					return
 				}
 
@@ -577,6 +648,19 @@ export function usePayment() {
 					clearPersistedPaymentSession()
 
 					showError(error.value || 'Payment failed')
+					onTerminal?.('FAILED')
+					return
+				}
+
+				if (res.status === 'CANCELLED') {
+					retryCount.value = 0
+					stopPolling()
+					state.value = 'cancelled'
+					error.value = res?.reason || 'Payment cancelled'
+					clearPersistedPaymentSession()
+
+					showInfo(`Payment was cancelled, you can try again if you wish`)
+					onTerminal?.('CANCELLED')
 					return
 				}
 

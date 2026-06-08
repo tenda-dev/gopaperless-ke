@@ -194,7 +194,7 @@ final class PaymentMetadataDTO
 			confidence: $confidence ?? $this->confidence,
 			alreadyCharged: $alreadyCharged ?? $this->alreadyCharged,
 			instructions: $instructions ?? $this->instructions,
-			providerExecutionState: $providerExecutionStatus ?? $this->providerExecutionState,
+			providerExecutionState: $providerExecutionState ?? $this->providerExecutionState,
 			providerPayload: $providerPayload ?? $this->providerPayload,
 			context: $context ?? $this->context,
 			providerError: $providerError ?? $this->providerError,
