@@ -1,0 +1,93 @@
+services:
+  mysql:
+    image: mariadb:10.6
+    restart: unless-stopped
+    command: >
+      --transaction-isolation=READ-COMMITTED
+      --binlog-format=ROW
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "15672:15672"
+
+  nextcloud:
+    image: ghcr.io/librecodecoop/nextcloud-dev-php${PHP_VERSION}:latest
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - redis
+      - rabbitmq
+    environment:
+      HOST_UID: 33
+      HOST_GID: 33
+
+      VERSION_NEXTCLOUD: ${VERSION_NEXTCLOUD}
+
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_ADMIN_EMAIL: ${NEXTCLOUD_ADMIN_EMAIL}
+
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      DB_HOST: mysql
+
+      REDIS_HOST: redis
+
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
+      MAIL_DOMAIN: ${MAIL_DOMAIN}
+      MAIL_SMTPMODE: smtp
+      MAIL_SMTPHOST: ${MAIL_SMTPHOST}
+      MAIL_SMTPPORT: ${MAIL_SMTPPORT}
+      MAIL_SMTPSECURE: ${MAIL_SMTPSECURE}
+      MAIL_SMTPAUTH: ${MAIL_SMTPAUTH}
+      MAIL_SMTPNAME: ${MAIL_SMTPNAME}
+      MAIL_SMTPPASSWORD: ${MAIL_SMTPPASSWORD}
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+
+      TZ: ${TZ}
+
+      AUTOINSTALL: 1
+
+    volumes:
+      - nextcloud-data:/var/www/html
+      - /opt/gopaperless:/var/www/html/apps-extra/libresign
+
+  nginx:
+    image: ghcr.io/librecodecoop/nextcloud-dev-nginx:latest
+    restart: unless-stopped
+    depends_on:
+      - nextcloud
+    ports:
+      - "80:80"
+    volumes:
+      - nextcloud-data:/var/www/html:ro
+      - /opt/gopaperless:/var/www/html/apps-extra/libresign:ro
+
+volumes:
+  mysql-data:
+  nextcloud-data:
+  rabbitmq-data:
