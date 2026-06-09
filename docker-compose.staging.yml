@@ -76,16 +76,28 @@ services:
       - nextcloud-data:/var/www/html
       - /opt/gopaperless:/var/www/html/apps-extra/libresign
 
+  nginx:
+    image: ghcr.io/librecodecoop/nextcloud-dev-nginx:latest
+    restart: unless-stopped
+    depends_on:
+      - nextcloud
+    expose:
+      - "80"
+    volumes:
+      - nextcloud-data:/var/www/html:ro
+      - /opt/gopaperless:/var/www/html/apps-extra/libresign:ro
+
   caddy:
     image: caddy:2.10
     restart: unless-stopped
     depends_on:
-      - nextcloud
+      nginx:
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
 
