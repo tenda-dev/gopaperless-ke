@@ -520,12 +520,12 @@ class DarajaService {
 
 	private function getDevConfig(): array {
 		return [
-			'baseUrl' => 'https://sandbox.safaricom.co.ke',
-			'consumerKey' => 'QVNGIwcP7vT9m0ZS4SGmnw7x1o8MGuiAY2UiGUrRMAXJH9aY',
-			'consumerSecret' => 'LYp6RpUTAK8eGGTM1oA5RwMYhkCNA2qS23WalsX21z6kSe0h4PlzjC1op3gxkXeD',
-			'passKey' => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-			'shortCode' => '174379',
-			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
+			'baseUrl' => 'https://api.safaricom.co.ke',
+			'consumerKey' => '4iO9OayobxUQBtvLkYUsvTbdwLyywi8C',
+			'consumerSecret' => 'QQVC4CfgWzDjKmCZ',
+			'passKey' => 'bd8c94609d24d5c5fad41b0a45dd6dc0cf904f55488e86031c71a85b0962fd59',
+			'shortCode' => '4043687',
+			'callbackBaseUrl' => $callbackBaseUrl ?? 'https://gopaperless.dev.tenda.world',
 		];
     }
 
@@ -536,7 +536,7 @@ class DarajaService {
 			'consumerSecret' => 'QQVC4CfgWzDjKmCZ',
 			'passKey' => 'bd8c94609d24d5c5fad41b0a45dd6dc0cf904f55488e86031c71a85b0962fd59',
 			'shortCode' => '4043687',
-			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
+			'callbackBaseUrl' => $callbackBaseUrl ?? 'https://gopaperless.dev.tenda.world',
 		];
     }
 }
