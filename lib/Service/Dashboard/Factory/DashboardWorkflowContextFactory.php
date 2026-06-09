@@ -105,8 +105,8 @@ final class DashboardWorkflowContextFactory {
 		}
 
 		return $this->paymentMapper
-			->findLatestPendingBySignRequestId($signRequestId)
+			->findLatestPendingByTransactionId($signRequestId)
 			?? $this->paymentMapper
-				->findLatestPaidBySignRequestId($signRequestId);
+				->findLatestPaidByTransactionId($signRequestId);
 	}
 }
