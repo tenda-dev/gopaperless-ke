@@ -186,11 +186,36 @@ function toRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function parsePdfFetchError(value: unknown): PdfFetchError {
-	if (typeof value !== 'object' || value === null || !('errors' in value) || !Array.isArray(value.errors)) {
+	if (
+		typeof value !== 'object'
+		|| value === null
+		|| !('errors' in value)
+		|| !Array.isArray(value.errors)
+	) {
 		return {}
 	}
+
 	return {
-		errors: value.errors.filter((error): error is SignError => typeof error === 'object' && error !== null),
+		errors: value.errors
+			.map((error): SignError | null => {
+				if (typeof error === 'string') {
+					return { message: error }
+				}
+
+				if (
+					typeof error === 'object'
+					&& error !== null
+				) {
+					const signError = error as SignError
+
+					if (typeof signError.message === 'string') {
+						return signError
+					}
+				}
+
+				return null
+			})
+			.filter((error): error is SignError => error !== null),
 	}
 }
 
@@ -322,11 +347,12 @@ async function handleInitialStatePdfs(urls: string[]) {
 		if (contentType.includes('application/json')) {
 			const data = parsePdfFetchError(await response.json())
 			sidebarStore.hideSidebar()
-			const firstErrorMessage = data.errors?.[0]?.message
-			if (firstErrorMessage && firstErrorMessage.length > 0) {
-				setPdfLoadErrors(data.errors ?? [])
+			if (data.errors?.length) {
+				setPdfLoadErrors(data.errors)
 			} else {
-				setPdfLoadErrors([{ message: t('libresign', 'File not found') }])
+				setPdfLoadErrors([
+					{ message: t('libresign', 'File not found') },
+				])
 			}
 			return
 		}
