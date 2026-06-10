@@ -46,6 +46,7 @@ use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
+use Psr\Log\LoggerInterface;
 use Sabre\DAV\UUIDUtil;
 use Throwable;
 
@@ -85,6 +86,7 @@ class AccountService {
 		private ITimeFactory $timeFactory,
 		private FileUploadHelper $uploadHelper,
 		private CrlService $crlService,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -210,6 +212,18 @@ class AccountService {
 			$nodeId = $this->fileData->getNodeId();
 
 			$fileToSign = $this->root->getUserFolder($this->fileData->getUserId())->getFirstNodeById($nodeId);
+
+			$this->logger->error('[AccountService] getFileByUuid debug', [
+				'uuid' => $uuid,
+				'signRequestId' => $signRequest->getId(),
+				'fileId' => $this->fileData->getId(),
+				'fileUuid' => $this->fileData->getUuid(),
+				'nodeId' => $nodeId,
+				'nodeClass' => $fileToSign ? get_class($fileToSign) : 'null',
+				'parentFileId' => $this->fileData->getParentFileId(),
+				'nodeType' => $this->fileData->getNodeType(),
+			]);
+
 			if ($fileToSign) {
 				$this->fileToSign = $fileToSign;
 			}

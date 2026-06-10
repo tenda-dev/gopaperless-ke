@@ -13,7 +13,7 @@
 				{{ documentValidMessage }}
 			</NcNoteCard>
 			<NcNoteCard v-if="isAfterSigned" type="success">
-				{{ t('libresign', 'Congratulations you have digitally signed a document using LibreSign') }}
+				{{ t('libresign', 'Congratulations you have digitally signed a document using GoPaperless') }}
 			</NcNoteCard>
 			<DocumentValidationDetails
 				:document="document"
