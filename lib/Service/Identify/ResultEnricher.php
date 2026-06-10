@@ -24,7 +24,11 @@ class ResultEnricher {
 	}
 
 	public function addHerselfAccount(array $return, string $search, string $method = ''): array {
-		if (!empty($method) && $method !== 'account') {
+		if (
+			!empty($method)
+			&& $method !== 'account'
+			&& $method !== 'email'
+		) {
 			return $return;
 		}
 
@@ -34,13 +38,25 @@ class ResultEnricher {
 		}
 
 		$user = $this->userSession->getUser();
+
+		if ($user === null) {
+           return $return;
+		}
+
 		$searchLower = strtolower($search);
 
 		if (!$this->userMatchesSearch($user, $searchLower)) {
 			return $return;
 		}
 
-		$filtered = array_filter($return, fn ($i) => $i['identify'] === $user->getUID());
+		$filtered = array_filter(
+			$return,
+			fn(array $item): bool => ($item['method'] ?? null) === 'account'
+				&& (
+					($item['identify'] ?? null) === $user->getUID()
+					|| ($item['identify'] ?? null) === $user->getEMailAddress()
+				)
+		);
 		if (count($filtered)) {
 			return $return;
 		}
@@ -68,6 +84,11 @@ class ResultEnricher {
 		}
 
 		$user = $this->userSession->getUser();
+
+		if ($user === null) {
+           return $return;
+		}
+
 		if (empty($user->getEMailAddress())) {
 			return $return;
 		}
@@ -78,8 +99,22 @@ class ResultEnricher {
 			return $return;
 		}
 
-		$filtered = array_filter($return, fn ($i) => $i['identify'] === $user->getUID());
-		if (count($filtered)) {
+		$filtered = array_filter(
+			$return,
+			fn(array $item): bool => (
+				($item['method'] ?? null) === 'email'
+				&& ($item['identify'] ?? null) === $user->getEMailAddress()
+			)
+				|| (
+					($item['method'] ?? null) === 'account'
+					&& (
+						($item['identify'] ?? null) === $user->getUID()
+						|| ($item['identify'] ?? null) === $user->getEMailAddress()
+					)
+				)
+		);
+
+		if (!empty($filtered)) {
 			return $return;
 		}
 
