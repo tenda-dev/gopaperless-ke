@@ -1007,12 +1007,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/nextcloud-deps/ocp.git",
-                "reference": "eb30299ea60b96170cfb9113a1cc8079d6c7ea87"
+                "reference": "6f7475c163404df11cde86535e3ad0b46abca5a1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nextcloud-deps/ocp/zipball/eb30299ea60b96170cfb9113a1cc8079d6c7ea87",
-                "reference": "eb30299ea60b96170cfb9113a1cc8079d6c7ea87",
+                "url": "https://api.github.com/repos/nextcloud-deps/ocp/zipball/6f7475c163404df11cde86535e3ad0b46abca5a1",
+                "reference": "6f7475c163404df11cde86535e3ad0b46abca5a1",
 
                 "shasum": ""
             },
@@ -1049,7 +1049,7 @@
                 "issues": "https://github.com/nextcloud-deps/ocp/issues",
                 "source": "https://github.com/nextcloud-deps/ocp/tree/stable34"
             },
-            "time": "2026-06-02T02:35:02+00:00"
+            "time": "2026-05-20T02:08:51+00:00"
 
         },
         {

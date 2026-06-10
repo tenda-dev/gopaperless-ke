@@ -4,7 +4,6 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createL10nMock } from '../../testHelpers/l10n.js'
 import type { MockedFunction } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
@@ -23,11 +22,11 @@ const interpolateText = (text: string, vars?: Record<string, unknown>) => {
 }
 
 vi.mock('@nextcloud/axios')
-vi.mock('@nextcloud/l10n', () => createL10nMock())
+vi.mock('@nextcloud/l10n', () => globalThis.mockNextcloudL10n())
 
 vi.mock('@nextcloud/capabilities')
 vi.mock('@nextcloud/router', () => ({
-	generateOcsUrl: vi.fn((url) => `https://example.com${url}`),
+	generateOcsUrl: vi.fn((url, params) => `https://example.com${url.replace('{fileId}', String(params?.fileId ?? '')).replace('{nodeId}', String(params?.nodeId ?? ''))}`),
 	generateUrl: vi.fn((url, params) => url.replace('{uuid}', params.uuid).replace('{nodeId}', params.nodeId)),
 }))
 vi.mock('../../../utils/viewer.js', () => ({
@@ -236,7 +235,7 @@ describe('EnvelopeFilesList', () => {
 			expect(wrapper.vm.canAddFile).toBe(false)
 		})
 
-		it('returns false when no envelope', () => {
+		it('returns false when no envelope for canAddFile', () => {
 			getCapabilitiesMock.mockReturnValue({
 				libresign: { config: { envelope: { 'is-available': true } } },
 			})
@@ -365,16 +364,24 @@ describe('EnvelopeFilesList', () => {
 	})
 
 	describe('RULE: getPreviewUrl constructs thumbnail URL with parameters', () => {
-		it('builds URL with nodeId and parameters', () => {
+		it('prefers file id URLs and appends preview parameters', () => {
 			wrapper = createWrapper()
 
-			const url = wrapper.vm.getPreviewUrl({ nodeId: 123 })
+			const url = wrapper.vm.getPreviewUrl({ id: 123, nodeId: 456 })
 
-			expect(url).toContain('nodeId')
+			expect(url).toContain('/apps/libresign/api/v1/file/thumbnail/file_id/123')
 			expect(url).toContain('x=32')
 			expect(url).toContain('y=32')
 			expect(url).toContain('mimeFallback=true')
 			expect(url).toContain('a=1')
+		})
+
+		it('falls back to node id URLs when file id is absent', () => {
+			wrapper = createWrapper()
+
+			const url = wrapper.vm.getPreviewUrl({ nodeId: 123 })
+
+			expect(url).toContain('/apps/libresign/api/v1/file/thumbnail/123')
 		})
 
 		it('returns null when no nodeId', () => {
@@ -553,7 +560,7 @@ describe('EnvelopeFilesList', () => {
 			vi.useRealTimers()
 		})
 
-		it('shows error message on failure', async () => {
+		it('shows update error message on failure', async () => {
 			filesStore.rename = vi.fn().mockResolvedValue(false)
 			filesStore.selectedFile = { uuid: 'abc' }
 			wrapper = createWrapper()

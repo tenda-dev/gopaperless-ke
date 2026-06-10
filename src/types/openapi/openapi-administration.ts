@@ -261,7 +261,7 @@ export type paths = {
          * Update OID
          * @description This endpoint requires admin access
          */
-        post: operations["admin-updateoid"];
+        post: operations["admin-update-oid"];
         delete?: never;
         options?: never;
         head?: never;
@@ -359,6 +359,26 @@ export type paths = {
          *     This endpoint requires admin access
          */
         post: operations["admin-set-signing-mode-config"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/groups-request-sign/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Persist groups allowed to request signatures as typed app config array
+         * @description This endpoint requires admin access
+         */
+        post: operations["admin-set-groups-request-sign-config"];
         delete?: never;
         options?: never;
         head?: never;
@@ -528,6 +548,9 @@ export type components = {
             };
             version: string;
         };
+        CertificateDataGenerated: components["schemas"]["EngineHandler"] & {
+            generated: boolean;
+        };
         CertificateEngineConfigResponse: {
             engine: string;
             identify_methods: components["schemas"]["IdentifyMethodSetting"][];
@@ -536,9 +559,6 @@ export type components = {
             /** @enum {string} */
             status: "success";
             CPS: string;
-        };
-        CetificateDataGenerated: components["schemas"]["EngineHandler"] & {
-            generated: boolean;
         };
         ConfigureCheck: {
             message: string;
@@ -553,7 +573,8 @@ export type components = {
             id: number;
             serial_number: string;
             owner: string;
-            status: string;
+            /** @enum {string} */
+            status: "issued" | "revoked";
             certificate_type: string;
             engine: string;
             instance_id: string | null;
@@ -919,7 +940,7 @@ export interface operations {
                     "application/json": {
                         ocs: {
                             meta: components["schemas"]["OCSMeta"];
-                            data: components["schemas"]["CetificateDataGenerated"];
+                            data: components["schemas"]["CertificateDataGenerated"];
                         };
                     };
                 };
@@ -979,7 +1000,7 @@ export interface operations {
                     "application/json": {
                         ocs: {
                             meta: components["schemas"]["OCSMeta"];
-                            data: unknown;
+                            data: Record<string, never>;
                         };
                     };
                 };
@@ -1195,13 +1216,13 @@ export interface operations {
                     signatureFontSize?: number;
                     /**
                      * Format: double
-                     * @description Signature width
+                     * @description Signature box width, minimum 1
                      * @default 350
                      */
                     signatureWidth?: number;
                     /**
                      * Format: double
-                     * @description Signature height
+                     * @description Signature box height, minimum 1
                      * @default 100
                      */
                     signatureHeight?: number;
@@ -1401,7 +1422,7 @@ export interface operations {
             };
         };
     };
-    "admin-updateoid": {
+    "admin-update-oid": {
         parameters: {
             query?: never;
             header: {
@@ -1761,6 +1782,60 @@ export interface operations {
                         ocs: {
                             meta: components["schemas"]["OCSMeta"];
                             data: components["schemas"]["ErrorResponse"];
+                        };
+                    };
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ocs: {
+                            meta: components["schemas"]["OCSMeta"];
+                            data: components["schemas"]["ErrorResponse"];
+                        };
+                    };
+                };
+            };
+        };
+    };
+    "admin-set-groups-request-sign-config": {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Required to be true for the API request to pass */
+                "OCS-APIRequest": boolean;
+            };
+            path: {
+                apiVersion: "v1";
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description List of group IDs allowed to request signatures
+                     * @default []
+                     */
+                    groups?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Settings saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ocs: {
+                            meta: components["schemas"]["OCSMeta"];
+                            data: components["schemas"]["MessageResponse"];
                         };
                     };
                 };

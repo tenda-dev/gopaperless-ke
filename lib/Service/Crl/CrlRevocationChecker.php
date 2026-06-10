@@ -46,19 +46,32 @@ class CrlRevocationChecker {
 
 	/**
 	 * Validate a certificate against the CRL Distribution Points found in its
-	 * data. Returns an array with at least a 'status' key ({@see CrlValidationStatus})
+	 * data. Returns an array with a 'status' key (always {@see CrlValidationStatus})
 	 * and optionally 'revoked_at' (ISO 8601) when the certificate is revoked.
+	 *
+	 * @return array{status: CrlValidationStatus, revoked_at?: string}
 	 */
 	public function validate(array $crlUrls, string $certPem): array {
 		return $this->validateFromUrlsWithDetails($crlUrls, $certPem);
 	}
 
+	/**
+	 * Internal validation worker that iterates through CRL distribution points
+	 * and returns the validation status from the first accessible/conclusive point.
+	 *
+	 * @return array{status: CrlValidationStatus, revoked_at?: string}
+	 */
 	private function validateFromUrlsWithDetails(array $crlUrls, string $certPem): array {
+		$externalValidationEnabled = $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true);
+
 		if (empty($crlUrls)) {
+			// When external validation is disabled, treat an empty distribution-point
+			// list the same as if all points were intentionally skipped.
+			if (!$externalValidationEnabled) {
+				return ['status' => CrlValidationStatus::DISABLED];
+			}
 			return ['status' => CrlValidationStatus::NO_URLS];
 		}
-
-		$externalValidationEnabled = $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true);
 
 		$accessibleUrls = 0;
 		$disabledUrls = 0;
@@ -83,7 +96,7 @@ class CrlRevocationChecker {
 				if ($validationResult['status'] !== CrlValidationStatus::VALIDATION_ERROR) {
 					$accessibleUrls++;
 				}
-			} catch (\Exception $e) {
+			} catch (\Exception) {
 				continue;
 			}
 		}
@@ -101,6 +114,11 @@ class CrlRevocationChecker {
 		return ['status' => CrlValidationStatus::VALIDATION_FAILED];
 	}
 
+	/**
+	 * Download and validate CRL content from a single source URL.
+	 *
+	 * @return array{status: CrlValidationStatus, revoked_at?: string}
+	 */
 	private function downloadAndValidateWithDetails(string $crlUrl, string $certPem, bool $isLocal): array {
 		try {
 			if ($isLocal) {
@@ -117,7 +135,7 @@ class CrlRevocationChecker {
 
 			return $this->checkCertificateInCrlWithDetails($certPem, $crlContent);
 
-		} catch (\Exception $e) {
+		} catch (\Exception) {
 			return ['status' => CrlValidationStatus::VALIDATION_ERROR];
 		}
 	}
@@ -144,7 +162,7 @@ class CrlRevocationChecker {
 				// Lazy-loaded to avoid a circular dependency:
 				// CrlService → CertificateEngineFactory → OpenSslHandler → CrlRevocationChecker → CrlService
 				/** @var \OCA\Libresign\Service\Crl\CrlService */
-				$crlService = \OC::$server->get(\OCA\Libresign\Service\Crl\CrlService::class);
+				$crlService = \OCP\Server::get(\OCA\Libresign\Service\Crl\CrlService::class);
 
 				return $crlService->generateCrlDer($instanceId, $generation, $engineType);
 			}
@@ -152,7 +170,13 @@ class CrlRevocationChecker {
 			$this->logger->debug('CRL URL does not match expected pattern', ['url' => $crlUrl, 'pattern' => $pattern]);
 			return null;
 		} catch (\Exception $e) {
-			$this->logger->warning('Failed to generate local CRL: ' . $e->getMessage());
+			if ($e instanceof \RuntimeException && str_starts_with($e->getMessage(), 'Config path does not exist for instanceId:')) {
+				$this->logger->debug('Skipping local CRL generation because source PKI config path is missing', [
+					'reason' => $e->getMessage(),
+				]);
+			} else {
+				$this->logger->warning('Failed to generate local CRL: ' . $e->getMessage());
+			}
 			return null;
 		}
 	}
@@ -221,6 +245,11 @@ class CrlRevocationChecker {
 		return preg_match('/Serial Number: 0*' . preg_quote($normalizedSerial, '/') . '/', $crlText) === 1;
 	}
 
+	/**
+	 * Check if certificate serial is revoked in the provided CRL content.
+	 *
+	 * @return array{status: CrlValidationStatus, revoked_at?: string}
+	 */
 	private function checkCertificateInCrlWithDetails(string $certPem, string $crlContent): array {
 		try {
 			$certResource = openssl_x509_read($certPem);
@@ -267,7 +296,7 @@ class CrlRevocationChecker {
 				}
 			}
 
-		} catch (\Exception $e) {
+		} catch (\Exception) {
 			return ['status' => CrlValidationStatus::VALIDATION_ERROR];
 		}
 	}
@@ -297,7 +326,7 @@ class CrlRevocationChecker {
 			try {
 				$date = new \DateTimeImmutable($dateText, new \DateTimeZone('UTC'));
 				return $date->setTimezone(new \DateTimeZone('UTC'))->format(\DateTimeInterface::ATOM);
-			} catch (\Exception $e) {
+			} catch (\Exception) {
 				continue;
 			}
 		}

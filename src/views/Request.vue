@@ -3,24 +3,22 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="request-page">
-
-		<!-- PAGE HEADER -->
-		<header class="request-header">
-			<h1>Request Signature</h1>
-			<p>
-				Upload your document to begin signature request workflow
-			</p>
-		</header>
-
-		<main class="request-content">
-			<!-- DOCUMENTS -->
-			<DocumentList v-if="hasFiles" />
-
-			<!-- PICKER (ONLY ENTRY POINT) -->
-			<RequestPicker v-else />
-		</main>
-
+	<div class="container">
+		<div id="container-request">
+			<header>
+				<h1>{{ t('libresign', 'Request Signatures') }}</h1>
+				<p v-if="!sidebarStore.isVisible">
+					{{ t('libresign', 'Choose the file to request signatures.') }}
+				</p>
+			</header>
+			<div class="content-request">
+				<File v-show="!!filesStore.selectedFileId"
+					status="0"
+					status-text="none" />
+				<ReqestPicker v-if="!sidebarStore.isVisible"
+					:inline="true" />
+			</div>
+		</div>
 	</div>
 </template>
 <script setup lang="ts">
@@ -29,27 +27,23 @@ import { t } from '@nextcloud/l10n'
 
 import { useFilesStore } from '../store/files.js'
 import { useSidebarStore } from '../store/sidebar.js'
-import { loadState } from '@nextcloud/initial-state'
-import RequestPicker from '@/components/Request/RequestPicker.vue'
-import DocumentList from '@/components/Request/DocumentList.vue'
 
 defineOptions({
 	name: 'Request',
 })
 
+type FilesStore = {
+	selectedFileId: number
+	disableIdentifySigner: () => void
+	selectFile: () => void
+}
+
 type SidebarStore = {
 	isVisible: boolean
 }
 
-const filesStore = useFilesStore()
+const filesStore = useFilesStore() as FilesStore
 const sidebarStore = useSidebarStore() as SidebarStore
-
-/* ===================== */
-/* STATE */
-/* ===================== */
-const hasFiles = computed(() => {
-  return Object.keys(filesStore.files).length > 0
-})
 
 onMounted(() => {
 	filesStore.disableIdentifySigner()
@@ -66,37 +60,41 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
-.request-page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 40px 24px;
+.container{
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+	height: 100%;
 }
 
-.request-header {
-  text-align: center;
-  margin-bottom: 32px;
+#container-request {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 500px;
+	max-width: 100%;
+	text-align: center;
 
-  h1 {
-    font-size: 32px;
-    font-weight: 700;
-  }
+	header {
+		margin-bottom: 2.5rem;
 
-  p {
-    margin-top: 10px;
-    font-size: 15px;
-    color: var(--color-text-maxcontrast);
-  }
-}
+		h1 {
+			font-size: 45px;
+			margin-bottom: 1rem;
+		}
 
-.request-content {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
+		p {
+			font-size: 15px;
+		}
+	}
 
-.picker-muted {
-  opacity: 0.5;
-  transform: scale(0.98);
-  transition: all 0.2s ease;
+	.content-request{
+		display: flex;
+		gap: 12px; flex: 1;
+		flex-direction: column;
+	}
 }
 </style>

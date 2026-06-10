@@ -7,7 +7,7 @@
 		<TopBar
 			v-if="!isMobile"
 			:sidebar-toggle="true" />
-		<PdfEditor v-if="mounted && !signStore.errors.length && pdfBlobs.length > 0"
+		<PdfEditor v-if="mounted && !hasPdfLoadError && pdfBlobs.length > 0"
 			ref="pdfEditor"
 			width="100%"
 			height="100%"
@@ -71,7 +71,7 @@ import type { SignerDetailRecord, SignerSummaryRecord, VisibleElementRecord } fr
 
 type ServiceVisibleElement = VisibleElementRecord
 
-type SignError = { title?: string; message?: string }
+type SignError = { title?: string; message?: string; scope?: string }
 type SignDocumentStatus = number | string
 type SignDocumentVisibleElement = {
 	elementId?: number
@@ -120,17 +120,18 @@ type EnvelopeFileListResponse = {
 	}
 }
 
-type SignStore = Pick<ReturnType<typeof useSignStore>, 'document' | 'errors' | 'mounted' | 'initFromState' | 'setFileToSign' | 'queueAction'> & {
+type SignStore = Pick<ReturnType<typeof useSignStore>, 'document' | 'errors' | 'mounted' | 'initFromState' | 'setFileToSign' | 'queueAction' | 'setSigningErrors'> & {
 	document: SignDocument
 	errors: SignError[]
 	mounted: boolean
 	initFromState: () => Promise<void>
 	setFileToSign: (file: SignDocument) => void
 	queueAction: (action: string) => void
+	setSigningErrors: (newErrors: SignError[]) => void
 }
 
 type FilesStore = Pick<ReturnType<typeof useFilesStore>, 'getAllFiles' | 'addFile' | 'selectFile' | 'getFile'> & {
-	getAllFiles: (filter: { signer_uuid?: string; details?: boolean }) => Promise<Record<string, SignDocument>>
+	fetchFileDetail: (options: { fileId?: number | null; uuid?: string | null; force?: boolean }) => Promise<SignDocument | null>
 	addFile: (file: SignDocumentFile) => void
 	selectFile: (fileId: number) => void
 	getFile: () => { status?: SignDocumentStatus } | null
@@ -255,6 +256,18 @@ const pdfFileName = computed(() => {
 	return `${doc.name}.${extension}`
 })
 
+const PDF_LOAD_ERROR_SCOPE = 'pdfLoad'
+
+const hasPdfLoadError = computed(() => signStore.errors.some((error) => error.scope === PDF_LOAD_ERROR_SCOPE))
+
+function setPdfLoadErrors(errors: SignError[]) {
+	const mappedErrors = errors.map((error) => ({
+		...error,
+		scope: PDF_LOAD_ERROR_SCOPE,
+	}))
+	signStore.setSigningErrors(mappedErrors)
+}
+
 function getRouteUuid() {
 	const uuid = getRoute().params.uuid
 	return Array.isArray(uuid) ? uuid[0] : uuid
@@ -299,22 +312,15 @@ async function initSignExternal() {
 }
 
 async function initSignInternal() {
-	const files = await filesStore.getAllFiles({
-		signer_uuid: getRouteUuid(),
-		details: true,
+	const file = await filesStore.fetchFileDetail({
+		uuid: getRouteUuid(),
+		force: true,
 	})
-	for (const key in files) {
-		const file = files[key]
-		if (!file) {
-			continue
-		}
-		const signer = file.signers?.find((row) => row?.me === true)
-		if (signer) {
-			signStore.setFileToSign(file)
-			filesStore.selectFile(parseInt(key, 10))
-			return
-		}
+	if (!file || typeof file.id !== 'number') {
+		return
 	}
+	signStore.setFileToSign(file)
+	filesStore.selectFile(file.id)
 }
 
 async function initIdDocsApprove() {
@@ -362,7 +368,7 @@ async function loadPdfsFromStore() {
 	const doc = signStore.document
 
 	if (!doc || !doc.nodeId) {
-		signStore.errors = [{ message: t('libresign', 'Document not found') }]
+		setPdfLoadErrors([{ message: t('libresign', 'Document not found') }])
 		return
 	}
 
@@ -371,13 +377,14 @@ async function loadPdfsFromStore() {
 		return
 	}
 
-	const baseFileUrl = (doc.url ?? getFileUrl(doc.files?.[0] ? normalizeFileForVisibleElements(doc.files[0]) : null))
+	const canonicalFileUrl = getFileUrl(doc.files?.[0] ? normalizeFileForVisibleElements(doc.files[0]) : null)
+	const baseFileUrl = canonicalFileUrl || doc.url
 		|| (doc.uuid ? generateUrl('/apps/libresign/p/pdf/{uuid}', { uuid: doc.uuid }) : null)
 	const fileUrl = addIdDocApprovalParam(baseFileUrl)
 	if (fileUrl) {
 		await getCompatMethod('handleInitialStatePdfs')([fileUrl])
 	} else {
-		signStore.errors = [{ message: t('libresign', 'Document URL not found') }]
+		setPdfLoadErrors([{ message: t('libresign', 'Document URL not found') }])
 	}
 }
 
@@ -391,7 +398,7 @@ async function loadEnvelopePdfs(parentFileId: number | string) {
 		}
 
 		if (!normalizedEnvelopeFiles.length) {
-			signStore.errors = [{ message: t('libresign', 'Failed to load envelope files') }]
+			setPdfLoadErrors([{ message: t('libresign', 'Failed to load envelope files') }])
 			return
 		}
 
@@ -404,14 +411,14 @@ async function loadEnvelopePdfs(parentFileId: number | string) {
 			.map((file) => getFileUrl(file))
 			.filter((url): url is string => Boolean(url))
 		if (!urls.length) {
-			signStore.errors = [{ message: t('libresign', 'Failed to load envelope files') }]
+			setPdfLoadErrors([{ message: t('libresign', 'Failed to load envelope files') }])
 			return
 		}
 
 		fileNames.value = normalizedEnvelopeFiles.map((file) => `${file.name}.${(file.metadata as SignDocumentMetadata | undefined)?.extension || 'pdf'}`)
 		await getCompatMethod('handleInitialStatePdfs')(urls)
 	} catch {
-		signStore.errors = [{ message: t('libresign', 'Failed to load envelope files') }]
+		setPdfLoadErrors([{ message: t('libresign', 'Failed to load envelope files') }])
 	}
 }
 
@@ -600,6 +607,10 @@ onBeforeMount(async () => {
 })
 
 onMounted(() => {
+	const routeName = getRoute().name
+	if (!isMobile && (routeName === 'SignPDF' || routeName === 'IdDocsApprove')) {
+		sidebarStore.activeSignTab()
+	}
 	void getCompatMethod('setupElementClickListener')()
 })
 

@@ -34,6 +34,7 @@ use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
@@ -49,6 +50,7 @@ use OCP\IUserSession;
 use OCP\Util;
 use Psr\Log\LoggerInterface;
 
+#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
 class PageController extends AEnvironmentPageAwareController {
 	public function __construct(
 		IRequest $request,
@@ -121,6 +123,7 @@ class PageController extends AEnvironmentPageAwareController {
 
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain('\'self\'');
+		$policy->addAllowedWorkerSrcDomain("'self'");
 		$response->setContentSecurityPolicy($policy);
 
 		return $response;
@@ -249,7 +252,7 @@ class PageController extends AEnvironmentPageAwareController {
 				$this->initialState->provideInitialState('identificationDocumentsWaitingApproval', $file['settings']['identificationDocumentsWaitingApproval'] ?? false);
 			} catch (LibresignException $e) {
 				throw $e;
-			} catch (\Throwable $e) {
+			} catch (\Throwable) {
 				throw new LibresignException(json_encode([
 					'action' => JSActions::ACTION_DO_NOTHING,
 					'errors' => [['message' => $this->l10n->t('Invalid UUID')]],
@@ -385,7 +388,7 @@ class PageController extends AEnvironmentPageAwareController {
 		$response = new TemplateResponse(Application::APP_ID, 'external', [], TemplateResponse::RENDER_AS_BASE);
 
 		$policy = new ContentSecurityPolicy();
-		$policy->allowEvalScript(true);
+		$policy->addAllowedWorkerSrcDomain("'self'");
 		$response->setContentSecurityPolicy($policy);
 
 		return $response;
