@@ -18,7 +18,16 @@ type OcsResponse<T = unknown> = {
 	}
 }
 
-async function ocsRequest(
+type SignatureElementResponse = {
+	elements?: Array<{
+		type: string
+		file: {
+			nodeId: number
+		}
+	}>
+}
+
+async function ocsRequest<T = unknown>(
 	request: APIRequestContext,
 	method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 	path: string,
@@ -26,7 +35,7 @@ async function ocsRequest(
 	adminPassword = process.env.NEXTCLOUD_ADMIN_PASSWORD ?? 'admin',
 	body?: Record<string, string>,
 	jsonBody?: unknown,
-): Promise<OcsResponse> {
+): Promise<OcsResponse<T>> {
 	const url = `./ocs/v2.php${path}`
 	const auth = 'Basic ' + Buffer.from(`${adminUser}:${adminPassword}`).toString('base64')
 	const headers: Record<string, string> = {
@@ -44,16 +53,39 @@ async function ocsRequest(
 			: body !== undefined ? { form: body } : {}),
 		failOnStatusCode: false,
 	})
-
 	if (!response.ok() && response.status() !== 404) {
 		throw new Error(`OCS request failed: ${method} ${path} → ${response.status()} ${await response.text()}`)
 	}
 
 	const text = await response.text()
 	if (!text) {
-		return { ocs: { meta: { status: 'ok', statuscode: response.status(), message: '' }, data: {} } } as OcsResponse
+		return { ocs: { meta: { status: 'ok', statuscode: response.status(), message: '' }, data: {} as T } }
 	}
-	return JSON.parse(text) as OcsResponse
+	return JSON.parse(text) as OcsResponse<T>
+}
+
+export async function clearSignatureElements(
+	request: APIRequestContext,
+	userId = process.env.NEXTCLOUD_ADMIN_USER ?? 'admin',
+	password = process.env.NEXTCLOUD_ADMIN_PASSWORD ?? 'admin',
+): Promise<void> {
+	const result = await ocsRequest<SignatureElementResponse>(
+		request,
+		'GET',
+		'/apps/libresign/api/v1/signature/elements',
+		userId,
+		password,
+	)
+
+	for (const element of result.ocs.data.elements ?? []) {
+		await ocsRequest(
+			request,
+			'DELETE',
+			`/apps/libresign/api/v1/signature/elements/${element.file.nodeId}`,
+			userId,
+			password,
+		)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -186,4 +218,6 @@ export async function configureOpenSsl(
 	if (result.ocs.meta.statuscode !== 200) {
 		throw new Error(`Failed to configure OpenSSL: ${result.ocs.meta.message}`)
 	}
+
+	await clearSignatureElements(request)
 }
