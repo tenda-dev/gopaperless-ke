@@ -12,10 +12,12 @@ use OCA\Libresign\Enum\PaymentCapability;
 use OCA\Libresign\Enum\PaymentFlow;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Enum\ProviderExecutionState;
 use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\Payment\Dispatchers\VerificationDispatcherFactory;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
@@ -77,6 +79,7 @@ class PaymentService
 	protected PaymentCountryResolver $countryResolver;
 	protected FxEngineService $fxEngineService;
 	protected ProviderAmountNormaliser $providerAmountNormaliser;
+	private VerificationDispatcherFactory $verificationDispatcher;
 
 	public function __construct(
 		PaymentMapper $paymentMapper,
@@ -94,6 +97,7 @@ class PaymentService
 		PaymentCountryResolver $countryResolver,
 		FxEngineService $fxEngineService,
 		ProviderAmountNormaliser $providerAmountNormaliser,
+		VerificationDispatcherFactory $verificationDispatcher,
 	) {
 		$this->paymentMapper = $paymentMapper;
 		$this->logger = $logger;
@@ -110,6 +114,7 @@ class PaymentService
 		$this->countryResolver = $countryResolver;
 		$this->fxEngineService = $fxEngineService;
 		$this->providerAmountNormaliser = $providerAmountNormaliser;
+		$this->verificationDispatcher = $verificationDispatcher;
 	}
 
 	/**
@@ -144,12 +149,15 @@ class PaymentService
 		$paymentAttemptId = $dto->paymentAttemptId;
 		$phoneNumber = $dto->phoneNumber;
 		$method = $dto->paymentMethod;
+		$paymentPurpose = PaymentPurpose::tryFrom($dto->purpose->value) ?? PaymentPurpose::SIGN_REQUEST;
+		$quantity = $dto->quantity ?? 1;
 
 		$e164 = null;
 		$route = null;
 		$ctxMetadata = [];
 		$countryCtx = null;
 		$fxEngineResult = null;
+		$pending = null;
 
 		/**
 		 * CORE VALIDATION
@@ -201,7 +209,6 @@ class PaymentService
 
 			// Changed to e164 with the + (persisted - remove the + per provider if needed)
 			$e164 = $resolutionDto->e164;
-			$e164Digits = $resolutionDto->e164Digits;
 
 			$countryCtx = $this->countryResolver->resolve($region);
 
@@ -267,16 +274,36 @@ class PaymentService
 			'sign_request_id' => $signRequestId,
 			'capability' => $capability->value,
 			'method' => $methodEnum->value,
+			'purpose' => $paymentPurpose->value,
 		]);
 
 		/**
 		 * DUPLICATE AND IDEMPOTENCY GUARDS
 		 */
-		if ($this->paymentMapper->findLatestPaidBySignRequestId($signRequestId)) {
-			throw new RuntimeException('Payment already completed');
-		}
+		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
 
-		$pending = $this->paymentMapper->findLatestPendingBySignRequestId($signRequestId);
+			if ($signRequestId === null) {
+				throw new RuntimeException('signRequestId is required');
+			}
+
+			if ($signUuid === null || $signUuid === '') {
+				throw new RuntimeException('signUuid is required');
+			}
+
+			if ($this->paymentMapper->findLatestPaidByTransactionId($signRequestId)) {
+				throw new RuntimeException('Payment already completed');
+			}
+
+			$pending = $this->paymentMapper
+				->findLatestPendingByTransactionId($signRequestId);
+		} else {
+
+			$pending = $this->paymentMapper
+				->findLatestPendingCreditPurchaseByUserId(
+					$userId,
+					$productCode
+				);
+		}
 
 		if ($pending) {
 			$pending = $this->paymentMapper->findById($pending->getId());
@@ -305,8 +332,10 @@ class PaymentService
 			$this->expirePayment($pending);
 
 			$this->logger->info('[Payment] Expired pending payment', [
+				'purpose' => $paymentPurpose->value,
 				'sign_request_id' => $signRequestId,
-				'payment_id' => $pending->getId(),
+				'user_id' => $userId,
+				'product_code' => $productCode,
 			]);
 		}
 
@@ -326,9 +355,13 @@ class PaymentService
 		 */
 		$product = $this->productService->getDefaultByCode($productCode);
 
-		$amountMinor = $product->getAmount();
+		$totalUses = $product->getUses() * $quantity;
+		$unitAmount = $product->getAmount();
+		$totalAmount = $unitAmount * $quantity;
+
+		$amountMinor = $totalAmount;
 		$currency    = $product->getCurrency();
-		$uses        = $product->getUses();
+		$uses        = $totalUses;
 
 		if ($uses <= 0) {
 			throw new RuntimeException('Invalid product configuration');
@@ -363,8 +396,9 @@ class PaymentService
 		 */
 		$payment = new Payment();
 		$payment->setPaymentAttemptId($paymentAttemptId);
-		$payment->setSignUuid($signUuid);
-		$payment->setSignRequestId($signRequestId);
+		$payment->setPaymentPurpose($paymentPurpose);
+		$payment->setTransactionId($signRequestId);
+		$payment->setTransactionReference($signUuid);
 		$payment->setAmount($amountMinor);
 		$payment->setCurrency($currency);
 		$payment->setUserId($userId);
@@ -373,6 +407,8 @@ class PaymentService
 		$payment->setPhoneCountry($route?->country);
 		$payment->setProductCode($productCode);
 		$payment->setProductUses($uses);
+		$payment->setQuantity($quantity);
+		$payment->setUnitAmount($unitAmount);
 		$payment->setPaymentStatus(PaymentStatus::PENDING);
 		$payment->setProvider($route->preferredProvider->value);
 		$payment->setCreatedAt($this->now());
@@ -543,10 +579,10 @@ class PaymentService
 		 * RESPONSE TO FRONTEND
 		 */
 		return new StartPaymentResultDTO(
-			updatedAt: $payment->getUpdatedAt(),
+			updatedAt: $payment->getUpdatedAtImmutable(),
 			paymentId: $payment->getId(),
-			signRequestId: $payment->getSignRequestId(),
-			signUuid: $payment->getSignUuid(),
+			signRequestId: $payment->getTransactionId(),
+			signUuid: $payment->getTransactionReference(),
 			reference: $res->providerReference,
 			provider: $res->provider,
 			flow: $res->flow,
@@ -566,6 +602,9 @@ class PaymentService
 			displayAmount: $displayAmount,
 			displayAmountFormatted: $displayAmountFormatted,
 			displayCurrency: $payment->getDisplayCurrency(),
+			paymentPurpose: $payment->getPaymentPurpose(),
+			quantity: $payment->getQuantity(),
+			unitAmount: $payment->getUnitAmount(),
 		);
 	}
 
@@ -647,19 +686,40 @@ class PaymentService
 	 * @throws RuntimeException
 	 */
 	public function resumePayment(
-		int $signRequestId,
-		string $signUuid,
+		PaymentPurpose $purpose,
+		?int $signRequestId = null,
+		?string $signUuid = null,
+		?string $productCode = null,
 		?string $userId = null,
 	): ExistingPaymentResultDTO | null {
 
-		// Get pending payment if exists
-		$payment = $this->paymentMapper->findLatestPendingBySignRequestId($signRequestId);
+		/**
+		 * Resolve pending payment based on purpose
+		 */
+		$payment = match ($purpose) {
+
+			PaymentPurpose::SIGN_REQUEST =>
+			$signRequestId !== null
+				? $this->paymentMapper
+				->findLatestPendingByTransactionId($signRequestId)
+				: null,
+
+			PaymentPurpose::CREDIT_PURCHASE =>
+			$userId !== null && $productCode !== null
+				? $this->paymentMapper
+				->findLatestPendingCreditPurchaseByUserId(
+					$userId,
+					$productCode
+				)
+				: null,
+		};
 
 		if (!$payment) {
 			return null;
 		}
+
 		/**
-		 * Ownership / access validation
+		 * SIGN REQUEST OWNERSHIP VALIDATION
 		 *
 		 * Prevents:
 		 * - arbitrary payment hydration
@@ -667,9 +727,9 @@ class PaymentService
 		 * - leaking payment metadata
 		 */
 		if (
-			$payment->getSignUuid() !== $signUuid
+			$purpose === PaymentPurpose::SIGN_REQUEST &&
+			$payment->getTransactionReference() !== $signUuid
 		) {
-			// no need to throw
 			return null;
 		}
 
@@ -687,12 +747,17 @@ class PaymentService
 			return null;
 		}
 
+		/**
+		 * Expired sessions are invalidated eagerly
+		 */
 		if ($this->hasPaymentExpired($payment)) {
 			$this->expirePayment($payment);
 			return null;
 		}
 
-		// Just being defensive
+		/**
+		 * Defensive status validation
+		 */
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
 			return null;
 		}
@@ -748,7 +813,7 @@ class PaymentService
 
 			if ($status === 'FAILED') {
 
-				$payment->setUpdatedAt($this->nowImmutable());
+				$payment->setUpdatedAt($this->now());
 				$payment->setPaymentStatus(PaymentStatus::FAILED);
 				$this->paymentMapper->update($payment);
 
@@ -789,13 +854,23 @@ class PaymentService
 	 * - FAILED → mark failed
 	 * - PENDING → schedule retry
 	 */
-	public function syncPaymentStatus(Payment $payment): void
+	public function syncPaymentStatus(
+		Payment $payment
+		): void
 	{
+		$this->logger->info('[Payment] syncPaymentStatus start', [
+			'paymentId' => $payment->getId(),
+			'provider' => $payment->getProvider(),
+			'reference' => $payment->getProviderReference(),
+			'status' => $payment->getStatus(),
+		]);
+
 		try {
 
 			// Safety guard → only polling providers should reach here
 			if ($payment->getProviderEnum() !== PaymentProvider::DPO) {
 				$payment->unlockVerification();
+				$this->paymentMapper->update($payment);
 				return;
 			}
 
@@ -814,7 +889,7 @@ class PaymentService
 					'reference' => $payment->getProviderReference(),
 				]);
 
-				$payment->setPaymentStatus(PaymentStatus::FAILED);
+				$payment->setPaymentStatus(PaymentStatus::EXPIRED);
 
 				$meta = $payment->getProviderMetadataObject();
 
@@ -825,7 +900,7 @@ class PaymentService
 				];
 
 				if ($meta) {
-					$payment->setUpdatedAt($this->nowImmutable());
+					$payment->setUpdatedAt($this->now());
 					$meta = $this->appendProviderError($meta, $providerError);
 					$payment->setProviderMetadataObject($meta);
 				}
@@ -844,10 +919,21 @@ class PaymentService
 				$payment->getProviderReference()
 			);
 
+			$this->logger->info('[Payment] verification result', [
+				'paymentId' => $payment->getId(),
+				'reference' => $payment->getProviderReference(),
+				'verificationStatus' => $status,
+			]);
+
 			$payment->setVerificationStatus($status);
 			$payment->setVerificationLastCheckedAt($this->now());
 
 			if ($status === 'SUCCESS') {
+
+				$this->logger->info('[Payment] payment verified successfully', [
+					'paymentId' => $payment->getId(),
+					'reference' => $payment->getProviderReference(),
+				]);
 
 				// Payment confirmed → transition to PAID
 				$this->finalisePayment($payment);
@@ -859,8 +945,13 @@ class PaymentService
 
 			if ($status === 'FAILED') {
 
+				$this->logger->warning('[Payment] payment verification failed', [
+					'paymentId' => $payment->getId(),
+					'reference' => $payment->getProviderReference(),
+				]);
+
 				// Provider confirmed failure → no more retries
-				$payment->setUpdatedAt($this->nowImmutable());
+				$payment->setUpdatedAt($this->now());
 				$payment->setPaymentStatus(PaymentStatus::FAILED);
 				$payment->unlockVerification();
 
@@ -879,27 +970,46 @@ class PaymentService
 
 				$this->logger->info('[Payment] scheduling retry', [
 					'paymentId' => $payment->getId(),
+					'reference' => $payment->getProviderReference(),
 					'retry' => $newRetry,
+					'nextVerificationAt' => $payment->getNextVerificationAt(),
 				]);
 
-				$payment->setUpdatedAt($this->nowImmutable());
+				$payment->setUpdatedAt($this->now());
 				$this->paymentMapper->update($payment);
+
+				$this->logger->info(
+					'[Payment] dispatching retry verification',
+					[
+						'paymentId' => $payment->getId(),
+						'retry' => $newRetry,
+					]
+				);
+
+				$this->verificationDispatcher->dispatchVerification(
+					$payment->getId()
+				);
 				return;
 			}
 
 			// Retries exhausted → fail defensively
 			$payment->setPaymentStatus(PaymentStatus::FAILED);
 			$payment->unlockVerification();
-			$payment->setUpdatedAt($this->nowImmutable());
+			$payment->setUpdatedAt($this->now());
 
 			$this->paymentMapper->update($payment);
 		} catch (\Throwable $e) {
+
+			$this->logger->error('[VerificationService] verifyStatus failed', [
+				'error' => $e->getMessage(),
+				'trace' => $e->getTraceAsString(),
+			]);
 
 			// Capture provider/system failure for debugging
 			$payment->setLastErrorCode('VERIFY_FAILED');
 			$payment->setLastErrorMessage($e->getMessage());
 			$payment->setLastErrorAt($this->now());
-			$payment->setUpdatedAt($this->nowImmutable());
+			$payment->setUpdatedAt($this->now());
 
 			$payment->unlockVerification();
 			$this->paymentMapper->update($payment);
@@ -948,7 +1058,7 @@ class PaymentService
 
 				case 'SUCCESS':
 					$providerPayload = $this->getProviderPayload($meta)
-											->withQuery($result);
+						->withQuery($result);
 
 					$meta = $meta->with(
 						updatedAt: $this->nowImmutable(),
@@ -963,6 +1073,10 @@ class PaymentService
 					$payment->setPaymentStatus(PaymentStatus::FAILED);
 					break;
 
+				case 'CANCELLED':
+					$payment->setPaymentStatus(PaymentStatus::CANCELLED);
+					break;
+
 				case 'PENDING':
 				default:
 					return PaymentStatus::PENDING;
@@ -972,7 +1086,7 @@ class PaymentService
 			 * Store query response for debugging / audit on FAILED
 			 */
 			$providerPayload = $this->getProviderPayload($meta)
-									->withQuery($result);
+				->withQuery($result);
 
 			$meta = $meta->with(
 				updatedAt: $this->nowImmutable(),
@@ -1011,7 +1125,7 @@ class PaymentService
 	 */
 	public function isPaymentComplete(int $signRequestId): bool
 	{
-		$payment = $this->paymentMapper->findLatestPaidBySignRequestId($signRequestId);
+		$payment = $this->paymentMapper->findLatestPaidByTransactionId($signRequestId);
 
 		return $payment !== null;
 	}
@@ -1022,92 +1136,151 @@ class PaymentService
 	 * - Maps CheckoutRequestID → payment
 	 * - Ensures idempotency
 	 * - Updates status
+	 *
+	 * Daraja Result codes:
+	 * - 0    → SUCCESS
+	 * - 1032 → CANCELLED (user cancelled the STK push)
+	 * - 1    → FAILED (insufficient funds)
+	 * - 1037 → FAILED (timeout — user didn't respond)
+	 * - any other non-zero → FAILED
 	 */
 	public function handleDarajaCallback(array $payload): void
 	{
-		/**
-		 * IDEMPOTENCY CONSTRAINT
-		 *
-		 * Daraja may send duplicate callbacks.
-		 *
-		 * - If payment is already marked as PAID, exit early
-		 * - DO NOT create entitlement multiple times
-		 *
-		 */
+		$reference = $payload['CheckoutRequestID'] ?? null;
+		$resultCode = $payload['ResultCode'] ?? null;
+		$resultDesc = $payload['ResultDesc'] ?? null;
+
+		// Controller already validates CheckoutRequestID but we guard defensively
+		if (!$reference) {
+			$this->logger->error('[Daraja Callback] Missing CheckoutRequestID', [
+				'payload' => $payload,
+			]);
+			return;
+		}
+
+		if ($resultCode === null) {
+			$this->logger->error('[Daraja Callback] Missing ResultCode', [
+				'reference' => $reference,
+				'payload' => $payload,
+			]);
+			return;
+		}
 
 		try {
-			$reference = $payload['CheckoutRequestID'] ?? null;
-			$resultCode = $payload['ResultCode'] ?? null;
-
-			if (!$reference) {
-				$this->logger->error('[Payment] Invalid Daraja callback: missing reference', [
-					'payload' => $payload
-				]);
-				return;
-			}
-
 			$payment = $this->fetchPaymentByProviderReference($reference);
 
-			$this->logger->info('[Payment] Payment status in callback', [
+			$this->logger->info('[Daraja Callback] Received', [
 				'reference' => $reference,
-				'status' => $payment->getPaymentStatus()->value,
+				'resultCode' => $resultCode,
+				'resultDesc' => $resultDesc,
+				'currentStatus' => $payment->getPaymentStatus()->value,
 			]);
 
-			// Prevent duplicate processing
+			/**
+			 * IDEMPOTENCY GUARD
+			 * Daraja may send duplicate callbacks.
+			 */
 			if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
-				$this->logger->info('[Payment] Duplicate Daraja callback ignored', [
+				$this->logger->info('[Daraja Callback] Duplicate ignored — already resolved', [
 					'reference' => $reference,
-					'status' => $payment->getPaymentStatus()->value
+					'status' => $payment->getPaymentStatus()->value,
 				]);
 				return;
 			}
 
-			// Store raw callback payload
+			// Store raw callback payload regardless of outcome — always useful for audit
 			$meta = $payment->getProviderMetadataObject();
-
-			$providerPayload = $this->getProviderPayload($meta)
-				->withCallback($payload);
-
 			$meta = $meta->with(
-				providerPayload: $providerPayload
+				providerPayload: $this->getProviderPayload($meta)->withCallback($payload)
 			);
-
 			$payment->setProviderMetadataObject($meta);
 
+			/**
+			 * SUCCESS
+			 */
 			if ((int)$resultCode === 0) {
-
 				$metadata = $this->extractMetadata($payload);
 
-				$this->logger->info('[Payment] Daraja payment successful', [
+				$this->logger->info('[Daraja Callback] Payment SUCCESS', [
 					'reference' => $reference,
-					'mpesa_receipt' => $metadata['MpesaReceiptNumber'] ?? null
+					'mpesaReceipt' => $metadata['MpesaReceiptNumber'] ?? null,
 				]);
+
+				$payment->setVerificationStatus('SUCCESS');
+				$payment->setVerificationLastCheckedAt(
+					$this->now()
+				);
 
 				$this->finalisePayment($payment);
-
 				return;
-			} else {
+			}
 
-				$this->logger->warning('[Payment] Daraja payment failed', [
+			/**
+			 * CANCELLED (user explicitly dismissed the STK push)
+			 * Result 1032 — distinct from failure, allows immediate retry.
+			 */
+			if ((int)$resultCode === 1032) {
+				$this->logger->info('[Daraja Callback] Payment CANCELLED by user', [
 					'reference' => $reference,
-					'result_code' => $resultCode,
-					'result_desc' => $payload['ResultDesc'] ?? null
+					'resultDesc' => $resultDesc,
 				]);
 
-				$payment->setUpdatedAt($this->nowImmutable());
-				$payment->setPaymentStatus(PaymentStatus::FAILED);
+				$payment->setUpdatedAt($this->now());
+				$payment->setPaymentStatus(PaymentStatus::CANCELLED);
+
+				$meta = $payment->getProviderMetadataObject();
+				$meta = $meta->with(
+					updatedAt: $this->nowImmutable(),
+					providerError: [
+						'type' => 'cancelled',
+						'resultCode' => $resultCode,
+						'resultDesc' => $resultDesc,
+						'source' => 'daraja_callback',
+						'timestamp' => $this->now(),
+					]
+				);
+				$payment->setProviderMetadataObject($meta);
 
 				$this->paymentMapper->update($payment);
+				return;
 			}
-		} catch (\Throwable $e) {
 
-			$this->logger->error('[Payment] Daraja callback processing failed', [
-				'error' => $e->getMessage(),
-				'trace' => $e->getTraceAsString(),
-				'payload' => $payload
+			/**
+			 * FAILED (insufficient funds, timeout, declined etc.)
+			 * Any non-zero, non-1032 result code.
+			 */
+			$this->logger->warning('[Daraja Callback] Payment FAILED', [
+				'reference' => $reference,
+				'resultCode' => $resultCode,
+				'resultDesc' => $resultDesc,
 			]);
 
-			// Just for logging purposes tp avoid breaking webhook response
+			$payment->setUpdatedAt($this->now());
+			$payment->setPaymentStatus(PaymentStatus::FAILED);
+
+			$meta = $payment->getProviderMetadataObject();
+			$meta = $meta->with(
+				updatedAt: $this->nowImmutable(),
+				providerError: [
+					'type' => 'failed',
+					'resultCode' => $resultCode,
+					'resultDesc' => $resultDesc,
+					'source' => 'daraja_callback',
+					'timestamp' => $this->now(),
+				]
+			);
+			$payment->setProviderMetadataObject($meta);
+
+			$this->paymentMapper->update($payment);
+		} catch (\Throwable $e) {
+			$this->logger->error('[Daraja Callback] Processing failed', [
+				'reference' => $reference,
+				'resultCode' => $resultCode,
+				'error' => $e->getMessage(),
+				'trace' => $e->getTraceAsString(),
+			]);
+
+			throw $e;
 		}
 	}
 
@@ -1118,64 +1291,69 @@ class PaymentService
 	 * - Maps TransactionToken → payment
 	 * - Ensures idempotency
 	 * - Updates status
+	 *
+	 * DPO Result codes:
+	 * - 000 → SUCCESS
+	 * - 901 → FAILED (payment failed)
+	 * - 902 → FAILED (payment declined)
+	 * - 904 → CANCELLED (user cancelled)
 	 */
 	public function handleDpoCallback(array $payload): void
 	{
+		$reference = $payload['TransactionToken'] ?? null;
+		$result = (string)($payload['Result'] ?? '');
+
+		// Controller already validates TransactionToken but we guard defensively
+		if (!$reference) {
+			$this->logger->error('[DPO Callback] Missing TransactionToken', [
+				'payload' => $payload,
+			]);
+			return;
+		}
+
+		if ($result === '') {
+			$this->logger->error('[DPO Callback] Missing Result code', [
+				'reference' => $reference,
+				'payload' => $payload,
+			]);
+			return;
+		}
+
 		try {
-			$reference = $payload['TransactionToken'] ?? null;
-			$result = $payload['Result'] ?? null;
-
-			if ($result === null) {
-				$this->logger->warning('[Payment] DPO Callback Missing Result', [
-					'payload' => $payload
-				]);
-			}
-
-			if (!$reference) {
-				$this->logger->error('[Payment] DPO Callback Missing TransactionToken', [
-					'payload' => $payload
-				]);
-				return;
-			}
-
 			$payment = $this->fetchPaymentByProviderReference($reference);
 
-			$this->logger->info('[Payment] DPO Callback Received', [
+			$this->logger->info('[DPO Callback] Received', [
 				'reference' => $reference,
-				'status' => $payment->getPaymentStatus()->value,
 				'result' => $result,
+				'currentStatus' => $payment->getPaymentStatus()->value,
 			]);
 
 			/**
 			 * IDEMPOTENCY GUARD
+			 * Payment may already be resolved by background job or a duplicate callback.
 			 */
 			if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
-				$this->logger->info('[Payment] DPO Callback Duplicate ignored', [
-					'reference' => $reference
+				$this->logger->info('[DPO Callback] Duplicate ignored — already resolved', [
+					'reference' => $reference,
+					'status' => $payment->getPaymentStatus()->value,
 				]);
 				return;
 			}
 
 			/**
-			 * SUCCESS ONLY (per DPO contract)
+			 * SUCCESS
 			 */
-			if ((string)$result === '000') {
-
-				$this->logger->info('[Payment] DPO Callback Payment SUCCESS', [
+			if ($result === '000') {
+				$this->logger->info('[DPO Callback] Payment SUCCESS', [
 					'reference' => $reference,
 					'amount' => $payload['TransactionAmount'] ?? null,
 					'currency' => $payload['TransactionCurrency'] ?? null,
 				]);
 
 				$meta = $payment->getProviderMetadataObject();
-
-				$providerPayload = $this->getProviderPayload($meta)
-					->withCallback($payload);
-
 				$meta = $meta->with(
-					providerPayload: $providerPayload
+					providerPayload: $this->getProviderPayload($meta)->withCallback($payload)
 				);
-
 				$payment->setProviderMetadataObject($meta);
 
 				$this->finalisePayment($payment);
@@ -1183,17 +1361,69 @@ class PaymentService
 			}
 
 			/**
-			 * Technically shouldn't happen as per docs,
-			 * but we guard anyway.
+			 * CANCELLED (user explicitly cancelled)
+			 * Result 904 — user abandoned the payment flow.
+			 * Distinct from FAILED — allows immediate retry with no backoff.
 			 */
-			$this->logger->warning('[Payment] DPO Callback Unexpected non-success result', [
-				'result' => $result
+			if ($result === '904') {
+				$this->logger->info('[DPO Callback] Payment CANCELLED by user', [
+					'reference' => $reference,
+				]);
+
+				$payment->setUpdatedAt($this->now());
+				$payment->setPaymentStatus(PaymentStatus::CANCELLED);
+
+				$meta = $payment->getProviderMetadataObject();
+				$meta = $meta->with(
+					updatedAt: $this->nowImmutable(),
+					providerError: [
+						'type' => 'cancelled',
+						'result' => $result,
+						'source' => 'dpo_callback',
+						'timestamp' => $this->now(),
+					]
+				);
+				$payment->setProviderMetadataObject($meta);
+
+				$this->paymentMapper->update($payment);
+				return;
+			}
+
+			/**
+			 * FAILED (provider-side: declined, error etc.)
+			 * Result 901, 902, or any other non-success code.
+			 */
+			$this->logger->warning('[DPO Callback] Payment FAILED', [
+				'reference' => $reference,
+				'result' => $result,
 			]);
+
+			$payment->setUpdatedAt($this->now());
+			$payment->setPaymentStatus(PaymentStatus::FAILED);
+
+			$meta = $payment->getProviderMetadataObject();
+			$meta = $meta->with(
+				updatedAt: $this->nowImmutable(),
+				providerError: [
+					'type' => 'failed',
+					'result' => $result,
+					'source' => 'dpo_callback',
+					'timestamp' => $this->now(),
+				]
+			);
+			$payment->setProviderMetadataObject($meta);
+
+			$this->paymentMapper->update($payment);
 		} catch (\Throwable $e) {
-			$this->logger->error('[Payment] DPO Callback Failed', [
+			$this->logger->error('[DPO Callback] Processing failed', [
+				'reference' => $reference,
+				'result' => $result,
 				'error' => $e->getMessage(),
-				'payload' => $payload
+				'trace' => $e->getTraceAsString(),
 			]);
+
+			// Re-throw error and propagate to controller
+			throw $e;
 		}
 	}
 
@@ -1331,6 +1561,24 @@ class PaymentService
 		$payment->setProviderMetadataObject($meta);
 
 		$this->paymentMapper->update($payment);
+
+		try {
+
+			$this->verificationDispatcher
+				->dispatchVerification(
+					$payment->getId()
+				);
+		} catch (\Throwable $e) {
+
+			$this->logger->error(
+				'[Payment] verification dispatch failed',
+				[
+					'paymentId' => $payment->getId(),
+					'reference' => $payment->getProviderReference(),
+					'error' => $e->getMessage(),
+				]
+			);
+		}
 
 		return $this->buildExistingPaymentResponse($payment);
 	}
@@ -1490,7 +1738,7 @@ class PaymentService
 				'id' => $payment->getId(),
 				'status' => $payment->getPaymentStatus()->value,
 			]);
-			$payment->setUpdatedAt($this->nowImmutable());
+			$payment->setUpdatedAt($this->now());
 			$payment->setPaymentStatus(PaymentStatus::PAID);
 			$payment->setPaidAt($this->now());
 
@@ -1534,8 +1782,8 @@ class PaymentService
 	private function validateOptionsSelection(array $options, string $mno, string $country): void
 	{
 		foreach ($options as $option) {
-			$optionMno = is_string($option['mno'] ?? null)
-				? strtolower($option['mno'])
+			$optionMno = is_string($option['provider'] ?? null)
+				? strtolower($option['provider'])
 				: null;
 
 			$optionCountry = is_string($option['country'] ?? null)
@@ -1582,9 +1830,9 @@ class PaymentService
 		return $this->paymentMapper->findById($payment->getId());
 	}
 
-	private function fetchBySignRequestId(int $signRequestId): Payment
+	private function fetchByTransactionId(int $signRequestId): Payment
 	{
-		$payment = $this->paymentMapper->findLatestPendingBySignRequestId($signRequestId);
+		$payment = $this->paymentMapper->findLatestPendingByTransactionId($signRequestId);
 
 		if (!$payment) {
 			$this->logger->error('[PaymentService] Payment not found', [
@@ -1632,10 +1880,10 @@ class PaymentService
 		}
 
 		return new ExistingPaymentResultDTO(
-			updatedAt: $payment->getUpdatedAt(),
+			updatedAt: $payment->getUpdatedAtImmutable(),
 			paymentId: $payment->getId(),
-			signRequestId: $payment->getSignRequestId(),
-			signUuid: $payment->getSignUuid(),
+			signRequestId: $payment->getTransactionId(),
+			signUuid: $payment->getTransactionReference(),
 			reference: $payment->getProviderReference(),
 
 			// Domain → API status mapping
@@ -1678,6 +1926,10 @@ class PaymentService
 			displayAmount: $displayAmount, // major units
 			displayAmountFormatted: $displayAmountFormatted,
 			displayCurrency: $displayCurrency,
+
+			paymentPurpose: $payment->getPaymentPurpose(),
+			quantity: $payment->getQuantity(),
+			unitAmount: $payment->getUnitAmount(),
 		);
 	}
 
@@ -1700,11 +1952,13 @@ class PaymentService
 		$this->paymentMapper->update($payment);
 	}
 
-	private function mapPaymentStatus(PaymentStatus $status): string
+	public function mapPaymentStatus(PaymentStatus $status): string
 	{
 		return match ($status) {
 			PaymentStatus::PAID => 'SUCCESS',
 			PaymentStatus::INITIATION_FAILED => 'INITIATION_FAILED',
+			PaymentStatus::EXPIRED => 'EXPIRED',
+			PaymentStatus::CANCELLED => 'CANCELLED',
 			PaymentStatus::FAILED => 'FAILED',
 			default => 'PENDING',
 		};
@@ -1738,9 +1992,7 @@ class PaymentService
 		}
 
 		// DateTime
-		$createdAt = $this->asDateTime(
-			$payment->getCreatedAt()
-		);
+		$createdAt = $payment->getCreatedAtImmutable();
 
 		if ($createdAt === null) {
 			return true;

@@ -7,6 +7,7 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
@@ -69,6 +70,8 @@ class PaymentController extends AEnvironmentAwareController
 		?string $phoneNumber,
 		?string $callbackUrl,
 		?string $paymentMethod,
+		?string $purpose,
+		?int $quantity,
 	): DataResponse {
 
 		try {
@@ -91,7 +94,7 @@ class PaymentController extends AEnvironmentAwareController
 			if (!$userId || $uid !== $userId) {
 				return new DataResponse([
 					'success' => false,
-					'error' => 'Invalid user id',
+					'error' => 'Access Denied',
 				], Http::STATUS_BAD_REQUEST);
 			}
 
@@ -104,7 +107,9 @@ class PaymentController extends AEnvironmentAwareController
 				], Http::STATUS_BAD_REQUEST);
 			}
 
-			$providerEnum = PaymentProvider::tryFrom($provider);
+			$purposeEnum = PaymentPurpose::tryFrom(
+				strtolower((string)$purpose)
+			) ?? PaymentPurpose::SIGN_REQUEST;
 
 			$dto = new StartPaymentDTO(
 				userEmail: $userEmail,
@@ -112,12 +117,14 @@ class PaymentController extends AEnvironmentAwareController
 				signRequestId: $signRequestId,
 				redirectUrl: $redirectUrl,
 				userId: $userId,
-				provider: $providerEnum,
+				provider: null,
 				productCode: $productCode,
 				paymentMethod: $methodEnum,
 				callbackUrl: $callbackUrl,
 				paymentAttemptId: $paymentAttemptId,
-				phoneNumber: $phoneNumber
+				phoneNumber: $phoneNumber,
+				purpose: $purposeEnum,
+				quantity: $quantity ?? 1,
 			);
 
 			$result = $this->paymentService->startPayment($dto);
@@ -159,12 +166,7 @@ class PaymentController extends AEnvironmentAwareController
 		$status = $this->paymentService->verifyPayment($providerReference);
 
 		return new DataResponse([
-			'status' => match ($status) {
-				PaymentStatus::PAID => 'SUCCESS',
-				PaymentStatus::FAILED,
-				PaymentStatus::INITIATION_FAILED => 'FAILED',
-				default => 'PENDING',
-			},
+			'status' => $this->paymentService->mapPaymentStatus($status),
 			'reason' => $status->value
 		], Http::STATUS_OK);
 	}
@@ -187,12 +189,7 @@ class PaymentController extends AEnvironmentAwareController
 		$status = $this->paymentService->getPaymentStatus($providerReference);
 
 		return new DataResponse([
-			'status' => match ($status) {
-				PaymentStatus::PAID => 'SUCCESS',
-				PaymentStatus::FAILED,
-				PaymentStatus::INITIATION_FAILED => 'FAILED',
-				default => 'PENDING',
-			}
+			'status' => $this->paymentService->mapPaymentStatus($status),
 		], Http::STATUS_OK);
 	}
 
@@ -253,52 +250,38 @@ class PaymentController extends AEnvironmentAwareController
 	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
-		verb: 'POST',
+		verb: 'GET',
 		url: '/api/{apiVersion}/payment/webhook/dpo',
 		requirements: ['apiVersion' => '(v1)']
 	)]
 	public function dpoCallback(): DataResponse
 	{
-		$responseXml = '<?xml version="1.0" encoding="utf-8"?>
-		<API3G>
-			<Response>OK</Response>
-		</API3G>';
-		$rawBody = file_get_contents('php://input');
+		// DPO contract: always respond with OK regardless of outcome
+		$responseXml = '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>';
+		$xmlHeaders = ['Content-Type' => 'application/xml'];
 
-		$data = simplexml_load_string($rawBody);
+		// DPO sends params as GET query params, not a request body
+		$payload = $this->request->getParams();
 
-		if ($data === false) {
-			$this->logger->error('[DPO Callback] Invalid XML', [
-				'raw' => $rawBody
+		$token = $payload['TransactionToken'] ?? null;
+
+		if (!$token) {
+			$this->logger->error('[DPO Callback] Missing TransactionToken', [
+				'params' => $payload,
 			]);
-
-			return new DataResponse($responseXml, Http::STATUS_OK);
+			return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
 		}
 
-		$payload = json_decode(json_encode($data), true);
 		try {
 			$this->paymentService->handleDpoCallback($payload);
 		} catch (\Throwable $e) {
-			$this->logger->error('[Payment] Failed processing DPO callback', [
+			$this->logger->error('[DPO Callback] Processing failed', [
+				'token' => $token,
 				'error' => $e->getMessage(),
-				'payload' => $payload
 			]);
-			return new DataResponse(
-				$responseXml,
-				Http::STATUS_OK,
-				[
-					'Content-Type' => 'application/xml'
-				]
-			);
 		}
 
-		return new DataResponse(
-			$responseXml,
-			Http::STATUS_OK,
-			[
-				'Content-Type' => 'application/xml'
-			]
-		);
+		return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
 	}
 
 	/**
@@ -319,11 +302,7 @@ class PaymentController extends AEnvironmentAwareController
 		$status = $this->paymentService->queryPayment($reference);
 
 		return new DataResponse([
-			'status' => match ($status) {
-				PaymentStatus::PAID => 'SUCCESS',
-				PaymentStatus::FAILED => 'FAILED',
-				default => 'PENDING',
-			}
+			'status' => $this->paymentService->mapPaymentStatus($status),
 		], Http::STATUS_OK);
 	}
 
@@ -340,8 +319,9 @@ class PaymentController extends AEnvironmentAwareController
 		requirements: ['apiVersion' => '(v1)']
 	)]
 	public function resume(
-		int $signRequestId,
-		string $signUuid,
+		?string $purpose,
+		?int $signRequestId,
+		?string $signUuid,
 	): DataResponse {
 
 		try {
@@ -356,10 +336,17 @@ class PaymentController extends AEnvironmentAwareController
 
 			$uid = $user->getUID();
 
+			$purpose = $purpose ? strtolower($purpose) : null;
+
+			$purposeEnum = PaymentPurpose::tryFrom(
+				strtolower($purpose ?? '')
+			) ?? PaymentPurpose::SIGN_REQUEST;
+
 			$payment = $this->paymentService->resumePayment(
-				$signRequestId,
-				$signUuid,
-				$uid,
+				purpose: $purposeEnum,
+				signRequestId: $signRequestId,
+				signUuid:$signUuid,
+				userId: $uid,
 			);
 
 			return new DataResponse([

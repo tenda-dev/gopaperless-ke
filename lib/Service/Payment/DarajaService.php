@@ -31,7 +31,7 @@ class DarajaService {
 	 * Daraja API configuration
 	 * TODO: Should be moved to config/env
 	 */
-	private string $env = 'dev'; // dev | test | prod
+	private string $env = 'test'; // dev | test | prod
 
 	public function __construct(
 		IClientService $clientService,
@@ -331,7 +331,7 @@ class DarajaService {
 	 */
 	private function getCallbackUrl(): string {
 
-		$callbackPath = '/ocs/v2.php/apps/libresign/api/v1/payment/callback/daraja';
+		$callbackPath = '/ocs/v2.php/apps/libresign/api/v1/payment/webhook/daraja';
 
 		$config = $this->getConfig();
 
@@ -503,13 +503,18 @@ class DarajaService {
     }
 
 	private function getTestConfig(): array {
+		$callbackBaseUrl = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'gopaperless_callback_base_url'
+		);
+
 		return [
 			'baseUrl' => 'https://sandbox.safaricom.co.ke',
 			'consumerKey' => 'QVNGIwcP7vT9m0ZS4SGmnw7x1o8MGuiAY2UiGUrRMAXJH9aY',
 			'consumerSecret' => 'LYp6RpUTAK8eGGTM1oA5RwMYhkCNA2qS23WalsX21z6kSe0h4PlzjC1op3gxkXeD',
 			'passKey' => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
 			'shortCode' => '174379',
-			'callbackBaseUrl' => 'https://portal-acknowledge-territory-med.trycloudflare.com ',
+			'callbackBaseUrl' => $callbackBaseUrl,
 		];
 	}
 
@@ -520,7 +525,7 @@ class DarajaService {
 			'consumerSecret' => 'LYp6RpUTAK8eGGTM1oA5RwMYhkCNA2qS23WalsX21z6kSe0h4PlzjC1op3gxkXeD',
 			'passKey' => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
 			'shortCode' => '174379',
-			'callbackBaseUrl' => 'https://portal-acknowledge-territory-med.trycloudflare.com ',
+			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
 		];
     }
 

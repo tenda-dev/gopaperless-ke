@@ -57,13 +57,19 @@ class Version35000Date20260527112245 extends SimpleMigrationStep
 				'notnull' => true,
 			]);
 
+			$table->addColumn('purpose', 'string', [
+				'length' => 30,
+				'default' => 'sign_request',
+				'notnull' => false,
+			]);
+
 			// ------------------------------------------------------------------
 			// Transaction Identification
 			// ------------------------------------------------------------------
 
 			// Internal transaction ownership reference.
 			$table->addColumn('transaction_id', 'integer', [
-				'notnull' => true,
+				'notnull' => false,
 			]);
 
 			// Public-safe transaction reference for external consumers,
@@ -112,6 +118,16 @@ class Version35000Date20260527112245 extends SimpleMigrationStep
 			// Example: KES 80.00 → stored as 8000
 			$table->addColumn('amount', 'integer', [
 				'notnull' => true,
+			]);
+
+			$table->addColumn('unit_amount', 'bigint', [
+				'notnull' => true,
+			]);
+
+			// Quantity
+			$table->addColumn('quantity', 'integer', [
+				'notnull' => true,
+				'default' => 1
 			]);
 
 			// ISO currency code (KES, USD, EUR, etc.)
@@ -181,6 +197,48 @@ class Version35000Date20260527112245 extends SimpleMigrationStep
 				'length' => 64,
 				'notnull' => false,
 			]);
+
+
+			/**
+			 * Add product_code column to payments table
+			 *
+			 * WHY:
+			 * - Captures which product was purchased at the time of payment
+			 * - Required to correctly create entitlements after payment
+			 *
+			 * DESIGN DECISION:
+			 * - Stored as a snapshot (NOT resolved dynamically from ProductService)
+			 * - Protects against future changes in product configuration or pricing
+			 *
+			 */
+			if (!$table->hasColumn('product_code')) {
+				$table->addColumn('product_code', 'string', [
+					'length' => 64,
+					'notnull' => false,
+				]);
+
+				if (!$table->hasIndex('gp_payments_product_code_idx')) {
+					$table->addIndex(['product_code'], 'gp_payments_product_code_idx');
+				}
+			}
+
+
+			/**
+			 * Add product_uses column to payments table
+			 *
+			 * WHY:
+			 * - Stores the number of uses granted at time of purchase
+			 * - Snapshot of Product.uses
+			 *
+			 * DESIGN DECISION:
+			 * - Prevents future product changes from affecting past payments
+			 *
+			 */
+			if (!$table->hasColumn('product_uses')) {
+				$table->addColumn('product_uses', 'integer', [
+					'notnull' => false,
+				]);
+			}
 
 			// display_currency (e.g. TZS, UGX)
 			$table->addColumn('display_currency', 'string', [
@@ -286,12 +344,7 @@ class Version35000Date20260527112245 extends SimpleMigrationStep
 			// Used for joins between transactions and payments.
 			$table->addIndex(['transaction_id'], 'gp_payment_transaction_idx');
 
-			// Public-safe transaction reference lookup index.
-			// Useful for external recovery and API-facing resolution.
-			$table->addUniqueIndex(
-				['transaction_reference'],
-				'gp_payment_transaction_reference_unique'
-			);
+			$table->addIndex(['transaction_reference'], 'gp_payment_transaction_refx');
 
 			// Composite Index
 			// Provider-specific lookup optimisation.

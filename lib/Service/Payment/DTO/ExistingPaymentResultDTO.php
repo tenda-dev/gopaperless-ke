@@ -7,6 +7,7 @@ namespace OCA\Libresign\Service\Payment\DTO;
 use OCA\Libresign\Enum\PaymentFlow;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\ProviderExecutionState;
 
 final class ExistingPaymentResultDTO
@@ -37,6 +38,9 @@ final class ExistingPaymentResultDTO
 		public readonly ?float $displayAmount,
 		public readonly ?string $displayAmountFormatted,
 		public readonly ?string $displayCurrency,
+		public readonly PaymentPurpose $paymentPurpose,
+		public readonly int $quantity,
+		public readonly int $unitAmount,
 	) {}
 
 	public function toArray(): array
@@ -73,6 +77,9 @@ final class ExistingPaymentResultDTO
 			'displayAmount' => $this->displayAmount,
 			'displayAmountFormatted' => $this->displayAmountFormatted,
 			'displayCurrency' => $this->displayCurrency,
+			'paymentPurpose' => $this->paymentPurpose->value,
+			'quantity' => $this->quantity,
+			'unitAmount' => $this->unitAmount,
 		];
 	}
 }

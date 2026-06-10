@@ -39,6 +39,19 @@ use OCP\AppFramework\Db\Entity;
  */
 class DpoMobileOption extends Entity
 {
+	protected string $provider = '';
+	protected string $country = '';
+
+	protected ?string $countryCode = null;
+	protected ?string $prefix = null;
+	protected ?string $currency = null;
+	protected ?string $instructions = null;
+	protected ?string $logo = null;
+	protected ?string $rawPayload = null;
+
+	protected ?\DateTime $createdAt = null;
+	protected ?\DateTime $updatedAt = null;
+
 	public function __construct()
 	{
 		$this->addType('id', 'integer');
@@ -50,8 +63,6 @@ class DpoMobileOption extends Entity
 		$this->addType('currency', 'string');
 		$this->addType('instructions', 'string');
 		$this->addType('logo', 'string');
-
-		// store JSON as string (consistent with your Payment entity pattern)
 		$this->addType('rawPayload', 'string');
 
 		$this->addType('createdAt', 'datetime');

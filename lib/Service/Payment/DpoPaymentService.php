@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\Payment\DTO\DPOVerifyTokenResultDTO;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
@@ -33,7 +34,7 @@ class DpoPaymentService
 	private string $defaultCurrency = 'KES';
 	private IClientService $clientService;
 	private LoggerInterface $logger;
-	private string $env = 'dev'; // dev | test | prod
+	private string $env = 'test'; // dev | test | prod
 
 	protected IAppConfig $appConfig;
 
@@ -236,7 +237,7 @@ class DpoPaymentService
 		string $mnoCountry = 'kenya'
 	): array {
 
-        $formattedPhone = $this->formatPhone($phone);
+		$formattedPhone = $this->formatPhone($phone);
 
 		$config = $this->getConfig();
 
@@ -543,7 +544,8 @@ class DpoPaymentService
 	 *
 	 * +254712345678 → 254712345678 / +255712345678 → 255712345678
 	 */
-	private function formatPhone(string $phone): string {
+	private function formatPhone(string $phone): string
+	{
 
 		if (!str_starts_with($phone, '+')) {
 			throw new RuntimeException('[DPOPaymentService] - Phone number must be in E.164 format (+254...)');
@@ -604,13 +606,22 @@ class DpoPaymentService
 			]);
 
 			// Validate XML response
+			libxml_use_internal_errors(true);
+
+			$body = $this->sanitiseMalformedXml($body);
+
 			$parsed = simplexml_load_string($body);
 
 			if ($parsed === false) {
+				foreach (libxml_get_errors() as $error) {
+					$this->logger->error('DPO XML parse error', [
+						'message' => trim($error->message),
+						'line' => $error->line,
+						'column' => $error->column,
+					]);
+				}
 
-				$this->logger->error('Failed to parse DPO XML response', [
-					'raw_response' => $body
-				]);
+				libxml_clear_errors();
 
 				throw new RuntimeException('Invalid XML response from DPO API');
 			}
@@ -634,8 +645,8 @@ class DpoPaymentService
 		}
 
 		$blockMap = [
-			'mobile' => ['CC', 'PP', 'BT', 'XP', 'SE'],
-			'card'   => ['MO', 'PP', 'BT', 'XP', 'SE'],
+			'mobile' => ['CC', 'PP', 'BT', 'XP'],
+			'card'   => ['MO', 'PP', 'BT', 'XP'],
 		];
 
 		if (!isset($blockMap[$method])) {
@@ -670,7 +681,7 @@ class DpoPaymentService
 	//			),
 	//			'goPaperlessCallbackBaseUrl' => $this->appConfig->getValueString(
 	//				Application::APP_ID,
-	//				'daraja_gopaperless_callback_base_url'
+	//				'gopaperless_callback_base_url'
 	//			)
 	//		];
 	//	}
@@ -692,12 +703,16 @@ class DpoPaymentService
 
 	private function getTestConfig(): array
 	{
+		$callbackBaseUrl = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'gopaperless_callback_base_url'
+		);
 		return [
 			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
-			'companyToken' => '8D3DA73D-9D7F-4E09-96D4-3D44E7A83EA3',
-			'serviceId' => '3978',
+			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
+			'serviceId' => '54842',
 			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
-			'callbackBaseUrl' => 'https://portal-acknowledge-territory-med.trycloudflare.com ',
+			'callbackBaseUrl' => $callbackBaseUrl,
 		];
 	}
 
@@ -705,10 +720,10 @@ class DpoPaymentService
 	{
 		return [
 			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
-			'companyToken' => '8D3DA73D-9D7F-4E09-96D4-3D44E7A83EA3',
-			'serviceId' => '3978',
+			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
+			'serviceId' => '54842',
 			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
-			'callbackBaseUrl' => 'https://portal-acknowledge-territory-med.trycloudflare.com ',
+			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
 		];
 	}
 
@@ -721,5 +736,23 @@ class DpoPaymentService
 			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
 			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
 		];
+	}
+
+	private function sanitiseMalformedXml(string $xml): string
+	{
+		$xml = preg_replace(
+			'/&#(\d+)(?!;)/',
+			'&#$1;',
+			$xml
+		) ?? $xml;
+
+		// DPO sometimes returns HTML breaks inside XML
+		$xml = preg_replace(
+			'/<br\s*>/i',
+			'<br/>',
+			$xml
+		);
+
+		return $xml;
 	}
 }

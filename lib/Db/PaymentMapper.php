@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Db;
 
 use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\Exception;
@@ -12,13 +13,16 @@ use OCP\IDBConnection;
 use OCP\DB\Types;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
-use OCP\DB\IQueryBuilder;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use Psr\Log\LoggerInterface;
 
 class PaymentMapper extends QBMapper
 {
 
-	public function __construct(IDBConnection $db)
-	{
+	public function __construct(
+		IDBConnection $db,
+		protected LoggerInterface $logger,
+	) {
 		parent::__construct($db, 'gopaperless_payments', Payment::class);
 	}
 
@@ -602,6 +606,10 @@ class PaymentMapper extends QBMapper
 
 		$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
+		$this->logger->info('[VerifyPayments] provider filter', [
+			'providers' => PaymentProvider::verifiableValues(),
+		]);
+
 		$qb->select('p.*')
 			->from($this->getTableName(), 'p')
 			->where(
@@ -614,7 +622,8 @@ class PaymentMapper extends QBMapper
 				$qb->expr()->in(
 					'p.provider',
 					$qb->createNamedParameter(
-						PaymentProvider::verifiableValues()
+						PaymentProvider::verifiableValues(),
+						IQueryBuilder::PARAM_STR_ARRAY
 					)
 				)
 			)
@@ -638,6 +647,128 @@ class PaymentMapper extends QBMapper
 			->setMaxResults($limit);
 
 		return $this->findEntities($qb);
+	}
+
+
+	/**
+	 * Find latest pending credit purchase payment for a user.
+	 *
+	 * Used for:
+	 * - resumable credit purchase flows
+	 * - preventing duplicate pending purchases
+	 * - restoring interrupted checkout sessions
+	 *
+	 * IMPORTANT:
+	 * Only applies to CREDIT_PURCHASE purpose.
+	 *
+	 * @throws Exception
+	 */
+	public function findLatestPendingCreditPurchaseByUserId(
+		string $userId,
+		string $productCode
+	): ?Payment {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('p.*')
+			->from($this->getTableName(), 'p')
+			->where(
+				$qb->expr()->andX(
+					$qb->expr()->eq(
+						'p.user_id',
+						$qb->createNamedParameter(
+							$userId,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'p.product_code',
+						$qb->createNamedParameter(
+							$productCode,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'p.purpose',
+						$qb->createNamedParameter(
+							PaymentPurpose::CREDIT_PURCHASE->value,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'p.status',
+						$qb->createNamedParameter(
+							PaymentStatus::PENDING->value,
+							Types::STRING
+						)
+					)
+				)
+			)
+			->orderBy('p.created_at', 'DESC')
+			->setMaxResults(1);
+
+		try {
+
+			/** @var Payment $entity */
+			$entity = $this->findEntity($qb);
+
+			return $entity;
+		} catch (
+			DoesNotExistException |
+			MultipleObjectsReturnedException) {
+
+			return null;
+		}
+	}
+
+
+	/**
+	 * Attempt to acquire a verification lock for a payment.
+	 *
+	 * Used to prevent concurrent verification workers from processing
+	 * the same payment simultaneously.
+	 *
+	 * Returns:
+	 * - true  → lock acquired successfully
+	 * - false → payment is already locked by another worker
+	 *
+	 * IMPORTANT:
+	 * This operation is atomic at the database level.
+	 *
+	 * @throws Exception
+	 */
+	public function tryLockVerification(int $paymentId): bool
+	{
+		$qb = $this->db->getQueryBuilder();
+
+		$now = new \DateTimeImmutable(
+			'now',
+			new \DateTimeZone('UTC')
+		);
+
+		$qb->update($this->getTableName())
+			->set(
+				'verification_locked_at',
+				$qb->createNamedParameter(
+					$now->format('Y-m-d H:i:s')
+				)
+			)
+			->where(
+				$qb->expr()->eq(
+					'id',
+					$qb->createNamedParameter(
+						$paymentId,
+						Types::INTEGER
+					)
+				)
+			)
+			->andWhere(
+				$qb->expr()->isNull(
+					'verification_locked_at'
+				)
+			);
+
+		return $qb->executeStatement() === 1;
 	}
 
 	private function status(PaymentStatus $status): string

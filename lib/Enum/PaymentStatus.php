@@ -12,10 +12,13 @@ enum PaymentStatus: string {
 	case PENDING = 'pending';
 
 	case INITIATION_FAILED = 'initiation_failed';
+
 	case PAID = 'paid';
 
 	case FAILED = 'failed';
 
 	case EXPIRED = 'expired';
+
+	case CANCELLED = 'cancelled';
 
 }
