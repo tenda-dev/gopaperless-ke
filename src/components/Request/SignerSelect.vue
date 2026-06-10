@@ -84,19 +84,24 @@ const iconMap = {
 	svgXmpp,
 }
 
-type IconKey = keyof typeof iconMap
-type IconName = NonNullable<IdentifyAccountRecord['iconName']>
-type OptionSlotProps = {
-	option: IdentifyAccountRecord
+export type ExtendedIdentifyAccountRecord =
+    IdentifyAccountRecord & {
+        accountExists?: boolean
 }
-type OptionPayload = IdentifyAccountRecord | OptionSlotProps | undefined
+
+type IconKey = keyof typeof iconMap
+type IconName = NonNullable<ExtendedIdentifyAccountRecord['iconName']>
+type OptionSlotProps = {
+	option: ExtendedIdentifyAccountRecord
+}
+type OptionPayload = ExtendedIdentifyAccountRecord | OptionSlotProps | undefined
 
 defineOptions({
 	name: 'SignerSelect',
 })
 
 const emit = defineEmits<{
-	(event: 'update:signer', signer: IdentifyAccountRecord | null): void
+	(event: 'update:signer', signer: ExtendedIdentifyAccountRecord | null): void
 	(event: 'phone-not-found', phone: string): void
 }>()
 
@@ -110,8 +115,8 @@ const props = withDefaults(defineProps<{
 
 const select = ref<{ $el?: HTMLElement } | null>(null)
 const loading = ref(false)
-const options = ref<IdentifyAccountRecord[]>([])
-const selectedSigner = ref<IdentifyAccountRecord | null>(null)
+const options = ref<ExtendedIdentifyAccountRecord[]>([])
+const selectedSigner = ref<ExtendedIdentifyAccountRecord | null>(null)
 const haveError = ref(false)
 const activeRequestId = ref(0)
 const phoneMessage = ref('')
@@ -134,7 +139,7 @@ watch(() => props.method, () => {
 	handleMethodChange()
 })
 
-function injectIcons(items: IdentifyAccountRecord[]): IdentifyAccountRecord[] {
+function injectIcons(items: IdentifyAccountRecord[]): ExtendedIdentifyAccountRecord[] {
 	return items.map((item) => {
 		const { iconName: _iconName, ...itemWithoutIconName } = item
 		const iconName = getIconName(item.iconName)
@@ -145,11 +150,11 @@ function injectIcons(items: IdentifyAccountRecord[]): IdentifyAccountRecord[] {
 	})
 }
 
-function getOptionKey(option: IdentifyAccountRecord) {
+function getOptionKey(option: ExtendedIdentifyAccountRecord) {
 	return option.identify
 }
 
-function onSelectedSignerChange(selected: IdentifyAccountRecord | null) {
+function onSelectedSignerChange(selected: ExtendedIdentifyAccountRecord | null) {
 	selectedSigner.value = selected
 	haveError.value = selected === null
 	emit('update:signer', selected)
@@ -171,12 +176,12 @@ function isOptionSlotProps(slotProps: OptionPayload): slotProps is OptionSlotPro
 	return typeof slotProps === 'object' && slotProps !== null && 'option' in slotProps
 }
 
-function getOption(slotProps?: OptionPayload): IdentifyAccountRecord | undefined {
+function getOption(slotProps?: OptionPayload): ExtendedIdentifyAccountRecord | undefined {
 	if (isOptionSlotProps(slotProps)) {
 		return slotProps.option
 	}
 	if (typeof slotProps === 'object' && slotProps !== null && 'identify' in slotProps) {
-		return slotProps as IdentifyAccountRecord
+		return slotProps as ExtendedIdentifyAccountRecord
 	}
 	return undefined
 }

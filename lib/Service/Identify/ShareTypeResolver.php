@@ -16,32 +16,67 @@ use OCA\Libresign\Service\IdentifyMethod\Account;
 use OCA\Libresign\Service\IdentifyMethod\Email;
 use OCP\Share\IShare;
 
-class ShareTypeResolver {
+class ShareTypeResolver
+{
 	private const PHONE_METHODS = ['whatsapp', 'sms', 'telegram', 'signal'];
 
 	public function __construct(
 		private Email $identifyEmailMethod,
 		private Account $identifyAccountMethod,
-	) {
-	}
+	) {}
 
-	public function resolve(string $method = ''): array {
+	public function resolve(string $method = ''): array
+	{
 		$normalizedMethod = strtolower(trim($method));
+
 		$isAllMethods = $normalizedMethod === '' || $normalizedMethod === 'all';
+
 		$includeAccount = $isAllMethods || $normalizedMethod === 'account';
+
+		/**
+		 * Product decision:
+		 *
+		 * In GoPaperless, email is treated as the primary identity mechanism.
+		 * Requesters typically know the signer's email address, but they should
+		 * not need to understand whether the signer already has an internal
+		 * account or is an external signer.
+		 *
+		 * To provide a simpler UX and prevent duplicate external signers for
+		 * existing users, email searches also include account searches.
+		 *
+		 * Existing accounts are returned as account signers while unknown email
+		 * addresses continue to be returned as external email signers.
+		 *
+		 * If this behaviour changes in the future, ensure that searching by
+		 * email continues to resolve existing users to account signers.
+		 */
 		$includeEmail = $isAllMethods || $normalizedMethod === 'email';
-		$includePhone = $isAllMethods || in_array($normalizedMethod, self::PHONE_METHODS, true);
+
+		$includePhone = $isAllMethods
+			|| in_array($normalizedMethod, self::PHONE_METHODS, true);
 
 		$shareTypes = [];
+
 		if ($includeEmail) {
-			$settings = $this->identifyEmailMethod->getSettings();
-			if ($settings['enabled']) {
+			$emailSettings = $this->identifyEmailMethod->getSettings();
+
+			if ($emailSettings['enabled']) {
 				$shareTypes[] = IShare::TYPE_EMAIL;
+			}
+
+			// Include existing account users in email searches.
+			$accountSettings = $this->identifyAccountMethod->getSettings();
+
+			if ($accountSettings['enabled']) {
+				$shareTypes[] = IShare::TYPE_USER;
 			}
 		}
 
-		if ($includeAccount) {
+		// Only add account share types explicitly if not already added
+		// through the unified email search behaviour.
+		if ($includeAccount && !$includeEmail) {
 			$settings = $this->identifyAccountMethod->getSettings();
+
 			if ($settings['enabled']) {
 				$shareTypes[] = IShare::TYPE_USER;
 			}
@@ -55,6 +90,6 @@ class ShareTypeResolver {
 			$shareTypes[] = ManualPhonePlugin::TYPE_SIGNER_MANUAL_PHONE;
 		}
 
-		return $shareTypes;
+		return array_unique($shareTypes);
 	}
 }
