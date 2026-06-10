@@ -50,6 +50,8 @@ use TypeError;
 
 /**
  * @psalm-import-type LibresignValidatedFile from ResponseDefinitions
+ * @psalm-import-type LibresignSignerDetail from ResponseDefinitions
+ * @psalm-import-type LibresignSignerSummary from ResponseDefinitions
  */
 class FileService {
 
@@ -410,7 +412,18 @@ class FileService {
 			return;
 		}
 
-		$this->fileData->url = $this->urlGenerator->linkToRoute('libresign.page.getPdfFile', ['uuid' => $this->fileData->uuid]);
+		$pdfRouteUuid = $this->fileData->uuid;
+
+		if (!empty($this->fileData->signers) && is_array($this->fileData->signers)) {
+			foreach ($this->fileData->signers as $signer) {
+				if (!empty($signer->me) && isset($signer->sign_request_uuid)) {
+					$pdfRouteUuid = $signer->sign_request_uuid;
+					break;
+				}
+			}
+		}
+
+		$this->fileData->url = $this->urlGenerator->linkToRoute('libresign.page.getPdfFile', ['uuid' => $pdfRouteUuid]);
 
 		if (!empty($this->fileData->signers) && is_array($this->fileData->signers)) {
 			foreach ($this->fileData->signers as $signer) {
@@ -441,7 +454,7 @@ class FileService {
 		$this->fileData->created_at = $this->file->getCreatedAt()->format(DateTimeInterface::ATOM);
 		$this->fileData->statusText = $this->fileMapper->getTextOfStatus($this->file->getStatus());
 		$this->fileData->nodeId = $this->file->getNodeId();
-		$this->fileData->signatureFlow = $this->file->getSignatureFlow();
+		$this->fileData->signatureFlow = SignatureFlow::fromNumeric($this->file->getSignatureFlow())->value;
 		$this->fileData->docmdpLevel = $this->file->getDocmdpLevel();
 		$this->fileData->nodeType = $this->file->getNodeType();
 
@@ -594,10 +607,86 @@ class FileService {
 		$this->loadVisibleElements();
 		$this->loadMessages();
 		$this->computeEnvelopeSignersProgress();
+		$this->syncSingleFileCollection();
 
 		$return = json_decode(json_encode($this->fileData), true);
 		ksort($return);
 		return $return;
+	}
+
+	private function syncSingleFileCollection(): void {
+		if ($this->fileData->nodeType === 'envelope') {
+			return;
+		}
+
+		$this->fileData->filesCount = 1;
+		$this->fileData->files = [
+			(object)[
+				'id' => $this->fileData->id,
+				'uuid' => $this->fileData->uuid,
+				'name' => $this->fileData->name,
+				'status' => $this->fileData->status,
+				'statusText' => $this->fileData->statusText,
+				'nodeId' => $this->fileData->nodeId,
+				'metadata' => $this->fileData->metadata,
+				'totalPages' => $this->fileData->totalPages ?? 0,
+				'pdfVersion' => $this->fileData->pdfVersion ?? '',
+				'size' => $this->fileData->size ?? 0,
+				'signers' => $this->mapSignerDetailsToSummary($this->fileData->signers ?? []),
+				'file' => $this->urlGenerator->linkToRoute('libresign.page.getPdf', ['uuid' => $this->fileData->uuid]),
+			],
+		];
+	}
+
+	/**
+	 * @param list<LibresignSignerDetail> $signers
+	 * @return list<LibresignSignerSummary>
+	 */
+	private function mapSignerDetailsToSummary(array $signers): array {
+		$summaries = [];
+
+		foreach ($signers as $signer) {
+			$signerData = is_object($signer) ? (array)$signer : $signer;
+			if (!is_array($signerData)) {
+				continue;
+			}
+
+			$signRequestId = $this->extractValidSignRequestId($signerData);
+			if ($signRequestId === null) {
+				continue;
+			}
+
+			$summary = [
+				'signRequestId' => $signRequestId,
+				'displayName' => isset($signerData['displayName']) ? (string)$signerData['displayName'] : '',
+				'email' => isset($signerData['email']) ? (string)$signerData['email'] : '',
+				'signed' => $signerData['signed'] ?? null,
+				'status' => isset($signerData['status']) ? (int)$signerData['status'] : 0,
+				'statusText' => isset($signerData['statusText']) ? (string)$signerData['statusText'] : '',
+			];
+
+			if (isset($signerData['identifyMethods']) && is_array($signerData['identifyMethods'])) {
+				$summary['identifyMethods'] = $signerData['identifyMethods'];
+			}
+
+			$summaries[] = $summary;
+		}
+
+		return $summaries;
+	}
+
+	private function extractValidSignRequestId(array $signerData): ?int {
+		$signRequestId = $signerData['signRequestId'] ?? null;
+
+		if (is_int($signRequestId)) {
+			return $signRequestId;
+		}
+
+		if (is_string($signRequestId) && ctype_digit($signRequestId)) {
+			return (int)$signRequestId;
+		}
+
+		return null;
 	}
 
 	private function computeEnvelopeSignersProgress(): void {
