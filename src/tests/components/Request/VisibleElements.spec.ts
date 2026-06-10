@@ -53,10 +53,11 @@ vi.mock('@nextcloud/dialogs', () => ({
 }))
 vi.mock('@nextcloud/router', () => ({
 	generateOcsUrl: vi.fn((path) => `/ocs${path}`),
+	generateUrl: vi.fn((path, params) => path.replace('{uuid}', params?.uuid ?? '')),
 }))
 
 vi.mock('@libresign/pdf-elements', () => ({
-	setWorkerPath: vi.fn(),
+	ensureWorkerReady: vi.fn(),
 }))
 
 describe('VisibleElements Component - Business Rules', () => {
@@ -126,6 +127,7 @@ describe('VisibleElements Component - Business Rules', () => {
 
 	let wrapper: VisibleElementsWrapper
 	let filesStore: ReturnType<typeof useFilesStoreType>
+	let fetchMock: ReturnType<typeof vi.fn>
 
 	function createWrapper(): VisibleElementsWrapper {
 		return mount(VisibleElements, {
@@ -147,6 +149,14 @@ describe('VisibleElements Component - Business Rules', () => {
 		setActivePinia(createPinia())
 		const { useFilesStore } = await import('../../../store/files.js')
 		filesStore = useFilesStore()
+		fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			headers: {
+				get: vi.fn(() => 'application/pdf'),
+			},
+			blob: vi.fn(async () => new Blob(['pdf'], { type: 'application/pdf' })),
+		})
+		vi.stubGlobal('fetch', fetchMock)
 
 		filesStore.files[1] = {
 			id: 1,
@@ -164,21 +174,22 @@ describe('VisibleElements Component - Business Rules', () => {
 	describe('RULE: canSign depends on status and signer UUID', () => {
 		it('returns false when status is not ABLE_TO_SIGN', () => {
 			filesStore.files[1].status = FILE_STATUS.DRAFT
-			filesStore.files[1].settings = { signerFileUuid: 'valid-uuid' }
+			filesStore.files[1].signers = [{ me: true, sign_request_uuid: 'valid-uuid' }]
 
 			expect(wrapper.vm.canSign).toBe(false)
 		})
 
-		it('returns false when status is ABLE_TO_SIGN but no signerFileUuid', () => {
+		it('returns false when status is ABLE_TO_SIGN but there is no current signer uuid', () => {
 			filesStore.files[1].status = FILE_STATUS.ABLE_TO_SIGN
-			filesStore.files[1].settings = {}
+			filesStore.files[1].signers = []
+			filesStore.files[1].settings = { isApprover: false }
 
 			expect(wrapper.vm.canSign).toBe(false)
 		})
 
-		it('returns true when status is ABLE_TO_SIGN and has signerFileUuid', () => {
+		it('returns true when status is ABLE_TO_SIGN and the current signer has sign_request_uuid', () => {
 			filesStore.files[1].status = FILE_STATUS.ABLE_TO_SIGN
-			filesStore.files[1].settings = { signerFileUuid: 'valid-uuid' }
+			filesStore.files[1].signers = [{ me: true, sign_request_uuid: 'valid-uuid' }]
 
 			expect(wrapper.vm.canSign).toBe(true)
 		})
@@ -222,6 +233,7 @@ describe('VisibleElements Component - Business Rules', () => {
 				{
 					id: 10,
 					name: 'doc1.pdf',
+					file: '/path/to/doc1.pdf',
 					metadata: { p: 3 },
 				},
 			]
@@ -250,9 +262,9 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('maps multiple files pages sequentially', () => {
 			filesStore.files[1].files = [
-				{ id: 10, name: 'doc1.pdf', metadata: { p: 2 } },
-				{ id: 20, name: 'doc2.pdf', metadata: { p: 3 } },
-				{ id: 30, name: 'doc3.pdf', metadata: { p: 1 } },
+				{ id: 10, name: 'doc1.pdf', file: '/path/to/doc1.pdf', metadata: { p: 2 } },
+				{ id: 20, name: 'doc2.pdf', file: '/path/to/doc2.pdf', metadata: { p: 3 } },
+				{ id: 30, name: 'doc3.pdf', file: '/path/to/doc3.pdf', metadata: { p: 1 } },
 			]
 
 			wrapper.vm.buildFilePagesMap()
@@ -273,8 +285,8 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('handles files with zero pages', () => {
 			filesStore.files[1].files = [
-				{ id: 10, name: 'doc1.pdf', metadata: { p: 0 } },
-				{ id: 20, name: 'doc2.pdf', metadata: { p: 2 } },
+				{ id: 10, name: 'doc1.pdf', file: '/path/to/doc1.pdf', metadata: { p: 0 } },
+				{ id: 20, name: 'doc2.pdf', file: '/path/to/doc2.pdf', metadata: { p: 2 } },
 			]
 
 			wrapper.vm.buildFilePagesMap()
@@ -356,8 +368,8 @@ describe('VisibleElements Component - Business Rules', () => {
 	describe('RULE: PDF file name generation', () => {
 		it('generates file names with extension', () => {
 			filesStore.files[1].files = [
-				{ name: 'doc1', metadata: { extension: 'pdf' } },
-				{ name: 'doc2', metadata: { extension: 'docx' } },
+				{ name: 'doc1', file: '/path/to/doc1.pdf', metadata: { extension: 'pdf' } },
+				{ name: 'doc2', file: '/path/to/doc2.docx', metadata: { extension: 'docx' } },
 			]
 
 			expect(wrapper.vm.pdfFileNames).toEqual(['doc1.pdf', 'doc2.docx'])
@@ -365,7 +377,7 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('defaults to pdf extension when not specified', () => {
 			filesStore.files[1].files = [
-				{ name: 'doc1', metadata: {} },
+				{ name: 'doc1', file: '/path/to/doc1.pdf', metadata: {} },
 			]
 
 			expect(wrapper.vm.pdfFileNames).toEqual(['doc1.pdf'])
@@ -373,7 +385,7 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('handles missing metadata', () => {
 			filesStore.files[1].files = [
-				{ name: 'doc1' },
+				{ name: 'doc1', file: '/path/to/doc1.pdf' },
 			]
 
 			expect(wrapper.vm.pdfFileNames).toEqual(['doc1.pdf'])
@@ -411,6 +423,48 @@ describe('VisibleElements Component - Business Rules', () => {
 			expect(wrapper.vm.pdfFiles).toEqual([])
 		})
 
+		it('falls back to the current document file when there are no child files', () => {
+			filesStore.files[1].files = []
+			filesStore.files[1].name = 'test'
+			filesStore.files[1].file = '/path/to/single-file.pdf'
+			filesStore.files[1].metadata = { extension: 'pdf', p: 1 }
+
+			expect(wrapper.vm.pdfFiles).toEqual(['/path/to/single-file.pdf'])
+			expect(wrapper.vm.pdfFileNames).toEqual(['test.pdf'])
+		})
+
+		it('supports current document file objects with nested URLs', () => {
+			filesStore.files[1].files = []
+			filesStore.files[1].name = 'test'
+			filesStore.files[1].file = { url: '/path/to/single-file.pdf' }
+			filesStore.files[1].metadata = { extension: 'pdf', p: 1 }
+
+			expect(wrapper.vm.pdfFiles).toEqual(['/path/to/single-file.pdf'])
+			expect(wrapper.vm.pdfFileNames).toEqual(['test.pdf'])
+		})
+
+		it('falls back to the document uuid when no direct file URL is present', () => {
+			wrapper.vm.document.files = []
+			wrapper.vm.document.file = null
+			wrapper.vm.document.uuid = 'uuid-123'
+			wrapper.vm.document.name = 'draft-document'
+			wrapper.vm.document.metadata = { extension: 'pdf', p: 1 }
+
+			expect(wrapper.vm.pdfFiles).toEqual(['/apps/libresign/p/pdf/uuid-123'])
+			expect(wrapper.vm.pdfFileNames).toEqual(['draft-document.pdf'])
+		})
+
+		it('ignores placeholder document files without a renderable PDF URL', () => {
+			wrapper.vm.document.files = [{ id: 10, name: 'placeholder.pdf', file: null, metadata: { extension: 'pdf', p: 1 } }]
+			wrapper.vm.document.file = null
+			wrapper.vm.document.uuid = 'uuid-123'
+			wrapper.vm.document.name = 'draft-document'
+			wrapper.vm.document.metadata = { extension: 'pdf', p: 1 }
+
+			expect(wrapper.vm.pdfFiles).toEqual(['/apps/libresign/p/pdf/uuid-123'])
+			expect(wrapper.vm.pdfFileNames).toEqual(['draft-document.pdf'])
+		})
+
 		it('extracts file objects from nested files array payload', () => {
 			const file1 = '/path/to/file1.pdf'
 			const file2 = '/path/to/file2.pdf'
@@ -422,6 +476,18 @@ describe('VisibleElements Component - Business Rules', () => {
 
 			expect(wrapper.vm.pdfFiles).toEqual([file1, file2])
 		})
+
+		it('extracts file URLs from nested file objects', () => {
+			const file1 = '/path/to/file1.pdf'
+			const file2 = '/path/to/file2.pdf'
+
+			filesStore.files[1].files = [
+				{ id: 10, file: { url: file1 } },
+				{ id: 20, file: { url: file2 } },
+			]
+
+			expect(wrapper.vm.pdfFiles).toEqual([file1, file2])
+		})
 	})
 
 	describe('RULE: page height retrieval', () => {
@@ -429,6 +495,7 @@ describe('VisibleElements Component - Business Rules', () => {
 			filesStore.files[1].files = [
 				{
 					id: 10,
+					file: '/path/to/doc1.pdf',
 					metadata: {
 						d: [
 							{ w: 595.28, h: 841.89 },
@@ -446,7 +513,7 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('returns undefined for non-existent file', () => {
 			filesStore.files[1].files = [
-				{ id: 10, metadata: { d: [{ w: 595.28, h: 841.89 }] } },
+				{ id: 10, file: '/path/to/doc1.pdf', metadata: { d: [{ w: 595.28, h: 841.89 }] } },
 			]
 
 			expect(wrapper.vm.getPageHeightForFile(999, 1)).toBeUndefined()
@@ -454,7 +521,7 @@ describe('VisibleElements Component - Business Rules', () => {
 
 		it('returns undefined for non-existent page', () => {
 			filesStore.files[1].files = [
-				{ id: 10, metadata: { d: [{ w: 595.28, h: 841.89 }] } },
+				{ id: 10, file: '/path/to/doc1.pdf', metadata: { d: [{ w: 595.28, h: 841.89 }] } },
 			]
 
 			expect(wrapper.vm.getPageHeightForFile(10, 5)).toBeUndefined()
@@ -557,7 +624,7 @@ describe('VisibleElements Component - Business Rules', () => {
 						},
 						NcLoadingIcon: true,
 						PdfEditor: {
-							template: '<div class="pdf-editor-stub" @click="$emit(\'pdf-editor:signer-added\')" />',
+							template: '<div class="pdf-editor-stub" @click="$emit(\'pdf-editor:adding-ended\')" />',
 						},
 						Signer: {
 							props: ['signerIndex'],
@@ -567,7 +634,7 @@ describe('VisibleElements Component - Business Rules', () => {
 				},
 			}) as unknown as VisibleElementsWrapper
 
-			wrapperWithPdfEditorEvent.vm.modal = true
+			await wrapperWithPdfEditorEvent.vm.showModal()
 			wrapperWithPdfEditorEvent.vm.signerSelected = filesStore.files[1].signers?.[0] ?? null
 			await wrapperWithPdfEditorEvent.vm.$nextTick()
 
@@ -586,6 +653,26 @@ describe('VisibleElements Component - Business Rules', () => {
 	describe('RULE: modal state management', () => {
 		it('initializes with modal closed', () => {
 			expect(wrapper.vm.modal).toBe(false)
+		})
+
+		it('renders the sign-details action wrapper inside the modal sidebar', async () => {
+			const wrapperWithModalContent = mount(VisibleElements, {
+				global: {
+					stubs: {
+						NcModal: { template: '<div class="modal-stub"><slot /></div>' },
+						NcNoteCard: true,
+						NcChip: true,
+						NcButton: true,
+						NcLoadingIcon: true,
+						PdfEditor: true,
+						Signer: true,
+					},
+				},
+			}) as unknown as VisibleElementsWrapper
+			wrapperWithModalContent.vm.modal = true
+			await wrapperWithModalContent.vm.$nextTick()
+
+			expect(wrapperWithModalContent.find('.sign-details__actions').exists()).toBe(true)
 		})
 
 		it('closeModal resets all modal state', () => {
@@ -618,7 +705,7 @@ describe('VisibleElements Component - Business Rules', () => {
 			expect(wrapper.vm.documentNameWithExtension).toBe('contract.pdf')
 		})
 
-		it('handles missing metadata', () => {
+		it('handles missing metadata for document name', () => {
 			filesStore.files[1].name = 'contract'
 			delete filesStore.files[1].metadata
 
@@ -675,6 +762,41 @@ describe('VisibleElements Component - Business Rules', () => {
 			expect(filesStore.loading).toBe(false)
 			expect(filesStore.files[1].files).toHaveLength(1)
 		})
+
+		it('uses the current document PDF without fetching child files', async () => {
+			wrapper.vm.document.files = []
+			wrapper.vm.document.file = null
+			wrapper.vm.document.uuid = 'uuid-123'
+			wrapper.vm.document.metadata = { extension: 'pdf', p: 1 }
+			;(vi.mocked(axios).get as ReturnType<typeof vi.fn>).mockClear()
+			fetchMock.mockClear()
+			await wrapper.vm.$nextTick()
+
+			await wrapper.vm.showModal()
+
+			expect(wrapper.vm.modal).toBe(true)
+			expect(filesStore.loading).toBe(false)
+			expect(vi.mocked(axios).get).not.toHaveBeenCalled()
+			expect(fetchMock).toHaveBeenCalledWith('/apps/libresign/p/pdf/uuid-123')
+			expect(wrapper.vm.pdfFiles).toEqual(['/apps/libresign/p/pdf/uuid-123'])
+		})
+
+		it('uses nested file URLs from the current document without fetching child files', async () => {
+			wrapper.vm.document.files = []
+			wrapper.vm.document.file = { url: '/path/to/current-document.pdf' }
+			wrapper.vm.document.metadata = { extension: 'pdf', p: 1 }
+			;(vi.mocked(axios).get as ReturnType<typeof vi.fn>).mockClear()
+			fetchMock.mockClear()
+			await wrapper.vm.$nextTick()
+
+			await wrapper.vm.showModal()
+
+			expect(wrapper.vm.modal).toBe(true)
+			expect(filesStore.loading).toBe(false)
+			expect(vi.mocked(axios).get).not.toHaveBeenCalled()
+			expect(fetchMock).toHaveBeenCalledWith('/path/to/current-document.pdf')
+			expect(wrapper.vm.pdfFiles).toEqual(['/path/to/current-document.pdf'])
+		})
 	})
 
 	describe('RULE: signer selection requires pdf editor', () => {
@@ -728,6 +850,7 @@ describe('VisibleElements Component - Business Rules', () => {
 				{
 					id: 10,
 					name: 'doc1',
+					file: '/path/to/doc1.pdf',
 					metadata: { p: 2, d: [{ w: 80, h: 100 }, { w: 80, h: 100 }] },
 					signers: [
 						{ signRequestId: 101, identifyMethods: [{ method: 'email', value: 'a', mandatory: 0 }] },
@@ -736,6 +859,7 @@ describe('VisibleElements Component - Business Rules', () => {
 				{
 					id: 20,
 					name: 'doc2',
+					file: '/path/to/doc2.pdf',
 					metadata: { p: 1, d: [{ w: 160, h: 200 }] },
 					signers: [
 						{ signRequestId: 202, identifyMethods: [{ method: 'email', value: 'b', mandatory: 0 }] },
