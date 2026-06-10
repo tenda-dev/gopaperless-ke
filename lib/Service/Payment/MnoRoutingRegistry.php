@@ -83,7 +83,7 @@ class MnoRoutingRegistry
 				'match'            => ['safaricom', 'mpesa', 'm-pesa'],
 				'dpoMnoKey'        => 'Mpesa',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
+				'preferredProvider'=> PaymentProvider::DARAJA,
 				'mode'             => PaymentFlowMode::STK_PUSH,
 				'currency'         => 'KES',
 				'minAmount'        => 1,
