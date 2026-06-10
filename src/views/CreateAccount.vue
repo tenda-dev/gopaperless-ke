@@ -36,7 +36,7 @@
 				</NcTextField>
 				<NcTextField
 					v-model="phoneNumber"
-					:label="t('libresign', 'Phone Number')"
+					:label="t('libresign', 'Phone Number (Optional)')"
 					type="tel"
 					placeholder="0712345678"
 					:helper-text="phoneNumberError"
@@ -211,9 +211,13 @@ const v$ = {
 		email: () => isEmailValid(email.value),
 	}),
 	phoneNumber: createValidationField(phoneNumber, phoneNumberTouched, {
-		required: () => !!phoneNumber.value,
-		phone: () => !!sanitisePhoneNumber(phoneNumber.value),
-	}),
+		phone: () => {
+			if (!phoneNumber.value) {
+				return true
+			}
+			return !!sanitisePhoneNumber(phoneNumber.value)
+		},
+    }),
 	password: createValidationField(password, passwordTouched, {
 		required: () => isRequired(password.value),
 		minLength: () => hasMinLength(password.value, 4),
@@ -240,15 +244,13 @@ const emailError = computed(() => {
 const showErrorEmail = computed(() => emailError.value.length > 0)
 
 const phoneNumberError = computed(() => {
-  if (!v$.phoneNumber.$error) return ''
+    if (!v$.phoneNumber.$error) return ''
 
-  if (v$.phoneNumber.required.$invalid) {
-    return 'Phone number is required'
-  }
-  if (v$.phoneNumber.phone.$invalid) {
-    return 'Enter a valid phone number'
-  }
-  return ''
+    if (v$.phoneNumber.phone.$invalid) {
+        return 'Enter a valid phone number'
+    }
+
+    return ''
 })
 
 const showErrorPhoneNumber = computed(() => phoneNumberError.value.length > 0)
@@ -300,17 +302,21 @@ onBeforeMount(() => {
 async function createAccount() {
 	state.loading = true
 
-	const normalizedPhone = sanitisePhoneNumber(state.phoneNumber)
+	let normalizedPhone = ''
 
-	if (!normalizedPhone) {
-		state.errorMessage = 'Invalid phone number'
-		state.loading = false
-		return
+	if (state.phoneNumber) {
+		normalizedPhone = sanitisePhoneNumber(state.phoneNumber)
+
+		if (!normalizedPhone) {
+			state.errorMessage = 'Invalid phone number'
+			state.loading = false
+			return
+		}
 	}
 
 	try {
 		await axios.post(generateOcsUrl('/apps/libresign/api/v1/account/create/{uuid}'), {
-			tuuid: route.value.params.uuid ?? '',
+			uuid: route.value.params.uuid ?? '',
 			email: state.email,
 			phone: normalizedPhone,
 			password: state.password,
@@ -512,6 +518,7 @@ body {
 @media (max-width: 900px) {
 
 	.wrapper {
+		overflow-x: hidden;
 		flex-direction: column;
 	}
 
@@ -520,24 +527,39 @@ body {
 	}
 
 	.left-panel {
-		width: 100%;
-		padding: 40px 20px;
+        width: 100%;
+        height: 100vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+		padding: 24px 16px;
+        justify-content: flex-start;
+        align-items: center;
+        -webkit-overflow-scrolling: touch;
+    }
+
+	.left-panel::after {
+		width: 600px;
+		height: 600px;
 	}
+
+	header {
+        margin-bottom: 16px;
+    }
 
 }
 
 @media (max-width: 640px) {
 
 	.create-account {
-		width: 90%;
-		max-width: none;
-		min-width: unset;
-		padding: 24px;
-	}
+        width: 100%;
+        max-width: none;
+        min-width: unset;
+        padding: 20px;
+    }
 
-	header {
-		margin-bottom: 24px;
-	}
+    .logo {
+        height: 56px;
+    }
 
 	.create-account__headline {
 		font-size: 22px;

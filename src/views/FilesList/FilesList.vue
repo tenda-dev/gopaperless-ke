@@ -66,10 +66,10 @@
 				<NcEmptyContent
 					v-else-if="!loading && isEmptyDir && filtersStore.activeChips.length === 0"
 					:name="t('libresign', 'There are no documents')"
-					:description="canRequestSign ? t('libresign', 'Choose the file to request signatures.') : ''">
-					<template v-if="canRequestSign" #action>
+					:description="canRequestSign ? t('libresign', 'Start a new workflow to start signing') : ''">
+					<!-- <template v-if="canRequestSign" #action>
 						<RequestPicker variant="primary" />
-					</template>
+					</template> -->
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiFolder" />
 					</template>

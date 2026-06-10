@@ -115,7 +115,12 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('daraja_consumer_secret', $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', ''));
 		$this->initialState->provideInitialState('daraja_pass_key', $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', ''));
 		$this->initialState->provideInitialState('daraja_shortcode', $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', ''));
-		$this->initialState->provideInitialState('daraja_gopaperless_callback_base_url', $this->appConfig->getValueString(Application::APP_ID, 'daraja_gopaperless_callback_base_url', ''));
+
+		//	GOPAPERLESS CALLBACK CONFIG
+		$this->initialState->provideInitialState('gopaperless_callback_base_url', $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', ''));
+
+		// PAYMENT VERIFICATION DRIVER SETTINGS
+		$this->initialState->provideInitialState('payment_verification_dispatcher', $this->getPaymentVerificationDispatcherInitialState());
 
 		return new TemplateResponse(Application::APP_ID, 'admin_settings');
 	}
@@ -161,5 +166,23 @@ class Admin implements ISettings {
 			return $workerType;
 		}
 		return 'local';
+	}
+
+	/**
+	 * @return 'nextcloud'|'rabbitmq'
+	 */
+	private function getPaymentVerificationDispatcherInitialState(): string
+	{
+		$dispatcher = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'payment_verification_dispatcher',
+			'nextcloud'
+		);
+
+		if ($dispatcher === 'rabbitmq') {
+			return $dispatcher;
+		}
+
+		return 'nextcloud';
 	}
 }

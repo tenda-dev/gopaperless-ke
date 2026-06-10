@@ -21,6 +21,7 @@ interface NotifyOptions {
 	icon?: 'success' | 'error' | 'info' | 'warning' | null
 	important?: boolean
 	dismissible?: boolean
+	description?: string
 }
 
 function resolveIcon(icon?: NotifyOptions['icon']) {
@@ -70,11 +71,15 @@ export function notify(options: NotifyOptions) {
 	const overrideDismissible = important ? false : dismissible
 
 	toast[type](message, {
+		description: options.description || undefined,
 		duration: overrideDuration,
 		position: position ?? 'top-center',
 		icon: resolveIcon(icon),
 		richColors: rich,
 		dismissible: overrideDismissible,
+		style: {
+			'z-index': 9999,
+		}
 	})
 }
 
