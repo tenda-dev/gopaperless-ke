@@ -11,7 +11,7 @@
 
     <!-- GRID -->
     <div class="document-grid">
-      <DocumentItem
+      <WorkflowDocumentItem
 			v-for="file in fileList"
 			:key="file.id"
 			:file="file"
@@ -28,7 +28,7 @@ import { computed } from 'vue'
 import { generateUrl, generateOcsUrl } from '@nextcloud/router'
 import { useFilesStore } from '@/store/files'
 import { useSidebarStore } from '@/store/sidebar'
-import DocumentItem from './DocumentItem.vue'
+import WorkflowDocumentItem from './WorkflowDocumentItem.vue'
 
 const filesStore = useFilesStore()
 const sidebarStore = useSidebarStore()
@@ -77,15 +77,15 @@ function handleSelect(id?: number | string) {
 
 /* GRID */
 .document-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* MOBILE */
 @media (max-width: 768px) {
-  .document-grid {
+  /* .document-grid {
     grid-template-columns: 1fr;
-  }
+  } */
 }
 </style>

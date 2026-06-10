@@ -4,6 +4,7 @@
 		<!-- HEADER -->
 		<!-- ========================================= -->
 		<WorkflowHeaderCard
+		    v-if="!state.signers.value?.length"
 			:file="state.file.value"
 			:state="state.snapshot.value"
 			:can-validate="state.canValidate.value"
@@ -55,6 +56,7 @@
 		<!-- SIGNERS -->
 		<!-- ========================================= -->
 		<WorkflowSigners
+		    v-if="state.signers.value.length > 0"
 		    :can-manage-signers="canManageSigners"
 		    :signers="state.signers.value"
 			:event="state.isOriginalFileDeleted.value ? '' : 'libresign:edit-signer'"

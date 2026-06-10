@@ -384,15 +384,12 @@ function handlePrimaryAction() {
 <style scoped lang="scss">
 .workflow-signer {
 	position: relative;
-
 	display: flex;
 	align-items: center;
 	gap: 14px;
-
-	padding: 12px;
-
+	padding: 6px;
 	border-radius: 12px;
-	border: 1px solid var(--color-border);
+	border-bottom: 0.5px solid var(--color-border);
 
 	background:
 		linear-gradient(

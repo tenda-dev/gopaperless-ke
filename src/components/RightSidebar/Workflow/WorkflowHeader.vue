@@ -4,9 +4,6 @@
 		<!-- FILE IDENTITY -->
 		<!-- ========================================= -->
 		<div class="workflow-file-identity">
-			<div class="workflow-requester" v-if="file?.requested_by?.displayName && !state?.canSave">
-				Requested by {{ file?.requested_by?.displayName }}
-			</div>
 			<div class="workflow-file-title-row">
 				<div class="file-icon-wrapper">
 					<NcIconSvgWrapper
@@ -16,19 +13,7 @@
 				</div>
 
 				<div class="workflow-file-heading">
-					<span class="workflow-file-label">
-						{{ state?.isEnvelope ? 'Envelope' : 'Document' }}
-					</span>
-
-					<div class="workflow-file-title-row">
-						<h2 class="workflow-file-name">
-							{{ file?.name }}
-						</h2>
-					</div>
-				</div>
-			</div>
-
-			<div
+					<div
 				class="workflow-status-pill"
 				:class="`workflow-status-pill--${state.statusVariant}`">
 				<span class="workflow-status-dot" />
@@ -37,15 +22,39 @@
 					{{ state.statusLabel }}
 				</span>
 			</div>
-			<span class="workflow-status-subtitle">
+					<!-- <span class="workflow-file-label">
+						{{ state?.isEnvelope ? 'Envelope' : 'Document' }}
+					</span> -->
+
+					<div class="workflow-file-title-row">
+						<h2 class="workflow-file-name">
+							{{ file?.name }}
+						</h2>
+					</div>
+				</div>
+			</div>
+			<div class="workflow-requester" v-if="file?.requested_by?.displayName && !state?.canSave">
+				Requested by {{ file?.requested_by?.displayName }}
+			</div>
+
+			<!-- <div
+				class="workflow-status-pill"
+				:class="`workflow-status-pill--${state.statusVariant}`">
+				<span class="workflow-status-dot" />
+
+				<span>
+					{{ state.statusLabel }}
+				</span>
+			</div> -->
+			<!-- <span class="workflow-status-subtitle">
 				{{ state.statusSubtitle }}
-			</span>
+			</span> -->
 		</div>
 
 		<!-- ========================================= -->
 		<!-- META -->
 		<!-- ========================================= -->
-		<div class="workflow-meta-grid">
+		<!-- <div class="workflow-meta-grid">
 			<div class="workflow-meta-item">
 				<span class="workflow-meta-label">
 					{{ t('libresign', 'Pages') }}
@@ -75,12 +84,12 @@
 					{{ state.signersCount }}
 				</strong>
 			</div>
-		</div>
+		</div> -->
 
 		<!-- ========================================= -->
 		<!-- FILE ACTIONS -->
 		<!-- ========================================= -->
-		<div class="workflow-file-actions">
+		<!-- <div class="workflow-file-actions">
 			<NcButton
 				v-if="state.isEnvelope"
 				class="workflow-action-button"
@@ -130,7 +139,7 @@
 
 				{{ t('libresign', 'Validate') }}
 			</NcButton>
-		</div>
+		</div> -->
 
 		<div class="workflow-divider" />
 	</div>
@@ -221,7 +230,7 @@ const formattedDate = computed(() => {
 .workflow-header-card {
 	display: flex;
 	flex-direction: column;
-	gap: 24px;
+	gap: 12px;
 	padding: 4px 0 0;
 }
 
