@@ -33,6 +33,7 @@
 		<SmsToken />
 		<DarajaConfig />
 		<DpoPaymentConfig />
+		<PaymentVerificationDispatcherConfig />
 	</div>
 </template>
 
@@ -65,7 +66,7 @@ import Validation from './Validation.vue'
 import SmsToken from './SmsToken.vue'
 import DarajaConfig from "@/views/Settings/DarajaConfig.vue";
 import DpoPaymentConfig from "@/views/Settings/DpoPaymentConfig.vue";
-
+import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerificationDispatcherConfig.vue";
 defineOptions({
 	name: 'Settings',
 })

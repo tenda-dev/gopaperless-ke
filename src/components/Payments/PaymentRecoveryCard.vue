@@ -408,7 +408,7 @@ function formatProviderLabel(value: string) {
 	-webkit-tap-highlight-color: transparent;
 }
 
-.payment-recovery-card__discard {
+.payment-recovery-card__resume {
 	flex: 1;
 	min-width: 140px;
 
@@ -423,7 +423,7 @@ function formatProviderLabel(value: string) {
 	}
 }
 
-.payment-recovery-card__resume {
+.payment-recovery-card__discard {
 	flex: 1;
 	min-width: 180px;
 

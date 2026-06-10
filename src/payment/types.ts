@@ -3,14 +3,17 @@ export type PaymentStatus =
   | 'PENDING'
   | 'SUCCESS'
   | 'FAILED'
-  | 'INITIATION_FAILED';
+  | 'INITIATION_FAILED'
+  | 'CANCELLED'
+
+export type PaymentTerminalStatus = 'SUCCESS' | 'FAILED' | 'CANCELLED'
 
 export type PaymentReason =
 	| 'pending'
 	| 'paid'
 	| 'failed'
 	| 'initiation_failed'
-
+	| 'cancelled'
 export type PaymentConfidence = 'high' | 'ambiguous' | 'unknown'
 
 export type PaymentMobileFlow = 'mobile_direct' | 'callback'

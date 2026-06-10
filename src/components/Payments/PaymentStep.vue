@@ -284,6 +284,21 @@
 					<span class="status-text__main">Payment confirmed</span>
 				</div>
 
+
+				<!-- CANCELLED -->
+				<div v-else-if="payment.state.value === 'cancelled'" class="status-box status-box--warning">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+						stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<circle cx="12" cy="12" r="10" />
+						<line x1="15" y1="9" x2="9" y2="15" />
+						<line x1="9" y1="9" x2="15" y2="15" />
+					</svg>
+					<div class="status-text">
+						<span class="status-text__main">Payment cancelled</span>
+						<span class="status-text__sub">You can still try again whenever you're ready</span>
+					</div>
+				</div>
+
 			</div>
 		</transition>
 
@@ -569,6 +584,9 @@ const buttonLabel = computed(() => {
 			return 'Retry payment'
 
 		case 'error':
+			return 'Try again'
+
+		case 'cancelled':
 			return 'Try again'
 
 		case 'processing':
@@ -1089,7 +1107,12 @@ async function handleMobilePayment() {
 
 			payment.startPolling(
 				response.reference,
-				response.flow
+				response.flow,
+				(status) => {
+					if (status === 'FAILED' || status === 'CANCELLED') {
+						handleTerminalReset()
+					}
+				}
 			)
 
 			return
@@ -1210,17 +1233,24 @@ async function handleMobilePayment() {
 		)
 	}
 
-	await payment.chargeExistingReference({
-		reference:
-			payment.activeReference.value,
-		phoneNumber,
-		mno: mnoToUse,
-		mnoCountry: countryToUse,
-		signRequestId:
-			props.signRequestId,
-		signUuid:
-			props.signUuid,
-	})
+	await payment.chargeExistingReference(
+		{
+			reference:
+				payment.activeReference.value,
+			phoneNumber,
+			mno: mnoToUse,
+			mnoCountry: countryToUse,
+			signRequestId:
+				props.signRequestId,
+			signUuid:
+				props.signUuid,
+		},
+		(status) => {
+			if (status === 'FAILED' || status === 'CANCELLED') {
+				handleTerminalReset()
+			}
+		}
+	)
 }
 
 // To be used within handlePay
@@ -1231,16 +1261,21 @@ async function handleCardPayment() {
 	// State handled directly in usePayment
 	// If initiation is successful, usePayment will
 	// handle the redirect and subsequent state changes.
-	await payment.startPayment({
-		provider: 'dpo',
-		signRequestId: props.signRequestId,
-		signUuid: props.signUuid,
-		paymentMethod: 'card',
-		userEmail: props.signer.email,
-		userId: user.value?.uid,
-		productCode: props.productCode,
-		redirectUrl: payment.buildPaymentRedirectUrl()
-	})
+	await payment.startPayment(
+		{
+			provider: 'dpo',
+			signRequestId: props.signRequestId,
+			signUuid: props.signUuid,
+			paymentMethod: 'card',
+			userEmail: props.signer.email,
+			userId: user.value?.uid,
+			productCode: props.productCode,
+			redirectUrl: payment.buildPaymentRedirectUrl()
+	    },
+		(status) => {
+            if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
+        }
+    )
 }
 
 /**
@@ -1251,15 +1286,20 @@ async function handleCardPayment() {
  */
 async function retryPayment() {
 	try {
-		const payRes = await payment.startPayment({
-			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
-			paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
-			phoneNumber: normalisedPhone.value || undefined,
-			userEmail: props.signer.email || user.value?.email,
-			userId: user.value?.uid,
-			productCode: props.productCode,
-		})
+		const payRes = await payment.startPayment(
+			{
+				signRequestId: props.signRequestId,
+				signUuid: props.signUuid,
+				paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
+				phoneNumber: normalisedPhone.value || undefined,
+				userEmail: props.signer.email || user.value?.emailAddress,
+				userId: user.value?.uid,
+				productCode: props.productCode,
+			},
+			(status) => {  // ← onTerminal callback
+				if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
+			}
+	    )
 
 		if (!payRes) return
 
@@ -1596,12 +1636,24 @@ function hydratePaymentState(
 		payment.startPolling(
 			hydratedPayment.reference,
 			hydratedPayment.flow,
+			(status) => {
+				if (status === 'FAILED' || status === 'CANCELLED') {
+					handleTerminalReset()
+				}
+			}
 		)
 	}
 
 	requestAnimationFrame(() => {
 		isHydrating.value = false
 	})
+}
+
+function handleTerminalReset() {
+    resetMnoDetectionState()
+    payment.activeReference.value = null
+    payment.alreadyCharged.value = false
+    payment.resetProviderLock()
 }
 
 async function handleCancelPaymentSession() {

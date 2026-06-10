@@ -1,47 +1,37 @@
 <template>
 	<NcSettingsSection :name="name" :description="description">
 		<div class="row">
-			<NcTextArea v-model="baseUrl"
-						:label="t('libresign', 'Daraja Base URL')"
-						:placeholder="t('libresign', 'https://sandbox.safaricom.co.ke')"
-						@input="saveAppConfigValue('daraja_base_url', baseUrl)" />
+			<NcTextArea v-model="baseUrl" :label="t('libresign', 'Daraja Base URL')"
+				:placeholder="t('libresign', 'https://sandbox.safaricom.co.ke')"
+				@input="saveAppConfigValue('daraja_base_url', baseUrl)" />
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="consumerKey"
-						:label="t('libresign', 'Consumer Key')"
-						:placeholder="t('libresign', 'Your Daraja Consumer Key')"
-						@input="saveAppConfigValue('daraja_consumer_key', consumerKey)" />
+			<NcTextArea v-model="consumerKey" :label="t('libresign', 'Consumer Key')"
+				:placeholder="t('libresign', 'Your Daraja Consumer Key')"
+				@input="saveAppConfigValue('daraja_consumer_key', consumerKey)" />
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="consumerSecret"
-						:label="t('libresign', 'Consumer Secret')"
-						type="text"
-						:placeholder="t('libresign', 'Your Daraja Consumer Secret')"
-						@input="saveAppConfigValue('daraja_consumer_secret', consumerSecret)" />
+			<NcTextArea v-model="consumerSecret" :label="t('libresign', 'Consumer Secret')" type="text"
+				:placeholder="t('libresign', 'Your Daraja Consumer Secret')"
+				@input="saveAppConfigValue('daraja_consumer_secret', consumerSecret)" />
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="shortCode"
-						:label="t('libresign', 'Shortcode')"
-						:placeholder="t('libresign', '174379')"
-						@input="saveAppConfigValue('daraja_shortcode', shortCode)" />
+			<NcTextArea v-model="shortCode" :label="t('libresign', 'Shortcode')" :placeholder="t('libresign', '174379')"
+				@input="saveAppConfigValue('daraja_shortcode', shortCode)" />
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="passKey"
-						:label="t('libresign', 'Pass Key')"
-						type="text"
-						:placeholder="t('libresign', 'Your Daraja Pass Key')"
-						@input="saveAppConfigValue('daraja_pass_key', passKey)" />
+			<NcTextArea v-model="passKey" :label="t('libresign', 'Pass Key')" type="text"
+				:placeholder="t('libresign', 'Your Daraja Pass Key')"
+				@input="saveAppConfigValue('daraja_pass_key', passKey)" />
 		</div>
 		<div class="row">
-			<NcTextArea v-model="goPaperlessCallbackUrl"
-						:label="t('libresign', 'GoPaperless Callback Base Url')"
-						type="text"
-						:placeholder="t('libresign', 'Daraja GoPaperless Callback Base Url')"
-						@input="saveAppConfigValue('daraja_gopaperless_callback_base_url', goPaperlessCallbackUrl)" />
+			<NcTextArea v-model="goPaperlessCallbackUrl" :label="t('libresign', 'GoPaperless Callback Base Url')"
+				type="text" :placeholder="t('libresign', 'Daraja GoPaperless Callback Base Url')"
+				@input="saveAppConfigValue('gopaperless_callback_base_url', goPaperlessCallbackUrl)" />
 		</div>
 
 	</NcSettingsSection>
@@ -70,7 +60,7 @@ export default {
 			consumerSecret: loadState('libresign', 'daraja_consumer_secret', ''),
 			shortCode: loadState('libresign', 'daraja_shortcode', ''),
 			passKey: loadState('libresign', 'daraja_pass_key', ''),
-			goPaperlessCallbackUrl: loadState('libresign', 'daraja_gopaperless_callback_base_url', ''),
+			goPaperlessCallbackUrl: loadState('libresign', 'gopaperless_callback_base_url', ''),
 		}
 	},
 	methods: {
@@ -79,5 +69,8 @@ export default {
 			OCP.AppConfig.setValue('libresign', key, value)
 		},
 	},
+	mounted() {
+		console.log('daraja_base_url', this.baseUrl)
+	}
 }
 </script>
