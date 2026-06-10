@@ -1,0 +1,3 @@
+gopaperless-staging.com, www.gopaperless-staging.com {
+    reverse_proxy nginx:80
+}
