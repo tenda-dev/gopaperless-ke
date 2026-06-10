@@ -5,22 +5,21 @@
 <template>
 	<NcAppSidebar v-if="sidebarStore.activeTab.length > 0"
 		ref="rightAppSidebar"
-		:open="sidebarStore.isVisible"
-		:name="sidebarName"
+		v-model:open="opened"
+		:name="fileName"
 		:subtitle="subTitle"
 		v-model:active="sidebarStore.activeTab"
 		@update:active="handleUpdateActive"
 		@close="closeSidebar">
 		<NcAppSidebarTab v-if="showSign"
 			id="sign-tab"
-			:name="sidebarName">
+			:name="fileName">
 			<SignTab />
 		</NcAppSidebarTab>
 		<NcAppSidebarTab v-if="showRequestSignatureTab"
 			id="request-signature-tab"
-			:name="sidebarName">
-			<WorkflowRequestSignatureTab />
-			 <!-- <RequestSignatureTab /> -->
+			:name="fileName">
+			<RequestSignatureTab />
 		</NcAppSidebarTab>
 	</NcAppSidebar>
 </template>
@@ -33,8 +32,7 @@ import { useRoute } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 
-// import RequestSignatureTab from '../RightSidebar/RequestSignatureTab.vue'
-import WorkflowRequestSignatureTab from './Workflow/WorkflowRequestSignatureTab.vue'
+import RequestSignatureTab from '../RightSidebar/RequestSignatureTab.vue'
 import SignTab from '../RightSidebar/SignTab.vue'
 
 import { useFilesStore } from '../../store/files.js'
@@ -60,7 +58,16 @@ const route = useRoute()
 const rightAppSidebar = ref<SidebarRef | null>(null)
 
 const fileName = computed(() => filesStore.getSelectedFileView()?.name ?? '')
-const opened = computed(() => sidebarStore.isVisible)
+const opened = computed({
+	get: () => sidebarStore.isVisible,
+	set: (isOpen: boolean) => {
+		if (isOpen) {
+			sidebarStore.showSidebar()
+		} else {
+			sidebarStore.hideSidebar()
+		}
+	},
+})
 const subTitle = computed(() => {
 	if (!opened.value) {
 		return t('libresign', 'Enter who will receive the request')
@@ -70,8 +77,6 @@ const subTitle = computed(() => {
 
 const showRequestSignatureTab = computed(() => sidebarStore.activeTab === 'request-signature-tab')
 const showSign = computed(() => sidebarStore.activeTab === 'sign-tab' && signStore.document !== undefined)
-
-const sidebarName = computed(() => 'Document action centre')
 
 watch(() => sidebarStore.activeTab, (newValue) => {
 	if (rightAppSidebar.value?.$refs?.tabs) {
