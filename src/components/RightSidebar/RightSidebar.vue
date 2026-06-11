@@ -20,6 +20,7 @@
 			id="request-signature-tab"
 			:name="sidebarName">
 			<WorkflowRequestSignatureTab />
+			 <!-- <RequestSignatureTab /> -->
 		</NcAppSidebarTab>
 	</NcAppSidebar>
 </template>
@@ -32,6 +33,7 @@ import { useRoute } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 
+// import RequestSignatureTab from '../RightSidebar/RequestSignatureTab.vue'
 import WorkflowRequestSignatureTab from './Workflow/WorkflowRequestSignatureTab.vue'
 import SignTab from '../RightSidebar/SignTab.vue'
 
