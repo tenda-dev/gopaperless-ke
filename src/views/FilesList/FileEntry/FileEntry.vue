@@ -10,7 +10,7 @@
 			:source="source" />
 
 		<td class="files-list__row-name"
-			@click="openDetailsIfAvailable">
+		    @click="handleOpenDocument">
 			<FileEntryPreview :source="source" />
 			<FileEntryName ref="name"
 				:basename="source.name"
@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { t } from '@nextcloud/l10n'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import NcDateTime from '@nextcloud/vue/components/NcDateTime'
 
@@ -67,7 +67,9 @@ import FileEntryStatus from './FileEntryStatus.vue'
 import { useFileEntry, type FileEntrySource } from '../../../composables/useFileEntry.js'
 import { useActionsMenuStore } from '../../../store/actionsmenu.js'
 import { useFilesStore } from '../../../store/files.js'
-import { showSuccess } from '../../../services/toast'
+import { showInfo, showSuccess } from '../../../services/toast'
+import { openDocument } from '../../../utils/viewer.js'
+import { generateUrl } from '@nextcloud/router'
 
 defineOptions({
 	name: 'FileEntry',
@@ -93,6 +95,8 @@ const { mtime, openedMenu, mtimeOpacity, fileExtension, onRightClick, openDetail
 	actionsMenuStore,
 	filesStore,
 })
+
+const file = computed(() => filesStore.files[props.source.id])
 const actions = ref<FileEntryActionsRef | null>(null)
 const name = ref<FileEntryNameRef | null>(null)
 const isRenaming = ref(false)
@@ -119,6 +123,24 @@ function onStartRename() {
 
 function onFileRenaming(nextIsRenaming: boolean) {
 	isRenaming.value = nextIsRenaming
+}
+
+function handleOpenDocument() {
+	if (!props?.source || !props?.source?.id) return
+
+    if (props.source?.nodeType === 'envelope') {
+		showInfo(t('libresign', 'Opening envelope files are not supported yet'))
+		return
+	}
+
+	const fileUrl = props.source.file
+		|| generateUrl('/apps/libresign/p/pdf/{uuid}', { uuid: props.source.uuid })
+
+	openDocument({
+		fileUrl,
+		filename: props.source.name,
+		nodeId: props.source.nodeId ?? 0,
+	})
 }
 
 defineExpose({
