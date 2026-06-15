@@ -442,7 +442,7 @@ class DpoPaymentService
 	 * Retrieve available mobile payment options for a given transaction.
 	 *
 	 * This method calls DPO's `GetMobilePaymentOptions` API and returns
-	 * a normalized list of supported mobile providers (e.g. mpesa, airtel)
+	 * a normalised list of supported mobile providers (e.g. mpesa, airtel)
 	 * for the provided transaction token.
 	 *
 	 * Notes:
@@ -506,6 +506,12 @@ class DpoPaymentService
 				'logo' => (string)($option->logo ?? ''),
 			];
 		}
+
+		$this->logger->info('DPO GetMobilePaymentOptions normalised options', [
+			'transactionToken' => $transactionToken,
+			'optionCount' => count($options),
+			'options' => $options,
+		]);
 
 		return $options;
 	}

@@ -24,6 +24,7 @@ final class MobileMoneyService
 		private DpoProvider $dpo,
 		private LoggerInterface $logger,
 		private DpoMobileOptionsService $dpoMobileOptionsService,
+		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
 	) {}
 
 	/**
@@ -40,7 +41,7 @@ final class MobileMoneyService
 
 		$route->validateAmount($payload->amount);
 		$enrichedPayload = $payload->with(
-			mno: $route->dpoMnoKey,
+			mno: $route->mnoKey,
 			country: $route->country,
 		);
 
@@ -74,19 +75,40 @@ final class MobileMoneyService
 					 */
 					$options = [];
 
-					if ($route->requiresUserSelection()) {
-						$options = $this->getMobileOptions($result->providerReference, $route->country);
-					}
 
-					$selection = new SelectionDTO($route->requiresUserSelection(), $options);
-					$suggested = new SuggestedMnoDTO($route->dpoMnoKey, $route->country);
+					$suggestedMno = $route->mnoKey;
+					$confidence = $route->confidence;
+
+					$options = $this->getMobileOptions(
+						$result->providerReference,
+						$route->country
+					);
+
+					$validation = $this->mnoSuggestionValidatorService->validate(
+						$suggestedMno,
+						$route->region,
+						$options,
+					);
+
+					$confidence = $validation->confidence;
+					$suggestedMno = $validation->resolvedMno;
+
+					$selection = new SelectionDTO(
+						$confidence->requiresUserSelection(),
+						$options,
+					);
+
+					$suggested = new SuggestedMnoDTO(
+						$suggestedMno,
+						$route->country,
+					);
 
 					return $result->with(
 						meta: [
 							...($result->meta ?? []),
 							'suggested' => $suggested,
 							'selection' => $selection,
-							'confidence' => $route->confidence->value,
+							'confidence' => $confidence->value,
 							'redirectUrl' => null,
 						],
 					);

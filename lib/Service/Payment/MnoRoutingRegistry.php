@@ -46,7 +46,7 @@ class MnoRoutingRegistry
 	//                              PhoneResolutionService.
 	//                              First match wins (order matters).
 
-	//    dpoMnoKey      string     Exact MNO string DPO expects in
+	//    mnoKey         string     Exact MNO string DPO expects in
 	//                              ChargeTokenMobile <MNO> field.
 	//                              Verify against GetMobilePaymentOptions.
 
@@ -81,7 +81,7 @@ class MnoRoutingRegistry
 		'KE' => [
 			[
 				'match'            => ['safaricom', 'mpesa', 'm-pesa'],
-				'dpoMnoKey'        => 'Mpesa',
+				'mnoKey'           => 'Mpesa',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::STK_PUSH,
@@ -92,7 +92,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -114,7 +114,7 @@ class MnoRoutingRegistry
 		'TZ' => [
 			[
 				'match'            => ['vodacom'],
-				'dpoMnoKey'        => 'Vodacom',
+				'mnoKey'           => 'Vodacom',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -125,7 +125,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -136,7 +136,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['tigo', 'mipawa', 'mi-pawa'],
-				'dpoMnoKey'        => 'Tigo',
+				'mnoKey'           => 'Tigo',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -147,7 +147,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['halotel', 'viettel'],
-				'dpoMnoKey'        => 'Halotel',
+				'mnoKey'           => 'Halotel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -158,7 +158,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['zantel'],
-				'dpoMnoKey'        => 'Zantel',
+				'mnoKey'           => 'Zantel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -169,7 +169,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['ttcl'],
-				'dpoMnoKey'        => 'TTCL',
+				'mnoKey'           => 'TTCL',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -191,7 +191,7 @@ class MnoRoutingRegistry
 		'ZNZ' => [
 			[
 				'match'            => ['zntigo', 'zanzibar', 'tigo'],
-				'dpoMnoKey'        => 'Zntigo',
+				'mnoKey'           => 'Zntigo',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -211,7 +211,7 @@ class MnoRoutingRegistry
 		'UG' => [
 			[
 				'match'            => ['mtn'],
-				'dpoMnoKey'        => 'MTN',
+				'mnoKey'           => 'MTN',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -222,7 +222,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -243,7 +243,7 @@ class MnoRoutingRegistry
 		'RW' => [
 			[
 				'match'            => ['mtn'],
-				'dpoMnoKey'        => 'MTN',
+				'mnoKey'           => 'MTN',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -254,7 +254,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -275,7 +275,7 @@ class MnoRoutingRegistry
 		'GH' => [
 			[
 				'match'            => ['mtn'],
-				'dpoMnoKey'        => 'MTN',
+				'mnoKey'           => 'MTN',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -286,7 +286,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['vodacom', 'vodafone'],
-				'dpoMnoKey'        => 'Vodacom',
+				'mnoKey'           => 'Vodacom',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -297,7 +297,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel', 'tigo', 'airteltigo'],
-				'dpoMnoKey'        => null, // Not in DPO advisory
+				'mnoKey'           => null, // Not in DPO advisory
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::INSTRUCTIONS,
@@ -316,7 +316,7 @@ class MnoRoutingRegistry
 		'CI' => [
 			[
 				'match'            => ['mtn'],
-				'dpoMnoKey'        => 'MTN',
+				'mnoKey'           => 'MTN',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -327,7 +327,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['orange'],
-				'dpoMnoKey'        => 'Orange',
+				'mnoKey'           => 'Orange',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -347,7 +347,7 @@ class MnoRoutingRegistry
 		'MW' => [
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -358,7 +358,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['tnm', 'telekom networks'],
-				'dpoMnoKey'        => null, // Not in DPO advisory
+				'mnoKey'           => null, // Not in DPO advisory
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::INSTRUCTIONS,
@@ -378,7 +378,7 @@ class MnoRoutingRegistry
 		'ZM' => [
 			[
 				'match'            => ['mtn'],
-				'dpoMnoKey'        => 'MTN',
+				'mnoKey'           => 'MTN',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -389,7 +389,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['airtel'],
-				'dpoMnoKey'        => 'Airtel',
+				'mnoKey'           => 'Airtel',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -400,7 +400,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['zamtel'],
-				'dpoMnoKey'        => null, // Not in DPO advisory
+				'mnoKey'           => null, // Not in DPO advisory
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::INSTRUCTIONS,
@@ -420,7 +420,7 @@ class MnoRoutingRegistry
 		'ZW' => [
 			[
 				'match'            => ['ecocash', 'econet'],
-				'dpoMnoKey'        => 'EcoCash',
+				'mnoKey'           => 'EcoCash',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::BOTH,
@@ -432,7 +432,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['onemoney', 'one money', 'netone'],
-				'dpoMnoKey'        => null, // Not in DPO advisory
+				'mnoKey'           => null, // Not in DPO advisory
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::INSTRUCTIONS,
@@ -443,7 +443,7 @@ class MnoRoutingRegistry
 			],
 			[
 				'match'            => ['telecash', 'telecel'],
-				'dpoMnoKey'        => null, // Not in DPO advisory
+				'mnoKey'           => null, // Not in DPO advisory
 				'capability'       => PaymentCapability::MOBILE_MONEY,
 				'preferredProvider'=> PaymentProvider::DPO,
 				'mode'             => PaymentFlowMode::INSTRUCTIONS,
@@ -468,7 +468,7 @@ class MnoRoutingRegistry
 	 * @param ResolutionConfidence    $confidence 'high' | 'ambiguous' | 'unknown'
 	 *                                Passed in from MnoDetectionRegistry or PhoneResolutionService.
 	 *                                This class NEVER overrides a lower confidence —
-	 *                                it may only degrade it (e.g. null dpoMnoKey).
+	 *                                it may only degrade it (e.g. null mnoKey).
 	 *
 	 * @return MnoRoutingResultDTO
 	 */
@@ -485,7 +485,7 @@ class MnoRoutingRegistry
 			return new MnoRoutingResultDTO(
 				capability: PaymentCapability::CARD,
 				preferredProvider: PaymentProvider::DPO,
-				dpoMnoKey: null,
+				mnoKey: null,
 				mode: PaymentFlowMode::INSTRUCTIONS,
 				currency: null,
 				altCurrency: null,
@@ -561,7 +561,7 @@ class MnoRoutingRegistry
 					$resolvedConfidence = $forceAmbiguous
 						? ResolutionConfidence::AMBIGUOUS
 						: (
-							$route['dpoMnoKey'] === null
+							$route['mnoKey'] === null
 							? ResolutionConfidence::AMBIGUOUS
 							: $confidence
 						);
@@ -569,7 +569,7 @@ class MnoRoutingRegistry
 					return $this->build(
 						$route['capability'],
 						$route['preferredProvider'],
-						$route['dpoMnoKey'],
+						$route['mnoKey'],
 						$route['mode'],
 						$route['currency'] ?? null,
 						$route['altCurrency'] ?? null,
