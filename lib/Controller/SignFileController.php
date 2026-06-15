@@ -384,14 +384,14 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 		} catch (\Throwable) {
 			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
 		}
-		return $this->getCode($signRequest);
+		return $this->getCode($signRequest, $signRequest->getUuid());
 	}
 
 	/**
 	 * @todo validate if can request code
 	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>
 	 */
-	private function getCode(SignRequest $signRequest): DataResponse {
+	private function getCode(SignRequest $signRequest, ?string $uuid): DataResponse {
 		try {
 			$libreSignFile = $this->signFileService->getFile($signRequest->getFileId());
 			$this->validateHelper->fileCanBeSigned($libreSignFile);
@@ -400,6 +400,7 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 				identifyMethodName: $this->request->getParam('identifyMethod', ''),
 				signMethodName: $this->request->getParam('signMethod', ''),
 				identify: $this->request->getParam('identify', ''),
+				uuid: $uuid,
 			);
 			$message = $this->l10n->t('Verification code sent.');
 			$statusCode = Http::STATUS_OK;

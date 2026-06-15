@@ -65,7 +65,7 @@ class EmailToken extends AbstractSignatureMethod implements IToken {
 	}
 
 	#[\Override]
-	public function requestCode(string $identifier, string $method): void {
+	public function requestCode(string $identifier, string $method, ?string $uuid): void {
 		$signRequestMapper = $this->identifyService->getSignRequestMapper();
 		$signRequest = $signRequestMapper->getById($this->getEntity()->getSignRequestId());
 		$displayName = $signRequest->getDisplayName();

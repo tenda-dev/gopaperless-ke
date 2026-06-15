@@ -1209,6 +1209,7 @@ class SignFileService {
 		string $identifyMethodName,
 		string $signMethodName,
 		string $identify = '',
+		string $uuid = '',
 	): void {
 		$identifyMethods = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequest->getId());
 		if (empty($identifyMethods[$identifyMethodName])) {
@@ -1223,7 +1224,7 @@ class SignFileService {
 			}
 			/** @var IToken $signatureMethod */
 			$identifier = $identify ?: $identifyMethod->getEntity()->getIdentifierValue();
-			$signatureMethod->requestCode($identifier, $identifyMethod->getEntity()->getIdentifierKey());
+			$signatureMethod->requestCode($identifier, $identifyMethod->getEntity()->getIdentifierKey(), $uuid);
 			return;
 		}
 		throw new LibresignException($this->l10n->t('Sending authorization code not enabled.'));

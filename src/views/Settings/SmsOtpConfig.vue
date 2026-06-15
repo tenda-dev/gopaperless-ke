@@ -9,15 +9,21 @@
 			</p>
 
 			<div class="row">
-				<NcTextArea v-model="tiaraApiKey" :label="t('libresign', 'Tiara API Key Username')"
+				<NcTextArea
+					v-model="tiaraApiKey"
+					:label="t('libresign', 'Tiara API Key')"
 					:placeholder="t('libresign', 'Your Tiara API Key')"
-					@input="saveAppConfigValue('tiara_api_key', tiaraApiKey)" />
+					@input="saveAppConfigValue('tiara_api_key', tiaraApiKey)"
+				/>
 			</div>
 
 			<div class="row">
-				<NcTextArea v-model="tiaraSenderId" :label="t('libresign', 'Tiara Sender Id')"
-					:placeholder="t('libresign', 'Your Tiara Sender ID')" type="password"
-					@input="saveAppConfigValue('tiara_sender_id', tiaraSenderId)" />
+				<NcTextArea
+					v-model="tiaraSenderId"
+					:label="t('libresign', 'Tiara Sender Id')"
+					:placeholder="t('libresign', 'Your Tiara Sender ID')"
+					@input="saveAppConfigValue('tiara_sender_id', tiaraSenderId)"
+				/>
 			</div>
 		</div>
 		<div v-else>
@@ -36,7 +42,7 @@ import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 
 export default {
-	name: 'SmsToken',
+	name: 'SmsOtpConfig',
 	components: {
 		NcSettingsSection,
 		NcCheckboxRadioSwitch,

@@ -122,6 +122,11 @@ class Admin implements ISettings {
 		// PAYMENT VERIFICATION DRIVER SETTINGS
 		$this->initialState->provideInitialState('payment_verification_dispatcher', $this->getPaymentVerificationDispatcherInitialState());
 
+		// WEBHOOK OTP CONFIG
+		$this->initialState->provideInitialState('webhook_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'webhook_otp_enabled', false));
+		$this->initialState->provideInitialState('webhook_otp_url', $this->appConfig->getValueString(Application::APP_ID, 'webhook_otp_url', ''));
+		$this->initialState->provideInitialState('webhook_otp_shared_secret', $this->appConfig->getValueString(Application::APP_ID, 'webhook_otp_shared_secret', ''));
+
 		return new TemplateResponse(Application::APP_ID, 'admin_settings');
 	}
 
