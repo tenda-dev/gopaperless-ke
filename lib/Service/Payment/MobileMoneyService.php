@@ -72,7 +72,7 @@ final class MobileMoneyService
 					/**
 					 * Selection handled at service level
 					 */
-					$options = null;
+					$options = [];
 
 					if ($route->requiresUserSelection()) {
 						$options = $this->getMobileOptions($result->providerReference, $route->country);

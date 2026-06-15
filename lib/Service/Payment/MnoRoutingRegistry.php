@@ -503,7 +503,6 @@ class MnoRoutingRegistry
 			self::FORCE_AMBIGUOUS_TESTING &&
 			$region === 'KE' &&
 			$carrier !== null &&
-			str_contains($carrier, 'mpesa') &&
 			$capability === PaymentCapability::MOBILE_MONEY;
 
 		$region  = $region  ? strtoupper(trim($region))  : null;
