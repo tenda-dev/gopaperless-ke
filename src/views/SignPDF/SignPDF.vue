@@ -194,7 +194,6 @@ function parsePdfFetchError(value: unknown): PdfFetchError {
 	) {
 		return {}
 	}
-
 	return {
 		errors: value.errors
 			.map((error): SignError | null => {

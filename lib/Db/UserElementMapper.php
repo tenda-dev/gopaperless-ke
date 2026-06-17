@@ -26,7 +26,15 @@ class UserElementMapper extends QBMapper {
 
 	private function getQueryBuilder(array $data): IQueryBuilder {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('ue.*')
+		$qb->select(
+				'ue.id',
+				'ue.type',
+				'ue.node_id',
+				'ue.user_id',
+				'ue.starred',
+				'ue.created_at',
+				'ue.metadata',
+			)
 			->from($this->getTableName(), 'ue');
 
 		if (isset($data['id'])) {
