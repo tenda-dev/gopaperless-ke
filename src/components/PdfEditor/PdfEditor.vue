@@ -19,7 +19,8 @@
 			:style="toolbarStyleVars"
 			@pdf-elements:end-init="endInit"
 			@pdf-elements:object-click="handleObjectClick"
-			@pdf-elements:delete-object="handleDeleteObject">
+			@pdf-elements:delete-object="handleDeleteObject"
+			@pdf-elements:adding-ended="handleAddingEnded">
 			<template #actions="slotProps">
 				<slot name="actions" v-bind="slotProps">
 					<SignerMenu
@@ -149,6 +150,7 @@ const emit = defineEmits<{
 	(event: 'pdf-editor:on-delete-signer', payload: VisibleElementRecord): void
 	(event: 'pdf-editor:object-click', payload: Record<string, unknown>): void
 	(event: 'pdf-editor:signer-added'): void
+	(event: 'pdf-editor:adding-ended', payload: any): void
 }>()
 
 const pdfElements = ref<PdfElementsInstance | null>(null)
@@ -230,6 +232,10 @@ function handleDeleteObject({ object }: { object?: PdfEditorObject }) {
 
 function handleObjectClick(event: Record<string, unknown>) {
 	emit('pdf-editor:object-click', event)
+}
+
+function handleAddingEnded(event: Record<string, unknown>) {
+    emit('pdf-editor:adding-ended', event)
 }
 
 function getSignerLabel(signer: SignerSummaryRecord | SignerDetailRecord | null | undefined) {
