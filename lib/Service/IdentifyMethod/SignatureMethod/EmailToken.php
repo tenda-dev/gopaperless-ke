@@ -72,7 +72,7 @@ class EmailToken extends AbstractSignatureMethod implements IToken {
 		if ($identifier === $displayName) {
 			$displayName = '';
 		}
-		$code = $this->tokenService->sendCodeByEmail($identifier, $displayName);
+		$code = $this->tokenService->sendCodeByEmail($identifier, $displayName, $uuid);
 		$this->getEntity()->setCode($code);
 		$this->identifyService->save($this->getEntity());
 	}

@@ -77,7 +77,7 @@
 					<NcButton v-if="canSave"
 						:variant="variantOfSaveButton"
 						:wide="true"
-						:disabled="!!signerSelected || !pdfReady"
+						:disabled="!!signerSelected || !pdfReady || loading"
 						:class="{
 							disabled: signerSelected
 						}"
@@ -88,7 +88,7 @@
 					<NcButton v-if="canSign && !signerSelected"
 						:variant="variantOfSignButton"
 						:wide="true"
-						:disabled="!!signerSelected || !pdfReady"
+						:disabled="!!signerSelected || !pdfReady || loading"
 						@click="goToSign">
 						{{ t('libresign', 'Sign') }}
 					</NcButton>

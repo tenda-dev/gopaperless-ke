@@ -19,7 +19,8 @@
 			:style="toolbarStyleVars"
 			@pdf-elements:end-init="endInit"
 			@pdf-elements:object-click="handleObjectClick"
-			@pdf-elements:delete-object="handleDeleteObject">
+			@pdf-elements:delete-object="handleDeleteObject"
+			@pdf-elements:adding-ended="handleAddingEnded">
 			<template #actions="slotProps">
 				<slot name="actions" v-bind="slotProps">
 					<SignerMenu
@@ -280,10 +281,13 @@ function getTotalObjectsCount() {
 	}, 0)
 }
 
-function handleAddingEnded(event: Event) {
-	emit('pdf-editor:adding-ended', {
-		reason: (event as CustomEvent)?.detail?.reason,
-	})
+function handleAddingEnded(event: {
+    reason: 'placed' | 'cancelled'
+    object?: unknown
+    docIndex?: number
+    pageIndex?: number
+}) {
+    emit('pdf-editor:adding-ended', event)
 }
 function startAddingSigner(signer: SignerSummaryRecord | SignerDetailRecord | null | undefined, size: { width?: number, height?: number }) {
 	if (!pdfElements.value || !size?.width || !size?.height) {
