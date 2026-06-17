@@ -69,6 +69,7 @@
     "vue-advanced-cropper": "^2.8.9",
     "vue-codemirror6": "^1.5.1",
     "vue-router": "^5.0.4",
+    "vue-sonner": "^2.0.9",
     "vuedraggable": "^4.1.0"
   },
   "browserslist": [

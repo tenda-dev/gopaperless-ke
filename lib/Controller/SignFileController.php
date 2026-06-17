@@ -289,24 +289,6 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 	#[PublicPage]
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}/code', requirements: ['apiVersion' => '(v1)'])]
-	public function getCodeUsingUuid(string $uuid, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
-		try {
-			$signRequest = $this->signRequestMapper->getBySignerUuidAndUserId($uuid);
-		} catch (\Throwable) {
-			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
-		}
-		return $this->getCode($signRequest, $signRequest->getUuid());
-	}
-
-	/**
-	 * @deprecated Use getCodeUsingUuid() instead. Kept for backward compatibility.
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[RequireSigner]
-	#[PublicPage]
-	#[OpenAPI(tags: ['signing'])]
-	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}/code', requirements: ['apiVersion' => '(v1)'])]
 	public function requestCodeBySignerUuid(string $uuid, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
 		try {
 			$signRequest = $this->signRequestMapper->getBySignerUuidAndUserId($uuid);
