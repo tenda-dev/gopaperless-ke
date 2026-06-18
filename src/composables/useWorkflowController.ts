@@ -339,16 +339,9 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	function normalizeSignatureFlow(flow: unknown): SignatureFlowValue | null {
-		if (
-			flow === 'none'
-			|| flow === 'parallel'
-			|| flow === 'ordered_numeric'
-			|| flow === 0
-			|| flow === 1
-			|| flow === 2
-		) {
-			return flow as SignatureFlowValue
-		}
+		if (flow === 0 || flow === 'none') return 'none'
+		if (flow === 1 || flow === 'parallel') return 'parallel'
+		if (flow === 2 || flow === 'ordered_numeric') return 'ordered_numeric'
 		return null
 	}
 
@@ -602,7 +595,7 @@ export function useWorkflowController(
 		}
 		const flow = normalizeSignatureFlow(f.signatureFlow)
 		preserveOrder.value =
-			(flow === 'ordered_numeric' || flow === 2)
+			flow === 'ordered_numeric'
 			&& !isAdminFlowForced.value
 	}
 

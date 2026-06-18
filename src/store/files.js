@@ -58,6 +58,7 @@ import { FILE_STATUS } from '../constants.js'
  * 	me?: boolean
  * 	signed?: string | null | boolean | unknown[]
  * 	sign_uuid?: string | null
+ * 	sign_request_uuid?: string | null
  * }} EditableSignerDraft
  */
 
@@ -784,7 +785,8 @@ const _filesStore = defineStore('files', () => {
 		}
 
 		const flow = selectedFile?.signatureFlow
-		const isOrderedNumeric = flow === 'ordered_numeric' || flow === 2
+		const normalizedFlow = ({ 0: 'none', 1: 'parallel', 2: 'ordered_numeric' }[flow]) ?? flow
+		const isOrderedNumeric = normalizedFlow === 'ordered_numeric'
 		if (!isOrderedNumeric) {
 			return true
 		}
