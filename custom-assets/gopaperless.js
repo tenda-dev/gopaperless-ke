@@ -14,22 +14,22 @@
 		{
 			name: "Facebook",
 			url: "https://web.facebook.com/tendaworld/",
-			icon: "/apps-extra/libresign/img/facebook.png",
+			icon: OC.filePath('libresign', '', 'img/facebook.png'),
 		},
 		{
 			name: "TikTok",
 			url: "https://www.tiktok.com/@tendaworld",
-			icon: "/apps-extra/libresign/img/tiktok.png",
+			icon: OC.filePath('libresign', '', 'img/tiktok.png'),
 		},
 		{
 			name: "X",
 			url: "https://x.com/tenda_world",
-			icon: "/apps-extra/libresign/img/x.png",
+			icon: OC.filePath('libresign', '', 'img/x.png'),
 		},
 		{
 			name: "LinkedIn",
 			url: "https://www.linkedin.com/company/tenda-world/",
-			icon: "/apps-extra/libresign/img/linkedin.png",
+			icon: OC.filePath('libresign', '', 'img/linkedin.png'),
 		},
 	]
 

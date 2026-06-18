@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+/**
+ * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 
 namespace OCA\Libresign\Service\Payment;
 
@@ -31,7 +36,6 @@ class DarajaService {
 	 * Daraja API configuration
 	 * TODO: Should be moved to config/env
 	 */
-	private string $env = 'test'; // dev | test | prod
 
 	public function __construct(
 		IClientService $clientService,
@@ -494,49 +498,24 @@ class DarajaService {
 	}
 
 	private function getConfig(): array {
-		return match ($this->env) {
-			'dev' => $this->getDevConfig(),
-			'test' => $this->getTestConfig(),
-			'prod' => $this->getProdConfig(),
-			default => throw new \RuntimeException('Invalid environment'),
-		};
-    }
+		$baseUrl = $this->appConfig->getValueString(Application::APP_ID, 'daraja_base_url', '');
+		$consumerKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_key', '');
+		$consumerSecret = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', '');
+		$passKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', '');
+		$shortCode = $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', '');
+		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
-	private function getTestConfig(): array {
-		$callbackBaseUrl = $this->appConfig->getValueString(
-			Application::APP_ID,
-			'gopaperless_callback_base_url'
-		);
+		if ($baseUrl === '' || $consumerKey === '' || $consumerSecret === '' || $passKey === '' || $shortCode === '' || $callbackBaseUrl === '') {
+			throw new \RuntimeException('Daraja payment configuration is incomplete');
+		}
 
 		return [
-			'baseUrl' => 'https://sandbox.safaricom.co.ke',
-			'consumerKey' => 'QVNGIwcP7vT9m0ZS4SGmnw7x1o8MGuiAY2UiGUrRMAXJH9aY',
-			'consumerSecret' => 'LYp6RpUTAK8eGGTM1oA5RwMYhkCNA2qS23WalsX21z6kSe0h4PlzjC1op3gxkXeD',
-			'passKey' => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-			'shortCode' => '174379',
+			'baseUrl' => $baseUrl,
+			'consumerKey' => $consumerKey,
+			'consumerSecret' => $consumerSecret,
+			'passKey' => $passKey,
+			'shortCode' => $shortCode,
 			'callbackBaseUrl' => $callbackBaseUrl,
-		];
-	}
-
-	private function getDevConfig(): array {
-		return [
-			'baseUrl' => 'https://api.safaricom.co.ke',
-			'consumerKey' => '4iO9OayobxUQBtvLkYUsvTbdwLyywi8C',
-			'consumerSecret' => 'QQVC4CfgWzDjKmCZ',
-			'passKey' => 'bd8c94609d24d5c5fad41b0a45dd6dc0cf904f55488e86031c71a85b0962fd59',
-			'shortCode' => '4043687',
-			'callbackBaseUrl' => $callbackBaseUrl ?? 'https://gopaperless.dev.tenda.world',
-		];
-    }
-
-	private function getProdConfig(): array {
-		return [
-			'baseUrl' => 'https://api.safaricom.co.ke',
-			'consumerKey' => '4iO9OayobxUQBtvLkYUsvTbdwLyywi8C',
-			'consumerSecret' => 'QQVC4CfgWzDjKmCZ',
-			'passKey' => 'bd8c94609d24d5c5fad41b0a45dd6dc0cf904f55488e86031c71a85b0962fd59',
-			'shortCode' => '4043687',
-			'callbackBaseUrl' => $callbackBaseUrl ?? 'https://gopaperless.dev.tenda.world',
 		];
     }
 }

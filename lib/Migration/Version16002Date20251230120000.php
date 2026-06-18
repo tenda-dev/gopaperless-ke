@@ -59,8 +59,15 @@ class Version16002Date20251230120000 extends SimpleMigrationStep {
 	}
 
 	private function backupUserElementTable(): void {
+		$folder = $this->appData->getFolder('/');
+		$filename = 'backup-table-libresign_user_element_Version16002Date20251230120000.csv';
+
+		if ($folder->fileExists($filename)) {
+			$folder->getFile($filename)->delete();
+		}
+
 		$qb = $this->connection->getQueryBuilder();
-		$qb->select('*')
+		$qb->select('id', 'file_id')
 			->from('libresign_user_element')
 			->orderBy('id');
 
@@ -71,8 +78,7 @@ class Version16002Date20251230120000 extends SimpleMigrationStep {
 			return;
 		}
 
-		$folder = $this->appData->getFolder('/');
-		$file = $folder->newFile('backup-table-libresign_user_element_Version16002Date20251230120000.csv');
+		$file = $folder->newFile($filename);
 		$fp = $file->write();
 
 		fputcsv($fp, array_keys($row));

@@ -10,7 +10,8 @@
 
 			<div class="row">
 				<NcTextArea v-model="tiaraApiKey" :label="t('libresign', 'Tiara API Key Username')"
-					:placeholder="t('libresign', 'Your Tiara API Key')"
+					:placeholder="tiaraApiKeySet ? t('libresign', '••••••••') : t('libresign', 'Your Tiara API Key')"
+					type="password"
 					@input="saveAppConfigValue('tiara_api_key', tiaraApiKey)" />
 			</div>
 
@@ -64,11 +65,12 @@ export default {
 				false
 			),
 
-			tiaraApiKey: loadState(
+			tiaraApiKeySet: loadState(
 				'libresign',
-				'tiara_api_key',
-				''
+				'tiara_api_key_set',
+				false
 			),
+			tiaraApiKey: '',
 
 			tiaraSenderId: loadState(
 				'libresign',
@@ -81,6 +83,9 @@ export default {
 		t,
 
 		saveAppConfigValue(key, value) {
+			if (!value) {
+				return
+			}
 			OCP.AppConfig.setValue('libresign', key, value)
 		},
 

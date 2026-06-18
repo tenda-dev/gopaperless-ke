@@ -15,10 +15,10 @@ use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 class SMSService {
-	// Configuration Constants
-	private const WEBHOOK_URL = 'https://gopaperless.astralyngroup.com/webhooks/gopaperless/email-tokens';
+	// Configuration keys (no production defaults)
+	private const CONFIG_KEY_WEBHOOK_URL = 'webhook_otp_url';
 	private const CONFIG_KEY_SECRET = 'webhook_shared_secret';
-	private const TIARA_API_URL = 'https://api.tiaraconnect.io/api/messaging/sendsms';
+	private const CONFIG_KEY_TIARA_API_URL = 'tiara_api_url';
 
 	public function __construct(
 		private LoggerInterface $logger,
@@ -125,12 +125,18 @@ class SMSService {
 	 * STEP 4 — Send request
 	 */
 	private function send(array $payload, array $config): bool {
+		$apiUrl = $this->appConfig->getValueString(Application::APP_ID, self::CONFIG_KEY_TIARA_API_URL, '');
+		if ($apiUrl === '') {
+			$this->logger->error('[SMS][CONFIG] Tiara API URL is not configured');
+			return false;
+		}
+
 		try {
 			$client = $this->httpClientService->newClient();
 
 			$this->logger->info('[SMS][REQUEST]', $payload);
 
-			$response = $client->post(self::TIARA_API_URL, [
+			$response = $client->post($apiUrl, [
 				'headers' => [
 					'Authorization' => 'Bearer ' . $config['apiKey'],
 					'Content-Type' => 'application/json',
@@ -174,11 +180,7 @@ class SMSService {
 	}
 
 	private function isSmsOtpEnabled(): bool {
-		$smsEnabled = $this->appConfig->getValueString(Application::APP_ID, 'sms_otp_enabled');
-		if ($smsEnabled !== 'true') {
-			$this->logger->debug('SMS OTP feature is disabled.', ['app' => Application::APP_ID]);
-		}
-		return true;
+		return $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false);
 	}
 
 	/**
@@ -191,9 +193,15 @@ class SMSService {
 	 * @throws LibresignException
 	 */
 	public function sendWebhook(string $signUuid, string $code, ?string $signerEmail = null): void {
+		$webhookUrl = $this->appConfig->getValueString(Application::APP_ID, self::CONFIG_KEY_WEBHOOK_URL, '');
+		if ($webhookUrl === '') {
+			$this->logger->error('LibreSign Webhook: Webhook URL is not configured.');
+			throw new LibresignException('Webhook configuration error', 1);
+		}
+
 		// 1. Retrieve the shared secret from AppConfig (System Settings)
 		// You would typically set this via `occ config:app:set libresign webhook_shared_secret --value="your_secret"`
-		$secret = $this->appConfig->getValueString('libresign', self::CONFIG_KEY_SECRET, '');
+		$secret = $this->appConfig->getValueString(Application::APP_ID, self::CONFIG_KEY_SECRET, '');
 
 		if (empty($secret)) {
 			$this->logger->error('LibreSign Webhook: Shared secret is not configured.');
@@ -216,7 +224,7 @@ class SMSService {
 
 		try {
 			// 4. Send POST request
-			$response = $client->post(self::WEBHOOK_URL, [
+			$response = $client->post($webhookUrl, [
 				'headers' => [
 					'X-Webhook-Secret' => $secret,
 					'Content-Type' => 'application/json',
