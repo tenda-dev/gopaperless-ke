@@ -71,7 +71,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	/**
 	 * Create account to sign a document
 	 *
-	 * @param string $tuuid Sign request uuid to allow account creation
+	 * @param string $uuid Sign request uuid to allow account creation
 	 * @param string $email email to the new account
 	 * @param string $password the password to then new account
 	 * @param string|null $signPassword The password to create certificate
@@ -100,13 +100,17 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 				'signPassword' => $signPassword,
 				'phoneNumber' => $phoneNumber,
 			];
-			$data = $this->accountService->validateCreateToSign($data);
+			$validated = $this->accountService->validateCreateToSign($data);
 
-			$fileToSign = $this->accountService->getFileByUuid($uuid);
-			$signRequest = $this->accountService->getSignRequestByUuid($uuid);
+			$email = $validated['user']['identify']['email'];
+			$phoneNumber = $validated['phoneNumber'] ?? null;
 
-			$this->accountService->createToSign($uuid, $email, $password, $signPassword, $data['phoneNumber']);
-			$data = [
+			// Retrieved during validation to avoid duplicate lookups
+			$fileToSign = $validated['file'];
+			$signRequest = $validated['signRequest'];
+
+			$this->accountService->createToSign($uuid, $email, $password, $signPassword, $phoneNumber);
+			$response = [
 				'message' => $this->l10n->t('Success'),
 				'action' => JSActions::ACTION_SIGN,
 				'pdf' => [
@@ -118,7 +122,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 
 			$loginData = new LoginData(
 				$this->request,
-				trim($email),
+				$email,
 				$password
 			);
 			$this->loginChain->process($loginData);
@@ -132,9 +136,73 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 			);
 		}
 		return new DataResponse(
-			$data,
+			$response,
 			Http::STATUS_OK
 		);
+	}
+
+
+	/**
+	 * Create a standalone GoPaperless account.
+	 *
+	 * This endpoint is intended for onboarding, testing and future
+	 * self-registration flows. It creates a Nextcloud account,
+	 * optionally stores a validated phone number, and sends the
+	 * standard new-user notification email when enabled.
+	 *
+	 * Unlike createToSign(), this endpoint does not create signing
+	 * certificates, modify signing requests, or automatically
+	 * authenticate the newly created user.
+	 *
+	 * @param string $email Email address for the new account.
+	 * @param string $password Password for the new account.
+	 * @param string|null $phoneNumber Optional phone number in E.164 format.
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{message:string,email:string,uid:string}, array{}>
+	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, array{message:string}, array{}>
+	 *
+	 * 200: Account created successfully.
+	 * 422: Validation failed or account creation could not be completed.
+	 */
+	#[NoAdminRequired]
+	#[CORS]
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[UseSession]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/account/create-only',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function create(
+		string $email,
+		string $password,
+		?string $phoneNumber = null
+	): DataResponse {
+		try {
+			$email = trim(strtolower($email));
+			$phoneNumber = $phoneNumber !== null
+				? trim($phoneNumber)
+				: null;
+
+			$response = $this->accountService->createOnly(
+				$email,
+				$password,
+				$phoneNumber,
+			);
+
+			return new DataResponse(
+				$response,
+				Http::STATUS_OK
+			);
+		} catch (\Throwable $e) {
+			return new DataResponse(
+				[
+					'message' => $e->getMessage(),
+				],
+				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
+		}
 	}
 
 	/**
