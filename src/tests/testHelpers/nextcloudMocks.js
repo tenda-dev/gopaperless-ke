@@ -20,6 +20,7 @@
 import { vi } from 'vitest'
 
 global.appName = 'libresign'
+global.appVersion = '1.0'
 
 global.OC = {
 	requestToken: 'test-request-token',

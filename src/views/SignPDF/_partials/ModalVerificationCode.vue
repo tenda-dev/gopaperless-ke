@@ -70,36 +70,36 @@
 		</div>
 
 		<!-- Step 3: Payment processing (common) -->
-		<!-- <div v-else-if="currentSigner?.sign_uuid && currentSigner?.signRequestId && identityVerified && !paymentCompleted" class="step-content">
+		<div v-else-if="paymentRequired && identityVerified && !paymentCompleted" class="step-content">
 			<PaymentStep
 				:document="{
 					id: signStore.document.id,
-					name: signStore.document.name
+					name: signStore.document.name,
 				}"
 				:signer="{
 					email: currentSigner?.email,
-					name: currentSigner?.displayName
+					name: currentSigner?.displayName,
 				}"
-				:sign-request-id="String(currentSigner?.signRequestId)"
-				:sign-uuid="currentSigner?.sign_uuid"
+				:sign-request-id="paymentSigner!.signRequestId"
+				:sign-uuid="paymentSigner!.sign_uuid"
+				:product-code="signStore.productCode ?? ''"
 				:modal-mode="mode === 'email' ? 'emailToken' : 'token'"
-				@payment-success="onPaymentSuccess"
-			/>
-        </div> -->
+				@payment-success="onPaymentSuccess" />
+		</div>
 
-		<!-- Step 4: Signature confirmation (common) -->
-		<!-- <div v-else-if="identityVerified && paymentCompleted" class="step-content">
+		<!-- Step 3/4: Signature confirmation (common) -->
+		<div v-else-if="identityVerified" class="step-content">
 			<div class="verification-success">
-				<p class="verification-message"> -->
+				<p class="verification-message">
 					<!-- TRANSLATORS: Success message shown after the signer's identity has been confirmed via a numeric one-time password (OTP) delivered through email, SMS, WhatsApp, Telegram, Signal, or XMPP. "identity" here means the system confirmed the signer is who they claim to be. -->
-					<!-- {{ t('libresign', 'Your identity has been verified.') }}
-				</p> -->
-				<!-- <p class="signature-ready"> -->
+					{{ t('libresign', 'Your identity has been verified.') }}
+				</p>
+				<p class="signature-ready">
 					<!-- TRANSLATORS: Follow-up message shown right after identity verification succeeds, inviting the signer to proceed with signing the document. -->
-					<!-- {{ t('libresign', 'You can now sign the document.') }} -->
-				<!-- </p>
+					{{ t('libresign', 'You can now sign the document.') }}
+				</p>
 			</div>
-		</div> -->
+		</div>
 
 		<template #actions>
 			<!-- Step 1 action (common button, mode-specific disabled logic) -->
@@ -140,9 +140,9 @@
 			<!-- Step 3 action happens in PaymentStep -->
 			<!-- On this file ../../../components/Payments/PaymentStep.vue -->
 
-			<!-- Step 4 action (common) -->
-			<!-- <NcButton
-				v-else-if="identityVerified && paymentCompleted"
+			<!-- Signature confirmation action (common) -->
+			<NcButton
+				v-else-if="identityVerified"
 				:disabled="loading"
 				type="submit"
 				variant="primary"
@@ -151,7 +151,7 @@
 					<NcLoadingIcon v-if="loading" :size="20" />
 				</template>
 				{{ t('libresign', 'Sign document') }}
-			</NcButton> -->
+			</NcButton>
 		</template>
 	</NcDialog>
 </template>
@@ -162,7 +162,7 @@ import {
 	mdiEmail,
 	mdiFormTextboxPassword,
 } from '@mdi/js'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import md5 from 'blueimp-md5'
 
@@ -181,6 +181,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { useSignStore } from '../../../store/sign.js'
 import { useSignMethodsStore } from '../../../store/signMethods.js'
 import { validateEmail } from '../../../utils/validators.js'
+import PaymentStep from '../../../components/Payments/PaymentStep.vue'
 
 const sanitizePhoneNumber = (val: string) => {
 	val = val.replace(/\D/g, '')
@@ -280,6 +281,7 @@ const loading = ref(false)
 const tokenLength = ref(loadState('libresign', 'token_length', 6))
 const token = ref('')
 const identityVerified = ref(false)
+const paymentCompleted = ref(false)
 const sendTo = ref('')
 const errorMessage = ref('')
 const newPhoneNumber = ref(props.phoneNumber || '')
@@ -294,6 +296,26 @@ const step1Active = computed(() => {
 
 const step2Active = computed(() => !step1Active.value && !identityVerified.value)
 
+const paymentRequired = computed(() => {
+	const signer = currentSigner.value
+	return Boolean(signer?.sign_uuid && signer?.signRequestId)
+})
+
+const paymentSigner = computed(() => {
+	const signer = currentSigner.value
+	if (!signer?.sign_uuid || !signer.signRequestId) {
+		return null
+	}
+	return {
+		signRequestId: signer.signRequestId,
+		sign_uuid: signer.sign_uuid,
+		email: signer.email,
+		displayName: signer.displayName,
+	}
+})
+
+const totalSteps = computed(() => paymentRequired.value ? 4 : 3)
+
 const dialogTitle = computed(() => {
 	if (step1Active.value) {
 		return props.mode === 'email'
@@ -307,15 +329,22 @@ const dialogTitle = computed(() => {
 })
 
 const progressText = computed(() => {
+	const steps = totalSteps.value
 	if (step1Active.value) {
 		return props.mode === 'email'
-			? t('libresign', 'Step 1 of 2 - Email verification')
-			: t('libresign', 'Step 1 of 2 - Identity verification')
+			? t('libresign', 'Step 1 of {steps} - Email verification', { steps })
+			: t('libresign', 'Step 1 of {steps} - Identity verification', { steps })
 	}
 	if (!identityVerified.value) {
-		return t('libresign', 'Step 2 of 2 - Code validation')
+		return t('libresign', 'Step 2 of {steps} - Code validation', { steps })
 	}
-	return t('libresign', 'Signing...')
+	if (paymentRequired.value && !paymentCompleted.value) {
+		return t('libresign', 'Step 3 of {steps} - Payment processing', { steps })
+	}
+	return t('libresign', 'Step {step} of {steps} - Signature confirmation', {
+		step: totalSteps.value,
+		steps,
+	})
 })
 
 const displayContact = computed(() => {
@@ -357,10 +386,8 @@ const activeTokenMethod = computed<TokenMethod | undefined>(() => {
 const activeIdentifyMethod = computed(() => signMethodsStore.settings[activeTokenMethod.value ?? '']?.identifyMethod)
 
 const currentSigner = computed(() => {
-	const signers = signStore.document.signers || []
-	const currentSigner = signers.find(s => s.me) || signers[0] || null
-	console.log('xxxxxxx Current signer:', currentSigner)
-	return currentSigner
+	const signers = signStore.document?.signers || []
+	return signers.find(s => s.me) || signers[0] || null
 })
 
 watch(token, (newToken) => {
@@ -397,6 +424,7 @@ function requestNewCode() {
 		token.value = ''
 	}
 	identityVerified.value = false
+	paymentCompleted.value = false
 }
 
 async function requestCode() {
@@ -471,9 +499,10 @@ function sendCode() {
 		return
 	}
 	identityVerified.value = true
+}
 
-	// immediately proceed with signing
-    signDocument()
+function onPaymentSuccess() {
+	paymentCompleted.value = true
 }
 
 function signDocument() {

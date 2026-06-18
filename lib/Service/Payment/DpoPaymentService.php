@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+/**
+ * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 
 namespace OCA\Libresign\Service\Payment;
 
@@ -34,7 +39,6 @@ class DpoPaymentService
 	private string $defaultCurrency = 'KES';
 	private IClientService $clientService;
 	private LoggerInterface $logger;
-	private string $env = 'test'; // dev | test | prod
 
 	protected IAppConfig $appConfig;
 
@@ -699,48 +703,22 @@ class DpoPaymentService
 
 	private function getConfig(): array
 	{
-		return match ($this->env) {
-			'dev' => $this->getDevConfig(),
-			'test' => $this->getTestConfig(),
-			'prod' => $this->getProdConfig(),
-			default => throw new \RuntimeException('Invalid environment'),
-		};
-	}
+		$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
+		$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
+		$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
+		$paymentUrl = $this->appConfig->getValueString(Application::APP_ID, 'dpo_payment_url', '');
+		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
-	private function getTestConfig(): array
-	{
-		$callbackBaseUrl = $this->appConfig->getValueString(
-			Application::APP_ID,
-			'gopaperless_callback_base_url'
-		);
+		if ($endpoint === '' || $companyToken === '' || $serviceId === '' || $paymentUrl === '' || $callbackBaseUrl === '') {
+			throw new RuntimeException('DPO payment configuration is incomplete');
+		}
+
 		return [
-			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
-			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
-			'serviceId' => '54842',
-			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
+			'endpoint' => $endpoint,
+			'companyToken' => $companyToken,
+			'serviceId' => $serviceId,
+			'paymentUrl' => $paymentUrl,
 			'callbackBaseUrl' => $callbackBaseUrl,
-		];
-	}
-
-	private function getDevConfig(): array
-	{
-		return [
-			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
-			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
-			'serviceId' => '54842',
-			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
-			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
-		];
-	}
-
-	private function getProdConfig(): array
-	{
-		return [
-			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
-			'companyToken' => '8D3DA73D-9D7F-4E09-96D4-3D44E7A83EA3',
-			'serviceId' => '69836',
-			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
-			'callbackBaseUrl' => 'https://gopaperless.dev.tenda.world',
 		];
 	}
 

@@ -501,9 +501,9 @@ const shouldHighlightSetupSignPositionsButton = computed(() => {
 })
 
 function normalizeSignatureFlow(flow: unknown): SignatureFlowValue | null {
-	if (flow === 'none' || flow === 'parallel' || flow === 'ordered_numeric' || flow === 0 || flow === 1 || flow === 2) {
-		return flow
-	}
+	if (flow === 0 || flow === 'none') return 'none'
+	if (flow === 1 || flow === 'parallel') return 'parallel'
+	if (flow === 2 || flow === 'ordered_numeric') return 'ordered_numeric'
 	return null
 }
 
@@ -852,7 +852,7 @@ function syncPreserveOrderWithFile() {
 
 	const flow = file.signatureFlow
 	const normalizedFlow = normalizeSignatureFlow(flow)
-	preserveOrder.value = (normalizedFlow === 'ordered_numeric' || normalizedFlow === 2) && !isAdminFlowForced.value
+	preserveOrder.value = normalizedFlow === 'ordered_numeric' && !isAdminFlowForced.value
 }
 
 async function ensureCurrentFileDetail(force = false) {

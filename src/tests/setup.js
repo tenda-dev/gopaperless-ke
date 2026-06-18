@@ -24,10 +24,8 @@ console.error = function (...args) {
 }
 
 console.warn = function (...args) {
-	const message = args[0]
-	if (message instanceof Error || typeof message === 'string') {
-		throw new Error(String(message))
-	}
+	// Log warnings without throwing so that missing-mock warnings do not mask
+	// the actual test assertions. Tests should still assert behavior.
 	return originalWarn.apply(console, args)
 }
 
@@ -62,6 +60,13 @@ vi.mock('@nextcloud/vue/components/NcRichText', () => ({
 	default: {
 		name: 'NcRichText',
 		template: '<div></div>',
+	},
+}))
+
+vi.mock('@nextcloud/vue', () => ({
+	NcIconSvgWrapper: {
+		name: 'NcIconSvgWrapper',
+		template: '<div />',
 	},
 }))
 

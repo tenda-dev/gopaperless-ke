@@ -34,6 +34,7 @@ import type {
 	IdentifyMethodSetting as IdentifyMethodConfig,
 	IdentifyMethodRecord,
 	SignatureFlowMode,
+	SignatureFlowValue,
 } from '../types'
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -310,11 +311,18 @@ export function useWorkflowState(): WorkflowStateRefs {
 
 	/* ── SIGNATURE FLOW ─────────────────────────────────────────────────────── */
 
-	const signatureFlow = computed(() => {
-		const flow = file.value?.signatureFlow
+	function normalizeSignatureFlow(flow: unknown): SignatureFlowValue | null {
+		if (flow === 0 || flow === 'none') return 'none'
+		if (flow === 1 || flow === 'parallel') return 'parallel'
+		if (flow === 2 || flow === 'ordered_numeric') return 'ordered_numeric'
+		return null
+	}
 
-		if (flow === 'ordered_numeric' || flow === 2) return 'ordered_numeric'
-		if (flow === 'parallel' || flow === 1) return 'parallel'
+	const signatureFlow = computed(() => {
+		const flow = normalizeSignatureFlow(file.value?.signatureFlow)
+
+		if (flow === 'ordered_numeric') return 'ordered_numeric'
+		if (flow === 'parallel') return 'parallel'
 
 		// Fall back to admin-configured flow
 		if (adminSignatureFlow && adminSignatureFlow !== 'none') {

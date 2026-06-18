@@ -2,7 +2,7 @@
 	<NcSettingsSection :name="name" :description="description">
 		<div class="row">
 			<NcTextArea v-model="baseUrl" :label="t('libresign', 'Daraja Base URL')"
-				:placeholder="t('libresign', 'https://sandbox.safaricom.co.ke')"
+				:placeholder="t('libresign', 'https://api.daraja.example.com')"
 				@input="saveAppConfigValue('daraja_base_url', baseUrl)" />
 		</div>
 
@@ -13,8 +13,8 @@
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="consumerSecret" :label="t('libresign', 'Consumer Secret')" type="text"
-				:placeholder="t('libresign', 'Your Daraja Consumer Secret')"
+			<NcTextArea v-model="consumerSecret" :label="t('libresign', 'Consumer Secret')" type="password"
+				:placeholder="consumerSecretSet ? t('libresign', '••••••••') : t('libresign', 'Your Daraja Consumer Secret')"
 				@input="saveAppConfigValue('daraja_consumer_secret', consumerSecret)" />
 		</div>
 
@@ -24,13 +24,13 @@
 		</div>
 
 		<div class="row">
-			<NcTextArea v-model="passKey" :label="t('libresign', 'Pass Key')" type="text"
-				:placeholder="t('libresign', 'Your Daraja Pass Key')"
+			<NcTextArea v-model="passKey" :label="t('libresign', 'Pass Key')" type="password"
+				:placeholder="passKeySet ? t('libresign', '••••••••') : t('libresign', 'Your Daraja Pass Key')"
 				@input="saveAppConfigValue('daraja_pass_key', passKey)" />
 		</div>
 		<div class="row">
 			<NcTextArea v-model="goPaperlessCallbackUrl" :label="t('libresign', 'GoPaperless Callback Base Url')"
-				type="text" :placeholder="t('libresign', 'Daraja GoPaperless Callback Base Url')"
+				type="text" :placeholder="t('libresign', 'https://your-domain.example.com/webhooks/gopaperless')"
 				@input="saveAppConfigValue('gopaperless_callback_base_url', goPaperlessCallbackUrl)" />
 		</div>
 
@@ -57,20 +57,22 @@ export default {
 
 			baseUrl: loadState('libresign', 'daraja_base_url', ''),
 			consumerKey: loadState('libresign', 'daraja_consumer_key', ''),
-			consumerSecret: loadState('libresign', 'daraja_consumer_secret', ''),
+			consumerSecretSet: loadState('libresign', 'daraja_consumer_secret_set', false),
+			consumerSecret: '',
 			shortCode: loadState('libresign', 'daraja_shortcode', ''),
-			passKey: loadState('libresign', 'daraja_pass_key', ''),
+			passKeySet: loadState('libresign', 'daraja_pass_key_set', false),
+			passKey: '',
 			goPaperlessCallbackUrl: loadState('libresign', 'gopaperless_callback_base_url', ''),
 		}
 	},
 	methods: {
 		t,
 		saveAppConfigValue(key, value) {
+			if (!value) {
+				return
+			}
 			OCP.AppConfig.setValue('libresign', key, value)
 		},
 	},
-	mounted() {
-		console.log('daraja_base_url', this.baseUrl)
-	}
 }
 </script>

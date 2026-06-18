@@ -878,7 +878,7 @@ onMounted(async () => {
 	])
 
 	// Retry after payment redirect
-	if (route.query.retrySign === 'true') {
+	if (route?.query?.retrySign === 'true') {
 		await nextTick()
 
 		notifyInfo({ message: 'Payment successful. Proceeding with signing...', important: true })
@@ -906,14 +906,14 @@ onMounted(async () => {
 		}
 
 		// Clean query
-		router.replace({ query: {} })
+		router?.replace({ query: {} })
 	}
 
 	// handle payment failure
-	if (route.query.paymentFailed === 'true') {
+	if (route?.query?.paymentFailed === 'true') {
 		notifyError({ message: 'Payment failed. Please try again.', important: true })
 
-		router.replace({ query: {} })
+		router?.replace({ query: {} })
 	}
 
 	loading.value = false

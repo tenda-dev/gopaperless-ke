@@ -115,6 +115,9 @@ class PageController extends AEnvironmentPageAwareController {
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
 
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
+
 		if (class_exists(LoadViewer::class)) {
 			$this->eventDispatcher->dispatchTyped(new LoadViewer());
 		}
@@ -160,6 +163,9 @@ class PageController extends AEnvironmentPageAwareController {
 	public function incomplete(): TemplateResponse {
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
+
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
 		$response = new TemplateResponse(Application::APP_ID, 'main');
 		return $response;
 	}
@@ -177,6 +183,9 @@ class PageController extends AEnvironmentPageAwareController {
 	public function incompleteP(): TemplateResponse {
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
+
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
 		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_BASE);
 		return $response;
 	}
@@ -586,6 +595,9 @@ class PageController extends AEnvironmentPageAwareController {
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
+
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
 		$response = new TemplateResponse(Application::APP_ID, 'reset_password');
 
 		return $response;
