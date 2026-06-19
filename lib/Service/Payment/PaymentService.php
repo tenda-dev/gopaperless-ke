@@ -506,7 +506,7 @@ class PaymentService
 		 * VALIDATE PROVIDER RESPONSE
 		 */
 		if (!$res->providerReference || !$res->flow) {
-			throw new RuntimeException('Invalid provider response');
+			throw new RuntimeException('Invalid provider response: ' . ($res->message ?? 'empty result'));
 		}
 
 		/**

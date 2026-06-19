@@ -503,11 +503,29 @@ class DarajaService {
 		$consumerSecret = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', '');
 		$passKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', '');
 		$shortCode = $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', '');
-		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
-		if ($baseUrl === '' || $consumerKey === '' || $consumerSecret === '' || $passKey === '' || $shortCode === '' || $callbackBaseUrl === '') {
-			throw new \RuntimeException('Daraja payment configuration is incomplete');
+		$missing = [];
+		if ($baseUrl === '') {
+			$missing[] = 'daraja_base_url';
 		}
+		if ($consumerKey === '') {
+			$missing[] = 'daraja_consumer_key';
+		}
+		if ($consumerSecret === '') {
+			$missing[] = 'daraja_consumer_secret';
+		}
+		if ($passKey === '') {
+			$missing[] = 'daraja_pass_key';
+		}
+		if ($shortCode === '') {
+			$missing[] = 'daraja_shortcode';
+		}
+
+		if (!empty($missing)) {
+			throw new \RuntimeException('Daraja payment configuration is incomplete: ' . implode(', ', $missing));
+		}
+
+		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
 		return [
 			'baseUrl' => $baseUrl,
@@ -517,5 +535,5 @@ class DarajaService {
 			'shortCode' => $shortCode,
 			'callbackBaseUrl' => $callbackBaseUrl,
 		];
-    }
+	}
 }
