@@ -67,6 +67,18 @@ final class MnoSuggestionValidatorService
 			'Vodacom' => [
 				'vodagh',
 			],
+			'Airtel' => [
+				'airtelgh',
+			],
+		],
+
+		'CI' => [
+			'MTN' => [
+				'mtnci',
+			],
+			'Orange' => [
+				'orangeci',
+			],
 		],
 
 		'MW' => [

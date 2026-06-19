@@ -69,6 +69,9 @@ class FxEngineService
 		'MWK' => '6.80',
 		'ZMW' => '0.17',
 		'ZWL' => '0.12',
+		'GHS' => '0.11',
+		'XOF' => '6.00',
+		'USD' => '0.0090',
 	];
 
 	private array $rateCache = [];
