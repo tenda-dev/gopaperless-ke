@@ -347,11 +347,11 @@ async function handleInitialStatePdfs(urls: string[]) {
 			const data = parsePdfFetchError(await response.json())
 			sidebarStore.hideSidebar()
 			if (data.errors?.length) {
-				signStore.errors = data.errors
+				setPdfLoadErrors(data.errors)
 			} else {
-				signStore.errors = [
+				setPdfLoadErrors([
 					{ message: t('libresign', 'File not found') },
-				]
+				])
 			}
 			return
 		}
