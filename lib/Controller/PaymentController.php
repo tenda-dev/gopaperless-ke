@@ -122,7 +122,7 @@ class PaymentController extends AEnvironmentAwareController
 				signRequestId: $signRequestId,
 				redirectUrl: $redirectUrl,
 				userId: $userId,
-				provider: null,
+				provider: PaymentProvider::tryFrom($provider),
 				productCode: $productCode,
 				paymentMethod: $methodEnum,
 				callbackUrl: $callbackUrl,

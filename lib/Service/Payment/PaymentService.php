@@ -274,6 +274,10 @@ class PaymentService
 			);
 		}
 
+		if ($dto->provider !== null) {
+			$route = $route->withPreferredProvider($dto->provider);
+		}
+
 		$this->logger->info('Starting payment', [
 			'sign_uuid' => $signUuid,
 			'sign_request_id' => $signRequestId,
@@ -1498,6 +1502,16 @@ class PaymentService
 			return $this->buildExistingPaymentResponse($payment);
 		}
 
+		$meta = $payment->getProviderMetadataObject();
+
+		if (!$meta) {
+			throw new RuntimeException('Missing payment metadata');
+		}
+
+		if ($meta->alreadyCharged) {
+			return $this->buildExistingPaymentResponse($payment);
+		}
+
 		if (
 			$payment->getDisplayAmount() === null ||
 			$payment->getDisplayCurrency() === null
@@ -1507,15 +1521,6 @@ class PaymentService
 
 		$displayAmountMinor = $payment->getDisplayAmount();
 		$displayCurrency = $payment->getDisplayCurrency();
-
-		/**
-		 * Extract metadata
-		 */
-		$meta = $payment->getProviderMetadataObject();
-
-		if (!$meta) {
-			throw new RuntimeException('Missing payment metadata');
-		}
 
 		$suggested = $meta->suggested;
 		$selection = $meta->selection;
@@ -1570,18 +1575,17 @@ class PaymentService
 		/**
 		 * STEP 4 — Persist instructions (if any)
 		 */
-		$meta = $payment->getProviderMetadataObject();
-
-
 		$providerPayload = $this->getProviderPayload($meta)
 			->withCharge(
 				$result->meta['providerPayload']['charge'] ?? []
 			);
 
+		$chargeSent = $result->isExecuting() || $result->isReconciling() || $result->isSuccess();
+
 		$meta = $meta->with(
 			updatedAt: $this->nowImmutable(),
 			providerPayload: $providerPayload,
-			alreadyCharged: true,
+			alreadyCharged: $meta->alreadyCharged || $chargeSent,
 			selected: $selected,
 			instructions: $result->meta['instructions'] ?? 'Check your phone and approve Phone STK Push'
 		);
