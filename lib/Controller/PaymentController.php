@@ -405,16 +405,6 @@ class PaymentController extends AEnvironmentAwareController
 				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
 			}
 
-			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
-
-			$storedPhone = $payment->getPhoneE164Digits();
-			if ($storedPhone !== null && $storedPhone !== $phone) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Phone number does not match the payment',
-				], Http::STATUS_BAD_REQUEST);
-			}
-
 			if (trim($reference) === '') {
 				return new DataResponse([
 					'success' => false,
@@ -440,6 +430,16 @@ class PaymentController extends AEnvironmentAwareController
 				return new DataResponse([
 					'success' => false,
 					'error' => 'Missing mobile provider country',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
+
+			$storedPhone = $payment->getPhoneE164Digits();
+			if ($storedPhone !== null && $storedPhone !== $phone) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Phone number does not match the payment',
 				], Http::STATUS_BAD_REQUEST);
 			}
 
