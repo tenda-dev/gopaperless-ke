@@ -274,7 +274,7 @@ class PaymentService
 			);
 		}
 
-		if ($dto->provider !== null) {
+		if ($dto->provider !== null && $capability === PaymentCapability::MOBILE_MONEY) {
 			$route = $route->withPreferredProvider($dto->provider);
 		}
 
