@@ -1121,7 +1121,6 @@ class AdminController extends AEnvironmentAwareController {
 	 * 200: Configuration saved successfully
 	 * 500: Internal server error
 	 */
-	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/daraja-config', requirements: ['apiVersion' => '(v1)'])]
 	public function setDarajaConfig(
@@ -1163,7 +1162,6 @@ class AdminController extends AEnvironmentAwareController {
 	 * 200: Configuration saved successfully
 	 * 500: Internal server error
 	 */
-	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/dpo-config', requirements: ['apiVersion' => '(v1)'])]
 	public function setDpoConfig(
@@ -1200,7 +1198,6 @@ class AdminController extends AEnvironmentAwareController {
 	 * 200: Configuration saved successfully
 	 * 500: Internal server error
 	 */
-	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/fx-config', requirements: ['apiVersion' => '(v1)'])]
 	public function setFxConfig(
