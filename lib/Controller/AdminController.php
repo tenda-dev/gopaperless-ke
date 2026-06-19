@@ -1191,6 +1191,10 @@ class AdminController extends AEnvironmentAwareController {
 	 */
 	private function setPaymentConfig(string $key, ?string $value, bool $sensitive = false): void {
 		if ($value === null || $value === '') {
+			// Do not delete secrets via a partial save; only non-sensitive keys can be cleared.
+			if ($sensitive) {
+				return;
+			}
 			$this->appConfig->deleteKey(Application::APP_ID, $key);
 			return;
 		}

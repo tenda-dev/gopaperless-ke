@@ -1858,6 +1858,23 @@ class PaymentService
 		return $this->paymentMapper->findById($payment->getId());
 	}
 
+	/**
+	 * Verify that the authenticated user owns the payment identified by the provider reference.
+	 *
+	 * @throws RuntimeException if the payment does not exist or the user is not the owner.
+	 */
+	public function assertPaymentOwnership(string $reference, string $userId): Payment
+	{
+		$payment = $this->fetchPaymentByProviderReference($reference);
+
+		$paymentUserId = $payment->getUserId();
+		if ($paymentUserId !== null && $paymentUserId !== $userId) {
+			throw new RuntimeException('Access Denied');
+		}
+
+		return $payment;
+	}
+
 	private function fetchByTransactionId(int $signRequestId): Payment
 	{
 		$payment = $this->paymentMapper->findLatestPendingByTransactionId($signRequestId);
