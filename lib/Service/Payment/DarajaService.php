@@ -13,6 +13,7 @@ use OCA\Libresign\AppInfo\Application;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IRequest;
+use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 
@@ -31,6 +32,7 @@ class DarajaService {
 	private LoggerInterface $logger;
 	private IRequest $request;
 	private IAppConfig $appConfig;
+	private IURLGenerator $urlGenerator;
 
 	/**
 	 * Daraja API configuration
@@ -42,11 +44,13 @@ class DarajaService {
 		LoggerInterface $logger,
 		IRequest $request,
 		IAppConfig $appConfig,
+		IURLGenerator $urlGenerator,
 	) {
 		$this->clientService = $clientService;
 		$this->logger = $logger;
 		$this->request = $request;
 		$this->appConfig = $appConfig;
+		$this->urlGenerator = $urlGenerator;
 	}
 
 	/**
@@ -330,8 +334,10 @@ class DarajaService {
 	 *
 	 * Priority:
 	 * 1. Manual override (ngrok/testing)
-	 * 2. Proxy headers (nginx/ngrok)
-	 * 3. Fallback to server host
+	 * 2. Config-driven base URL (admin UI)
+	 * 3. Proxy headers (nginx/ngrok)
+	 * 4. Nextcloud base URL
+	 * 5. Request host (last resort)
 	 */
 	private function getCallbackUrl(): string {
 
@@ -361,7 +367,7 @@ class DarajaService {
 		 * =========================================================
 		 *
 		 * Set via admin UI:
-		 * daraja_gopaperless_callback_base_url
+		 * gopaperless_callback_base_url
 		 *
 		 */
 		$configBaseUrl = trim($config['callbackBaseUrl'] ?? '');
@@ -389,13 +395,21 @@ class DarajaService {
 
 		/**
 		 * =========================================================
-		 * 4. Fallback (local development)
+		 * 4. Nextcloud base URL fallback
 		 * =========================================================
 		 *
-		 * Last resort when no config or proxy headers exist.
-		 * Usually:
-		 * - localhost
-		 * - docker internal network
+		 * Uses the configured Nextcloud base URL (overwritehost / trusted_domains).
+		 * Reliable behind reverse proxies where the request object cannot detect a host.
+		 */
+		$nextcloudBaseUrl = $this->urlGenerator->getBaseUrl();
+		if (!empty($nextcloudBaseUrl)) {
+			return rtrim($nextcloudBaseUrl, '/') . $callbackPath;
+		}
+
+		/**
+		 * =========================================================
+		 * 5. Request-host fallback (last resort)
+		 * =========================================================
 		 */
 		$host = $this->request->getServerHost();
 
