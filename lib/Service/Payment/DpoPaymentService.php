@@ -79,8 +79,8 @@ class DpoPaymentService
 
 		$config = $this->getConfig();
 
-		$companyToken = $config['companyToken'];
-		$serviceId = $config['serviceId'];
+		$companyToken = $this->escapeXml($config['companyToken']);
+		$serviceId = $this->escapeXml($config['serviceId']);
 		$paymentUrl = $config['paymentUrl'];
 		$callbackBaseUrl = $config['callbackBaseUrl'];
 		$callbackUrl = null;
@@ -125,20 +125,24 @@ class DpoPaymentService
 		 * Optional UX hints for DPO UI
 		 */
 		$defaultPaymentXml = $defaultPayment
-			? "<DefaultPayment>{$defaultPayment}</DefaultPayment>"
+			? "<DefaultPayment>" . $this->escapeXml($defaultPayment) . "</DefaultPayment>"
 			: '';
 
 		$defaultPaymentCountryXml = $defaultPaymentCountry
-			? "<DefaultPaymentCountry>{$defaultPaymentCountry}</DefaultPaymentCountry>"
+			? "<DefaultPaymentCountry>" . $this->escapeXml($defaultPaymentCountry) . "</DefaultPaymentCountry>"
 			: '';
 
 		/**
 		 * Escape user-controlled fields
 		 */
-		$escapedEmail = htmlspecialchars($userEmail, ENT_XML1, 'UTF-8');
-		$escapedRedirectUrl = htmlspecialchars($redirectUrlWithContext, ENT_XML1, 'UTF-8');
-		$callbackUrl = rtrim($callbackBaseUrl ?? '', '/') . self::DPO_WEBHOOK_PATH;
+		$escapedEmail = $this->escapeXml($userEmail);
+		$escapedRedirectUrl = $this->escapeXml($redirectUrlWithContext);
+		$escapedSignUuid = $this->escapeXml($signUuid);
+		$escapedAmount = $this->escapeXml((string)$amount);
+		$escapedCurrency = $this->escapeXml($currency);
+		$escapedCallbackUrl = $this->escapeXml(rtrim($callbackBaseUrl ?? '', '/') . self::DPO_WEBHOOK_PATH);
 		$serviceDate = date('Y/m/d H:i');
+		$escapedServiceDate = $this->escapeXml($serviceDate);
 
 		/**
 		 * XML REQUEST BODY
@@ -153,14 +157,14 @@ class DpoPaymentService
 			<Request>createToken</Request>
 
 			<Transaction>
-				<PaymentAmount>{$amount}</PaymentAmount>
-				<PaymentCurrency>{$currency}</PaymentCurrency>
-				<CompanyRef>{$signUuid}</CompanyRef>
+				<PaymentAmount>{$escapedAmount}</PaymentAmount>
+				<PaymentCurrency>{$escapedCurrency}</PaymentCurrency>
+				<CompanyRef>{$escapedSignUuid}</CompanyRef>
 
 				<customerEmail>{$escapedEmail}</customerEmail>
 
 				<RedirectURL>{$escapedRedirectUrl}</RedirectURL>
-				<BackURL>{$callbackUrl}</BackURL>
+				<BackURL>{$escapedCallbackUrl}</BackURL>
 
 				{$defaultPaymentXml}
 				{$defaultPaymentCountryXml}
@@ -170,7 +174,7 @@ class DpoPaymentService
 				<Service>
 					<ServiceType>{$serviceId}</ServiceType>
 					<ServiceDescription>GoPaperless</ServiceDescription>
-					<ServiceDate>{$serviceDate}</ServiceDate>
+					<ServiceDate>{$escapedServiceDate}</ServiceDate>
 				</Service>
 			</Services>
 
@@ -245,14 +249,16 @@ class DpoPaymentService
 
 		$config = $this->getConfig();
 
+		$companyToken = $this->escapeXml($config['companyToken']);
+
 		$xml = "
 		<API3G>
-			<CompanyToken>{$config['companyToken']}</CompanyToken>
+			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>ChargeTokenMobile</Request>
-			<TransactionToken>{$transactionToken}</TransactionToken>
-			<PhoneNumber>{$formattedPhone}</PhoneNumber>
-			<MNO>{$mno}</MNO>
-			<MNOcountry>{$mnoCountry}</MNOcountry>
+			<TransactionToken>" . $this->escapeXml($transactionToken) . "</TransactionToken>
+			<PhoneNumber>" . $this->escapeXml($formattedPhone) . "</PhoneNumber>
+			<MNO>" . $this->escapeXml($mno) . "</MNO>
+			<MNOcountry>" . $this->escapeXml($mnoCountry) . "</MNOcountry>
 		</API3G>";
 
 		$response = $this->sendRequest($xml);
@@ -336,7 +342,7 @@ class DpoPaymentService
 
 		$config = $this->getConfig();
 
-		$companyToken = $config['companyToken'];
+		$companyToken = $this->escapeXml($config['companyToken']);
 
 		$verifyTransaction = $acknowledge ? '1' : '0';
 
@@ -344,8 +350,8 @@ class DpoPaymentService
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>verifyToken</Request>
-			<TransactionToken>{$token}</TransactionToken>
-			<VerifyTransaction>{$verifyTransaction}</VerifyTransaction>
+			<TransactionToken>" . $this->escapeXml($token) . "</TransactionToken>
+			<VerifyTransaction>" . $this->escapeXml($verifyTransaction) . "</VerifyTransaction>
 		</API3G>";
 
 		$response = $this->sendRequest($xml);
@@ -473,13 +479,13 @@ class DpoPaymentService
 	public function getMobilePaymentOptions(string $transactionToken): array
 	{
 		$config = $this->getConfig();
-		$companyToken = $config['companyToken'];
+		$companyToken = $this->escapeXml($config['companyToken']);
 
 		$xml = "
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>GetMobilePaymentOptions</Request>
-			<TransactionToken>{$transactionToken}</TransactionToken>
+			<TransactionToken>" . $this->escapeXml($transactionToken) . "</TransactionToken>
 		</API3G>";
 
 		$response = $this->sendRequest($xml);
@@ -577,6 +583,26 @@ class DpoPaymentService
 	}
 
 	/**
+	 * Escape a string for safe inclusion in XML element text/attributes.
+	 */
+	private function escapeXml(string $value): string
+	{
+		return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+	}
+
+	/**
+	 * Redact the DPO CompanyToken from XML before logging.
+	 */
+	private function redactCompanyToken(string $xml): string
+	{
+		return preg_replace(
+			'/<CompanyToken>[^<]*<\/CompanyToken>/i',
+			'<CompanyToken>***REDACTED***</CompanyToken>',
+			$xml
+		) ?? $xml;
+	}
+
+	/**
 	 * Sends an XML request to the DPO API and returns the parsed XML response.
 	 * Throws exceptions on network errors or invalid responses.
 	 */
@@ -586,11 +612,10 @@ class DpoPaymentService
 		$client = $this->clientService->newClient();
 		$endpoint = $config['endpoint'];
 
-		// testing xml
+		// testing xml - redact secrets before logging
 		$this->logger->debug('DPO request XML', [
 			'endpoint' => $endpoint,
-			'xml' => $xml,
-			'config' => $config,
+			'xml' => $this->redactCompanyToken($xml),
 		]);
 
 		try {
