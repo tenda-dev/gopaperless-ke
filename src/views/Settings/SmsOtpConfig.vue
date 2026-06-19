@@ -9,21 +9,29 @@
 			</p>
 
 			<div class="row">
-				<NcTextArea
+				<NcPasswordField
 					v-model="tiaraApiKey"
 					:label="t('libresign', 'Tiara API Key')"
-					:placeholder="t('libresign', 'Your Tiara API Key')"
-					@input="saveAppConfigValue('tiara_api_key', tiaraApiKey)"
-				/>
+					:placeholder="tiaraApiKeySet
+						? t('libresign', 'API key is already set')
+						: t('libresign', 'Your Tiara API Key')"
+					@update:modelValue="saveAppConfigValue('tiara_api_key', tiaraApiKey)" />
 			</div>
 
 			<div class="row">
-				<NcTextArea
+				<NcTextField
+					v-model="tiaraApiUrl"
+					:label="t('libresign', 'Tiara API URL')"
+					:placeholder="t('libresign', 'https://api.tiaraconnect.io/api/messaging/sendsms')"
+					@update:modelValue="saveAppConfigValue('tiara_api_url', tiaraApiUrl)" />
+			</div>
+
+			<div class="row">
+				<NcTextField
 					v-model="tiaraSenderId"
 					:label="t('libresign', 'Tiara Sender Id')"
 					:placeholder="t('libresign', 'Your Tiara Sender ID')"
-					@input="saveAppConfigValue('tiara_sender_id', tiaraSenderId)"
-				/>
+					@update:modelValue="saveAppConfigValue('tiara_sender_id', tiaraSenderId)" />
 			</div>
 		</div>
 		<div v-else>
@@ -39,14 +47,16 @@ import { loadState } from '@nextcloud/initial-state'
 
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
-import NcTextArea from '@nextcloud/vue/components/NcTextArea'
+import NcTextField from '@nextcloud/vue/components/NcTextField'
+import NcPasswordField from '@nextcloud/vue/components/NcPasswordField'
 
 export default {
 	name: 'SmsOtpConfig',
 	components: {
 		NcSettingsSection,
 		NcCheckboxRadioSwitch,
-		NcTextArea,
+		NcTextField,
+		NcPasswordField,
 	},
 	data() {
 		const identifyMethods = loadState('libresign', 'identify_methods', [])
@@ -70,9 +80,16 @@ export default {
 				false
 			),
 
-			tiaraApiKey: loadState(
+			tiaraApiKey: '',
+			tiaraApiKeySet: loadState(
 				'libresign',
-				'tiara_api_key',
+				'tiara_api_key_set',
+				false
+			),
+
+			tiaraApiUrl: loadState(
+				'libresign',
+				'tiara_api_url',
 				''
 			),
 
@@ -102,5 +119,7 @@ export default {
 </script>
 
 <style scoped>
-/* Add any specific styling for this component here */
+.row {
+	margin-top: 16px;
+}
 </style>

@@ -101,6 +101,7 @@ class Admin implements ISettings {
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');
+		$this->initialState->provideInitialState('tiara_api_url', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_url', ''));
 		$this->initialState->provideInitialState('tiara_sender_id', $this->appConfig->getValueString(Application::APP_ID, 'tiara_sender_id', ''));
 
 		//	DPO API CONFIG
@@ -125,7 +126,7 @@ class Admin implements ISettings {
 		// WEBHOOK OTP CONFIG
 		$this->initialState->provideInitialState('webhook_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'webhook_otp_enabled', false));
 		$this->initialState->provideInitialState('webhook_otp_url', $this->appConfig->getValueString(Application::APP_ID, 'webhook_otp_url', ''));
-		$this->initialState->provideInitialState('webhook_otp_shared_secret', $this->appConfig->getValueString(Application::APP_ID, 'webhook_otp_shared_secret', ''));
+		$this->initialState->provideInitialState('webhook_otp_shared_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'webhook_otp_shared_secret', '') !== '');
 
 		return new TemplateResponse(Application::APP_ID, 'admin_settings');
 	}
