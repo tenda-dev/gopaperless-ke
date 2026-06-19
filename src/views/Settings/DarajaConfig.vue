@@ -29,7 +29,7 @@
 				@input="saveAppConfigValue('daraja_pass_key', passKey)" />
 		</div>
 		<div class="row">
-			<NcTextArea v-model="goPaperlessCallbackUrl" :label="t('libresign', 'GoPaperless Callback Base Url')"
+			<NcTextArea v-model="goPaperlessCallbackUrl" :label="t('libresign', 'GoPaperless Callback Base Url (shared with DPO)')"
 				type="text" :placeholder="t('libresign', 'https://your-domain.example.com/webhooks/gopaperless')"
 				@input="saveAppConfigValue('gopaperless_callback_base_url', goPaperlessCallbackUrl)" />
 		</div>

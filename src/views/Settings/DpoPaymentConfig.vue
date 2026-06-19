@@ -29,6 +29,13 @@
 						:placeholder="t('libresign', 'https://pay.dpo.example.com/')"
 						@input="saveAppConfigValue('dpo_payment_url', paymentUrl)" />
 		</div>
+		<div class="row">
+			<NcTextArea v-model="goPaperlessCallbackUrl"
+						:label="t('libresign', 'GoPaperless Callback Base Url')"
+						type="text"
+						:placeholder="t('libresign', 'https://your-domain.example.com/webhooks/gopaperless')"
+						@input="saveAppConfigValue('gopaperless_callback_base_url', goPaperlessCallbackUrl)" />
+		</div>
 	</NcSettingsSection>
 </template>
 
@@ -55,6 +62,7 @@ export default {
 			companyToken: '',
 			serviceId: loadState('libresign', 'dpo_service_id', ''),
 			paymentUrl: loadState('libresign', 'dpo_payment_url', ''),
+			goPaperlessCallbackUrl: loadState('libresign', 'gopaperless_callback_base_url', ''),
 		}
 	},
 	methods: {
