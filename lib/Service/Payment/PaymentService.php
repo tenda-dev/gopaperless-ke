@@ -506,7 +506,29 @@ class PaymentService
 		 * VALIDATE PROVIDER RESPONSE
 		 */
 		if (!$res->providerReference || !$res->flow) {
-			throw new RuntimeException('Invalid provider response: ' . ($res->message ?? 'empty result'));
+			$message = 'Invalid provider response: ' . ($res->message ?? 'empty result');
+
+			$this->logger->error('Payment provider response invalid', [
+				'error' => $message,
+				'attempt' => $paymentAttemptId,
+			]);
+
+			$payment->setPaymentStatus(PaymentStatus::INITIATION_FAILED);
+
+			$meta = $payment->getProviderMetadataObject();
+			$meta = $meta->with(
+				providerExecutionState: ProviderExecutionState::FAILED,
+				updatedAt: $this->nowImmutable(),
+				providerError: [
+					'message' => $message,
+					'provider' => $route?->preferredProvider?->value ?? 'unknown',
+					'timestamp' => time(),
+				]
+			);
+			$payment->setProviderMetadataObject($meta);
+			$this->paymentMapper->update($payment);
+
+			throw new RuntimeException($message);
 		}
 
 		/**
@@ -1915,7 +1937,7 @@ class PaymentService
 			mno: $meta?->suggested?->mno,
 			country: $meta?->suggested?->country,
 			alreadyCharged: $meta?->alreadyCharged,
-			providerExecutionState: $meta?->providerExecutionState,
+			providerExecutionState: $meta?->providerExecutionState ?? ProviderExecutionState::UNKNOWN,
 			selected: $meta?->selected,
 			confidence: $meta?->confidence,
 

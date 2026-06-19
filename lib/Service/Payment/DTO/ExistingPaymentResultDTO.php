@@ -22,7 +22,7 @@ final class ExistingPaymentResultDTO
 		public readonly int $paymentId,
 		public readonly int $signRequestId,
 		public readonly string $signUuid,
-		public readonly string $reference,
+		public readonly ?string $reference = null,
 		public readonly string $status,
 		public readonly PaymentProvider $provider,
 		public readonly PaymentFlow $flow,
@@ -32,7 +32,7 @@ final class ExistingPaymentResultDTO
 		public readonly ?string $mno,
 		public readonly ?string $country,
 		public readonly bool $alreadyCharged,
-		public readonly ProviderExecutionState $providerExecutionState,
+		public readonly ?ProviderExecutionState $providerExecutionState = null,
 		public readonly ?SelectedMnoDTO $selected,
 		public readonly ?string $confidence,
 		public readonly bool $requiresProviderSelection,
@@ -65,7 +65,7 @@ final class ExistingPaymentResultDTO
 			'mno' => $this->mno,
 			'country' => $this->country,
 			'alreadyCharged' => $this->alreadyCharged,
-			'providerExecutionState' => $this->providerExecutionState->value,
+			'providerExecutionState' => $this->providerExecutionState?->value,
 			'selected' => (
 				$this->selected &&
 				$this->selected->mno &&
