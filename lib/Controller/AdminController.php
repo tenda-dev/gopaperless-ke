@@ -1121,6 +1121,8 @@ class AdminController extends AEnvironmentAwareController {
 	 * 200: Configuration saved successfully
 	 * 500: Internal server error
 	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/daraja-config', requirements: ['apiVersion' => '(v1)'])]
 	public function setDarajaConfig(
 		?string $baseUrl = null,
@@ -1161,6 +1163,8 @@ class AdminController extends AEnvironmentAwareController {
 	 * 200: Configuration saved successfully
 	 * 500: Internal server error
 	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/dpo-config', requirements: ['apiVersion' => '(v1)'])]
 	public function setDpoConfig(
 		?string $endpoint = null,
@@ -1178,6 +1182,37 @@ class AdminController extends AEnvironmentAwareController {
 
 			return new DataResponse([
 				'message' => $this->l10n->t('DPO configuration saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist FX provider API credentials.
+	 *
+	 * @param string|null $exchangeRateApiKey ExchangeRate-API key
+	 * @param string|null $openExchangeAppId OpenExchangeRates app ID
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 500: Internal server error
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/fx-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setFxConfig(
+		?string $exchangeRateApiKey = null,
+		?string $openExchangeAppId = null,
+	): DataResponse {
+		try {
+			$this->setPaymentConfig('fx_exchangerate_api_key', $exchangeRateApiKey, true);
+			$this->setPaymentConfig('fx_openexchange_app_id', $openExchangeAppId, true);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('FX provider configuration saved'),
 			]);
 		} catch (\Exception $e) {
 			return new DataResponse([

@@ -11,8 +11,10 @@ namespace OCA\Libresign\Service\Payment;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\Payment\DTO\FxEngineResultDTO;
 use OCP\Http\Client\IClientService;
+use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 
@@ -48,10 +50,7 @@ class FxEngineService
 	/**
 	 * External providers (USD base)
 	 */
-	private const EXCHANGE_RATE_API_KEY = '5b9902a12b225b7e15ce1f65';
 	private const EXCHANGE_RATE_API_URL = 'https://v6.exchangerate-api.com/v6/';
-
-	private const OPEN_EXCHANGE_RATES_APP_ID = 'e56d9bf7a1bf4ca1aff1dc61d9ead1d2';
 	private const OPEN_EXCHANGE_RATES_API_URL = 'https://openexchangerates.org/api/latest.json';
 
 	/**
@@ -77,6 +76,7 @@ class FxEngineService
 	public function __construct(
 		private readonly LoggerInterface $logger,
 		private readonly IClientService $clientService,
+		private readonly IAppConfig $appConfig,
 	) {}
 
 	// -------------------------------------------------------------------------
@@ -166,14 +166,15 @@ class FxEngineService
 	private function fetchFromExchangeRateApi(string $targetCurrency): ?string
 	{
 		try {
-			if (!self::EXCHANGE_RATE_API_KEY) {
+			$apiKey = $this->appConfig->getValueString(Application::APP_ID, 'fx_exchangerate_api_key', '');
+			if ($apiKey === '') {
 				return null;
 			}
 
 			$client = $this->clientService->newClient();
 
 			$url = self::EXCHANGE_RATE_API_URL
-				. self::EXCHANGE_RATE_API_KEY
+				. $apiKey
 				. '/latest/USD';
 
 			$response = $client->get($url);
@@ -211,14 +212,15 @@ class FxEngineService
 	private function fetchFromOpenExchangeRates(string $targetCurrency): ?string
 	{
 		try {
-			if (!self::OPEN_EXCHANGE_RATES_APP_ID) {
+			$appId = $this->appConfig->getValueString(Application::APP_ID, 'fx_openexchange_app_id', '');
+			if ($appId === '') {
 				return null;
 			}
 
 			$client = $this->clientService->newClient();
 
 			$url = self::OPEN_EXCHANGE_RATES_API_URL
-				. '?app_id=' . self::OPEN_EXCHANGE_RATES_APP_ID
+				. '?app_id=' . $appId
 				. '&symbols=KES,' . $targetCurrency;
 
 			$response = $client->get($url);

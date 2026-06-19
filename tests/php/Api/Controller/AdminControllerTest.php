@@ -245,4 +245,31 @@ final class AdminControllerTest extends ApiTestCase {
 
 		$this->assertSame('', $appConfig->getValueString(Application::APP_ID, 'daraja_shortcode'));
 	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSetFxConfigPersistsSecrets(): void {
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/fx-config')
+			->withMethod('POST')
+			->withRequestBody([
+				'exchangeRateApiKey' => 'fx-api-key',
+				'openExchangeAppId' => 'open-exchange-id',
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$appConfig = Server::get(IAppConfig::class);
+		$this->assertSame('fx-api-key', $appConfig->getValueString(Application::APP_ID, 'fx_exchangerate_api_key'));
+		$this->assertSame('open-exchange-id', $appConfig->getValueString(Application::APP_ID, 'fx_openexchange_app_id'));
+	}
 }
