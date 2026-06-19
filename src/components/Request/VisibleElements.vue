@@ -31,7 +31,27 @@
 					<NcNoteCard type="info"
 						:text="t('libresign', 'Select a signer to set their signature position')" />
 				</p>
-				<ul class="view-sign-detail__sidebar">
+				<div v-if="!pdfReady"
+					class="pdf-preparing-state">
+
+					<NcLoadingIcon
+						:size="32"
+						:name="t(
+							'libresign',
+							'Getting PDF ready for signature placement…'
+						)" />
+
+					<p>
+						{{
+							t(
+								'libresign',
+								'Please wait while we prepare the document.'
+							)
+						}}
+					</p>
+
+				</div>
+				<ul v-else class="view-sign-detail__sidebar">
 					<li v-if="signerSelected"
 						:class="{ tip: signerSelected }">
 						<span>{{ t('libresign', 'Click on the place you want to add.') }}</span>
@@ -44,7 +64,9 @@
 						:key="index"
 						:signer="signer"
 						:require-request-permission="false"
-						:class="{ disabled: signerSelected }"
+						:class="{
+							disabled: signerSelected
+						}"
 						@select="handleSignerSelect">
 						<template #actions>
 							<slot name="actions" v-bind="{ signer }" />
@@ -55,7 +77,10 @@
 					<NcButton v-if="canSave"
 						:variant="variantOfSaveButton"
 						:wide="true"
-						:class="{ disabled: signerSelected }"
+						:disabled="!!signerSelected || !pdfReady || loading"
+						:class="{
+							disabled: signerSelected
+						}"
 						@click="save()">
 						{{ t('libresign', 'Save') }}
 					</NcButton>
@@ -63,22 +88,36 @@
 					<NcButton v-if="canSign && !signerSelected"
 						:variant="variantOfSignButton"
 						:wide="true"
+						:disabled="!!signerSelected || !pdfReady || loading"
 						@click="goToSign">
 						{{ t('libresign', 'Sign') }}
 					</NcButton>
 				</div>
 			</div>
-			<PdfEditor v-if="!filesStore.loading && pdfEditorFiles.length > 0"
-				ref="pdfEditor"
-				width="100%"
-				height="100%"
-				:files="pdfEditorFiles"
-				:file-names="pdfFileNames"
-				:signers="pdfEditorSigners"
-				@pdf-editor:end-init="updateSigners"
-				@pdf-editor:adding-ended="handleAddingEnded"
-				@pdf-editor:on-delete-signer="handleDeleteSigner">
-			</PdfEditor>
+			<div class="pdf-editor-wrapper">
+				<div v-if="!pdfReady"
+					class="pdf-loading-overlay">
+
+					<NcLoadingIcon
+						:size="64"
+						:name="t(
+							'libresign',
+							'Preparing document for signature placement…'
+						)" />
+
+				</div>
+				<PdfEditor v-if="!filesStore.loading && pdfEditorFiles.length > 0"
+					ref="pdfEditor"
+					width="100%"
+					height="100%"
+					:files="pdfEditorFiles"
+					:file-names="pdfFileNames"
+					:signers="pdfEditorSigners"
+					@pdf-editor:end-init="handlePdfReady"
+					@pdf-editor:adding-ended="handleAddingEnded"
+					@pdf-editor:on-delete-signer="handleDeleteSigner">
+				</PdfEditor>
+			</div>
 		</div>
 	</NcModal>
 </template>
@@ -176,6 +215,17 @@ type FilesStore = Pick<ReturnType<typeof useFilesStore>, 'loading' | 'getFile' |
 	getEditableFile: ReturnType<typeof useFilesStore>['getEditableFile']
 	saveOrUpdateSignatureRequest: (payload: { visibleElements: EditableVisibleElementPayload[] }) => Promise<{ message: string }>
 }
+
+type AddingEndedPayload =
+    | {
+        reason: 'placed'
+        object: unknown
+        docIndex: number
+        pageIndex: number
+    }
+    | {
+        reason: 'cancelled'
+    }
 
 function isIdentifyMethodRecord(value: unknown): value is IdentifyMethodRecord {
 	const candidate = toRecord(value)
@@ -468,6 +518,7 @@ const width = ref(signElementsConfig['full-signature-width'])
 const height = ref(signElementsConfig['full-signature-height'])
 const filePagesMap = ref<Record<number, FilePageInfo>>({})
 const elementsLoaded = ref(false)
+const pdfReady = ref(false)
 const fetchedFiles = ref<EditableRequestChildFile[]>([])
 const pdfEditorFiles = ref<PdfInput[]>([])
 
@@ -614,6 +665,9 @@ async function showModal() {
 		await fetchFiles()
 	}
 
+	pdfReady.value = false
+	elementsLoaded.value = false
+
 	await loadPdfEditorFiles()
 	buildFilePagesMap()
 	filesStore.loading = false
@@ -700,6 +754,7 @@ function buildFilePagesMap() {
 function closeModal() {
 	modal.value = false
 	filesStore.loading = false
+	pdfReady.value = false
 	elementsLoaded.value = false
 	fetchedFiles.value = []
 	pdfEditorFiles.value = []
@@ -714,59 +769,71 @@ function getPageHeightForFile(fileId: number, page: number) {
 
 async function updateSigners() {
 	const filesToProcess = documentFiles.value
+
 	if (elementsLoaded.value || filesToProcess.length === 0) {
-		return
-	}
-	const pdfElements = getPdfElements()
-	const pdfEditorRef = getPdfEditor()
+        return
+    }
 
-	const fileIndexById = new Map<string, number>(filesToProcess.map((file, index) => [String(file.id), index]))
-	const elements = getVisibleElementsFromDocument(visibleElementsDocument.value)
-	const elementsByDoc = new Map<number, Array<{ element: VisibleElementRecord; signer: SignerSummaryRecord }>>()
+    const shouldSkipRestore =
+        signerSelected.value ||
+        getPdfElements()?.isAddingMode
 
-	elements.forEach((element) => {
-		const normalizedElement = normalizeVisibleElement(element)
-		if (!normalizedElement) {
-			return
-		}
-		const fileInfo = findFileById(visibleElementsFiles.value, normalizedElement.fileId)
-		if (!fileInfo) {
-			return
-		}
-		const docIndex = fileIndexById.get(String(normalizedElement.fileId))
-		if (docIndex === undefined) {
-			return
-		}
-		const signer = getFileSigners(fileInfo).find((item) => idsMatch(item.signRequestId, normalizedElement.signRequestId))
-		const signerRecord = toSignerSummaryRecord(signer)
-		if (!signerRecord) {
-			return
-		}
-		const items = elementsByDoc.get(docIndex) || []
-		items.push({ element: normalizedElement, signer: signerRecord })
-		elementsByDoc.set(docIndex, items)
-	})
+	if (!shouldSkipRestore) {
 
-	for (const [docIndex, items] of elementsByDoc.entries()) {
-		if (typeof pdfElements?.selectPage === 'function') {
-			pdfElements.selectPage(docIndex, 0)
-		} else if (pdfElements) {
-			pdfElements.selectedDocIndex = docIndex
-			pdfElements.selectedPageIndex = 0
-		}
-		await nextTick()
-		await nextTick()
+		const pdfElements = getPdfElements()
+		const pdfEditorRef = getPdfEditor()
 
-		items.forEach(({ element, signer }) => {
-			pdfEditorRef?.addSigner?.(signer, element, { documentIndex: docIndex })
+		const fileIndexById = new Map<string, number>(filesToProcess.map((file, index) => [String(file.id), index]))
+		const elements = getVisibleElementsFromDocument(visibleElementsDocument.value)
+		const elementsByDoc = new Map<number, Array<{ element: VisibleElementRecord; signer: SignerSummaryRecord }>>()
+
+		elements.forEach((element) => {
+			const normalizedElement = normalizeVisibleElement(element)
+			if (!normalizedElement) {
+				return
+			}
+			const fileInfo = findFileById(visibleElementsFiles.value, normalizedElement.fileId)
+			if (!fileInfo) {
+				return
+			}
+			const docIndex = fileIndexById.get(String(normalizedElement.fileId))
+			if (docIndex === undefined) {
+				return
+			}
+			const signer = getFileSigners(fileInfo).find((item) => idsMatch(item.signRequestId, normalizedElement.signRequestId))
+			const signerRecord = toSignerSummaryRecord(signer)
+			if (!signerRecord) {
+				return
+			}
+			const items = elementsByDoc.get(docIndex) || []
+			items.push({ element: normalizedElement, signer: signerRecord })
+			elementsByDoc.set(docIndex, items)
 		})
-	}
+
+		for (const [docIndex, items] of elementsByDoc.entries()) {
+			if (typeof pdfElements?.selectPage === 'function') {
+				pdfElements.selectPage(docIndex, 0)
+			} else if (pdfElements) {
+				pdfElements.selectedDocIndex = docIndex
+				pdfElements.selectedPageIndex = 0
+			}
+			await nextTick()
+			await nextTick()
+
+			items.forEach(({ element, signer }) => {
+				pdfEditorRef?.addSigner?.(signer, element, { documentIndex: docIndex })
+			})
+		}
+    }
 
 	elementsLoaded.value = true
 	filesStore.loading = false
 }
 
 function onSelectSigner(signer: SignerSummaryRecord) {
+	if (!pdfReady.value) {
+		return
+	}
 	const pdfEditorRef = getPdfEditor()
 	if (!pdfEditorRef) {
 		return
@@ -778,8 +845,6 @@ function onSelectSigner(signer: SignerSummaryRecord) {
 	})
 	if (!started) {
 		signerSelected.value = null
-	}
-	if (!started) {
 		return
 	}
 }
@@ -793,8 +858,17 @@ function handleSignerSelect(signer: unknown) {
 	onSelectSigner(pdfEditorSigner)
 }
 
-function handleAddingEnded() {
+function handleAddingEnded(event: AddingEndedPayload) {
 	stopAddSigner()
+
+	if (event.reason === 'placed') {
+        showSuccess(
+            t(
+                'libresign',
+                'Signature position added'
+            )
+        )
+    }
 }
 
 function stopAddSigner() {
@@ -831,23 +905,35 @@ async function goToSign() {
 }
 
 async function save() {
-	loading.value = true
-	const visibleElements = buildVisibleElements()
+    loading.value = true
 
-	try {
-		const response = await filesStore.saveOrUpdateSignatureRequest({ visibleElements })
-		const successMessage = typeof response.message === 'string' && response.message.length > 0
-			? response.message
-			: t('libresign', 'Settings saved')
-		showSuccess(t('libresign', successMessage))
-		closeModal()
-		loading.value = false
-		return true
-	} catch (error) {
-		showError(getOcsErrorMessage(error) || t('libresign', 'An error occurred'))
-		loading.value = false
-		return false
-	}
+    const visibleElements = buildVisibleElements()
+
+    try {
+        await filesStore.saveOrUpdateSignatureRequest({
+            visibleElements,
+        })
+
+        showSuccess(
+            t(
+                'libresign',
+                'Signature positions saved successfully'
+            )
+        )
+
+        closeModal()
+
+        return true
+    } catch (error) {
+        showError(
+            getOcsErrorMessage(error)
+            || t('libresign', 'An error occurred')
+        )
+
+        return false
+    } finally {
+        loading.value = false
+    }
 }
 
 const handleShowVisibleElements: EventHandler<NextcloudEvent> = () => {
@@ -924,6 +1010,16 @@ function buildVisibleElements() {
 	}
 
 	return visibleElements
+}
+
+async function handlePdfReady() {
+	try {
+		await updateSigners()
+
+		await nextTick()
+	} finally {
+		pdfReady.value = true
+	}
 }
 
 onMounted(() => {
@@ -1063,5 +1159,21 @@ defineExpose({
 			border: 0;
 		}
 	}
+}
+
+.pdf-editor-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.pdf-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color:
+        rgba(var(--color-main-background-rgb), 0.8);
 }
 </style>

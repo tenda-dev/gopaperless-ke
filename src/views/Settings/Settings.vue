@@ -30,7 +30,8 @@
 		<Reminders />
 		<TSA />
 		<Confetti />
-		<SmsToken />
+		<SmsOtpConfig />
+		<WebhookOtpConfig />
 		<DarajaConfig />
 		<DpoPaymentConfig />
 		<PaymentVerificationDispatcherConfig />
@@ -63,10 +64,11 @@ import SigningMode from './SigningMode.vue'
 import SupportProject from './SupportProject.vue'
 import TSA from './TSA.vue'
 import Validation from './Validation.vue'
-import SmsToken from './SmsToken.vue'
+import SmsOtpConfig from './SmsOtpConfig.vue'
 import DarajaConfig from "@/views/Settings/DarajaConfig.vue";
 import DpoPaymentConfig from "@/views/Settings/DpoPaymentConfig.vue";
 import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerificationDispatcherConfig.vue";
+import WebhookOtpConfig from './WebhookOtpConfig.vue'
 defineOptions({
 	name: 'Settings',
 })

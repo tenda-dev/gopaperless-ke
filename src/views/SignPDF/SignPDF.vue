@@ -194,7 +194,6 @@ function parsePdfFetchError(value: unknown): PdfFetchError {
 	) {
 		return {}
 	}
-
 	return {
 		errors: value.errors
 			.map((error): SignError | null => {
@@ -348,11 +347,11 @@ async function handleInitialStatePdfs(urls: string[]) {
 			const data = parsePdfFetchError(await response.json())
 			sidebarStore.hideSidebar()
 			if (data.errors?.length) {
-				setPdfLoadErrors(data.errors)
+				signStore.errors = data.errors
 			} else {
-				setPdfLoadErrors([
+				signStore.errors = [
 					{ message: t('libresign', 'File not found') },
-				])
+				]
 			}
 			return
 		}

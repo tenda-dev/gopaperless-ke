@@ -478,6 +478,7 @@ class PaymentService
 			$this->logger->error('Payment initiation failed', [
 				'error' => $e->getMessage(),
 				'attempt' => $paymentAttemptId,
+				'trace' => $e->getTrace(),
 			]);
 
 			$payment->setPaymentStatus(PaymentStatus::INITIATION_FAILED);

@@ -28,6 +28,11 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE:-nextcloud}
       - MYSQL_USER=${MYSQL_USER:-nextcloud}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD:-nextcloud}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   nextcloud:
     image: ghcr.io/librecodecoop/nextcloud-dev-php${PHP_VERSION:-82}:latest
     volumes:
@@ -36,6 +41,11 @@ services:
       - nextcloud:/var/www/html
       - ../:/var/www/html/apps-extra/libresign
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "php", "occ", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     environment:
       - HOST_UID=${HOST_UID:-1000}
       - HOST_GID=${HOST_GID:-1000}
@@ -89,28 +99,41 @@ services:
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-admin}
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
-  # payment-worker:
-  #   image: ghcr.io/librecodecoop/nextcloud-dev-php${PHP_VERSION:-82}:latest
-  #   restart: unless-stopped
-  #   volumes:
-  #     - nextcloud:/var/www/html
-  #     - ../:/var/www/html/apps-extra/libresign
-  #   environment:
-  #     - HOST_UID=${HOST_UID:-1000}
-  #     - HOST_GID=${HOST_GID:-1000}
-  #     - RABBITMQ_HOST=rabbitmq
-  #     - RABBITMQ_PORT=5672
-  #     - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-  #     - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin}
-  #   command: >
-  #     sh -c "
-  #       sleep 20 &&
-  #       su -s /bin/sh www-data -c 'php occ libresign:payments:worker'
-  #     "
-  #   depends_on:
-  #     - rabbitmq
-  #     - mysql
-  #     - nextcloud
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  payment-worker:
+    image: ghcr.io/librecodecoop/nextcloud-dev-php${PHP_VERSION:-82}:latest
+    restart: unless-stopped
+    volumes:
+      - nextcloud:/var/www/html
+      - ../:/var/www/html/apps-extra/libresign
+    environment:
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-admin}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin}
+    command: >
+      sh -c "
+        until php occ status > /dev/null 2>&1; do
+          echo 'Waiting for Nextcloud...'
+          sleep 5
+        done
+
+        exec su -s /bin/sh www-data -c \
+          'php occ libresign:payments:worker'
+      "
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      nextcloud:
+        condition: service_healthy
 volumes:
   mysql-init:
   mysql-data:
