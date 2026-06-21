@@ -128,30 +128,13 @@
 			:size="size"
 			:name="modalTitle"
 			@closing="filesStore.disableIdentifySigner()">
-			<NcAppSidebar
-				:name="modalTitle"
-				:active="activeTab"
-				@update:active="onTabChange">
-				<NcAppSidebarTab
-					v-for="method in enabledMethods"
-					:id="`tab-${method.name}`"
-					:key="method.name"
-					:name="method.friendly_name">
-					<template #icon>
-						<NcIconSvgWrapper
-							:size="20"
-							:svg="getSvgIcon(method.name)" />
-					</template>
 
-					<IdentifySigner
-						:signer-to-edit="signerToEdit"
-						:placeholder="method.friendly_name"
-						:method="method.name"
-						:methods="methods"
-						:disabled="isSignerMethodDisabled"
-						@phone-not-found="switchToEmail" />
-				</NcAppSidebarTab>
-			</NcAppSidebar>
+			<IdentifySigner
+				:signer-to-edit="signerToEdit"
+				:placeholder="t('libresign', 'Search signer')"
+				method="email"
+				:methods="methods"
+				:disabled="isSignerMethodDisabled" />
 		</NcDialog>
 
 		<!-- ========================================= -->

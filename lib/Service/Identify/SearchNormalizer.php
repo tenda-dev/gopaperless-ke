@@ -29,9 +29,16 @@ class SearchNormalizer {
 			return $search;
 		}
 
-		$defaultRegion = $this->config->getSystemValueString('default_phone_region', '');
-		if ($defaultRegion === '') {
-			return $search;
+		$defaultRegion = $this->config->getSystemValueString(
+			'default_phone_region',
+			'KE'
+		);
+
+		if (
+			$this->phoneNumberUtil->getCountryCodeForRegion($defaultRegion)
+			=== null
+		) {
+			$defaultRegion = 'KE';
 		}
 
 		$standardFormat = $this->phoneNumberUtil->convertToStandardFormat($search, $defaultRegion);
