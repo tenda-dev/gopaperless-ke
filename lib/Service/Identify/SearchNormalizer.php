@@ -12,7 +12,7 @@ use OCP\IConfig;
 use OCP\IPhoneNumberUtil;
 
 class SearchNormalizer {
-	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal'];
+	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal', 'email'];
 
 	public function __construct(
 		private IConfig $config,
@@ -59,5 +59,9 @@ class SearchNormalizer {
 		}
 
 		return $this->phoneNumberUtil->convertToStandardFormat($phoneNumber, $defaultRegion);
+	}
+
+	public function isPhoneSearch(string $search): bool {
+		return preg_match('/^[+0-9\s\-()]+$/', trim($search)) === 1;
 	}
 }
