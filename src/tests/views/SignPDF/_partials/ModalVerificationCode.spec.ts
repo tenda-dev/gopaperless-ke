@@ -90,6 +90,7 @@ describe('ModalVerificationCode (email mode)', () => {
 		NcButton: { template: '<button><slot /></button>' },
 		NcLoadingIcon: { template: '<div />' },
 		NcIconSvgWrapper: { template: '<div />' },
+		PaymentStep: { template: '<div />' },
 	}
 
 	const stubsWithActions = {
@@ -290,6 +291,7 @@ describe('ModalVerificationCode (token mode)', () => {
 		NcButton: { template: '<button><slot /></button>' },
 		NcLoadingIcon: { template: '<div />' },
 		NcIconSvgWrapper: { template: '<div />' },
+		PaymentStep: { template: '<div />' },
 	}
 
 	const stubsWithActions = {

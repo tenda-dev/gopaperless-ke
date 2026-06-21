@@ -62,6 +62,7 @@
 	},
 	"require": {
 		"ext-simplexml": "*",
+		"ext-sockets": "*",
 		"cweagans/composer-patches": "^2.0",
 		"giggsey/libphonenumber-for-php": "^8.13",
 		"jeidison/signer-php": "^1.0",

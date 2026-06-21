@@ -47,7 +47,7 @@ const createValidationFile = (overrides: Partial<ValidationFileRecord> = {}): Va
 	statusText: 'Draft',
 	nodeId: 1,
 	nodeType: 'file',
-	signatureFlow: 'none',
+	signatureFlow: 'none' as any,
 	docmdpLevel: 0,
 	filesCount: 1,
 	files: [

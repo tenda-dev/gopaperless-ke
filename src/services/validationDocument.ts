@@ -175,6 +175,7 @@ function isValidationSettings(value: unknown): value is NonNullable<ValidationFi
 		&& typeof value.hasSignatureFile === 'boolean'
 		&& typeof value.needIdentificationDocuments === 'boolean'
 		&& typeof value.identificationDocumentsWaitingApproval === 'boolean'
+		&& isOptionalField(value, 'signerFileUuid', isNullableString)
 		&& isOptionalField(value, 'isApprover', fieldValue => typeof fieldValue === 'boolean')
 }
 
@@ -269,6 +270,7 @@ const DEFAULT_VALIDATION_METADATA: NonNullable<ValidationFileRecord['metadata']>
 const DEFAULT_VALIDATION_SETTINGS: NonNullable<ValidationFileRecord['settings']> = {
 	canSign: false,
 	canRequestSign: false,
+	signerFileUuid: null,
 	phoneNumber: '',
 	hasSignatureFile: false,
 	needIdentificationDocuments: false,
@@ -300,7 +302,7 @@ export function toValidationDocument(data: unknown): ValidationDocumentState | n
 		return null
 	}
 
-	const files = data.files.map((file) => {
+	const files = (data.files ?? []).map((file) => {
 		const childId = toInteger(file.id)
 		const childNodeId = toInteger(file.nodeId)
 		const childSize = toInteger(file.size)

@@ -45,7 +45,7 @@ export type SignatureProfileMap = Record<string, {
 	file?: Partial<Pick<UserElementRecord['file'], 'nodeId' | 'url'>>
 } | undefined>
 
-export type EnvelopeSigner = Omit<Partial<Pick<SignerDetailRecord, 'me' | 'signRequestId' | 'sign_request_uuid'>>, 'sign_request_uuid'> & {
+export type EnvelopeSigner = Partial<Pick<SignerDetailRecord, 'me' | 'signRequestId'>> & {
 	sign_request_uuid?: string | null
 }
 

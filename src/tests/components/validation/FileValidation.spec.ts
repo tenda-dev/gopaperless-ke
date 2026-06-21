@@ -38,7 +38,7 @@ describe('FileValidation', () => {
 			statusText: 'Pending',
 			nodeId: 123,
 			nodeType: 'file',
-			signatureFlow: 'none',
+			signatureFlow: 'none' as any,
 			docmdpLevel: 0,
 			filesCount: 1,
 			files: [{
