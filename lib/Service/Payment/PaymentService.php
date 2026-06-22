@@ -274,8 +274,33 @@ class PaymentService
 			);
 		}
 
-		if ($dto->provider !== null && $capability === PaymentCapability::MOBILE_MONEY) {
+		/**
+		 * Frontend provider hint is advisory only.
+		 *
+		 * The backend MNO routing registry is the authoritative source of truth.
+		 * We only honor the hint when the backend route itself is uncertain
+		 * (ambiguous carrier or missing MNO key), e.g. an unknown Kenyan prefix
+		 * that the frontend happens to recognise as Safaricom.
+		 *
+		 * This prevents a stale/wrong frontend hint from overriding a
+		 * high-confidence backend route such as KE Safaricom → Daraja.
+		 */
+		if (
+			$dto->provider !== null
+			&& $capability === PaymentCapability::MOBILE_MONEY
+			&& $route->requiresUserSelection()
+		) {
 			$route = $route->withPreferredProvider($dto->provider);
+			$this->logger->info('Using frontend provider hint for uncertain route', [
+				'hint' => $dto->provider->value,
+				'route_confidence' => $route->confidence->value,
+			]);
+		} elseif ($dto->provider !== null && $capability === PaymentCapability::MOBILE_MONEY) {
+			$this->logger->info('Ignoring frontend provider hint; backend route is authoritative', [
+				'hint' => $dto->provider->value,
+				'route_provider' => $route->preferredProvider->value,
+				'route_confidence' => $route->confidence->value,
+			]);
 		}
 
 		$this->logger->info('Starting payment', [
@@ -284,6 +309,9 @@ class PaymentService
 			'capability' => $capability->value,
 			'method' => $methodEnum->value,
 			'purpose' => $paymentPurpose->value,
+			'route_provider' => $route?->preferredProvider?->value ?? null,
+			'route_confidence' => $route?->confidence?->value ?? null,
+			'route_mno_key' => $route?->mnoKey ?? null,
 		]);
 
 		/**
@@ -321,7 +349,24 @@ class PaymentService
 
 				$meta = $pending->getProviderMetadataObject();
 
-				if ($meta->method !== $methodEnum->value) {
+				/**
+				 * Routing may have changed since the pending payment
+				 * was created (e.g. KE Safaricom fix switched from
+				 * DPO to Daraja). Do not recycle a stale route.
+				 */
+				if (
+					$route !== null &&
+					$pending->getProviderEnum() !== $route->preferredProvider
+				) {
+
+					$this->logger->info('[Payment] Expiring pending payment because route provider changed', [
+						'pending_provider' => $pending->getProviderEnum()->value,
+						'route_provider' => $route->preferredProvider->value,
+						'payment_id' => $pending->getId(),
+					]);
+
+					$this->expirePayment($pending);
+				} elseif ($meta->method !== $methodEnum->value) {
 
 					$this->expirePayment($pending);
 				} elseif (

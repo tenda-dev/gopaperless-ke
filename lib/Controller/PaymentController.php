@@ -116,13 +116,17 @@ class PaymentController extends AEnvironmentAwareController
 				strtolower((string)$purpose)
 			) ?? PaymentPurpose::SIGN_REQUEST;
 
+			$providerEnum = $provider !== null
+				? PaymentProvider::tryFrom($provider)
+				: null;
+
 			$dto = new StartPaymentDTO(
 				userEmail: $userEmail,
 				signUuid: $signUuid,
 				signRequestId: $signRequestId,
 				redirectUrl: $redirectUrl,
 				userId: $userId,
-				provider: PaymentProvider::tryFrom($provider),
+				provider: $providerEnum,
 				productCode: $productCode,
 				paymentMethod: $methodEnum,
 				callbackUrl: $callbackUrl,
