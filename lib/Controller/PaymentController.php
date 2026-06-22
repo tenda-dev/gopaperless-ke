@@ -174,13 +174,12 @@ class PaymentController extends AEnvironmentAwareController
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
 		}
 
-		$this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
-
+		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
 		$status = $this->paymentService->verifyPayment($providerReference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
-			'reason' => $status->value
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 
@@ -202,12 +201,12 @@ class PaymentController extends AEnvironmentAwareController
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
 		}
 
-		$this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
-
+		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
 		$status = $this->paymentService->getPaymentStatus($providerReference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 
@@ -320,12 +319,12 @@ class PaymentController extends AEnvironmentAwareController
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
 		}
 
-		$this->paymentService->assertPaymentOwnership($reference, $user->getUID());
-
+		$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
 		$status = $this->paymentService->queryPayment($reference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 

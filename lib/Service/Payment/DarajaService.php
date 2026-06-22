@@ -478,9 +478,31 @@ class DarajaService {
 	// 	return $this->getTestConfig();
 	// }
 
+	/**
+	 * Map a Safaricom Daraja result code to a safe, user-facing reason key.
+	 *
+	 * Raw provider descriptions are kept out of the API surface to avoid
+	 * leaking internal system state or subscriber details.
+	 */
+	public static function mapResultCodeToReason(?int $code): string
+	{
+		return match ($code) {
+			0 => 'success',
+			1 => 'insufficient_balance',
+			17, 26, 1025 => 'provider_error',
+			1001 => 'transaction_in_progress',
+			1019 => 'expired',
+			1032 => 'cancelled',
+			1037 => 'timeout',
+			2001 => 'wrong_pin',
+			default => 'generic_failure',
+		};
+	}
+
 	private function normalizeSTKQueryResponse(array $data): array {
 		$resultCode = $data['ResultCode'] ?? null;
 		$resultDesc = $data['ResultDesc'] ?? '';
+		$reason = self::mapResultCodeToReason(is_numeric($resultCode) ? (int)$resultCode : null);
 
 		return match ($resultCode) {
 			'0' => [
@@ -490,15 +512,15 @@ class DarajaService {
 			],
 			// user cancelled
 			'1032' => [
-				'status' => 'FAILED',
-				'reason' => 'cancelled',
+				'status' => 'CANCELLED',
+				'reason' => $reason,
 				'raw' => $data,
 				'description' => $resultDesc,
 			],
-			// timeout
-			'1037' => [
+			// terminal failures
+			'1', '17', '26', '1001', '1019', '1025', '1036', '1037', '2001', '2006' => [
 				'status' => 'FAILED',
-				'reason' => 'timeout',
+				'reason' => $reason,
 				'raw' => $data,
 				'description' => $resultDesc,
 			],

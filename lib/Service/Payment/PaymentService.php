@@ -23,6 +23,7 @@ use OCA\Libresign\Enum\ProviderExecutionState;
 use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Payment\Dispatchers\VerificationDispatcherFactory;
+use OCA\Libresign\Service\Payment\DarajaService;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
@@ -68,6 +69,17 @@ class PaymentService
 	 * - >15 mins usually abandoned
 	 */
 	private const PAYMENT_EXPIRY_SECONDS = 15 * 60; // 15 minutes
+
+	/**
+	 * How long an already-charged async payment may stay PENDING
+	 * before a user retry is allowed to start a fresh attempt.
+	 *
+	 * Must be long enough for a normal user interaction but short
+	 * enough that a stuck STK/push session does not block retries.
+	 *
+	 * Aligned with the frontend polling timeout (90s).
+	 */
+	private const PAYMENT_STALE_FOR_RETRY_SECONDS = 90;
 
 	private PaymentMapper $paymentMapper;
 	private LoggerInterface $logger;
@@ -375,6 +387,31 @@ class PaymentService
 					$pending->getPhoneE164Digits() !== null &&
 					$pending->getPhoneE164Digits() !== $e164
 				) {
+
+					$this->expirePayment($pending);
+				} elseif ($this->isPendingStaleForRetry($pending)) {
+
+					/**
+					 * The existing async session is older than the retry window.
+					 * Before forcing a fresh attempt, reconcile with the provider
+					 * in case the payment actually succeeded and the callback is
+					 * merely delayed. If it succeeded, return the existing success.
+					 */
+					$resolvedStatus = $this->queryPayment(
+						$pending->getProviderReference()
+					);
+
+					if ($resolvedStatus === PaymentStatus::PAID) {
+						$payment = $this->paymentMapper->findById($pending->getId());
+						return $this->buildExistingPaymentResponse($payment);
+					}
+
+					$this->logger->info('[Payment] Expiring stale pending payment for retry after reconciliation', [
+						'reference' => $pending->getProviderReference(),
+						'payment_id' => $pending->getId(),
+						'resolved_status' => $resolvedStatus->value,
+						'age_seconds' => $this->nowImmutable()->getTimestamp() - ($pending->getCreatedAtImmutable()?->getTimestamp() ?? 0),
+					]);
 
 					$this->expirePayment($pending);
 				} else {
@@ -1131,6 +1168,8 @@ class PaymentService
 			 */
 			$meta = $payment->getProviderMetadataObject();
 
+			$failureReason = 'generic_failure';
+
 			switch ($result['status']) {
 
 				case 'SUCCESS':
@@ -1148,10 +1187,12 @@ class PaymentService
 
 				case 'FAILED':
 					$payment->setPaymentStatus(PaymentStatus::FAILED);
+					$failureReason = $result['reason'] ?? 'generic_failure';
 					break;
 
 				case 'CANCELLED':
 					$payment->setPaymentStatus(PaymentStatus::CANCELLED);
+					$failureReason = $result['reason'] ?? 'cancelled';
 					break;
 
 				case 'PENDING':
@@ -1160,14 +1201,20 @@ class PaymentService
 			}
 
 			/**
-			 * Store query response for debugging / audit on FAILED
+			 * Store query response for debugging / audit on FAILED/CANCELLED
 			 */
 			$providerPayload = $this->getProviderPayload($meta)
 				->withQuery($result);
 
 			$meta = $meta->with(
 				updatedAt: $this->nowImmutable(),
-				providerPayload: $providerPayload
+				providerPayload: $providerPayload,
+				providerError: [
+					'type' => $payment->getPaymentStatus() === PaymentStatus::CANCELLED ? 'cancelled' : 'failed',
+					'reason' => $failureReason,
+					'source' => 'daraja_query',
+					'timestamp' => $this->now(),
+				]
 			);
 
 			$payment->setProviderMetadataObject($meta);
@@ -1310,6 +1357,7 @@ class PaymentService
 					updatedAt: $this->nowImmutable(),
 					providerError: [
 						'type' => 'cancelled',
+						'reason' => DarajaService::mapResultCodeToReason((int)$resultCode),
 						'resultCode' => $resultCode,
 						'resultDesc' => $resultDesc,
 						'source' => 'daraja_callback',
@@ -1340,6 +1388,7 @@ class PaymentService
 				updatedAt: $this->nowImmutable(),
 				providerError: [
 					'type' => 'failed',
+					'reason' => DarajaService::mapResultCodeToReason((int)$resultCode),
 					'resultCode' => $resultCode,
 					'resultDesc' => $resultDesc,
 					'source' => 'daraja_callback',
@@ -2037,6 +2086,7 @@ class PaymentService
 			updatedAt: $this->nowImmutable(),
 			providerError: [
 				'type' => 'expired',
+				'reason' => 'expired',
 				'timestamp' => $this->now(),
 			]
 		);
@@ -2055,6 +2105,37 @@ class PaymentService
 			PaymentStatus::CANCELLED => 'CANCELLED',
 			PaymentStatus::FAILED => 'FAILED',
 			default => 'PENDING',
+		};
+	}
+
+	/**
+	 * Resolve a safe, user-facing failure reason key for a payment.
+	 *
+	 * Raw provider descriptions and internal error details are NOT returned;
+	 * only a curated machine-readable key that the frontend can map to a
+	 * localised message. This prevents data leakage / harvesting of provider
+	 * error text, subscriber identifiers, or system internals.
+	 */
+	public function getPaymentFailureReason(Payment $payment): ?string
+	{
+		$status = $payment->getPaymentStatus();
+
+		if (!in_array($status, [PaymentStatus::FAILED, PaymentStatus::CANCELLED, PaymentStatus::EXPIRED], true)) {
+			return null;
+		}
+
+		$meta = $payment->getProviderMetadataObject();
+		$reason = $meta->providerError['reason'] ?? null;
+
+		if (is_string($reason) && $reason !== '') {
+			return $reason;
+		}
+
+		return match ($status) {
+			PaymentStatus::CANCELLED => 'cancelled',
+			PaymentStatus::EXPIRED => 'expired',
+			PaymentStatus::FAILED => 'generic_failure',
+			default => null,
 		};
 	}
 
@@ -2097,6 +2178,40 @@ class PaymentService
 		$diffInSeconds = $now->getTimestamp() - $createdAt->getTimestamp();
 
 		return $diffInSeconds > (self::PAYMENT_EXPIRY_SECONDS); // currently 15 minutes
+	}
+
+	/**
+	 * Determine whether an existing PENDING payment is so old that a
+	 * user retry should create a fresh provider session.
+	 *
+	 * Only applies to already-charged async sessions (Daraja STK push,
+	 * DPO mobile_direct charge). If the provider has been asked to
+	 * collect funds and we have received no resolution within the
+	 * stale window, the user is effectively blocked and needs a new
+	 * attempt. The old row is left to expire or reconcile via callback.
+	 */
+	private function isPendingStaleForRetry(Payment $payment): bool
+	{
+		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
+			return false;
+		}
+
+		$meta = $payment->getProviderMetadataObject();
+
+		if (!$meta->alreadyCharged) {
+			return false;
+		}
+
+		$createdAt = $payment->getCreatedAtImmutable();
+
+		if ($createdAt === null) {
+			return true;
+		}
+
+		$now = $this->nowImmutable();
+		$diffInSeconds = $now->getTimestamp() - $createdAt->getTimestamp();
+
+		return $diffInSeconds > self::PAYMENT_STALE_FOR_RETRY_SECONDS;
 	}
 
 	/**
