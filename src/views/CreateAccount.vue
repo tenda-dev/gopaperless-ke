@@ -38,10 +38,14 @@
 					v-model="phoneNumber"
 					:label="t('libresign', 'Phone Number (Optional)')"
 					type="tel"
-					placeholder="0712345678"
+					autocomplete="tel"
+					placeholder="+254712345678"
+					:disabled="loading"
 					:helper-text="phoneNumberError"
 					:error="showErrorPhoneNumber"
-					@blur="v$.phoneNumber.$touch()">
+					@update:model-value="onPhoneInput"
+					@blur="onPhoneBlur"
+					@trailing-button-click="clearPhoneNumber">
 					<NcIconSvgWrapper :path="mdiPhone" :size="20" />
 				</NcTextField>
 				<NcPasswordField v-model="password"
@@ -101,12 +105,12 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcPasswordField from '@nextcloud/vue/components/NcPasswordField'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
-import { sanitisePhoneNumber } from '../utils/phone'
 import {
 	mdiEmail,
 	mdiChevronRight,
 	mdiPhone,
 } from '@mdi/js'
+import { formatPhoneAsYouType, normalisePhoneForAccount } from '@/utils/resolvePhone'
 
 type CreateAccountSettings = {
 	accountHash?: string
@@ -215,9 +219,12 @@ const v$ = {
 			if (!phoneNumber.value) {
 				return true
 			}
-			return !!sanitisePhoneNumber(phoneNumber.value)
+
+			return !!normalisePhoneForAccount(
+				phoneNumber.value,
+			)
 		},
-    }),
+	}),
 	password: createValidationField(password, passwordTouched, {
 		required: () => isRequired(password.value),
 		minLength: () => hasMinLength(password.value, 4),
@@ -293,6 +300,33 @@ const canSave = computed(() => {
 		&& !state.loading
 })
 
+function onPhoneInput(value: string | number) {
+	state.phoneNumber = formatPhoneAsYouType(
+		String(value ?? '')
+	)
+}
+
+function onPhoneBlur() {
+	v$.phoneNumber.$touch()
+
+	if (!state.phoneNumber) {
+		return
+	}
+
+	const normalised = normalisePhoneForAccount(
+		state.phoneNumber,
+	)
+
+	if (normalised) {
+		state.phoneNumber = normalised
+	}
+}
+
+function clearPhoneNumber() {
+	state.phoneNumber = ''
+	phoneNumberTouched.value = false
+}
+
 onBeforeMount(() => {
 	if (state.message) {
 		showWarning(state.message)
@@ -302,12 +336,14 @@ onBeforeMount(() => {
 async function createAccount() {
 	state.loading = true
 
-	let normalizedPhone = ''
+	let normalisedPhone: string | null = null
 
 	if (state.phoneNumber) {
-		normalizedPhone = sanitisePhoneNumber(state.phoneNumber)
+		normalisedPhone = normalisePhoneForAccount(
+					state.phoneNumber,
+				)
 
-		if (!normalizedPhone) {
+		if (!normalisedPhone) {
 			state.errorMessage = 'Invalid phone number'
 			state.loading = false
 			return
@@ -318,7 +354,7 @@ async function createAccount() {
 		await axios.post(generateOcsUrl('/apps/libresign/api/v1/account/create/{uuid}'), {
 			uuid: route.value.params.uuid ?? '',
 			email: state.email,
-			phone: normalizedPhone,
+			phoneNumber: normalisedPhone,
 			password: state.password,
 		})
 		if (!router.value) {

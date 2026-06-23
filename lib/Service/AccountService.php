@@ -9,8 +9,6 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service;
 
 use InvalidArgumentException;
-use libphonenumber\NumberParseException;
-use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\FileTypeMapper;
@@ -28,6 +26,7 @@ use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\FileUploadHelper;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Crl\CrlService;
+use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Settings\Mailer\NewUserMailHelper;
 use OCP\Accounts\IAccountManager;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -87,6 +86,7 @@ class AccountService {
 		private FileUploadHelper $uploadHelper,
 		private CrlService $crlService,
 		private LoggerInterface $logger,
+		private PhoneNumberService $phoneNumberService,
 	) {
 	}
 
@@ -94,114 +94,88 @@ class AccountService {
 		if (!UUIDUtil::validateUUID($data['uuid'])) {
 			throw new LibresignException($this->l10n->t('Invalid UUID'), 1);
 		}
+
 		try {
 			$signRequest = $this->getSignRequestByUuid($data['uuid']);
+			$data['signRequest'] = $signRequest;
 		} catch (\Throwable) {
 			throw new LibresignException($this->l10n->t('UUID not found'), 1);
 		}
-		$identifyMethods = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequest->getId());
+
+		$identifyMethods = $this->identifyMethodService
+			->getIdentifyMethodsFromSignRequestId($signRequest->getId());
+
 		if (!array_key_exists('identify', $data['user'])) {
-			throw new LibresignException($this->l10n->t('Invalid identification method'), 1);
+			throw new LibresignException(
+				$this->l10n->t('Invalid identification method'),
+				1
+			);
 		}
+
 		foreach ($data['user']['identify'] as $method => $value) {
 			if (!array_key_exists($method, $identifyMethods)) {
 				throw new LibresignException($this->l10n->t('Invalid identification method'), 1);
 			}
+
 			foreach ($identifyMethods[$method] as $identifyMethod) {
 				$identifyMethod->validateToCreateAccount($value);
 			}
 		}
-		if (empty($data['password'])) {
-			throw new LibresignException($this->l10n->t('Password is required'), 1);
-		}
-		$file = $this->getFileByUuid($data['uuid']);
-		if (empty($file['fileToSign'])) {
-			throw new LibresignException($this->l10n->t('File not found'));
-		}
-		if (class_exists(PhoneNumberUtil::class)) {
-			// Ensure phone number is provided
-			if ($data['phoneNumber']) {
 
-				// Validate and normalize phone number
-				$phoneNumber = $this->validatePhoneNumber($data['phoneNumber']);
-
-				// Ensure phone number is unique
-				if ($this->phoneNumberExists($phoneNumber)) {
-					throw new LibresignException(
-						$this->l10n->t('This phone number is already registered.')
-					);
-				}
-
-				// update data with normalized number
-				$data['phoneNumber'] = $phoneNumber;
-			}
-
-			return $data;
-
-		} else {
-			throw new LibresignException(
-				$this->l10n->t('Please provide a valid phone number.')
-			);
-		}
-	}
-
-
-	/**
-	 * @param string $phone
-	 * @throws LibresignException
-	 */
-	public function validatePhoneNumber(string $phone): string {
-		$phone = trim($phone);
-
-		$defaultRegion = $this->config->getSystemValueString(
-			'default_phone_region',
-			'KE'
+		$email = trim(
+			strtolower(
+				(string)($data['user']['identify']['email'] ?? '')
+			)
 		);
 
-		$phoneUtil = PhoneNumberUtil::getInstance();
-		$defaultErrorMessage = $this->l10n->t('The phone number is invalid.');
+		if ($email === '') {
+			throw new LibresignException(
+				$this->l10n->t('Email is required'),
+				1
+			);
+		}
 
-		try {
-			// Parse the phone number
-			$phoneNumber = $phoneUtil->parse($phone, $defaultRegion);
+		if ($this->userManager->get($email) !== null) {
+			throw new LibresignException(
+				$this->l10n->t('Account with this email already exists.'),
+				1
+			);
+		}
 
-			// Ensure the parsed number is valid
-			if (
-				!$phoneUtil->isPossibleNumber($phoneNumber)
-				|| !$phoneUtil->isValidNumber($phoneNumber)
-			) {
-				throw new LibresignException($defaultErrorMessage);
-			}
+		$data['user']['identify']['email'] = $email;
 
-			// Normalize the phone number to E.164 format
-			// Example: 0712345678 → +254712345678
-			return $phoneUtil->format(
-				$phoneNumber,
-				\libphonenumber\PhoneNumberFormat::E164
+		if (empty($data['password'])) {
+			throw new LibresignException(
+				$this->l10n->t('Password is required'),
+				1
+			);
+		}
+
+		$file = $this->getFileByUuid($data['uuid']);
+
+		if (empty($file['fileToSign'])) {
+			throw new LibresignException(
+				$this->l10n->t('File not found')
+			);
+		}
+
+		$data['file'] = $file;
+
+		if (!empty($data['phoneNumber']) && is_string($data['phoneNumber'])) {
+			$resolved = $this->phoneNumberService->resolve(
+				$data['phoneNumber']
 			);
 
-		} catch (NumberParseException) {
-			throw new LibresignException($defaultErrorMessage);
-		}
-	}
-
-	/**
-	 * Check if a phone number already exists in the system
-	 */
-	private function phoneNumberExists(string $phoneNumber): bool {
-		$users = $this->userManager->search(''); // fetch users
-
-		foreach ($users as $user) {
-			$account = $this->accountManager->getAccount($user);
-
-			$phoneProperty = $account->getProperty(\OCP\Accounts\IAccountManager::PROPERTY_PHONE);
-
-			if ($phoneProperty && $phoneProperty->getValue() === $phoneNumber) {
-				return true;
+			if (!$resolved->valid) {
+				throw new LibresignException(
+					$this->l10n->t('Please provide a valid phone number.')
+				);
 			}
+
+			$data['phoneNumber'] = $resolved->e164;
 		}
 
-		return false;
+		return $data;
 	}
 
 	public function getFileByUuid(string $uuid): array {
@@ -275,8 +249,14 @@ class AccountService {
 			try {
 				$emailTemplate = $this->newUserMail->generateTemplate($newUser, false);
 				$this->newUserMail->sendMail($newUser, $emailTemplate);
-			} catch (\Exception) {
-				throw new LibresignException('Unable to send the invitation', 1);
+			} catch (\Exception $e) {
+				$this->logger->error(
+					'[AccountService] Failed to send invitation',
+					[
+						'email' => $email,
+						'exception' => $e->getMessage(),
+					]
+				);
 			}
 		}
 
@@ -292,6 +272,60 @@ class AccountService {
 			);
 			$this->pkcs12Handler->savePfx($newUser->getPrimaryEMailAddress(), $certificate);
 		}
+	}
+
+	public function createOnly(
+		string $email,
+		string $password,
+		?string $phoneNumber = null
+	): array {
+		$email = trim(strtolower($email));
+
+		if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			throw new LibresignException('Invalid email address');
+		}
+
+		if ($this->userManager->get($email) !== null) {
+			throw new LibresignException('Account with the email already exists');
+		}
+
+		$resolved = null;
+
+		if (!empty($phoneNumber)) {
+			$resolved = $this->phoneNumberService->resolve($phoneNumber);
+
+			if (!$resolved->valid) {
+				throw new LibresignException('Invalid phone number');
+			}
+		}
+
+		$newUser = $this->userManager->createUser($email, $password);
+		$newUser->setSystemEMailAddress($email);
+
+		if ($newUser instanceof \OCP\IUser && $resolved !== null) {
+			$this->setPhoneNumber($newUser, $resolved->e164);
+		}
+
+		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
+			try {
+				$emailTemplate = $this->newUserMail->generateTemplate($newUser, false);
+				$this->newUserMail->sendMail($newUser, $emailTemplate);
+			} catch (\Exception $e) {
+				$this->logger->error(
+					'[AccountService] Failed to send new user email',
+					[
+						'email' => $email,
+						'exception' => $e->getMessage(),
+					]
+				);
+			}
+		}
+
+		return [
+			'message' => 'Success',
+			'email' => $newUser->getSystemEMailAddress(),
+			'uid' => $newUser->getUID(),
+		];
 	}
 
 	public function getCertificateEngineName(): string {
@@ -357,19 +391,25 @@ class AccountService {
 		return $userAccount->getProperty(IAccountManager::PROPERTY_PHONE)->getValue();
 	}
 
-	private function setPhoneNumber(?IUser $user, ?string $phone): bool {
-		if (!$user && !$phone) {
+	private function setPhoneNumber(?IUser $user, ?string $phone): bool
+	{
+		if (!$user || !$phone) {
 			return false;
 		}
+
 		$account = $this->accountManager->getAccount($user);
+
 		$property = $account->getProperty(IAccountManager::PROPERTY_PHONE);
+
 		$account->setProperty(
 			IAccountManager::PROPERTY_PHONE,
 			$phone,
 			$property->getScope(),
 			IAccountManager::NOT_VERIFIED
 		);
+
 		$this->accountManager->updateAccount($account);
+
 		return true;
 	}
 

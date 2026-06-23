@@ -338,6 +338,7 @@ defineExpose({
 	align-items: flex-start;
 	width: 96%;
 	margin: 0 auto;
+	padding: 24px 0;
 
 	.disabled-warning {
 		margin-top: 12px;

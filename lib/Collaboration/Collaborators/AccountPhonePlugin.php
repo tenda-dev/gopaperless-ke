@@ -19,10 +19,12 @@ use OCP\IAppConfig;
 use OCP\IGroupManager;
 use OCP\IUserManager;
 use OCP\IUserSession;
+use OCP\Share\IShare;
+use Psr\Log\LoggerInterface;
 
 class AccountPhonePlugin implements ISearchPlugin {
 	public const TYPE_SIGNER_ACCOUNT_PHONE = 51;
-	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal'];
+	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal', 'email'];
 
 	public function __construct(
 		private IAppConfig $appConfig,
@@ -33,6 +35,7 @@ class AccountPhonePlugin implements ISearchPlugin {
 		private IUserManager $userManager,
 		private SignerSearchContext $searchContext,
 		private SearchNormalizer $searchNormalizer,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -44,7 +47,19 @@ class AccountPhonePlugin implements ISearchPlugin {
 		$method = $this->searchContext->getMethod();
 		$search = trim((string)$search);
 
-		if ($search === '' || !in_array($method, self::PHONE_BASED_METHODS, true)) {
+		$this->logger->warning('PHONE SEARCH', [
+			'search' => $search,
+		]);
+
+		if ($search === '') {
+			return false;
+		}
+
+		if ($method === 'email') {
+			if (!$this->searchNormalizer->isPhoneSearch($search)) {
+				return false;
+			}
+		} elseif (!in_array($method, self::PHONE_BASED_METHODS, true)) {
 			return false;
 		}
 
@@ -71,6 +86,10 @@ class AccountPhonePlugin implements ISearchPlugin {
 		$allowedGroups = array_diff($this->groupManager->getUserGroupIds($currentUser), $shareWithGroupOnlyExcludeGroupsList);
 
 		$matches = $this->accountManager->searchUsers(IAccountManager::PROPERTY_PHONE, [$search]);
+
+		$this->logger->warning('PHONE MATCHES', [
+			'matches' => $matches,
+		]);
 		$items = [];
 		foreach ($matches as $phone => $userId) {
 			// Filter out users with phone numbers that cannot be normalized
@@ -114,13 +133,45 @@ class AccountPhonePlugin implements ISearchPlugin {
 			}
 
 			$displayName = $user->getDisplayName() !== '' ? $user->getDisplayName() : $userId;
+
+			if ($method === 'email') {
+				/**
+				 * Product direction:
+				 *
+				 * GoPaperless is moving towards a unified signer search experience.
+				 *
+				 * Requesters should search for people rather than understand which
+				 * identity method (account, email, phone, etc.) a signer belongs to.
+				 *
+				 * When a search performed through the Email tab resolves to an
+				 * existing account, we always return an account signer regardless
+				 * of which identifier matched the account.
+				 *
+				 * Examples:
+				 *
+				 *   ab@test.tld (existing)       -> Account signer
+				 *   +254712345678 (existing)     -> Account signer
+				 *   bc@test.tld (external)       -> External email signer
+				 *
+				 * Phone-specific workflows (SMS, WhatsApp, Telegram, Signal) are
+				 * intentionally unaffected and continue to return phone signers.
+				 */
+				$shareType = IShare::TYPE_USER;
+				$shareWith = $userId;
+				$resultMethod = 'account';
+			} else {
+				$shareType = self::TYPE_SIGNER_ACCOUNT_PHONE;
+				$shareWith = $normalizedPhone;
+				$resultMethod = $method;
+			}
+
 			$items[] = [
 				'label' => $displayName,
 				'shareWithDisplayNameUnique' => $normalizedPhone,
-				'method' => $method,
+				'method' => $resultMethod,
 				'value' => [
-					'shareType' => self::TYPE_SIGNER_ACCOUNT_PHONE,
-					'shareWith' => $normalizedPhone,
+					'shareType' => $shareType,
+					'shareWith' => $shareWith,
 				],
 			];
 		}

@@ -12,7 +12,7 @@ use OCP\IConfig;
 use OCP\IPhoneNumberUtil;
 
 class SearchNormalizer {
-	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal'];
+	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal', 'email'];
 
 	public function __construct(
 		private IConfig $config,
@@ -29,9 +29,16 @@ class SearchNormalizer {
 			return $search;
 		}
 
-		$defaultRegion = $this->config->getSystemValueString('default_phone_region', '');
-		if ($defaultRegion === '') {
-			return $search;
+		$defaultRegion = $this->config->getSystemValueString(
+			'default_phone_region',
+			'KE'
+		);
+
+		if (
+			$this->phoneNumberUtil->getCountryCodeForRegion($defaultRegion)
+			=== null
+		) {
+			$defaultRegion = 'KE';
 		}
 
 		$standardFormat = $this->phoneNumberUtil->convertToStandardFormat($search, $defaultRegion);
@@ -59,5 +66,9 @@ class SearchNormalizer {
 		}
 
 		return $this->phoneNumberUtil->convertToStandardFormat($phoneNumber, $defaultRegion);
+	}
+
+	public function isPhoneSearch(string $search): bool {
+		return preg_match('/^[+0-9\s\-()]+$/', trim($search)) === 1;
 	}
 }
