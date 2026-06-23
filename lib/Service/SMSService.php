@@ -17,7 +17,8 @@ use Psr\Log\LoggerInterface;
 class SMSService {
 	// Configuration keys (no production defaults)
 	private const CONFIG_KEY_WEBHOOK_URL = 'webhook_otp_url';
-	private const CONFIG_KEY_SECRET = 'webhook_shared_secret';
+	private const CONFIG_KEY_SECRET = 'webhook_otp_shared_secret';
+	private const CONFIG_KEY_LEGACY_SECRET = 'webhook_shared_secret';
 	private const CONFIG_KEY_TIARA_API_URL = 'tiara_api_url';
 
 	public function __construct(
@@ -200,8 +201,10 @@ class SMSService {
 		}
 
 		// 1. Retrieve the shared secret from AppConfig (System Settings)
-		// You would typically set this via `occ config:app:set libresign webhook_shared_secret --value="your_secret"`
 		$secret = $this->appConfig->getValueString(Application::APP_ID, self::CONFIG_KEY_SECRET, '');
+		if ($secret === '') {
+			$secret = $this->appConfig->getValueString(Application::APP_ID, self::CONFIG_KEY_LEGACY_SECRET, '');
+		}
 
 		if (empty($secret)) {
 			$this->logger->error('LibreSign Webhook: Shared secret is not configured.');

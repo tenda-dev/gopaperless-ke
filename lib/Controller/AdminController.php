@@ -1106,4 +1106,137 @@ class AdminController extends AEnvironmentAwareController {
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
+
+	/**
+	 * Persist Daraja payment configuration
+	 *
+	 * @param string|null $baseUrl Daraja base URL
+	 * @param string|null $consumerKey Daraja consumer key
+	 * @param string|null $consumerSecret Daraja consumer secret
+	 * @param string|null $passKey Daraja pass key
+	 * @param string|null $shortCode Daraja shortcode
+	 * @param string|null $callbackBaseUrl GoPaperless callback base URL
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 500: Internal server error
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/daraja-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setDarajaConfig(
+		?string $baseUrl = null,
+		?string $consumerKey = null,
+		?string $consumerSecret = null,
+		?string $passKey = null,
+		?string $shortCode = null,
+		?string $callbackBaseUrl = null,
+	): DataResponse {
+		try {
+			$this->setPaymentConfig('daraja_base_url', $baseUrl);
+			$this->setPaymentConfig('daraja_consumer_key', $consumerKey);
+			$this->setPaymentConfig('daraja_consumer_secret', $consumerSecret, true);
+			$this->setPaymentConfig('daraja_pass_key', $passKey, true);
+			$this->setPaymentConfig('daraja_shortcode', $shortCode);
+			$this->setPaymentConfig('gopaperless_callback_base_url', $callbackBaseUrl);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Daraja configuration saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist DPO payment configuration
+	 *
+	 * @param string|null $endpoint DPO API endpoint
+	 * @param string|null $companyToken DPO company token
+	 * @param string|null $serviceId DPO service ID
+	 * @param string|null $paymentUrl DPO payment URL
+	 * @param string|null $callbackBaseUrl GoPaperless callback base URL
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 500: Internal server error
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/dpo-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setDpoConfig(
+		?string $endpoint = null,
+		?string $companyToken = null,
+		?string $serviceId = null,
+		?string $paymentUrl = null,
+		?string $callbackBaseUrl = null,
+	): DataResponse {
+		try {
+			$this->setPaymentConfig('dpo_endpoint', $endpoint);
+			$this->setPaymentConfig('dpo_company_token', $companyToken, true);
+			$this->setPaymentConfig('dpo_service_id', $serviceId);
+			$this->setPaymentConfig('dpo_payment_url', $paymentUrl);
+			$this->setPaymentConfig('gopaperless_callback_base_url', $callbackBaseUrl);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('DPO configuration saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist FX provider API credentials.
+	 *
+	 * @param string|null $exchangeRateApiKey ExchangeRate-API key
+	 * @param string|null $openExchangeAppId OpenExchangeRates app ID
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 500: Internal server error
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/fx-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setFxConfig(
+		?string $exchangeRateApiKey = null,
+		?string $openExchangeAppId = null,
+	): DataResponse {
+		try {
+			$this->setPaymentConfig('fx_exchangerate_api_key', $exchangeRateApiKey, true);
+			$this->setPaymentConfig('fx_openexchange_app_id', $openExchangeAppId, true);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('FX provider configuration saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Helper to store or remove a payment config key.
+	 */
+	private function setPaymentConfig(string $key, ?string $value, bool $sensitive = false): void {
+		if ($value === null || $value === '') {
+			// Do not delete secrets via a partial save; only non-sensitive keys can be cleared.
+			if ($sensitive) {
+				return;
+			}
+			$this->appConfig->deleteKey(Application::APP_ID, $key);
+			return;
+		}
+
+		$this->appConfig->setValueString(
+			Application::APP_ID,
+			$key,
+			$value,
+			false,
+			$sensitive
+		);
+	}
 }

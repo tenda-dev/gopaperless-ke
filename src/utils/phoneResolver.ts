@@ -125,8 +125,6 @@ export function resolvePhone(
       }
     }
 
-	console.log(`region`, region)
-
     const e164 = parsed.number
 
     /**

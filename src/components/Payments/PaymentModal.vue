@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import PaymentStep from '@/components/Payments/PaymentStep.vue'
 import PaymentRecoveryCard from '@/components/Payments/PaymentRecoveryCard.vue'
@@ -78,10 +78,20 @@ const {
 
 const hasAcceptedRecovery = ref(false)
 
-// controls whether modal can close
-const canClose = ref(false)
+const isInFlightRecovery = computed(() => {
+	if (!recoveryPayment.value) {
+		return false
+	}
 
-// track PaymentStep state to prevent closing during critical phases
+	if (recoveryPayment.value.alreadyCharged) {
+		return true
+	}
+
+	const executionState = recoveryPayment.value.providerExecutionState
+	return executionState === 'executing' || executionState === 'reconciling'
+})
+
+// track PaymentStep state so we can warn when closing an active session
 const currentState = ref<PaymentState>('idle')
 
 
@@ -90,23 +100,30 @@ onMounted(async () => {
 		signRequestId: props.signRequestId,
 		signUuid: props.signUuid,
 	})
+
+	// If a payment is already in flight, resume it automatically so the user
+	// is taken straight back to the "Complete payment" screen.
+	if (hasRecovery.value && isInFlightRecovery.value) {
+		handleResume()
+	}
 })
 
 function handleClose() {
-  // CRITICAL: block closing during payment execution
-   if (
-	currentState.value === 'processing' ||
-	currentState.value === 'initiating' ||
-	currentState.value === 'requesting' ||
-	currentState.value === 'hydrating'
-   ) {
-	notifyInfo({
-		message: `You are in the middle of an active payment session`
-	})
-	return
-   }
+	// Always allow closing and notify the parent so the modal can be reopened
+	// reliably from either sign button. The in-flight session remains recoverable
+	// on the backend and will auto-resume when the modal is reopened.
+	if (
+		currentState.value === 'processing' ||
+		currentState.value === 'initiating' ||
+		currentState.value === 'requesting' ||
+		currentState.value === 'hydrating'
+	) {
+		notifyInfo({
+			message: 'Payment session still active. Reopen it from the Sign button to continue.',
+		})
+	}
 
-  emit('close')
+	emit('close')
 }
 
 
@@ -131,7 +148,6 @@ function handleStartOver() {
 // called when payment completes successfully
 function onSuccess() {
   discardRecovery()
-  canClose.value = true
   emit('success') // triggers retry signing flow
 }
 
@@ -141,7 +157,6 @@ function onStateChange(state: typeof currentState.value) {
 }
 
 function onPaymentRuntimeInvalid() {
-   canClose.value = true
    emit('close')
 }
 </script>

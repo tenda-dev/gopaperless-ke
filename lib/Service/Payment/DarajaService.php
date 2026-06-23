@@ -13,6 +13,7 @@ use OCA\Libresign\AppInfo\Application;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IRequest;
+use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 
@@ -31,6 +32,7 @@ class DarajaService {
 	private LoggerInterface $logger;
 	private IRequest $request;
 	private IAppConfig $appConfig;
+	private IURLGenerator $urlGenerator;
 
 	/**
 	 * Daraja API configuration
@@ -42,11 +44,13 @@ class DarajaService {
 		LoggerInterface $logger,
 		IRequest $request,
 		IAppConfig $appConfig,
+		IURLGenerator $urlGenerator,
 	) {
 		$this->clientService = $clientService;
 		$this->logger = $logger;
 		$this->request = $request;
 		$this->appConfig = $appConfig;
+		$this->urlGenerator = $urlGenerator;
 	}
 
 	/**
@@ -330,8 +334,10 @@ class DarajaService {
 	 *
 	 * Priority:
 	 * 1. Manual override (ngrok/testing)
-	 * 2. Proxy headers (nginx/ngrok)
-	 * 3. Fallback to server host
+	 * 2. Config-driven base URL (admin UI)
+	 * 3. Proxy headers (nginx/ngrok)
+	 * 4. Nextcloud base URL
+	 * 5. Request host (last resort)
 	 */
 	private function getCallbackUrl(): string {
 
@@ -361,7 +367,7 @@ class DarajaService {
 		 * =========================================================
 		 *
 		 * Set via admin UI:
-		 * daraja_gopaperless_callback_base_url
+		 * gopaperless_callback_base_url
 		 *
 		 */
 		$configBaseUrl = trim($config['callbackBaseUrl'] ?? '');
@@ -389,13 +395,21 @@ class DarajaService {
 
 		/**
 		 * =========================================================
-		 * 4. Fallback (local development)
+		 * 4. Nextcloud base URL fallback
 		 * =========================================================
 		 *
-		 * Last resort when no config or proxy headers exist.
-		 * Usually:
-		 * - localhost
-		 * - docker internal network
+		 * Uses the configured Nextcloud base URL (overwritehost / trusted_domains).
+		 * Reliable behind reverse proxies where the request object cannot detect a host.
+		 */
+		$nextcloudBaseUrl = $this->urlGenerator->getBaseUrl();
+		if (!empty($nextcloudBaseUrl)) {
+			return rtrim($nextcloudBaseUrl, '/') . $callbackPath;
+		}
+
+		/**
+		 * =========================================================
+		 * 5. Request-host fallback (last resort)
+		 * =========================================================
 		 */
 		$host = $this->request->getServerHost();
 
@@ -464,9 +478,31 @@ class DarajaService {
 	// 	return $this->getTestConfig();
 	// }
 
+	/**
+	 * Map a Safaricom Daraja result code to a safe, user-facing reason key.
+	 *
+	 * Raw provider descriptions are kept out of the API surface to avoid
+	 * leaking internal system state or subscriber details.
+	 */
+	public static function mapResultCodeToReason(?int $code): string
+	{
+		return match ($code) {
+			0 => 'success',
+			1 => 'insufficient_balance',
+			17, 26, 1025 => 'provider_error',
+			1001 => 'transaction_in_progress',
+			1019 => 'expired',
+			1032 => 'cancelled',
+			1037 => 'timeout',
+			2001 => 'wrong_pin',
+			default => 'generic_failure',
+		};
+	}
+
 	private function normalizeSTKQueryResponse(array $data): array {
 		$resultCode = $data['ResultCode'] ?? null;
 		$resultDesc = $data['ResultDesc'] ?? '';
+		$reason = self::mapResultCodeToReason(is_numeric($resultCode) ? (int)$resultCode : null);
 
 		return match ($resultCode) {
 			'0' => [
@@ -476,15 +512,15 @@ class DarajaService {
 			],
 			// user cancelled
 			'1032' => [
-				'status' => 'FAILED',
-				'reason' => 'cancelled',
+				'status' => 'CANCELLED',
+				'reason' => $reason,
 				'raw' => $data,
 				'description' => $resultDesc,
 			],
-			// timeout
-			'1037' => [
+			// terminal failures
+			'1', '17', '26', '1001', '1019', '1025', '1036', '1037', '2001', '2006' => [
 				'status' => 'FAILED',
-				'reason' => 'timeout',
+				'reason' => $reason,
 				'raw' => $data,
 				'description' => $resultDesc,
 			],
@@ -503,11 +539,29 @@ class DarajaService {
 		$consumerSecret = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', '');
 		$passKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', '');
 		$shortCode = $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', '');
-		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
-		if ($baseUrl === '' || $consumerKey === '' || $consumerSecret === '' || $passKey === '' || $shortCode === '' || $callbackBaseUrl === '') {
-			throw new \RuntimeException('Daraja payment configuration is incomplete');
+		$missing = [];
+		if ($baseUrl === '') {
+			$missing[] = 'daraja_base_url';
 		}
+		if ($consumerKey === '') {
+			$missing[] = 'daraja_consumer_key';
+		}
+		if ($consumerSecret === '') {
+			$missing[] = 'daraja_consumer_secret';
+		}
+		if ($passKey === '') {
+			$missing[] = 'daraja_pass_key';
+		}
+		if ($shortCode === '') {
+			$missing[] = 'daraja_shortcode';
+		}
+
+		if (!empty($missing)) {
+			throw new \RuntimeException('Daraja payment configuration is incomplete: ' . implode(', ', $missing));
+		}
+
+		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
 
 		return [
 			'baseUrl' => $baseUrl,
@@ -517,5 +571,5 @@ class DarajaService {
 			'shortCode' => $shortCode,
 			'callbackBaseUrl' => $callbackBaseUrl,
 		];
-    }
+	}
 }

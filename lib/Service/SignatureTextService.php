@@ -92,6 +92,9 @@ class SignatureTextService {
 			// minimum allowed value for each dimension.
 			throw new LibresignException($this->l10n->t('Invalid signature box size. Width and height must be at least %.0f.', [self::SIGNATURE_DIMENSION_MINIMUM]));
 		}
+		$hasQrCode = (bool)preg_match('/\{\{\s*qrcode\s*\}\}|<img[^>]+src=["\']data:image\/png;base64,/i', $template);
+		$this->appConfig->setValueBool(Application::APP_ID, 'signature_stamp_has_qrcode', $hasQrCode);
+
 		$template = trim($template);
 		$template = preg_replace(
 			[
@@ -225,7 +228,7 @@ class SignatureTextService {
 		return $list;
 	}
 
-	private function getQrCodeImageBase64(string $text): string {
+	public function getQrCodeImageBase64(string $text): string {
 		$qrCode = new QrCode(
 			data: $text,
 			encoding: new Encoding('UTF-8'),
@@ -548,11 +551,15 @@ class SignatureTextService {
 		return $this->appConfig->getValueString(Application::APP_ID, 'signature_render_mode', SignerElementsService::RENDER_MODE_DEFAULT);
 	}
 
+	public function hasQrCodeInTemplate(): bool {
+		return $this->appConfig->getValueBool(Application::APP_ID, 'signature_stamp_has_qrcode', false);
+	}
+
 	public function isEnabled(): bool {
 		return !empty($this->getTemplate());
 	}
 
-	private function buildValidationUrl(string $uuid): string {
+	public function buildValidationUrl(string $uuid): string {
 		$validationSite = trim($this->appConfig->getValueString(Application::APP_ID, 'validation_site', ''));
 		if ($validationSite !== '') {
 			return rtrim($validationSite, '/') . '/' . $uuid;

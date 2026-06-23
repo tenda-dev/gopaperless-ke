@@ -35,7 +35,7 @@ git submodule update --init --recursive
 # =========================
 # PHP DEPENDENCIES
 # =========================
-if [[ ! -d "vendor" ]]; then
+if [[ ! -f "vendor/autoload.php" ]]; then
 	echo "📦 Installing composer dependencies..."
 	composer install
 fi

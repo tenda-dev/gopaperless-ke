@@ -20,7 +20,7 @@ final class MnoRoutingResultDTO
 	public function __construct(
 		public readonly PaymentCapability $capability,
 		public readonly PaymentProvider $preferredProvider,
-		public readonly ?string $dpoMnoKey,
+		public readonly ?string $mnoKey,
 		public readonly PaymentFlowMode $mode,
 		public readonly ?string $currency,
 		public readonly ?string $altCurrency,
@@ -95,14 +95,14 @@ final class MnoRoutingResultDTO
 	public function requiresUserSelection(): bool
 	{
 		return $this->confidence->requiresUserSelection()
-			|| $this->dpoMnoKey === null;
+			|| $this->mnoKey === null;
 	}
 
 	public function supportsAutoCharge(): bool
 	{
 		return $this->mode === PaymentFlowMode::STK_PUSH
 			&& $this->confidence->isHigh()
-			&& $this->dpoMnoKey !== null;
+			&& $this->mnoKey !== null;
 	}
 
 	/**
@@ -131,7 +131,7 @@ final class MnoRoutingResultDTO
 	return [
 		'capability'        => $this->capability->value,
 		'preferredProvider' => $this->preferredProvider->value,
-		'dpoMnoKey'         => $this->dpoMnoKey,
+		'mnoKey'            => $this->mnoKey,
 		'mode'              => $this->mode->value,
 		'currency'          => $this->currency,
 		'altCurrency'       => $this->altCurrency,
@@ -148,6 +148,25 @@ final class MnoRoutingResultDTO
 	/**
 	 * Debug-safe snapshot
 	 */
+	public function withPreferredProvider(PaymentProvider $preferredProvider): self
+	{
+		return new self(
+			capability: $this->capability,
+			preferredProvider: $preferredProvider,
+			mnoKey: $this->mnoKey,
+			mode: $this->mode,
+			currency: $this->currency,
+			altCurrency: $this->altCurrency,
+			minAmount: $this->minAmount,
+			maxAmount: $this->maxAmount,
+			supportsDecimals: $this->supportsDecimals,
+			confidence: $this->confidence,
+			notes: $this->notes,
+			country: $this->country,
+			region: $this->region,
+		);
+	}
+
 	public function __toString(): string
 	{
 		return json_encode($this->toArray(), JSON_THROW_ON_ERROR);

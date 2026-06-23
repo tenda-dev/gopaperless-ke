@@ -311,6 +311,13 @@ class SignFileService {
 
 		$this->elements = $newElements;
 
+		$this->logger->debug('SignFileService::setVisibleElements completed', [
+			'inputListCount' => count($list),
+			'fileElementsCount' => count($fileElements),
+			'resultCount' => count($newElements),
+			'canCreateSignature' => $canCreateSignature,
+		]);
+
 		return $this;
 	}
 
@@ -1167,6 +1174,12 @@ class SignFileService {
 				->setVisibleElements($this->getVisibleElements())
 				->setSignatureParams($this->getSignatureParams());
 		}
+
+		$this->logger->debug('SignFileService::configureEngine completed', [
+			'engineClass' => $this->engine::class,
+			'visibleElementCount' => count($this->getVisibleElements()),
+			'signatureParamKeys' => array_keys($this->getSignatureParams()),
+		]);
 	}
 
 	public function getLibresignFile(?int $fileId, ?string $signRequestUuid = null): FileEntity {
@@ -1209,6 +1222,7 @@ class SignFileService {
 		string $identifyMethodName,
 		string $signMethodName,
 		string $identify = '',
+		string $uuid = '',
 	): void {
 		$identifyMethods = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequest->getId());
 		if (empty($identifyMethods[$identifyMethodName])) {
@@ -1223,7 +1237,7 @@ class SignFileService {
 			}
 			/** @var IToken $signatureMethod */
 			$identifier = $identify ?: $identifyMethod->getEntity()->getIdentifierValue();
-			$signatureMethod->requestCode($identifier, $identifyMethod->getEntity()->getIdentifierKey());
+			$signatureMethod->requestCode($identifier, $identifyMethod->getEntity()->getIdentifierKey(), $uuid);
 			return;
 		}
 		throw new LibresignException($this->l10n->t('Sending authorization code not enabled.'));

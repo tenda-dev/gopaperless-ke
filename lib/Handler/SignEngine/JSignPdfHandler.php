@@ -298,6 +298,13 @@ class JSignPdfHandler extends Pkcs12Handler {
 
 			$renderMode = $this->signatureTextService->getRenderMode();
 
+			$this->logger->debug('JSignPdfHandler::signUsingVisibleElements started', [
+				'visibleElementCount' => count($visibleElements),
+				'renderMode' => $renderMode,
+				'hashAlgorithm' => $hashAlgorithm,
+				'backgroundType' => $this->signatureBackgroundService->getSignatureBackgroundType(),
+			]);
+
 			$params = [
 				'--l2-text' => $this->getSignatureText(),
 				'-V' => null,
@@ -350,7 +357,7 @@ class JSignPdfHandler extends Pkcs12Handler {
 
 				$backgroundPathForElement = $backgroundPath
 					? $this->prepareBackgroundForPdf($backgroundPath, $this->normalizeScaleFactor($scaleFactor))
-					: '';
+					: $this->createQrOnlyBackground($this->normalizeScaleFactor($scaleFactor));
 
 				$signatureImagePath = $element->getTempFile();
 				if ($backgroundType === 'deleted') {
@@ -412,11 +419,39 @@ class JSignPdfHandler extends Pkcs12Handler {
 				);
 				$param->setPdf($normalizedPdf);
 				$jSignPdf->setParam($param);
+
+				$this->logger->debug('JSignPdfHandler signing element', [
+					'elementIndex' => $elementIndex,
+					'page' => $params['-pg'] ?? 1,
+					'coords' => [
+						'llx' => $params['-llx'] ?? 0,
+						'lly' => $params['-lly'] ?? 0,
+						'urx' => $params['-urx'] ?? 0,
+						'ury' => $params['-ury'] ?? 0,
+					],
+					'jSignParameters' => $param->getJSignParameters(),
+				]);
+
 				$signed = $this->signWrapper($jSignPdf);
 				$normalizedPdf = $signed;
+
+				// Reset element-specific options so the next element starts fresh.
+				unset(
+					$params['-pg'],
+					$params['-llx'],
+					$params['-lly'],
+					$params['-urx'],
+					$params['-ury'],
+					$params['--font-size'],
+					$params['--bg-path'],
+					$params['--img-path'],
+					$params['--render-mode'],
+					$params['--hash-algorithm'],
+				);
 			}
 			return $signed;
 		}
+		$this->logger->debug('JSignPdfHandler::signUsingVisibleElements: no visible elements, falling back to invisible signature');
 		return '';
 	}
 
@@ -524,6 +559,8 @@ class JSignPdfHandler extends Pkcs12Handler {
 		$sigY = (int)(($canvasHeight - $signature->getImageHeight()) / 2);
 		$canvas->compositeImage($signature, Imagick::COMPOSITE_OVER, $sigX, $sigY);
 
+		$this->compositeQrCodeOnCanvas($canvas, (int)$canvasWidth, (int)$canvasHeight, $scaleFactor);
+
 		$tmpPath = $this->tempManager->getTemporaryFile('_merged.png');
 		if (!$tmpPath) {
 			throw new \Exception('Temporary file not accessible');
@@ -567,6 +604,8 @@ class JSignPdfHandler extends Pkcs12Handler {
 		$bgY = (int)(($canvasHeight - $background->getImageHeight()) / 2);
 		$canvas->compositeImage($background, Imagick::COMPOSITE_OVER, $bgX, $bgY);
 
+		$this->compositeQrCodeOnCanvas($canvas, $canvasWidth, $canvasHeight, $scaleFactor);
+
 		$tmpPath = $this->tempManager->getTemporaryFile('_background.png');
 		if (!$tmpPath) {
 			throw new \Exception('Temporary file not accessible');
@@ -577,6 +616,81 @@ class JSignPdfHandler extends Pkcs12Handler {
 		$background->clear();
 
 		return $tmpPath;
+	}
+
+	private function createQrOnlyBackground(float $scaleFactor): ?string {
+		if (!$this->signatureTextService->hasQrCodeInTemplate()) {
+			return null;
+		}
+		$params = $this->getSignatureParams();
+		$documentUuid = $params['DocumentUUID'] ?? null;
+		if (empty($documentUuid) || !is_string($documentUuid)) {
+			return null;
+		}
+		if (!extension_loaded('imagick')) {
+			return null;
+		}
+
+		$baseWidth = $this->signatureTextService->getFullSignatureWidth();
+		$baseHeight = $this->signatureTextService->getFullSignatureHeight();
+		$canvasWidth = (int)round($baseWidth * $scaleFactor);
+		$canvasHeight = (int)round($baseHeight * $scaleFactor);
+
+		$canvas = new Imagick();
+		$canvas->newImage($canvasWidth, $canvasHeight, new ImagickPixel('transparent'));
+		$canvas->setImageFormat('png32');
+		$canvas->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+
+		$this->compositeQrCodeOnCanvas($canvas, $canvasWidth, $canvasHeight, $scaleFactor);
+
+		$tmpPath = $this->tempManager->getTemporaryFile('_qr_only_background.png');
+		if (!$tmpPath) {
+			return null;
+		}
+		$canvas->writeImage($tmpPath);
+		$canvas->clear();
+		return $tmpPath;
+	}
+
+	private function getQrCodeImageFile(?float $scaleFactor = null): ?string {
+		if (!$this->signatureTextService->hasQrCodeInTemplate()) {
+			return null;
+		}
+		$params = $this->getSignatureParams();
+		$documentUuid = $params['DocumentUUID'] ?? null;
+		if (empty($documentUuid) || !is_string($documentUuid)) {
+			return null;
+		}
+
+		$validationUrl = $this->signatureTextService->buildValidationUrl($documentUuid);
+		$base64 = $this->signatureTextService->getQrCodeImageBase64($validationUrl);
+		$content = base64_decode($base64, true);
+		if ($content === false) {
+			return null;
+		}
+
+		$tmpPath = $this->tempManager->getTemporaryFile('_qrcode.png');
+		if (!$tmpPath) {
+			return null;
+		}
+		file_put_contents($tmpPath, $content);
+		return $tmpPath;
+	}
+
+	private function compositeQrCodeOnCanvas(Imagick $canvas, int $canvasWidth, int $canvasHeight, float $scaleFactor): void {
+		$qrCodePath = $this->getQrCodeImageFile($scaleFactor);
+		if ($qrCodePath === null) {
+			return;
+		}
+
+		$qrCode = new Imagick($qrCodePath);
+		$qrCode->setImageFormat('png');
+		$qrSize = min($canvasWidth, $canvasHeight) * 0.35;
+		$qrCode->resizeImage((int)$qrSize, (int)$qrSize, Imagick::FILTER_LANCZOS, 1, true);
+		$qrX = (int)($canvasWidth - $qrCode->getImageWidth() - max(4, $qrSize * 0.05));
+		$qrY = (int)max(4, $qrSize * 0.05);
+		$canvas->compositeImage($qrCode, Imagick::COMPOSITE_OVER, $qrX, $qrY);
+		$qrCode->clear();
 	}
 
 	private function parseSignatureText(): array {

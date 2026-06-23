@@ -184,8 +184,8 @@ final class DashboardService
 					createdAt: $payment
 						->getCreatedAt()?->format(DATE_ATOM),
 
-					signUuid: $payment->getSignUuid(),
-					signRequestId: $payment->getSignRequestId(),
+					signUuid: $payment->getTransactionReference(),
+					signRequestId: $payment->getTransactionId(),
 				);
 			},
 			$payments

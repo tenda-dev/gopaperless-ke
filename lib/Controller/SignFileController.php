@@ -86,21 +86,8 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 	#[PublicPage]
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/file_id/{fileId}', requirements: ['apiVersion' => '(v1)'])]
-	public function signUsingFileId(int $fileId, string $method, array $elements = [], string $identifyValue = '', string $token = '', bool $async = false): DataResponse {
-		return $this->sign($method, $elements, $identifyValue, $token, $fileId, null, $async);
-	}
-
-	/**
-	 * @deprecated Use signUsingFileId() instead. Kept for backward compatibility.
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[RequireManager]
-	#[PublicPage]
-	#[OpenAPI(tags: ['signing'])]
-	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/file_id/{fileId}', requirements: ['apiVersion' => '(v1)'])]
 	public function signByFileId(int $fileId, string $method, array $elements = [], string $identifyValue = '', string $token = '', bool $async = false): DataResponse {
-		return $this->signUsingFileId($fileId, $method, $elements, $identifyValue, $token, $async);
+		return $this->sign($method, $elements, $identifyValue, $token, $fileId, null, $async);
 	}
 
 	/**
@@ -124,21 +111,8 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 	#[PublicPage]
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}', requirements: ['apiVersion' => '(v1)'])]
-	public function signUsingUuid(string $uuid, string $method, array $elements = [], string $identifyValue = '', string $token = '', bool $async = false): DataResponse {
-		return $this->sign($method, $elements, $identifyValue, $token, null, $uuid, $async);
-	}
-
-	/**
-	 * @deprecated Use signUsingUuid() instead. Kept for backward compatibility.
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[RequireSigner]
-	#[PublicPage]
-	#[OpenAPI(tags: ['signing'])]
-	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}', requirements: ['apiVersion' => '(v1)'])]
 	public function signBySignerUuid(string $uuid, string $method, array $elements = [], string $identifyValue = '', string $token = '', bool $async = false): DataResponse {
-		return $this->signUsingUuid($uuid, $method, $elements, $identifyValue, $token, $async);
+		return $this->sign($method, $elements, $identifyValue, $token, null, $uuid, $async);
 	}
 
 	/**
@@ -315,31 +289,13 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 	#[PublicPage]
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}/code', requirements: ['apiVersion' => '(v1)'])]
-	public function getCodeUsingUuid(string $uuid, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
-		try {
-			$signRequest = $this->signRequestMapper->getBySignerUuidAndUserId($uuid);
-		} catch (\Throwable) {
-			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
-		}
-		return $this->getCode($signRequest);
-	}
-
-	/**
-	 * @deprecated Use getCodeUsingUuid() instead. Kept for backward compatibility.
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[RequireSigner]
-	#[PublicPage]
-	#[OpenAPI(tags: ['signing'])]
-	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/uuid/{uuid}/code', requirements: ['apiVersion' => '(v1)'])]
 	public function requestCodeBySignerUuid(string $uuid, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
 		try {
 			$signRequest = $this->signRequestMapper->getBySignerUuidAndUserId($uuid);
 		} catch (\Throwable) {
 			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
 		}
-		return $this->getCode($signRequest);
+		return $this->getCode($signRequest, $signRequest->getUuid());
 	}
 
 	/**
@@ -360,38 +316,20 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 	#[PublicPage]
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/file_id/{fileId}/code', requirements: ['apiVersion' => '(v1)'])]
-	public function getCodeUsingFileId(int $fileId, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
-		try {
-			$signRequest = $this->signRequestMapper->getByFileIdAndUserId($fileId);
-		} catch (\Throwable) {
-			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
-		}
-		return $this->getCode($signRequest);
-	}
-
-	/**
-	 * @deprecated Use getCodeUsingFileId() instead. Kept for backward compatibility.
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[RequireSigner]
-	#[PublicPage]
-	#[OpenAPI(tags: ['signing'])]
-	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/sign/file_id/{fileId}/code', requirements: ['apiVersion' => '(v1)'])]
 	public function requestCodeByFileId(int $fileId, ?string $identifyMethod, ?string $signMethod, ?string $identify): DataResponse {
 		try {
 			$signRequest = $this->signRequestMapper->getByFileIdAndUserId($fileId);
 		} catch (\Throwable) {
 			throw new LibresignException($this->l10n->t('Invalid data to sign file'), 1);
 		}
-		return $this->getCode($signRequest);
+		return $this->getCode($signRequest, $signRequest->getUuid());
 	}
 
 	/**
 	 * @todo validate if can request code
 	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>
 	 */
-	private function getCode(SignRequest $signRequest): DataResponse {
+	private function getCode(SignRequest $signRequest, ?string $uuid): DataResponse {
 		try {
 			$libreSignFile = $this->signFileService->getFile($signRequest->getFileId());
 			$this->validateHelper->fileCanBeSigned($libreSignFile);
@@ -400,6 +338,7 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 				identifyMethodName: $this->request->getParam('identifyMethod', ''),
 				signMethodName: $this->request->getParam('signMethod', ''),
 				identify: $this->request->getParam('identify', ''),
+				uuid: $uuid,
 			);
 			$message = $this->l10n->t('Verification code sent.');
 			$statusCode = Http::STATUS_OK;
