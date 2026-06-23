@@ -1,15 +1,16 @@
 <template>
-  <NcDialog
-    name="Complete payment"
-    size="normal"
-    @closing="handleClose"
-  >
+	<NcDialog
+	name=""
+	size="full"
+	@closing="handleClose"
+>
+
     <!-- Recovery loading -->
 	<div
-		v-if="isChecking"
+		v-if="isLoading"
 		class="payment-modal-loading"
 	>
-		Checking payment session…
+		{{ loadingMessage }}
 	</div>
 
 	<!-- Recovery -->
@@ -24,43 +25,63 @@
 		@start-over="handleStartOver"
 	/>
 
+	<!-- Quantity selection -->
+	<CreditQuantitySelector
+		v-else-if="step === 'quantity'"
+		:pricing="pricing"
+		@selected="handleQuantitySelected"
+	/>
+
 	<!-- Payment execution -->
     <PaymentStep
-	  v-else
-      :payment-purpose="props.paymentPurpose"
-      :sign-request-id="signRequestId"
-      :sign-uuid="signUuid"
+	  v-else-if="step === 'payment'"
+	  :payment-purpose="PAYMENT_PURPOSE"
+      :sign-request-id="undefined"
+      :sign-uuid="undefined"
       :product-code="productCode"
 	  :pricing="pricing"
-	  :quantity="props.quantity"
 	  :initial-payment="hydratedPayment"
+	  :quantity="quantity"
       @payment-success="onSuccess"
       @state-change="onStateChange"
 	  @payment-runtime-invalid="onPaymentRuntimeInvalid"
     />
-  </NcDialog>
+
+</NcDialog>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import PaymentStep from '@/components/Payments/PaymentStep.vue'
 import PaymentRecoveryCard from '@/components/Payments/PaymentRecoveryCard.vue'
+import CreditQuantitySelector from './CreditQuantitySelector.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { type PaymentState } from '@/payment/usePayment'
 import type { HydratedPayment, PaymentPurpose } from '@/payment/types'
 import { notifyInfo } from '@/services/toast'
 import { useProductPricing } from '@/composables/useProductPricing';
 
+type CreditPurchaseStep =
+	| 'quantity'
+	| 'payment'
+
+const PAYMENT_PURPOSE: PaymentPurpose = 'credit_purchase'
+
 const props = defineProps<{
-	paymentPurpose: PaymentPurpose
 	productCode: string
-
-	quantity: number
-
-	signUuid?: string
-	signRequestId?: number
+	preselectedQuantity?: number
 }>()
+
+const step = ref<CreditPurchaseStep>(
+	props.preselectedQuantity
+		? 'payment'
+		: 'quantity',
+)
+
+const quantity = ref(
+	props.preselectedQuantity ?? 1,
+)
 
 const emit = defineEmits([
 	'close',
@@ -93,13 +114,50 @@ const canClose = ref(false)
 const currentState = ref<PaymentState>('idle')
 
 
+const isLoading = computed(() =>
+	isChecking.value ||
+	pricing.loadingProduct.value
+)
+
+const canRenderFlow = computed(() =>
+	!isLoading.value &&
+	pricing.isReady.value
+)
+
+const loadingMessage = computed(() => {
+
+	if (isChecking.value) {
+		return 'Checking payment session...'
+	}
+
+	if (pricing.loadingProduct.value) {
+		return 'Loading pricing...'
+	}
+
+	return ''
+})
+
+const isQuantityLocked = computed(
+	() => props.preselectedQuantity !== undefined,
+)
+
+function handleQuantitySelected(
+	payload: { quantity: number }
+) {
+	quantity.value = payload.quantity
+
+	step.value = 'payment'
+}
+
 onMounted(async () => {
 	await checkRecovery({
-		paymentPurpose: props.paymentPurpose,
+		paymentPurpose: PAYMENT_PURPOSE,
 		productCode: props.productCode,
-		signRequestId: props.signRequestId,
-		signUuid: props.signUuid,
 	})
+
+	if (props.preselectedQuantity) {
+		handleQuantitySelected({ quantity: quantity.value })
+	}
 })
 
 function handleClose() {
@@ -119,22 +177,30 @@ function handleClose() {
   emit('close')
 }
 
-
 function handleResume() {
-  const payment = resumeRecovery()
+	const payment = resumeRecovery()
 
-  if (!payment) {
-    return
-  }
+	if (!payment) {
+		return
+	}
 
-  hydratedPayment.value = payment
-  hasAcceptedRecovery.value = true
+	hydratedPayment.value = payment
+
+	hasAcceptedRecovery.value = true
+
+	step.value = 'payment'
 }
 
 function handleStartOver() {
 	discardRecovery()
 
 	hydratedPayment.value = null
+
+	hasAcceptedRecovery.value = true
+
+	step.value = props.preselectedQuantity
+		? 'payment'
+		: 'quantity'
 }
 
 
@@ -142,7 +208,8 @@ function handleStartOver() {
 function onSuccess() {
   discardRecovery()
   canClose.value = true
-  emit('success') // triggers retry signing flow
+
+  emit('success')
 }
 
 // receive state updates from PaymentStep
@@ -154,7 +221,10 @@ function onPaymentRuntimeInvalid() {
    canClose.value = true
    emit('close')
 }
+
 </script>
+
+
 <style lang="scss" scoped>
 .payment-modal-loading {
 	display: flex;

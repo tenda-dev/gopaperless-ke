@@ -14,6 +14,11 @@ export type PaymentReason =
 	| 'failed'
 	| 'initiation_failed'
 	| 'cancelled'
+
+export type PaymentPurpose =
+	| 'sign_request'
+	| 'credit_purchase'
+
 export type PaymentConfidence = 'high' | 'ambiguous' | 'unknown'
 
 export type PaymentMobileFlow = 'mobile_direct' | 'callback'
@@ -89,6 +94,9 @@ export interface PaymentResponse {
   displayAmountFormatted?: string
   displayCurrency?: string
   providerExecutionState?: ProviderExecutionState
+  paymentPurpose?: PaymentPurpose
+  quantity?: number
+  unitAmount?: number
 }
 
 
@@ -135,20 +143,23 @@ export interface MobilePaymentContext {
 
 export interface StartPaymentPayload {
 	userEmail: string
-	signUuid: string
-	signRequestId: number
 	userId: string
+	/**
+	 * Monetisation / entitlement strategy key.
+	 */
+	productCode: string
+
+	purpose: PaymentPurpose
+
+
+	signUuid?: string
+	signRequestId?: number
 
 	/**
 	 * Used for redirect/card payment flows.
 	 * Backend may ignore this for mobile flows.
 	 */
 	redirectUrl?: string | null
-
-	/**
-	 * Monetisation / entitlement strategy key.
-	 */
-	productCode: string
 
 	/**
 	 * Optional client-generated attempt lineage identifier.
@@ -182,4 +193,6 @@ export interface StartPaymentPayload {
 	 * Desired payment method.
 	 */
 	paymentMethod?: PaymentMethod
+
+	quantity?: number
 }

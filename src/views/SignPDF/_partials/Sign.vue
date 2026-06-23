@@ -109,10 +109,18 @@
 			@close="signMethodsStore.closeModal('emailToken')" />
 	</div>
 
-	<PaymentModal v-if="showPaymentModal && paymentContext" :sign-uuid="paymentContext.signUuid"
-		:sign-request-id="paymentContext.signRequestId" :document="signStore.document" :signer="currentSigner"
-		:product-code="signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE" @close="handlePaymentClose"
-		@success="onPaymentSuccess" />
+	<PaymentModal
+		v-if="showPaymentModal && paymentContext"
+		:sign-uuid="paymentContext.signUuid"
+		:sign-request-id="paymentContext.signRequestId"
+		:document="signStore.document"
+		:signer="currentSigner"
+		:quantity="1"
+		:payment-purpose="'sign_request'"
+		:product-code="signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE"
+		@close="handlePaymentClose"
+		@success="onPaymentSuccess"
+	/>
 </template>
 
 <script setup lang="ts">
@@ -162,13 +170,12 @@ import {
 } from '../../../services/signingDocumentAdapter'
 import { FILE_STATUS } from '../../../constants.js'
 import { getFileSigners, getVisibleElementsFromDocument, idsMatch, isCurrentUserSigner } from '../../../services/visibleElementsService'
-import { usePaywall } from '@/payment/usePaywall'
 import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
 import PaymentModal from '@/components/Payments/PaymentModal.vue'
 import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
-import { consumeEntitlement } from '@/payment/entitlement'
 import { usePaymentContextStore } from '@/store/paymentContext'
 import { resolveUserId } from '@/utils/resolveUserId'
+import { useEntitlementStore } from '@/store/entitlement'
 
 type OpenApiAccountMe = operations['account-me']['responses'][200]['content']['application/json']['ocs']['data']
 type LibreSignAccountMe = Omit<OpenApiAccountMe, 'settings'> & {
@@ -379,6 +386,7 @@ const signatureElementsStore = useSignatureElementsStore() as SignatureElementsS
 const sidebarStore = useSidebarStore() as SidebarStoreContract
 const identificationDocumentStore = useIdentificationDocumentStore() as IdentificationDocumentStoreContract
 const paymentContextStore = usePaymentContextStore()
+const entitlementStore = useEntitlementStore()
 
 const loading = ref(true)
 const user = ref<UserInfo>({
@@ -482,12 +490,34 @@ const paymentContext = computed<PaymentContext | null>(() => {
 })
 
 async function consumeEntitlementAfterSign() {
+
+	if (
+		!paymentContextStore.isReady()
+	) {
+		return
+	}
+
 	try {
-		await consumeEntitlement()
+
+		await entitlementStore.consume({
+			userId:
+				paymentContextStore.userId,
+			signUuid:
+				paymentContextStore.signUuid,
+			signRequestId:
+				paymentContextStore.signRequestId,
+			productCode:
+				paymentContextStore.productCode,
+		})
+
 		paymentContextStore.clear()
+
 	} catch (err) {
-		// DO NOT BLOCK UX
-		console.error('[Entitlement] failed silently', err)
+
+		console.error(
+			'[Sign] entitlement consumption failed',
+			err,
+		)
 	}
 }
 
@@ -762,10 +792,10 @@ async function confirmSignDocument() {
 		productCode: signStore.productCode,
 	})
 
-	const paywall = usePaywall()
-
 	// 2. Check entitlement FIRST
-	const { allowed } = await paywall.checkEntitlement(signStore.productCode)
+	const { allowed } = await entitlementStore.check(
+		signStore.productCode,
+	)
 
 	// 3. BLOCK signing if not allowed
 	if (!allowed) {
@@ -807,10 +837,12 @@ function triggerPaymentFlow() {
 	showPaymentModal.value = true
 }
 
-function onPaymentSuccess() {
+async function onPaymentSuccess() {
 	showPaymentModal.value = false
 
 	isProcessingPayment.value = false // IMPORTANT RESET
+
+	await entitlementStore.refresh()
 
 	notifySuccess({
 		message: 'Payment successful',
@@ -854,6 +886,7 @@ onMounted(async () => {
 	signatureElementsStore.signRequestUuid = signRequestUuid.value
 	signatureElementsStore.loadSignatures()
 	paymentContextStore.hydrate()
+	await entitlementStore.initialise()
 
 	initializeServices()
 

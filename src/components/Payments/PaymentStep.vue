@@ -19,13 +19,13 @@
 						</div>
 
 						<span class="notecard-doc__name">
-							{{ document?.name ?? 'Document' }}
+							{{ paymentSummaryTitle }}
 						</span>
 					</div>
 
 					<!-- Reason -->
 					<div class="notecard-reason">
-						Signing fee — one-time charge
+						{{ paymentSummarySubtitle }}
 					</div>
 
 					<!-- FX -->
@@ -399,7 +399,8 @@ import {
 	type PaymentMethod,
 	type ResolvedPaymentRoute,
 	type HydratedPayment,
-	type SelectedMno
+	type SelectedMno,
+	type PaymentPurpose
 } from '@/payment'
 import { getProductByCode } from '@/payment/product'
 import { getUser } from '@/payment/user'
@@ -411,17 +412,19 @@ import '@/style/global.scss'
 import PaymentRouteSummary from './PaymentRouteSummary.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { usePaymentRouting } from '@/payment/usePaymentRouting'
+import type { ProductPricing } from '@/composables/useProductPricing'
 
 // ─────────────────────────────────────────────────────────────
 // Props / Emits
 // ─────────────────────────────────────────────────────────────
 
 const props = defineProps<{
-	signUuid: string
-	signRequestId: number
-	document: any
-	signer: any
+	signUuid?: string
+	signRequestId?: number
+	paymentPurpose: PaymentPurpose
+	quantity: number
 	productCode: string
+	pricing: ProductPricing
 	initialPayment?: HydratedPayment | null
 }>()
 
@@ -786,6 +789,34 @@ const canEditProvider = computed(() => {
 	)
 })
 
+const paymentSummaryTitle = computed(() => {
+	switch (payment.paymentPurpose.value) {
+		case 'credit_purchase':
+			return props.quantity === 1
+					? '1 Signing Credit'
+					: `${props.quantity} Signing Credits`
+
+		case 'sign_request':
+			return 'Signature Payment'
+
+		default:
+			return 'Payment'
+	}
+})
+
+const paymentSummarySubtitle = computed(() => {
+	switch (payment.paymentPurpose.value) {
+		case 'credit_purchase':
+			return 'One-time purchase'
+
+		case 'sign_request':
+			return 'One-time signing fee'
+
+		default:
+			return 'Secure payment'
+	}
+})
+
 /**
  * Sync payment state → parent modal
  */
@@ -990,7 +1021,9 @@ async function handleMobilePayment() {
 			signUuid: props.signUuid,
 			productCode: props.productCode,
 			userId: user.value?.uid,
-			userEmail: props.signer.email || user.value?.emailAddress,
+			userEmail: user.value?.emailAddress,
+			purpose: payment.paymentPurpose.value!,
+			quantity: props.quantity,
 		})
 		/**
 		 * Defensive validation.
@@ -1036,6 +1069,10 @@ async function handleMobilePayment() {
 
 		// Assign provider to payment execution state and lock provider (BE routing truth)
 		payment.lockPaymentProvider(response.provider)
+
+		if (response.paymentPurpose) {
+			payment.lockPaymentPurpose(response.paymentPurpose)
+		}
 
 		/**
 		 * Shared mobile payment display context.
@@ -1233,13 +1270,15 @@ async function handleMobilePayment() {
 		)
 	}
 
+	const paymentPurpose = payment.paymentPurpose.value ?? 'sign_request'
 	await payment.chargeExistingReference(
 		{
 			reference:
-				payment.activeReference.value,
+			payment.activeReference.value,
 			phoneNumber,
 			mno: mnoToUse,
 			mnoCountry: countryToUse,
+			paymentPurpose,
 			signRequestId:
 				props.signRequestId,
 			signUuid:
@@ -1267,10 +1306,12 @@ async function handleCardPayment() {
 			signRequestId: props.signRequestId,
 			signUuid: props.signUuid,
 			paymentMethod: 'card',
-			userEmail: props.signer.email,
+			userEmail: user.value?.emailAddress,
 			userId: user.value?.uid,
 			productCode: props.productCode,
-			redirectUrl: payment.buildPaymentRedirectUrl()
+			redirectUrl: payment.buildPaymentRedirectUrl(),
+			quantity: props.quantity,
+			purpose: payment.paymentPurpose.value ?? 'sign_request'
 	    },
 		(status) => {
             if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
@@ -1292,9 +1333,11 @@ async function retryPayment() {
 				signUuid: props.signUuid,
 				paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
 				phoneNumber: normalisedPhone.value || undefined,
-				userEmail: props.signer.email || user.value?.emailAddress,
+				userEmail: user.value?.emailAddress,
 				userId: user.value?.uid,
 				productCode: props.productCode,
+				quantity: props.quantity,
+				purpose: payment.paymentPurpose.value ?? 'sign_request'
 			},
 			(status) => {  // ← onTerminal callback
 				if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
@@ -1320,6 +1363,9 @@ async function retryPayment() {
 		instructions.value = payRes.instructions ?? null
 		selectedMethod.value = payRes.method
 		payment.alreadyCharged.value = !!payRes.alreadyCharged
+		if (payRes.paymentPurpose) {
+			payment.lockPaymentPurpose(payRes.paymentPurpose)
+		}
 
 		if (payRes.flow === 'redirect') return
 
@@ -1551,6 +1597,9 @@ function hydratePaymentState(
 	payment.activeReference.value = hydratedPayment.reference
     payment.lockPaymentProvider(hydratedPayment.provider)
 	payment.alreadyCharged.value = !!hydratedPayment.alreadyCharged
+	if (hydratedPayment.paymentPurpose) {
+		payment.lockPaymentPurpose(hydratedPayment.paymentPurpose);
+	}
 
 	/**
 	 * Restore MNO detection state
@@ -1685,16 +1734,18 @@ onMounted(async () => {
 		showInfo('This is a demo environment. No real money is being transacted.')
 	}
 	try {
-		const [u, p] = await Promise.all([
+		const [u] = await Promise.all([
 			getUser(),
-			getProductByCode(props.productCode),
 		])
 		user.value = u
-		product.value = p
+		product.value = props.pricing.product.value
 
 		if (props.initialPayment) {
 			hydratePaymentState(props.initialPayment)
+		} else {
+			payment.paymentPurpose.value = props.paymentPurpose;
 		}
+
 	} catch (e) {
 		showError('Failed to load payment data')
 	} finally {

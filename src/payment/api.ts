@@ -3,12 +3,11 @@ import { generateOcsUrl } from '@nextcloud/router'
 
 import type {
 	ApiResumeResponse,
-	CreatePaymentRequest,
 	PaymentResponse,
-	ResumeResponse,
 	ChargedPaymentResponse,
 	VerifyPaymentResponse,
-	StartPaymentPayload
+	StartPaymentPayload,
+	PaymentPurpose
 } from './types'
 
 const BASE = '/apps/libresign/api/v1/payment'
@@ -89,7 +88,7 @@ export async function chargeMobilePayment({
 			reference,
 			phone,
 			mno,
-			country: mnoCountry,
+			mnoCountry,
 		},
 		{ timeout: 10000 }
 	)
@@ -219,15 +218,71 @@ export async function queryDarajaPayment(
 }
 
 
-export async function resumePayment(payload :{
-	signRequestId: number
-	signUuid: string
+export async function resumePayment(payload: {
+	purpose: PaymentPurpose
+	productCode?: string
+	signRequestId?: number
+	signUuid?: string
 }): Promise<ApiResumeResponse> {
 
-	const { signRequestId, signUuid } = payload
+	const {
+		signRequestId,
+		signUuid,
+		purpose,
+		productCode
+	} = payload
+
+	let query: URLSearchParams
+
+	switch (purpose) {
+
+		case 'credit_purchase':
+
+			if (!productCode) {
+				throw new Error('Missing productCode')
+			}
+
+			query = new URLSearchParams({
+				purpose,
+				productCode,
+			})
+
+			break
+
+		case 'sign_request':
+
+			if (
+				signRequestId !== undefined &&
+				signRequestId !== null &&
+				signUuid
+			) {
+
+				query = new URLSearchParams({
+					purpose,
+					signRequestId: `${signRequestId}`,
+					signUuid,
+				})
+
+			} else {
+
+				throw new Error(
+					'Missing signUuid or signRequestId'
+				)
+			}
+
+			break
+
+		default:
+
+			throw new Error(
+				'Payment purpose is required'
+			)
+	}
 
 	const { data } = await axios.get(
-		generateOcsUrl(`${BASE}/resume?signRequestId=${signRequestId}&signUuid=${signUuid}`),
+		generateOcsUrl(
+			`${BASE}/resume?${query.toString()}`
+		),
 		{ timeout: 10000 }
 	)
 

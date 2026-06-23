@@ -1,4 +1,4 @@
-import type { PaymentFlow } from '@/payment/types'
+import type { PaymentFlow, PaymentPurpose } from '@/payment/types'
 
 /**
  * =========================================================
@@ -18,19 +18,21 @@ const MAX_RESUME_WINDOW = 10 * 60 * 1000 // 10 minutes
 export type PersistedPaymentSession = {
 	reference: string
 	flow: PaymentFlow
-	signRequestId: number
-	signUuid: string
+	paymentPurpose: PaymentPurpose
+	signRequestId?: number
+	signUuid?: string
 	timestamp: number // prefer timestamp to not confuse payment createdAt
 }
 
 export type PersistPaymentSessionPayload = Omit<PersistedPaymentSession, 'timestamp'>
 
-function persistPaymentSession({ reference, flow, signRequestId, signUuid }: PersistPaymentSessionPayload) {
+function persistPaymentSession({ reference, flow, paymentPurpose, signRequestId, signUuid }: PersistPaymentSessionPayload) {
 	localStorage.setItem(
 		ACTIVE_PAYMENT_KEY,
 		JSON.stringify({
 			reference,
 			flow,
+			paymentPurpose,
 			signRequestId,
 			signUuid,
 			timestamp: Date.now(),
@@ -56,15 +58,13 @@ function getPersistedPaymentSession() {
 
 		const {
 			reference,
-			signRequestId,
-			signUuid,
+			paymentPurpose,
 			timestamp,
 		} = parsed
 
 		if (
 			!reference ||
-			!signRequestId ||
-			!signUuid ||
+			!paymentPurpose ||
 			!timestamp
 		) {
 			clearPersistedPaymentSession()

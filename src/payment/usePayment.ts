@@ -9,7 +9,16 @@ import {
 } from './helpers'
 
 import { showSuccess, showError, showInfo } from '@/services/toast'
-import type { InitiateResponse, MnoOption, PaymentFlow, PaymentProvider, PaymentResponse, StartPaymentPayload, PaymentTerminalStatus } from './types'
+import type {
+	InitiateResponse,
+	MnoOption,
+	PaymentFlow,
+	PaymentProvider,
+	PaymentResponse,
+	StartPaymentPayload,
+	PaymentTerminalStatus,
+	PaymentPurpose
+} from './types'
 import { computed } from 'vue'
 import { useNetworkState } from '@/composables/useNetworkState'
 import { persistPaymentSession, clearPersistedPaymentSession } from '@/utils/paymentPersistence'
@@ -116,8 +125,9 @@ export type PaymentState =
 interface ChargePayload {
 	reference: string
 	phoneNumber: string
-	signRequestId: number
-	signUuid: string
+	paymentPurpose: PaymentPurpose
+	signRequestId?: number
+	signUuid?: string
 	mno?: string
 	mnoCountry?: string
 }
@@ -152,6 +162,8 @@ export function usePayment() {
 	const processingStartedAt = ref<number | null>(null)
 	const retryCount = ref(0)
 	const pollingElapsedMs = ref(0)
+	const paymentPurpose = ref<PaymentPurpose | null>(null)
+	const paymentPurposeLocked = ref(false)
 
 	const isProcessing = computed(() =>
 		state.value === 'hydrating' ||
@@ -226,6 +238,22 @@ export function usePayment() {
 		providerLocked.value = false
 	}
 
+	function lockPaymentPurpose(
+		nextPurpose: PaymentPurpose
+	) {
+		if (paymentPurposeLocked.value) {
+			return
+		}
+
+		paymentPurpose.value = nextPurpose
+		paymentPurposeLocked.value = true
+	}
+
+	function resetPaymentPurpose() {
+		paymentPurpose.value = null
+		paymentPurposeLocked.value = false
+	}
+
 	/**
 	 * Initialise payment session only.
 	 *
@@ -245,6 +273,7 @@ export function usePayment() {
 				persistPaymentSession({
 					reference: res.reference,
 					flow: res.flow,
+					paymentPurpose: res.paymentPurpose ?? 'sign_request',
 					signRequestId: payload.signRequestId,
 					signUuid: payload.signUuid
 				})
@@ -286,7 +315,7 @@ export function usePayment() {
 				phone: payload.phoneNumber
 			})
 
-			const { signRequestId, signUuid } = payload
+			const { signRequestId, signUuid, paymentPurpose } = payload
 
 			// Persist for resume on refresh
 			persistPaymentSession({
@@ -294,6 +323,7 @@ export function usePayment() {
 				flow: 'mobile_direct',
 				signRequestId,
 				signUuid,
+				paymentPurpose,
 			})
 
 			alreadyCharged.value = true
@@ -434,8 +464,17 @@ export function usePayment() {
 			requiresProviderSelection,
 			signRequestId,
 			signUuid,
-			alreadyCharged
+			alreadyCharged,
+			paymentPurpose
 		} = res
+
+		const persisted = {
+			reference,
+			flow,
+			paymentPurpose: paymentPurpose!,
+			signRequestId,
+			signUuid
+		}
 
 		if (!reference) {
 			throw new Error('Missing provider reference')
@@ -446,12 +485,7 @@ export function usePayment() {
 		 */
 		if (flow === 'redirect') {
 			// Persist for resume
-			persistPaymentSession({
-				reference,
-				flow,
-				signRequestId,
-				signUuid
-			})
+			persistPaymentSession(persisted)
 
 			if (!redirectUrl) {
 				throw new Error('Missing redirect URL')
@@ -469,12 +503,7 @@ export function usePayment() {
 		 */
 		if (flow === 'mobile_direct') {
 			// Persist for resume
-			persistPaymentSession({
-				reference,
-				flow,
-				signRequestId,
-				signUuid
-			})
+			persistPaymentSession(persisted)
 			state.value = 'processing'
 
 			// 1. ALREADY CHARGED
@@ -821,6 +850,7 @@ export function usePayment() {
 		processingStartedAt.value = null
 		retryCount.value = 0
 		pollingElapsedMs.value = 0
+		resetPaymentPurpose()
 	}
 
 	return {
@@ -846,5 +876,7 @@ export function usePayment() {
 		providerLocked,
 		lockPaymentProvider,
 		resetProviderLock,
+		paymentPurpose,
+		lockPaymentPurpose,
 	}
 }
