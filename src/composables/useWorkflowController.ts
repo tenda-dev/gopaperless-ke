@@ -814,6 +814,15 @@ export function useWorkflowController(
 		hasLoading.value = true
 		try {
 			const response = await filesStore.saveOrUpdateSignatureRequest({ status: 1 })
+
+			if ((response as any)?.success === false) {
+				showRequestError(
+					(response as any).error ?? new Error((response as any).message),
+					t('libresign', 'Failed to request signatures'),
+				)
+				return
+			}
+
 			showSuccess(t('libresign', (response as any)?.message ?? 'Signature requested'), true, true)
 			showConfirmRequest.value = false
 		} catch (error: unknown) {
@@ -920,7 +929,7 @@ export function useWorkflowController(
 				return s
 			})
 
-			await filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
+			const response = await filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
 			showSuccess(t('libresign', 'Signature requested'), true, true)
 			showConfirmRequestSigner.value = false
 			selectedSigner.value           = null

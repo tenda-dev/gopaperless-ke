@@ -311,6 +311,13 @@ class SignFileService {
 
 		$this->elements = $newElements;
 
+		$this->logger->debug('SignFileService::setVisibleElements completed', [
+			'inputListCount' => count($list),
+			'fileElementsCount' => count($fileElements),
+			'resultCount' => count($newElements),
+			'canCreateSignature' => $canCreateSignature,
+		]);
+
 		return $this;
 	}
 
@@ -1167,6 +1174,12 @@ class SignFileService {
 				->setVisibleElements($this->getVisibleElements())
 				->setSignatureParams($this->getSignatureParams());
 		}
+
+		$this->logger->debug('SignFileService::configureEngine completed', [
+			'engineClass' => $this->engine::class,
+			'visibleElementCount' => count($this->getVisibleElements()),
+			'signatureParamKeys' => array_keys($this->getSignatureParams()),
+		]);
 	}
 
 	public function getLibresignFile(?int $fileId, ?string $signRequestUuid = null): FileEntity {

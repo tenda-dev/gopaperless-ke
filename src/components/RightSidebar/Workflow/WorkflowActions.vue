@@ -2,7 +2,7 @@
 	<div
 		class="workflow-primary-action"
 		:class="{
-			'workflow-primary-action--ready': workflow.isReady,
+			'workflow-primary-action--ready': canCurrentUserSignNow || primaryAction === 'request-signatures',
 			'workflow-primary-action--blocked': isBlocked,
 		}">
 		<!-- ========================================= -->
@@ -90,6 +90,8 @@ import {
 	mdiSignatureFreehand,
 } from '@mdi/js'
 
+import { FILE_STATUS } from '../../../constants'
+import { isSignerSigned } from '../../../composables/useWorkflowState'
 import type {
 	WorkflowState,
 	WorkflowPrimaryAction,
@@ -113,8 +115,44 @@ const emit = defineEmits<{
 	(e: 'secondary-action'): void
 }>()
 
+const canCurrentUserSignNow = computed(() => {
+	const file = props.workflow.file
+	if (!file || file.status <= 0 || file.status === FILE_STATUS.SIGNED) {
+		return false
+	}
+
+	const signers = props.workflow.signers || []
+	if (signers.length === 0 || signers.every(isSignerSigned)) {
+		return false
+	}
+
+	const myPendingSigners = signers.filter(signer => signer.me && !isSignerSigned(signer))
+	if (myPendingSigners.length === 0) {
+		return false
+	}
+
+	if (!props.workflow.isOrderedNumeric) {
+		return true
+	}
+
+	const pendingSigners = signers.filter(signer => !isSignerSigned(signer))
+	if (pendingSigners.length === 0) {
+		return false
+	}
+
+	const minOrder = Math.min(...pendingSigners.map(signer => signer.signingOrder || 1))
+	return myPendingSigners.some(signer => (signer.signingOrder || 1) === minOrder)
+})
+
 const primaryAction = computed<WorkflowPrimaryAction>(() => {
-	return props.workflow.primaryAction
+	const derived = props.workflow.primaryAction
+	if (derived === 'sign-document' || derived === 'completed') {
+		return derived
+	}
+	if (canCurrentUserSignNow.value) {
+		return 'sign-document'
+	}
+	return derived
 })
 
 const isBlocked = computed(() => {
