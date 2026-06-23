@@ -129,10 +129,17 @@
 			:name="modalTitle"
 			@closing="filesStore.disableIdentifySigner()">
 
+			<NcNoteCard
+				v-if="noEnabledMethods"
+				type="warning">
+				{{ t('libresign', 'No identification methods are enabled. Enable them in Administration settings.') }}
+			</NcNoteCard>
+
 			<IdentifySigner
+				v-else
 				:signer-to-edit="signerToEdit"
 				:placeholder="t('libresign', 'Search signer')"
-				method="email"
+				:method="searchMethod"
 				:methods="methods"
 				:disabled="isSignerMethodDisabled" />
 		</NcDialog>
@@ -363,6 +370,23 @@ const hasWarnings = computed(() =>
 	|| state.isOriginalFileDeleted.value
 	|| state.hasSignersWithDisabledMethods.value,
 )
+
+/**
+ * PR#3 unified signer search is driven through the Email method because the
+ * backend resolves both email addresses and phone numbers to accounts when
+ * method === 'email'. Fall back to the first enabled method if Email is
+ * disabled so the admin toggles still control which identification types are
+ * available.
+ */
+const searchMethod = computed(() => {
+	if (enabledMethods.value.length === 0) {
+		return ''
+	}
+	const emailMethod = enabledMethods.value.find(m => m.name === 'email')
+	return emailMethod?.name ?? enabledMethods.value[0].name
+})
+
+const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 
 /* ── switchToEmail — phone-not-found fallback ─────────────────────────────── */
 function switchToEmail(phone: string): void {

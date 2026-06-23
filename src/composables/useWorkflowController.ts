@@ -66,7 +66,7 @@ import type {
 	SignatureFlowValue,
 } from '../types/index'
 import type { EditableSignerDraft } from '../store/files'
-import { showError, showSuccess } from '../services/toast'
+import { showError, showSuccess, showWarning } from '../services/toast'
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * LOCAL TYPES
@@ -688,6 +688,12 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	function addSigner(): void {
+		if (enabledMethods.value.length === 0) {
+			showWarning(
+				t('libresign', 'No identification methods are enabled. Enable them in Administration settings.'),
+			)
+			return
+		}
 		signerToEdit.value = {}
 		activeTab.value    = userConfigStore.files_list_signer_identify_tab ?? ''
 		filesStore.enableIdentifySigner()
