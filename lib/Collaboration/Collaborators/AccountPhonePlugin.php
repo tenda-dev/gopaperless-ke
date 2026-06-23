@@ -65,12 +65,13 @@ class AccountPhonePlugin implements ISearchPlugin {
 			return false;
 		}
 
-		if ($method === 'email') {
+		$isUnified = $method === 'all' || $method === 'email';
+		if ($isUnified) {
 			if (!$this->searchNormalizer->isPhoneSearch($search)) {
 				return false;
 			}
-			// Phone-number lookups in the Email tab return account signers, so
-			// both Email and Account identification factors must be enabled.
+			// Phone-number lookups in the unified/email tab return account signers,
+			// so both Email and Account identification factors must be enabled.
 			if (!$this->isIdentifyMethodEnabled('email')
 				|| !$this->isIdentifyMethodEnabled('account')) {
 				return false;
@@ -152,7 +153,7 @@ class AccountPhonePlugin implements ISearchPlugin {
 
 			$displayName = $user->getDisplayName() !== '' ? $user->getDisplayName() : $userId;
 
-			if ($method === 'email') {
+			if ($isUnified) {
 				/**
 				 * Product direction:
 				 *

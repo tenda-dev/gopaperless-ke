@@ -14,6 +14,7 @@ use OCA\Libresign\Collaboration\Collaborators\ManualPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\SignerPlugin;
 use OCA\Libresign\Service\IdentifyMethod\Account;
 use OCA\Libresign\Service\IdentifyMethod\Email;
+use OCP\IAppConfig;
 use OCP\Share\IShare;
 
 class ShareTypeResolver
@@ -23,6 +24,7 @@ class ShareTypeResolver
 	public function __construct(
 		private Email $identifyEmailMethod,
 		private Account $identifyAccountMethod,
+		private IAppConfig $appConfig,
 	) {}
 
 	public function resolve(string $method = ''): array
@@ -84,12 +86,23 @@ class ShareTypeResolver
 
 		$shareTypes[] = SignerPlugin::TYPE_SIGNER;
 
-		if ($includePhone) {
+		if ($includePhone && $this->isAnyPhoneMethodEnabled()) {
 			$shareTypes[] = AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE;
 			$shareTypes[] = ContactPhonePlugin::TYPE_SIGNER_CONTACT_PHONE;
 			$shareTypes[] = ManualPhonePlugin::TYPE_SIGNER_MANUAL_PHONE;
 		}
 
 		return array_unique($shareTypes);
+	}
+
+	private function isAnyPhoneMethodEnabled(): bool {
+		$methods = $this->appConfig->getValueArray('libresign', 'identify_methods', []);
+		foreach ($methods as $method) {
+			if ((bool)($method['enabled'] ?? false)
+				&& in_array($method['name'] ?? '', self::PHONE_METHODS, true)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

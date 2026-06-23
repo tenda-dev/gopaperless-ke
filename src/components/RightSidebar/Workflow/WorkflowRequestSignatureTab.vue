@@ -135,31 +135,13 @@
 				{{ t('libresign', 'No identification methods are enabled. Enable them in Administration settings.') }}
 			</NcNoteCard>
 
-			<NcAppSidebar
+			<IdentifySigner
 				v-else
-				:name="modalTitle"
-				:active="activeTab"
-				@update:active="onTabChange">
-				<NcAppSidebarTab
-					v-for="method in enabledMethods"
-					:id="`tab-${method.name}`"
-					:key="method.name"
-					:name="method.friendly_name">
-					<template #icon>
-						<NcIconSvgWrapper
-							:size="20"
-							:svg="getSvgIcon(method.name)" />
-					</template>
-
-					<IdentifySigner
-						:signer-to-edit="signerToEdit"
-						:placeholder="method.friendly_name"
-						:method="method.name"
-						:methods="methods"
-						:disabled="isSignerMethodDisabled"
-						@phone-not-found="switchToEmail" />
-				</NcAppSidebarTab>
-			</NcAppSidebar>
+				:signer-to-edit="signerToEdit"
+				:placeholder="t('libresign', 'Search signer')"
+				:method="searchMethod"
+				:methods="methods"
+				:disabled="isSignerMethodDisabled" />
 		</NcDialog>
 
 		<!-- ========================================= -->
@@ -248,18 +230,7 @@ import { computed } from 'vue'
 import { t } from '@nextcloud/l10n'
 import { mdiSend } from '@mdi/js'
 
-// ── SVG icons for identify-method tabs ──────────────────────────────────────
-import svgAccount  from '@mdi/svg/svg/account.svg?raw'
-import svgEmail    from '@mdi/svg/svg/email.svg?raw'
-import svgSms      from '@mdi/svg/svg/message-processing.svg?raw'
-import svgWhatsapp from '@mdi/svg/svg/whatsapp.svg?raw'
-import svgXmpp     from '@mdi/svg/svg/xmpp.svg?raw'
-import svgSignal   from '../../../../img/logo-signal-app.svg?raw'
-import svgTelegram from '../../../../img/logo-telegram-app.svg?raw'
-
 // ── Nextcloud Vue components ─────────────────────────────────────────────────
-import NcAppSidebar    from '@nextcloud/vue/components/NcAppSidebar'
-import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcButton        from '@nextcloud/vue/components/NcButton'
 import NcDialog        from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -314,7 +285,6 @@ const {
 	showConfirmRequest,
 	showConfirmRequestSigner,
 	selectedSigner,
-	activeTab,
 	preserveOrder,
 	showOrderDiagram,
 	showEnvelopeFilesDialog,
@@ -336,7 +306,6 @@ const {
 	addSigner,
 	editSigner,
 	customizeMessage,
-	onTabChange,
 	onPreserveOrderChange,
 	updateSigningOrder,
 	confirmSigningOrder,
@@ -353,23 +322,8 @@ const {
 	closeModal,
 
 	// helpers
-	getSvgIcon,
-	registerSvgIcons,
 	debouncedSave,
 } = useWorkflowController({ useModal: props.useModal })
-
-// Register the SVG icon map so the controller's getSvgIcon() lookup works
-// (icons are bundled in the SFC layer, not in the composable)
-const _svgMap: Record<string, string> = {
-	account:  svgAccount,
-	email:    svgEmail,
-	signal:   svgSignal,
-	sms:      svgSms,
-	telegram: svgTelegram,
-	whatsapp: svgWhatsapp,
-	xmpp:     svgXmpp,
-}
-registerSvgIcons(_svgMap)
 
 /* ── Store (needed for deleteSigner and identifyingSigner) ───────────────────
  *
@@ -386,14 +340,14 @@ const hasWarnings = computed(() =>
 	|| state.hasSignersWithDisabledMethods.value,
 )
 
-const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
+/**
+ * PR#3 unified signer search dispatches to the backend using method='all'.
+ * The backend then returns results only for the identification methods that
+ * are enabled in Administration → LibreSign → Identification factors.
+ */
+const searchMethod = computed(() => enabledMethods.value.length > 0 ? 'all' : '')
 
-/* ── switchToEmail — phone-not-found fallback ─────────────────────────────── */
-function switchToEmail(phone: string): void {
-	const emailMethod = methods.value.find(m => m.name === 'email')
-	if (!emailMethod) return
-	onTabChange(`tab-${emailMethod.name}`)
-}
+const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 </script>
 
 <style lang="scss" scoped>
