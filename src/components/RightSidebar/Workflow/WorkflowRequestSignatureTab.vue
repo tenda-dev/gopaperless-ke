@@ -135,13 +135,31 @@
 				{{ t('libresign', 'No identification methods are enabled. Enable them in Administration settings.') }}
 			</NcNoteCard>
 
-			<IdentifySigner
+			<NcAppSidebar
 				v-else
-				:signer-to-edit="signerToEdit"
-				:placeholder="t('libresign', 'Search signer')"
-				:method="searchMethod"
-				:methods="methods"
-				:disabled="isSignerMethodDisabled" />
+				:name="modalTitle"
+				:active="activeTab"
+				@update:active="onTabChange">
+				<NcAppSidebarTab
+					v-for="method in enabledMethods"
+					:id="`tab-${method.name}`"
+					:key="method.name"
+					:name="method.friendly_name">
+					<template #icon>
+						<NcIconSvgWrapper
+							:size="20"
+							:svg="getSvgIcon(method.name)" />
+					</template>
+
+					<IdentifySigner
+						:signer-to-edit="signerToEdit"
+						:placeholder="method.friendly_name"
+						:method="method.name"
+						:methods="methods"
+						:disabled="isSignerMethodDisabled"
+						@phone-not-found="switchToEmail" />
+				</NcAppSidebarTab>
+			</NcAppSidebar>
 		</NcDialog>
 
 		<!-- ========================================= -->
@@ -336,6 +354,7 @@ const {
 
 	// helpers
 	getSvgIcon,
+	registerSvgIcons,
 	debouncedSave,
 } = useWorkflowController({ useModal: props.useModal })
 
@@ -350,11 +369,7 @@ const _svgMap: Record<string, string> = {
 	whatsapp: svgWhatsapp,
 	xmpp:     svgXmpp,
 }
-// Patch getSvgIcon to use our map (the controller exposes registerSvgIcons
-// for this purpose, but a local override is equally clean)
-function getSvgIconLocal(name: string): string {
-	return _svgMap[name] ?? svgAccount
-}
+registerSvgIcons(_svgMap)
 
 /* ── Store (needed for deleteSigner and identifyingSigner) ───────────────────
  *
@@ -370,21 +385,6 @@ const hasWarnings = computed(() =>
 	|| state.isOriginalFileDeleted.value
 	|| state.hasSignersWithDisabledMethods.value,
 )
-
-/**
- * PR#3 unified signer search is driven through the Email method because the
- * backend resolves both email addresses and phone numbers to accounts when
- * method === 'email'. Fall back to the first enabled method if Email is
- * disabled so the admin toggles still control which identification types are
- * available.
- */
-const searchMethod = computed(() => {
-	if (enabledMethods.value.length === 0) {
-		return ''
-	}
-	const emailMethod = enabledMethods.value.find(m => m.name === 'email')
-	return emailMethod?.name ?? enabledMethods.value[0].name
-})
 
 const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 

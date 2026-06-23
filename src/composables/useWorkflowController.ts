@@ -202,6 +202,7 @@ export type WorkflowController = {
 	isSignerSigned:             (signer: Partial<EditableSignerDraft>) => boolean
 	canSignerActInOrder:        (signer: Partial<EditableSignerDraft>) => boolean
 	getSvgIcon:                 (name: string) => string
+	registerSvgIcons:           (map: Record<string, string>) => void
 	showRequestError:           (error: unknown, fallbackMessage: string) => void
 	debouncedSave:              ReturnType<typeof debounce>
 	hasAnyDraftSigner:          (file: EditableRequestFile | null | undefined) => boolean
@@ -1126,6 +1127,7 @@ export function useWorkflowController(
 		isSignerSigned,
 		canSignerActInOrder,
 		getSvgIcon,
+		registerSvgIcons,
 		showRequestError,
 		debouncedSave,
 		hasAnyDraftSigner,

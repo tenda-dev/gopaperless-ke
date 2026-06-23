@@ -39,6 +39,16 @@ class AccountPhonePlugin implements ISearchPlugin {
 	) {
 	}
 
+	private function isIdentifyMethodEnabled(string $name): bool {
+		$methods = $this->appConfig->getValueArray('libresign', 'identify_methods', []);
+		foreach ($methods as $method) {
+			if (($method['name'] ?? '') === $name) {
+				return (bool)($method['enabled'] ?? false);
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * {@inheritdoc}
 	 */
@@ -59,7 +69,15 @@ class AccountPhonePlugin implements ISearchPlugin {
 			if (!$this->searchNormalizer->isPhoneSearch($search)) {
 				return false;
 			}
+			// Phone-number lookups in the Email tab return account signers, so
+			// both Email and Account identification factors must be enabled.
+			if (!$this->isIdentifyMethodEnabled('email')
+				|| !$this->isIdentifyMethodEnabled('account')) {
+				return false;
+			}
 		} elseif (!in_array($method, self::PHONE_BASED_METHODS, true)) {
+			return false;
+		} elseif (!$this->isIdentifyMethodEnabled($method)) {
 			return false;
 		}
 
