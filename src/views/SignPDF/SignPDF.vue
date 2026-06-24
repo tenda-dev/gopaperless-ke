@@ -433,6 +433,7 @@ async function fetchEnvelopeFiles(parentFileId: number | string): Promise<RawSig
 		length: '100',
 		parentFileId: parentFileId.toString(),
 		signer_uuid: getRouteUuid() || '',
+		details: 'true',
 	})
 	const finalUrl = addIdDocApprovalParam(`${url}?${params.toString()}`) || `${url}?${params.toString()}`
 	const response = await axios.get<EnvelopeFileListResponse>(finalUrl)
