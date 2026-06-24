@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Identify;
 
+use OCP\Share\IShare;
+
 class ResultFilter {
 	public function unify(array $list): array {
 		$ids = [];
@@ -56,5 +58,29 @@ class ResultFilter {
 
 	public function excludeNotAllowed(array $list): array {
 		return array_filter($list, fn ($result) => isset($result['method']) && !empty($result['method']));
+	}
+
+	/**
+	 * Keep core account results only when they match the account identifier
+	 * (UID or display name). This prevents the account search from returning
+	 * users that only happen to have the search string as their profile email.
+	 *
+	 * Results produced by custom plugins (e.g. phone-to-account or
+	 * email-to-account) are preserved because they already carry an explicit
+	 * method.
+	 */
+	public function filterAccountMatches(array $list, string $search): array {
+		$searchLower = strtolower($search);
+		return array_values(array_filter($list, function (array $item) use ($searchLower): bool {
+			if (($item['value']['shareType'] ?? null) !== IShare::TYPE_USER) {
+				return true;
+			}
+			if (!empty($item['method'])) {
+				return true;
+			}
+			$uid = strtolower((string)($item['value']['shareWith'] ?? ''));
+			$label = strtolower((string)($item['label'] ?? ''));
+			return str_contains($uid, $searchLower) || str_contains($label, $searchLower);
+		}));
 	}
 }

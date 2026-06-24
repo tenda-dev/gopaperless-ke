@@ -19,6 +19,7 @@ use OCP\IGroupManager;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\IUserSession;
+use OCP\Share\IShare;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 class AccountPhonePluginTest extends TestCase {
@@ -31,8 +32,14 @@ class AccountPhonePluginTest extends TestCase {
 		array $targetGroups,
 		bool $userEnabled,
 		int $expectedCount,
+		array $identifyMethods = [],
+		?string $expectedShareType = null,
+		?string $expectedMethod = null,
 	): void {
 		$appConfig = $this->applyAppConfig($config);
+		if ($identifyMethods !== []) {
+			$appConfig->setValueArray('libresign', 'identify_methods', $identifyMethods);
+		}
 
 		$accountManager = $this->createStub(IAccountManager::class);
 		$accountManager->method('searchUsers')
@@ -77,6 +84,8 @@ class AccountPhonePluginTest extends TestCase {
 		$context->set($method, '+12025551234', '+12025551234');
 
 		$searchNormalizer = $this->createMock(SearchNormalizer::class);
+		$searchNormalizer->method('isPhoneSearch')
+			->willReturn(true);
 		$searchNormalizer->method('tryNormalizePhoneNumber')
 			->willReturn('+12025551234');
 
@@ -97,6 +106,12 @@ class AccountPhonePluginTest extends TestCase {
 		$results = $searchResult->asArray();
 		$items = array_merge($results['account-phone'] ?? [], $results['exact']['account-phone'] ?? []);
 		$this->assertCount($expectedCount, $items);
+		if ($expectedCount > 0 && $expectedShareType !== null) {
+			$this->assertSame($expectedShareType, $items[0]['value']['shareType']);
+		}
+		if ($expectedCount > 0 && $expectedMethod !== null) {
+			$this->assertSame($expectedMethod, $items[0]['method']);
+		}
 	}
 
 	public function testSearchAppliesPagination(): void {
@@ -336,18 +351,6 @@ class AccountPhonePluginTest extends TestCase {
 				'userEnabled' => true,
 				'expectedCount' => 0,
 			],
-			'enumeration disabled and no full match' => [
-				'method' => 'sms',
-				'config' => [
-					'shareapi_allow_share_dialog_user_enumeration' => 'no',
-					'shareapi_restrict_user_enumeration_full_match' => 'no',
-				],
-				'knownUser' => true,
-				'currentGroups' => ['sales'],
-				'targetGroups' => ['sales'],
-				'userEnabled' => true,
-				'expectedCount' => 0,
-			],
 			'enumeration allowed without restrictions' => [
 				'method' => 'sms',
 				'config' => [
@@ -358,6 +361,11 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['engineering'],
 				'userEnabled' => true,
 				'expectedCount' => 1,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
+				'expectedShareType' => AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE,
+				'expectedMethod' => 'sms',
 			],
 			'restrict to group without common group' => [
 				'method' => 'sms',
@@ -370,6 +378,9 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['engineering'],
 				'userEnabled' => true,
 				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
 			],
 			'restrict to group with common group' => [
 				'method' => 'sms',
@@ -382,6 +393,11 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['sales'],
 				'userEnabled' => true,
 				'expectedCount' => 1,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
+				'expectedShareType' => AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE,
+				'expectedMethod' => 'sms',
 			],
 			'restrict to phone not known' => [
 				'method' => 'sms',
@@ -394,6 +410,9 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['sales'],
 				'userEnabled' => true,
 				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
 			],
 			'share with group only without common group' => [
 				'method' => 'sms',
@@ -406,6 +425,9 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['engineering'],
 				'userEnabled' => true,
 				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
 			],
 			'disabled user filtered' => [
 				'method' => 'sms',
@@ -417,6 +439,9 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['sales'],
 				'userEnabled' => false,
 				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
 			],
 			'exclude group list removes allowed groups' => [
 				'method' => 'sms',
@@ -430,6 +455,56 @@ class AccountPhonePluginTest extends TestCase {
 				'targetGroups' => ['sales'],
 				'userEnabled' => true,
 				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
+			],
+			'enumeration disabled and no full match' => [
+				'method' => 'sms',
+				'config' => [
+					'shareapi_allow_share_dialog_user_enumeration' => 'no',
+					'shareapi_restrict_user_enumeration_full_match' => 'no',
+				],
+				'knownUser' => true,
+				'currentGroups' => ['sales'],
+				'targetGroups' => ['sales'],
+				'userEnabled' => true,
+				'expectedCount' => 0,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
+			],
+			'unified search with account enabled returns account signer' => [
+				'method' => 'all',
+				'config' => [
+					'shareapi_allow_share_dialog_user_enumeration' => 'yes',
+				],
+				'knownUser' => false,
+				'currentGroups' => ['sales'],
+				'targetGroups' => ['engineering'],
+				'userEnabled' => true,
+				'expectedCount' => 1,
+				'identifyMethods' => [
+					['name' => 'account', 'enabled' => true],
+				],
+				'expectedShareType' => IShare::TYPE_USER,
+				'expectedMethod' => 'account',
+			],
+			'unified search with only sms enabled returns phone signer' => [
+				'method' => 'all',
+				'config' => [
+					'shareapi_allow_share_dialog_user_enumeration' => 'yes',
+				],
+				'knownUser' => false,
+				'currentGroups' => ['sales'],
+				'targetGroups' => ['engineering'],
+				'userEnabled' => true,
+				'expectedCount' => 1,
+				'identifyMethods' => [
+					['name' => 'sms', 'enabled' => true],
+				],
+				'expectedShareType' => AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE,
+				'expectedMethod' => 'sms',
 			],
 		];
 	}

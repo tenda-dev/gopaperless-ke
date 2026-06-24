@@ -138,7 +138,7 @@
 			<IdentifySigner
 				v-else
 				:signer-to-edit="signerToEdit"
-				:placeholder="t('libresign', 'Search signer')"
+				:placeholder="searchPlaceholder"
 				:method="searchMethod"
 				:methods="methods"
 				:disabled="isSignerMethodDisabled" />
@@ -346,6 +346,17 @@ const hasWarnings = computed(() =>
  * are enabled in Administration → LibreSign → Identification factors.
  */
 const searchMethod = computed(() => enabledMethods.value.length > 0 ? 'all' : '')
+
+const enabledMethodNames = computed(() => enabledMethods.value.map((m) => m.friendly_name || m.name))
+
+const searchPlaceholder = computed(() => {
+	if (enabledMethodNames.value.length === 0) {
+		return t('libresign', 'Search signer')
+	}
+	return t('libresign', 'Search signer by {methods}', {
+		methods: enabledMethodNames.value.join(', '),
+	})
+})
 
 const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 </script>

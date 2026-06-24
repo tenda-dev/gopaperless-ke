@@ -284,7 +284,14 @@ export function useWorkflowState(): WorkflowStateRefs {
 			if (isSignerSigned(signer)) return false
 			const method = getSignerMethod(signer)
 			if (!method) return false
-			return !getMethodConfig(method)?.enabled
+			const methodConfig = getMethodConfig(method)
+			// Only flag as disabled when the setting exists and is explicitly off.
+			// Missing settings can happen for legacy/custom methods and should not
+			// block the workflow.
+			if (!methodConfig) {
+				return false
+			}
+			return !methodConfig.enabled
 		})
 	})
 

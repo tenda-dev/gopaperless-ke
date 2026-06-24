@@ -10,6 +10,7 @@ namespace OCA\Libresign\Service\Identify;
 
 use OCA\Libresign\Collaboration\Collaborators\AccountPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\ContactPhonePlugin;
+use OCA\Libresign\Collaboration\Collaborators\EmailAccountPlugin;
 use OCA\Libresign\Collaboration\Collaborators\ManualPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\SignerPlugin;
 use OCP\Share\IShare;
@@ -56,6 +57,7 @@ class ResultFormatter {
 			} elseif (in_array($shareType, [
 				SignerPlugin::TYPE_SIGNER,
 				AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE,
+				EmailAccountPlugin::TYPE_SIGNER_EMAIL_ACCOUNT,
 				ContactPhonePlugin::TYPE_SIGNER_CONTACT_PHONE,
 				ManualPhonePlugin::TYPE_SIGNER_MANUAL_PHONE,
 			], true)) {
