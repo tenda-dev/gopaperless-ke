@@ -1751,12 +1751,40 @@ class PaymentService
 			$this->paymentMapper->update($payment);
 
 			/**
-			 * Create entitlement ONCE per successful payment
+			 * BUSINESS FINALITY
+			 *
+			 * IMPORTANT:
+			 * Different payment purposes may trigger
+			 * different business workflows.
+			 */
+			switch ($payment->getPaymentPurpose()) {
+
+				case PaymentPurpose::CREDIT_PURCHASE:
+					// Future:
+					// - invoicing
+					// - bulk credit notifications
+					break;
+
+				case PaymentPurpose::SIGN_REQUEST:
+					// Future:
+					// - signer-specific workflows
+					// - document-level reconciliation
+					break;
+			}
+
+			/**
+			 * Grant entitlement from successful payment.
+			 *
+			 * IMPORTANT:
+			 * Current business model grants entitlement
+			 * for both:
+			 * - direct signer payments
+			 * - requester credit purchases
 			 */
 
 			$this->entitlementService->create(
 				$payment->getUserId(),
-				$payment->getProductCode(), // TODO: derive from product_code later
+				$payment->getProductCode(),
 				$payment->getProductUses()
 			);
 
@@ -1765,6 +1793,7 @@ class PaymentService
 			$this->logger->info('[PAYMENT FINALISE] After update call', [
 				'id' => $payment->getId(),
 				'status' => $payment->getPaymentStatus()->value,
+				'purpose' => $payment->getPaymentPurpose()->value,
 			]);
 		} catch (\Throwable $e) {
 
@@ -1776,6 +1805,7 @@ class PaymentService
 			$this->logger->error('[PAYMENT FINALISE] failed', [
 				'exception' => $e,
 				'paymentId' => $payment->getId(),
+				'purpose' => $payment->getPaymentPurpose()->value,
 			]);
 
 			throw $e;

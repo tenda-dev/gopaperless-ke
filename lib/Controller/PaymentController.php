@@ -16,7 +16,7 @@ use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
-use OCA\Libresign\Service\SMSService;
+use OCA\Libresign\Service\SMS\SMSService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\CORS;
@@ -485,49 +485,13 @@ class PaymentController extends AEnvironmentAwareController
 	#[CORS]
 	#[ApiRoute(
 		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test',
+		url: '/api/{apiVersion}/payment/health',
 		requirements: ['apiVersion' => '(v1)']
 	)]
 	public function test(): DataResponse
 	{
 
-		return new DataResponse([
-			'test' => true
-		], Http::STATUS_OK);
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-daraja',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testDarajaService(): DataResponse
-	{
-
 		$result = $this->paymentService->health();
-		return new DataResponse([
-			'result' => $result
-		], Http::STATUS_OK);
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-dpo',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testDpoService(): DataResponse
-	{
-
-		$result = $this->paymentService->health();
-
 		return new DataResponse([
 			'result' => $result
 		], Http::STATUS_OK);
@@ -542,34 +506,38 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/test-sms',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function testSMSService(): DataResponse
-	{
+	public function testSMSService(
+		string $phoneNumber,
+		string $message = 'This is a test message'
+	): DataResponse {
+		if (empty($phoneNumber) || !$phoneNumber) {
+			return new DataResponse([
+				'success' => false,
+				'error' => 'Phone number is required',
+			], Http::STATUS_BAD_REQUEST);
+		}
 
-		$result = $this->smsService->testSendSMS();
+		try {
+			$result = $this->smsService->send(
+				$phoneNumber,
+				$message
+			);
 
-		return new DataResponse([
-			'result' => $result
-		], Http::STATUS_OK);
+			return new DataResponse([
+				'result' => $result
+			], Http::STATUS_OK);
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Test SMS failed', [
+				'exception' => $e
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
 	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-verify',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testQueryParam(string $providerReference): DataResponse
-	{
-
-		return new DataResponse([
-			'result' => 'ok',
-			'reference' => $providerReference
-		], Http::STATUS_OK);
-	}
-
 
 	private function parseDpoXml(string $xml): array
 	{

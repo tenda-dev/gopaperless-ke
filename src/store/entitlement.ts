@@ -5,32 +5,45 @@ import {
 	getCurrentEntitlement,
 	consumeEntitlement,
 	type ConsumeEntitlementPayload,
-	type CurrentEntitlement,
+	type AvailableCredits,
 	checkEntitlement,
 } from '@/payment/entitlement'
+
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 
 export const useEntitlementStore = defineStore(
 	'entitlement',
 	() => {
-
 		const entitlements = ref<
-			Record<string, CurrentEntitlement | null>
+			Record<string, AvailableCredits | null>
 		>({})
 
-		const loading = ref(false)
+		const loading = ref<
+			Record<string, boolean>
+		>({})
 
-		const error = ref<string | null>(null)
+		const errors = ref<
+			Record<string, string | null>
+		>({})
 
-		const initialised = ref(false)
-
+		/**
+		 * Products already loaded at least once.
+		 */
 		const loadedProducts = ref(
 			new Set<string>(),
 		)
 
+		/**
+		 * Protects against duplicate
+		 * concurrent initialisation calls.
+		 */
+		const loadingPromises = ref<
+			Record<string, Promise<void>>
+		>({})
+
 		async function initialise(
 			productCode = DEFAULT_PRODUCT_CODE,
-		) {
+		): Promise<void> {
 			if (
 				loadedProducts.value.has(
 					productCode,
@@ -39,54 +52,79 @@ export const useEntitlementStore = defineStore(
 				return
 			}
 
-			await load(productCode)
+			const existingPromise =
+				loadingPromises.value[
+					productCode
+				]
 
-			loadedProducts.value.add(
+			if (existingPromise) {
+				return existingPromise
+			}
+
+			const promise = load(
 				productCode,
 			)
+				.then(() => {
+					loadedProducts.value.add(
+						productCode,
+					)
+				})
+				.finally(() => {
+					delete loadingPromises.value[
+						productCode
+					]
+				})
+
+			loadingPromises.value[
+				productCode
+			] = promise
+
+			return promise
 		}
 
 		async function load(
 			productCode = DEFAULT_PRODUCT_CODE,
-		) {
+		): Promise<void> {
+			loading.value[
+				productCode
+			] = true
 
-			loading.value = true
-			error.value = null
+			errors.value[
+				productCode
+			] = null
 
 			try {
-
 				entitlements.value[
 					productCode
 				] = await getCurrentEntitlement(
 					productCode,
 				)
-
 			} catch (err: any) {
-
-				error.value =
+				errors.value[
+					productCode
+				] =
 					err?.message ??
 					'Failed to load entitlement'
-
 			} finally {
-
-				loading.value = false
+				loading.value[
+					productCode
+				] = false
 			}
 		}
 
 		async function refresh(
 			productCode = DEFAULT_PRODUCT_CODE,
-		) {
+		): Promise<void> {
 			await load(productCode)
 		}
 
 		function decrementLocally(
-			productCode: string = DEFAULT_PRODUCT_CODE,
+			productCode = DEFAULT_PRODUCT_CODE,
 			amount = 1,
-		) {
-
+		): void {
 			const entitlement =
 				entitlements.value[
-				productCode
+					productCode
 				]
 
 			if (!entitlement) {
@@ -96,20 +134,18 @@ export const useEntitlementStore = defineStore(
 			entitlement.remainingUses =
 				Math.max(
 					0,
-					(entitlement.remainingUses ?? 0)
-					- amount,
+					entitlement.remainingUses - amount,
 				)
 		}
 
 		async function consume(
 			payload: ConsumeEntitlementPayload,
-		) {
+		): Promise<boolean> {
 			const productCode =
 				payload.productCode ??
 				DEFAULT_PRODUCT_CODE
 
 			try {
-
 				const success =
 					await consumeEntitlement(
 						payload,
@@ -119,38 +155,25 @@ export const useEntitlementStore = defineStore(
 					return false
 				}
 
-				/**
-				 * Immediate UI update.
-				 */
 				decrementLocally(
 					productCode,
 				)
 
-				/**
-				 * Re-sync with backend.
-				 *
-				 * Fire-and-forget.
-				 */
 				void refresh(
 					productCode,
 				)
 
 				return true
-
 			} catch (err) {
-
-				/**
-				 * CRITICAL:
-				 *
-				 * Entitlement consumption must
-				 * NEVER break signing flow.
-				 */
-
 				console.error(
-					`[EntitlementStore] ${productCode} Consumption failed`,
+					`[EntitlementStore] ${productCode} consumption failed`,
 					err,
 				)
 
+				/**
+				 * Consumption failures must
+				 * never break the signing flow.
+				 */
 				return false
 			}
 		}
@@ -158,10 +181,9 @@ export const useEntitlementStore = defineStore(
 		function getEntitlement(
 			productCode = DEFAULT_PRODUCT_CODE,
 		) {
-
 			return computed(() =>
 				entitlements.value[
-				productCode
+					productCode
 				] ?? null,
 			)
 		}
@@ -169,7 +191,6 @@ export const useEntitlementStore = defineStore(
 		function getRemainingUses(
 			productCode = DEFAULT_PRODUCT_CODE,
 		) {
-
 			return computed(() =>
 				entitlements.value[
 					productCode
@@ -180,7 +201,6 @@ export const useEntitlementStore = defineStore(
 		function hasEntitlement(
 			productCode = DEFAULT_PRODUCT_CODE,
 		) {
-
 			return computed(() =>
 				(
 					entitlements.value[
@@ -190,6 +210,25 @@ export const useEntitlementStore = defineStore(
 			)
 		}
 
+		function isLoading(
+			productCode = DEFAULT_PRODUCT_CODE,
+		) {
+			return computed(() =>
+				loading.value[
+					productCode
+				] ?? false,
+			)
+		}
+
+		function getError(
+			productCode = DEFAULT_PRODUCT_CODE,
+		) {
+			return computed(() =>
+				errors.value[
+					productCode
+				] ?? null,
+			)
+		}
 
 		async function check(
 			productCode = DEFAULT_PRODUCT_CODE,
@@ -211,18 +250,20 @@ export const useEntitlementStore = defineStore(
 		}
 
 		return {
-			loading,
-			error,
 			entitlements,
+
 			initialise,
-			initialised,
-			refresh,
 			load,
+			refresh,
 			consume,
+			check,
+
 			getEntitlement,
 			getRemainingUses,
 			hasEntitlement,
-			check,
+
+			isLoading,
+			getError,
 		}
 	},
 )

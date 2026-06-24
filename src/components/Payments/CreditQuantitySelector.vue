@@ -81,11 +81,11 @@ const emit = defineEmits<{
 }>()
 
 const quantityOptions = [
-	1,
 	5,
 	10,
 	15,
 	20,
+	50,
 ]
 
 const {

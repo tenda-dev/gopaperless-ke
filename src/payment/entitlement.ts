@@ -4,11 +4,11 @@ import { generateOcsUrl } from '@nextcloud/router'
 const BASE_URL = '/apps/libresign/api/v1/entitlement'
 const CONSUME_ENDPOINT = `${BASE_URL}/xzy-mspw-cbs`
 
-export interface CurrentEntitlement {
-	id: number
-	userId: string
+export interface AvailableCredits {
 	productCode: string
 	remainingUses: number
+	activeEntitlements: number
+	canUse: boolean
 }
 
 export interface ConsumeEntitlementPayload {
@@ -74,18 +74,18 @@ export async function consumeEntitlement(
 
 export async function getCurrentEntitlement(
 	productCode: string,
-): Promise<CurrentEntitlement | null> {
+): Promise<AvailableCredits | null> {
 
 	const { data } = await axios.get(
 		generateOcsUrl(
-			`${BASE_URL}/current?productCode=${productCode}`
+			`${BASE_URL}/credits?productCode=${productCode}`
 		),
 		{
 			timeout: 10000,
 		},
 	)
 
-	return data?.ocs?.data?.entitlement ?? null
+	return data?.ocs?.data?.credits ?? null
 }
 
 export async function checkEntitlement(

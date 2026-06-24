@@ -33,6 +33,8 @@
 		<CreditPurchaseFlow
 			v-if="showPurchaseFlow"
 			product-code="SIGN_DOCUMENT"
+			payment-purpose="credit_purchase"
+			:allow-quantity-selection="true"
 			@success="handlePurchaseSuccess"
 			@close="showPurchaseFlow = false"
 		/>
@@ -40,30 +42,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
+
+import { useEntitlementStore } from '@/store/entitlement'
+
+import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 
 import {
 	mdiCartOutline,
 	mdiCreditCardOutline
 } from '@mdi/js'
 
-import { useEntitlement } from '@/composables/useEntitlement'
+const entitlementStore =
+	useEntitlementStore()
 
-const {
-	loading,
-	remainingUses,
-	refresh,
-} = useEntitlement('SIGN_DOCUMENT')
+const showPurchaseFlow =
+	ref(false)
 
-const showPurchaseFlow = ref(false)
+const loading =
+	entitlementStore.isLoading(
+		DEFAULT_PRODUCT_CODE,
+	)
 
-const ctaLabel = computed(() => {
-	return `Buy Credits`
-})
+const remainingUses =
+	entitlementStore.getRemainingUses(
+		DEFAULT_PRODUCT_CODE,
+	)
+
+const entitlement =
+	entitlementStore.getEntitlement(
+		DEFAULT_PRODUCT_CODE,
+	)
 
 const cardIcon = computed(() => {
 	return mdiCreditCardOutline
@@ -72,12 +85,20 @@ const cardIcon = computed(() => {
 async function handlePurchaseSuccess() {
 	showPurchaseFlow.value = false
 
-	await refresh()
+	await entitlementStore.refresh(
+		DEFAULT_PRODUCT_CODE,
+	)
 }
 
 function handleCtaClick() {
 	showPurchaseFlow.value = true
 }
+
+onMounted(async () => {
+	await entitlementStore.initialise(
+		DEFAULT_PRODUCT_CODE,
+	)
+})
 </script>
 
 <style lang="scss" scoped>

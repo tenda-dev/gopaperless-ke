@@ -12,6 +12,9 @@
 					<h2>GoPaperless</h2>
 					<p>Sign, Seal and Deliver</p>
 
+
+					<CreditsSummaryCard />
+
 					<NcButton class="new-doc-btn" :wide="true" variant="primary" :disabled="!canRequestSign" @click="goToRequest()">
 						<template #icon>
 							<NcIconSvgWrapper :path="mdiPlus" :size="20" />
@@ -142,6 +145,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import Settings from '../Settings/Settings.vue'
 
 import { useFilesStore } from '../../store/files.js'
+import CreditsSummaryCard from '../Entitlement/CreditsSummaryCard.vue'
 
 defineOptions({
 	name: 'LeftSidebar',

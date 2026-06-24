@@ -90,6 +90,65 @@ class EntitlementController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Get available credits for the authenticated user.
+	 *
+	 * Aggregates all active entitlements for the requested product and returns
+	 * the total credits currently available for consumption.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[ApiRoute(
+		verb: 'GET',
+		url: '/api/{apiVersion}/entitlement/credits',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function getAvailableCredits(
+		string $productCode,
+	): DataResponse {
+
+		try {
+			$user = $this->userSession->getUser();
+
+			if (!$user) {
+				return new DataResponse([
+					'credits' => null,
+					'error' => 'Unauthorized',
+				], Http::STATUS_UNAUTHORIZED);
+			}
+
+			if ($productCode === '') {
+				return new DataResponse([
+					'credits' => null,
+					'error' => 'Invalid product code',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$credits = $this->entitlementService->getAvailableCredits(
+				$user->getUID(),
+				$productCode,
+			);
+
+			return new DataResponse([
+				'credits' => $credits,
+			], Http::STATUS_OK);
+		} catch (\Throwable $e) {
+
+			$this->logger->error(
+				'Failed to fetch available credits',
+				[
+					'exception' => $e,
+					'productCode' => $productCode,
+				],
+			);
+
+			return new DataResponse([
+				'credits' => null,
+				'error' => 'Unable to fetch available credits',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
 	 * Consume entitlement
 	 */
 	#[NoAdminRequired]

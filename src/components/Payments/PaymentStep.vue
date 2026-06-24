@@ -402,8 +402,6 @@ import {
 	type SelectedMno,
 	type PaymentPurpose
 } from '@/payment'
-import { getProductByCode } from '@/payment/product'
-import { getUser } from '@/payment/user'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
 import { resolvePhone, formatAsYouType } from '@/utils/phoneResolver'
@@ -413,6 +411,8 @@ import PaymentRouteSummary from './PaymentRouteSummary.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { usePaymentRouting } from '@/payment/usePaymentRouting'
 import type { ProductPricing } from '@/composables/useProductPricing'
+import { useUserContextStore } from '@/store/userContext.ts'
+import type { Product } from '@/payment/product.ts'
 
 // ─────────────────────────────────────────────────────────────
 // Props / Emits
@@ -441,6 +441,7 @@ const emit = defineEmits([
 const payment = usePayment()
 const { discardRecovery } = usePaymentRecovery()
 const routing = usePaymentRouting()
+const userContext = useUserContextStore()
 
 // ─────────────────────────────────────────────────────────────
 // UI state
@@ -454,7 +455,7 @@ const resolution = ref<ReturnType<typeof resolvePhone> | null>(null)
 const instructions = ref<string | null>(null)
 const processingStage = ref(0)
 
-const product = ref<any>(null)
+const product = ref<Product | null>(null)
 const user = ref<any>(null)
 const isLoadingData = ref(true)
 const hasEmittedSuccess = ref(false)
@@ -721,6 +722,12 @@ const paymentDisplayLabel = computed(() => {
 	return null
 })
 
+const estimatedAmount = computed(() =>
+	product.value && props.quantity
+		? product.value.amount * props.quantity
+		: 0
+)
+
 const displayAmount = computed(() => {
 	if (!product.value) {
 		return null
@@ -754,7 +761,7 @@ const displayAmount = computed(() => {
 	// fallback before payment creation
 	return {
 		primary: formatAmount(
-			product.value.amount,
+			estimatedAmount.value,
 			product.value.currency
 		),
 
@@ -1455,14 +1462,6 @@ function isValidSelectedProvider(
 	)
 }
 
-function confirmSuggestedMno() {
-	mnoDetection.selected = {
-		provider: mnoDetection.mno!,
-		country: mnoDetection.country!,
-	}
-	mnoDetection.state = 'selected'
-}
-
 function formatAmount(amount: number, currency: string) {
 	return `${currency} ${(amount / 100).toFixed(2)}`
 }
@@ -1734,10 +1733,8 @@ onMounted(async () => {
 		showInfo('This is a demo environment. No real money is being transacted.')
 	}
 	try {
-		const [u] = await Promise.all([
-			getUser(),
-		])
-		user.value = u
+		const { uid, emailAddress, phoneNumber } = useUserContextStore()
+		user.value = { uid, emailAddress, phoneNumber }
 		product.value = props.pricing.product.value
 
 		if (props.initialPayment) {

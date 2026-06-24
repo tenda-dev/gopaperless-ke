@@ -7,6 +7,9 @@
 		<div class="sign-elements">
 			<Signatures v-if="hasSignatures" />
 		</div>
+
+		<SignCreditsBanner v-if="!loading"/>
+
 		<div v-if="!loading" class="button-wrapper">
 			<div v-if="needCreateSignature" class="no-signature-warning">
 				<p>
@@ -109,10 +112,10 @@
 			@close="signMethodsStore.closeModal('emailToken')" />
 	</div>
 
-	<PaymentModal
-		v-if="showPaymentModal && paymentContext"
-		:sign-uuid="paymentContext.signUuid"
-		:sign-request-id="paymentContext.signRequestId"
+	<!-- <PaymentModal
+		v-if="showPaymentModal && signerContextStore.isReady"
+		:sign-uuid="signerContextStore.signUuid"
+		:sign-request-id="signerContextStore.signRequestId"
 		:document="signStore.document"
 		:signer="currentSigner"
 		:quantity="1"
@@ -120,7 +123,21 @@
 		:product-code="signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE"
 		@close="handlePaymentClose"
 		@success="onPaymentSuccess"
-	/>
+	/> -->
+
+	<CreditPurchaseFlow
+		v-if="showPaymentModal"
+		:payment-purpose="'sign_request'"
+		:sign-uuid="paymentContext.signUuid"
+		:sign-request-id="paymentContext.signRequestId"
+		:product-code="paymentContext.productCode"
+		:quantity="requiredQuantity"
+		:allow-quantity-selection="
+			paymentContextStore.flowType ===
+			PaymentFlowType.CREDIT_PACK"
+		@success="onPaymentSuccess"
+		@close="handlePaymentClose"
+    />
 </template>
 
 <script setup lang="ts">
@@ -171,11 +188,15 @@ import {
 import { FILE_STATUS } from '../../../constants.js'
 import { getFileSigners, getVisibleElementsFromDocument, idsMatch, isCurrentUserSigner } from '../../../services/visibleElementsService'
 import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
-import PaymentModal from '@/components/Payments/PaymentModal.vue'
+// import PaymentModal from '@/components/Payments/PaymentModal.vue'
 import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
-import { usePaymentContextStore } from '@/store/paymentContext'
 import { resolveUserId } from '@/utils/resolveUserId'
 import { useEntitlementStore } from '@/store/entitlement'
+import { useSignerContextStore } from '@/store/signerContext'
+import { useUserContextStore } from '@/store/userContext'
+import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
+import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
+import SignCreditsBanner from '@/components/Entitlement/SignCreditsBanner.vue'
 
 type OpenApiAccountMe = operations['account-me']['responses'][200]['content']['application/json']['ocs']['data']
 type LibreSignAccountMe = Omit<OpenApiAccountMe, 'settings'> & {
@@ -358,11 +379,6 @@ type SubmitSignatureCompatContext = {
 	$emit: (event: string, payload: unknown) => void
 }
 
-type PaymentContext = {
-	signUuid: string
-	signRequestId: number
-}
-
 function isSignSubmissionError(error: unknown): error is SignSubmissionError {
 	return typeof error === 'object' && error !== null
 }
@@ -385,8 +401,10 @@ const signMethodsStore = useSignMethodsStore() as SignMethodsStoreContract
 const signatureElementsStore = useSignatureElementsStore() as SignatureElementsStoreContract
 const sidebarStore = useSidebarStore() as SidebarStoreContract
 const identificationDocumentStore = useIdentificationDocumentStore() as IdentificationDocumentStoreContract
-const paymentContextStore = usePaymentContextStore()
 const entitlementStore = useEntitlementStore()
+const signerContextStore = useSignerContextStore()
+const userContextStore = useUserContextStore()
+const paymentContextStore = usePaymentContextStore()
 
 const loading = ref(true)
 const user = ref<UserInfo>({
@@ -472,45 +490,26 @@ const currentSigner = computed(() => {
 	return currentSigner
 })
 
-const paymentContext = computed<PaymentContext | null>(() => {
-	const signer = currentSigner.value
+const paymentContext = computed(() => ({
+	signUuid: signerContextStore.signUuid,
+	signRequestId: signerContextStore.signRequestId,
+	productCode:
+		signStore.productCode
+		|| DEFAULT_SIGN_PRODUCT_CODE,
+}))
 
-	if (
-		!signer ||
-		signer.sign_uuid == null ||
-		signer.signRequestId == null
-	) {
-		return null
-	}
-
-	return {
-		signUuid: signer.sign_uuid,
-		signRequestId: signer.signRequestId,
-	}
-})
+const requiredQuantity = computed(() => 1)
 
 async function consumeEntitlementAfterSign() {
-
-	if (
-		!paymentContextStore.isReady()
-	) {
-		return
-	}
 
 	try {
 
 		await entitlementStore.consume({
-			userId:
-				paymentContextStore.userId,
-			signUuid:
-				paymentContextStore.signUuid,
-			signRequestId:
-				paymentContextStore.signRequestId,
-			productCode:
-				paymentContextStore.productCode,
+			userId: userContextStore.uid,
+			signUuid: signerContextStore.signUuid,
+			signRequestId: signerContextStore.signRequestId,
+			productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
 		})
-
-		paymentContextStore.clear()
 
 	} catch (err) {
 
@@ -785,13 +784,6 @@ async function confirmSignDocument() {
 		signStore.productCode = DEFAULT_SIGN_PRODUCT_CODE
 	}
 
-	paymentContextStore.setContext({
-		userId: resolvedUserId,
-		signUuid: sign_uuid,
-		signRequestId: signRequestId,
-		productCode: signStore.productCode,
-	})
-
 	// 2. Check entitlement FIRST
 	const { allowed } = await entitlementStore.check(
 		signStore.productCode,
@@ -829,6 +821,12 @@ async function confirmSignDocument() {
 }
 
 function triggerPaymentFlow() {
+
+	console.log('[Payment Flow]', {
+		flowType: paymentContextStore.flowType,
+		allowQuantitySelection:
+			paymentContextStore.flowType === PaymentFlowType.CREDIT_PACK,
+	})
 
 	// set productCode here
 	signStore.productCode =
@@ -881,12 +879,21 @@ function executeSigningAction(action: string) {
 	}
 }
 
+watch(showPaymentModal, value => {
+	console.log('[Modal]', value)
+})
+
 onMounted(async () => {
 	loading.value = true
 	signatureElementsStore.signRequestUuid = signRequestUuid.value
 	signatureElementsStore.loadSignatures()
-	paymentContextStore.hydrate()
-	await entitlementStore.initialise()
+
+
+	await Promise.all([
+		userContextStore.initialise(),
+		signerContextStore.initialise(route.params.uuid as string),
+		entitlementStore.initialise(),
+	])
 
 	initializeServices()
 
@@ -915,23 +922,6 @@ onMounted(async () => {
 		await nextTick()
 
 		notifyInfo({ message: 'Payment successful. Proceeding with signing...', important: true })
-
-		if (!paymentContextStore.isReady()) {
-			await nextTick() // ensure signer is ready
-			console.warn('[PaymentContext] rebuilding after redirect')
-
-			const signer = currentSigner.value
-			const resolvedUserId = await resolveUserId(user.value)
-
-			if (signer && resolvedUserId && signer.sign_uuid && signer.signRequestId) {
-				paymentContextStore.setContext({
-					userId: resolvedUserId,
-					signUuid: signer.sign_uuid,
-					signRequestId: signer.signRequestId,
-					productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
-				})
-			}
-		}
 
 		// Guard
 		if (!signStore.pendingAction) {
@@ -988,6 +978,9 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
+.document-sign {
+	margin-top: -1rem;
+}
 .progress-indicator {
 	font-weight: bold;
 	color: var(--color-primary-element);

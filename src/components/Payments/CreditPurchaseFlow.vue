@@ -1,7 +1,7 @@
 <template>
 	<NcDialog
 	name=""
-	size="full"
+	size="normal"
 	@closing="handleClose"
 >
 
@@ -35,9 +35,9 @@
 	<!-- Payment execution -->
     <PaymentStep
 	  v-else-if="step === 'payment'"
-	  :payment-purpose="PAYMENT_PURPOSE"
-      :sign-request-id="undefined"
-      :sign-uuid="undefined"
+	  :payment-purpose="paymentPurpose || 'credit_purchase'"
+      :sign-request-id="signRequestId"
+      :sign-uuid="signUuid"
       :product-code="productCode"
 	  :pricing="pricing"
 	  :initial-payment="hydratedPayment"
@@ -66,21 +66,39 @@ type CreditPurchaseStep =
 	| 'quantity'
 	| 'payment'
 
-const PAYMENT_PURPOSE: PaymentPurpose = 'credit_purchase'
-
 const props = defineProps<{
 	productCode: string
-	preselectedQuantity?: number
+
+	paymentPurpose?: PaymentPurpose
+
+	signUuid?: string
+	signRequestId?: number
+
+	quantity?: number
+	// preselectedQuantity?: number
+	allowQuantitySelection: boolean
 }>()
 
 const step = ref<CreditPurchaseStep>(
-	props.preselectedQuantity
-		? 'payment'
-		: 'quantity',
+	props.allowQuantitySelection
+		? 'quantity'
+		: 'payment',
 )
 
 const quantity = ref(
-	props.preselectedQuantity ?? 1,
+	props.quantity ?? 1,
+)
+
+const signUuid = computed(() =>
+	props.signUuid,
+)
+
+const signRequestId = computed(() =>
+	props.signRequestId,
+)
+
+const hasPreselectedQuantity = computed(
+	() => !props.allowQuantitySelection
 )
 
 const emit = defineEmits([
@@ -138,25 +156,28 @@ const loadingMessage = computed(() => {
 })
 
 const isQuantityLocked = computed(
-	() => props.preselectedQuantity !== undefined,
+	() => props.quantity !== undefined,
 )
 
 function handleQuantitySelected(
 	payload: { quantity: number }
 ) {
+	console.log(`xxxxxx quantity payload`, payload)
 	quantity.value = payload.quantity
 
 	step.value = 'payment'
 }
 
 onMounted(async () => {
-	await checkRecovery({
-		paymentPurpose: PAYMENT_PURPOSE,
-		productCode: props.productCode,
-	})
+	// await checkRecovery({
+	// 	paymentPurpose: props.paymentPurpose || 'credit_purchase',
+	// 	productCode: props.productCode,
+	// })
 
-	if (props.preselectedQuantity) {
-		handleQuantitySelected({ quantity: quantity.value })
+	if (hasPreselectedQuantity.value) {
+		handleQuantitySelected({
+			quantity: quantity.value,
+		})
 	}
 })
 
@@ -198,7 +219,7 @@ function handleStartOver() {
 
 	hasAcceptedRecovery.value = true
 
-	step.value = props.preselectedQuantity
+	step.value = hasPreselectedQuantity.value
 		? 'payment'
 		: 'quantity'
 }
