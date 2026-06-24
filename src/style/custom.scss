@@ -139,23 +139,3 @@ li.app-navigation-entry-wrapper div.app-navigation-entry  {
 	border-radius: 8px !important;
 	margin-bottom: 4px !important;
 }
-
-/* ==========================================
-   GO PAPERLESS THEME OVERRIDES
-   ========================================== */
-/* Nextcloud theming on staging does not reliably apply the custom
-   primary colour to CSS variables. Force the GoPaperless green
-   inside the LibreSign app so all <NcButton variant="primary">
-   and other themed components render correctly. */
-
-#content,
-#app-libresign,
-.app-content {
-	--color-primary-element: #04D56D;
-	--color-primary-element-hover: #03b85d;
-	--color-primary-element-light: rgba(4, 213, 109, 0.15);
-	--color-primary-element-text: #000000;
-	--color-primary: #04D56D;
-	--color-primary-hover: #03b85d;
-	--color-primary-light: rgba(4, 213, 109, 0.15);
-}
