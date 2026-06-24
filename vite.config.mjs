@@ -14,6 +14,9 @@ export default createAppConfig({
 	external: resolve('src/external.ts'),
 	validation: resolve('src/validation.ts'),
 }, {
+	inlineCSS: {
+		jsAssetsFilterFunction: (chunk) => !chunk.fileName.includes('worker'),
+	},
 	config: {
 		server: {
 			port: 3000,
