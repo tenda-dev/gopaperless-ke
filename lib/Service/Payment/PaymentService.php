@@ -339,8 +339,13 @@ class PaymentService
 				throw new RuntimeException('signUuid is required');
 			}
 
-			if ($this->paymentMapper->findLatestPaidByTransactionId($signRequestId)) {
-				throw new RuntimeException('Payment already completed');
+			$paidPayment = $this->paymentMapper->findLatestPaidByTransactionId($signRequestId);
+			if ($paidPayment) {
+				$this->logger->info('[Payment] Returning existing paid payment instead of starting a new one', [
+					'sign_request_id' => $signRequestId,
+					'payment_id' => $paidPayment->getId(),
+				]);
+				return $this->buildExistingPaymentResponse($paidPayment);
 			}
 
 			$pending = $this->paymentMapper
