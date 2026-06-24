@@ -12,9 +12,11 @@ use DateTime;
 use DateTimeInterface;
 use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SubjectAlternativeNameService;
 use OCP\Accounts\IAccountManager;
+use OCP\IUser;
 use OCP\IUserManager;
 use stdClass;
 
@@ -206,8 +208,81 @@ class SignersLoader {
 				}
 			}
 		}
+		if ($options->getMe() instanceof IUser) {
+			$this->resolveMeSigner($fileData, $options->getMe());
+		}
 		ksort($fileData->signers);
 		$this->signersLibreSignLoaded = true;
+	}
+
+	/**
+	 * When more than one signer matches the current user (for example because
+	 * two accounts share the same email), keep only one as "me". Prefer an
+	 * account identifier that matches the user's UID or email, then an email
+	 * match, and finally the signer that is still able to sign.
+	 */
+	private function resolveMeSigner(stdClass $fileData, IUser $user): void {
+		$signers = $fileData->signers ?? [];
+		$meIndexes = [];
+		foreach ($signers as $index => $signer) {
+			if (!empty($signer->me)) {
+				$meIndexes[] = $index;
+			}
+		}
+		if (count($meIndexes) <= 1) {
+			return;
+		}
+
+		$scoreByIndex = [];
+		foreach ($meIndexes as $index) {
+			$signer = $signers[$index];
+			$score = 0;
+			foreach ($signer->identifyMethods ?? [] as $identifyMethod) {
+				$method = $identifyMethod['method'] ?? '';
+				$value = $identifyMethod['value'] ?? '';
+				if ($method === IdentifyMethodService::IDENTIFY_ACCOUNT) {
+					if ($value === $user->getUID()) {
+						$score = max($score, 3);
+					} elseif ($value === $user->getEMailAddress()) {
+						$score = max($score, 2);
+					}
+				} elseif ($method === IdentifyMethodService::IDENTIFY_EMAIL && $value === $user->getEMailAddress()) {
+					$score = max($score, 1);
+				}
+			}
+			$scoreByIndex[$index] = $score;
+		}
+
+		$maxScore = max($scoreByIndex);
+		$candidates = array_keys(array_filter($scoreByIndex, fn (int $score): bool => $score === $maxScore));
+
+		$bestIndex = null;
+		foreach ($candidates as $index) {
+			if (($signers[$index]->status ?? null) === SignRequestStatus::ABLE_TO_SIGN->value) {
+				$bestIndex = $index;
+				break;
+			}
+		}
+		if ($bestIndex === null) {
+			$bestIndex = $candidates[0] ?? $meIndexes[0];
+		}
+
+		foreach ($meIndexes as $index) {
+			if ($index === $bestIndex) {
+				continue;
+			}
+			$signer = $signers[$index];
+			$signer->me = false;
+			unset($signer->sign_uuid, $signer->signatureMethods);
+		}
+
+		$chosen = $signers[$bestIndex];
+		if (isset($fileData->settings) && is_array($fileData->settings)) {
+			$fileData->settings['canSign'] = !empty($chosen->me)
+				&& !isset($chosen->signed)
+				&& ($chosen->status ?? null) === SignRequestStatus::ABLE_TO_SIGN->value;
+			$fileData->settings['signerFileUuid'] = $chosen->sign_uuid ?? null;
+		}
 	}
 
 	public function loadSignersFromCertData(stdClass $fileData, array $certData, string $host): void {
