@@ -9,9 +9,6 @@ import { translate as t, translatePlural as n } from '@nextcloud/l10n'
 import 'vue-sonner/style.css'
 import './style/global.scss'
 import './style/custom.scss'
-// Force RequestPicker styles into the main entry CSS so they are available
-// even when the async CSS chunk for this shared component fails to preload.
-import './components/Request/RequestPicker.vue'
 
 import App from './App.vue'
 import router from './router/router'
