@@ -279,8 +279,28 @@ class FileListService {
 				$meSignRequestId,
 			);
 			$file['signers'][] = $signerData;
-			if (!empty($signerData['me']) && !isset($file['signUuid'])) {
+		}
+
+		// Prefer the sign UUID of a ready current-user signer. With duplicate
+		// sign requests for the same identifier, a stale draft row can appear
+		// before the active able-to-sign row, so the first match is not always
+		// the one that can actually sign.
+		foreach ($file['signers'] as $signerData) {
+			if (
+				!empty($signerData['me'])
+				&& ($signerData['status'] ?? null) === SignRequestStatus::ABLE_TO_SIGN->value
+				&& !empty($signerData['sign_uuid'])
+			) {
 				$file['signUuid'] = $signerData['sign_uuid'];
+				break;
+			}
+		}
+		if (!isset($file['signUuid'])) {
+			foreach ($file['signers'] as $signerData) {
+				if (!empty($signerData['me']) && !empty($signerData['sign_uuid'])) {
+					$file['signUuid'] = $signerData['sign_uuid'];
+					break;
+				}
 			}
 		}
 		if (isset($file['signUuid'])) {
