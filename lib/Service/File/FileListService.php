@@ -17,6 +17,7 @@ use OCA\Libresign\Db\IdentifyMethod;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignatureFlow;
+use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\ResponseDefinitions;
 use OCA\Libresign\Service\FileElementService;
 use OCA\Libresign\Service\IdentifyMethodService;
@@ -338,17 +339,35 @@ class FileListService {
 			? null
 			: min(array_map(fn (SignRequest $signer) => $signer->getSigningOrder() ?: 1, $pendingSigners));
 
+		$hasAbleSigner = array_filter($mySigners, fn (SignRequest $signer) => $signer->getStatus() === SignRequestStatus::ABLE_TO_SIGN->value);
 		$canSign = $fileEntity->getStatus() > 0
 			&& !empty($mySigners)
 			&& !empty($pendingSigners)
+			&& !empty($hasAbleSigner)
 			&& !array_filter($mySigners, fn (SignRequest $signer) => $signer->getSigned() !== null)
 			&& (!$isOrderedNumeric || array_filter($mySigners, fn (SignRequest $signer) => ($signer->getSigningOrder() ?: 1) === $minOrder));
 
 		$signUuid = null;
 		foreach ($mySigners as $signer) {
-			if ($signer->getUuid() !== '') {
+			if ($signer->getUuid() !== '' && $signer->getStatus() === SignRequestStatus::ABLE_TO_SIGN->value) {
 				$signUuid = $signer->getUuid();
 				break;
+			}
+		}
+		if ($signUuid === null) {
+			foreach ($mySigners as $signer) {
+				if ($signer->getUuid() !== '' && $signer->getSigned() === null) {
+					$signUuid = $signer->getUuid();
+					break;
+				}
+			}
+		}
+		if ($signUuid === null) {
+			foreach ($mySigners as $signer) {
+				if ($signer->getUuid() !== '') {
+					$signUuid = $signer->getUuid();
+					break;
+				}
 			}
 		}
 
