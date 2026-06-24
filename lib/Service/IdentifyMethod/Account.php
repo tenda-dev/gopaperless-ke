@@ -109,17 +109,36 @@ class Account extends AbstractIdentifyMethod {
 	private function getSigner(): IUser {
 		$identifierValue = $this->entity->getIdentifierValue();
 		$signer = $this->userManager->get($identifierValue);
-		if (!$signer) {
-			$signer = $this->userManager->getByEmail($identifierValue);
-			if (empty($signer) || count($signer) > 1) {
-				throw new LibresignException(json_encode([
-					'action' => JSActions::ACTION_DO_NOTHING,
-					'errors' => [['message' => $this->identifyService->getL10n()->t('Invalid user')]],
-				]));
-			}
-			$signer = current($signer);
+		if ($signer instanceof IUser) {
+			return $signer;
 		}
-		return $signer;
+
+		$signers = $this->userManager->getByEmail($identifierValue);
+		if (empty($signers)) {
+			throw new LibresignException(json_encode([
+				'action' => JSActions::ACTION_DO_NOTHING,
+				'errors' => [['message' => $this->identifyService->getL10n()->t('Invalid user')]],
+			]));
+		}
+
+		if (count($signers) === 1) {
+			return current($signers);
+		}
+
+		// Multiple accounts share the same email. Prefer the currently
+		// authenticated user so a signer logged in via SSO can still sign
+		// a request whose account identifier value is the shared email.
+		$currentUser = $this->userSession->getUser();
+		foreach ($signers as $candidate) {
+			if ($currentUser !== null && $currentUser->getUID() === $candidate->getUID()) {
+				return $candidate;
+			}
+		}
+
+		throw new LibresignException(json_encode([
+			'action' => JSActions::ACTION_DO_NOTHING,
+			'errors' => [['message' => $this->identifyService->getL10n()->t('Invalid user')]],
+		]));
 	}
 
 	private function authenticatedUserIsTheSigner(IUser $signer): void {
@@ -162,29 +181,23 @@ class Account extends AbstractIdentifyMethod {
 
 	private function isEnabledByDefault(): bool {
 		$config = $this->identifyService->getAppConfig()->getValueArray(Application::APP_ID, 'identify_methods', []);
-		if (json_last_error() !== JSON_ERROR_NONE || !is_array($config)) {
+		if (json_last_error() !== JSON_ERROR_NONE || !is_array($config) || $config === []) {
 			return true;
 		}
 
-		// Remove not enabled
-		$config = array_filter($config, fn ($i) => isset($i['enabled']) && $i['enabled'] ? true : false);
-
 		$current = array_reduce($config, function ($carry, $config) {
-			if ($config['name'] === $this->name) {
+			if (($config['name'] ?? '') === $this->name) {
 				return $config;
 			}
 			return $carry;
-		}, []);
+		}, null);
 
-		$total = count($config);
-
-		if ($total === 0) {
-			return true;
+		// If the admin has explicitly saved a config for this method, use its enabled state.
+		if ($current !== null) {
+			return (bool)($current['enabled'] ?? false);
 		}
 
-		if ($total === 1 && !empty($current)) {
-			return true;
-		}
+		// Method is not present in the saved config → it was disabled by the admin.
 		return false;
 	}
 }
