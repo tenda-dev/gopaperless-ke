@@ -166,9 +166,16 @@ class SignRequestMapper extends CachedQBMapper {
 			->join('sr', 'libresign_identify_method', 'im', 'sr.id = im.sign_request_id')
 			->where($qb->expr()->eq('im.identifier_key', $qb->createNamedParameter($identifyMethod->getEntity()->getIdentifierKey())))
 			->andWhere($qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($identifyMethod->getEntity()->getIdentifierValue())))
-			->andWhere($qb->expr()->eq('sr.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
-		/** @var SignRequest */
-		$signRequest = $this->findEntity($qb);
+			->andWhere($qb->expr()->eq('sr.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+			->orderBy('sr.id', 'DESC')
+			->setMaxResults(1);
+		$cursor = $qb->executeQuery();
+		$row = $cursor->fetch();
+		$cursor->closeCursor();
+		if (!$row) {
+			throw new DoesNotExistException('Sign request not found');
+		}
+		$signRequest = SignRequest::fromRow($row);
 		$this->cacheEntity($signRequest);
 		return $signRequest;
 	}
