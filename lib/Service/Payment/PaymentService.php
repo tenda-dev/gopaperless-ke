@@ -65,9 +65,9 @@ class PaymentService
 	 *
 	 * Typical payment completion:
 	 * - 30s → 5 mins
-	 * - >15 mins usually abandoned
+	 * - >10 mins usually abandoned
 	 */
-	private const PAYMENT_EXPIRY_SECONDS = 15 * 60; // 15 minutes
+	private const PAYMENT_EXPIRY_SECONDS = 12 * 60; // 12 minutes
 
 	private PaymentMapper $paymentMapper;
 	private LoggerInterface $logger;

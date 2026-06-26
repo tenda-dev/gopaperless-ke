@@ -196,3 +196,11 @@ export interface StartPaymentPayload {
 
 	quantity?: number
 }
+
+export interface PaymentPresentation {
+	modalTitle: string
+    summary: {
+		title: string
+		subtitle: string
+	}
+}

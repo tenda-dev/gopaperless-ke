@@ -65,8 +65,8 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function start(
 		string $userEmail,
-		string $signUuid,
-		int $signRequestId,
+		?string $signUuid,
+		?int $signRequestId,
 		string $userId,
 		?string $redirectUrl,
 		string $productCode,

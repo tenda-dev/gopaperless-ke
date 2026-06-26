@@ -3,10 +3,10 @@
 
 			<!-- Header -->
 			<div class="credits-modal__header">
-				<h2>Purchase Signing Credits</h2>
+				<h2>Choose your credit pack</h2>
 
 				<p>
-					Credits are added instantly after payment and never expire.
+					Select the number of signing credits you'd like to purchase.
 				</p>
 			</div>
 
@@ -51,7 +51,7 @@
 				</button>
 
 				<p class="credits-modal__hint">
-					You'll review your payment method before being charged.
+					Credits are added immediately after payment and remain available until used.
 				</p>
 
 			</template>

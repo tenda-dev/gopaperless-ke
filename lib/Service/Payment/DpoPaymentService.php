@@ -68,7 +68,7 @@ class DpoPaymentService
 	 */
 	public function createToken(
 		string $userEmail,
-		string $signUuid,
+		?string $signUuid,
 		float $amount,
 		string $redirectUrl,
 		string $currency,
@@ -155,7 +155,7 @@ class DpoPaymentService
 			<Transaction>
 				<PaymentAmount>{$amount}</PaymentAmount>
 				<PaymentCurrency>{$currency}</PaymentCurrency>
-				<CompanyRef>{$signUuid}</CompanyRef>
+				<CompanyRef>{$escapedEmail}</CompanyRef>
 
 				<customerEmail>{$escapedEmail}</customerEmail>
 
@@ -701,23 +701,38 @@ class DpoPaymentService
 	// 	return $this->getTestConfig();
 	// }
 
+	// private function getConfig(): array
+	// {
+	// 	$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
+	// 	$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
+	// 	$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
+	// 	$paymentUrl = $this->appConfig->getValueString(Application::APP_ID, 'dpo_payment_url', '');
+	// 	$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
+
+	// 	if ($endpoint === '' || $companyToken === '' || $serviceId === '' || $paymentUrl === '' || $callbackBaseUrl === '') {
+	// 		throw new RuntimeException('DPO payment configuration is incomplete');
+	// 	}
+
+	// 	return [
+	// 		'endpoint' => $endpoint,
+	// 		'companyToken' => $companyToken,
+	// 		'serviceId' => $serviceId,
+	// 		'paymentUrl' => $paymentUrl,
+	// 		'callbackBaseUrl' => $callbackBaseUrl,
+	// 	];
+	// }
+
 	private function getConfig(): array
 	{
-		$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
-		$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
-		$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
-		$paymentUrl = $this->appConfig->getValueString(Application::APP_ID, 'dpo_payment_url', '');
-		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
-
-		if ($endpoint === '' || $companyToken === '' || $serviceId === '' || $paymentUrl === '' || $callbackBaseUrl === '') {
-			throw new RuntimeException('DPO payment configuration is incomplete');
-		}
-
+		$callbackBaseUrl = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'gopaperless_callback_base_url'
+		);
 		return [
-			'endpoint' => $endpoint,
-			'companyToken' => $companyToken,
-			'serviceId' => $serviceId,
-			'paymentUrl' => $paymentUrl,
+			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
+			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
+			'serviceId' => '54842',
+			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
 			'callbackBaseUrl' => $callbackBaseUrl,
 		];
 	}

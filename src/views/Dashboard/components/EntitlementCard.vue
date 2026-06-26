@@ -24,7 +24,7 @@
 
 				<div class="entitlement-cta-button">
 					<NcButton @click="handleCtaClick" variant="tertiary" :wide="true">
-						Buy Credits
+						Top up
 					</NcButton>
 				</div>
 			</div>
@@ -35,6 +35,7 @@
 			product-code="SIGN_DOCUMENT"
 			payment-purpose="credit_purchase"
 			:allow-quantity-selection="true"
+			:presentation="purchasePresentation"
 			@success="handlePurchaseSuccess"
 			@close="showPurchaseFlow = false"
 		/>
@@ -56,6 +57,16 @@ import {
 	mdiCartOutline,
 	mdiCreditCardOutline
 } from '@mdi/js'
+import type { PaymentPresentation } from '@/payment'
+
+const purchasePresentation: PaymentPresentation = {
+    modalTitle: 'Purchase Credits',
+
+    summary: {
+        title: 'Credits',
+        subtitle: 'Credits are added to your account after payment.',
+    },
+}
 
 const entitlementStore =
 	useEntitlementStore()

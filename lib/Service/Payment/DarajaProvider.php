@@ -43,7 +43,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 			$response = $this->daraja->initiatePayment([
 				'amount' => $payload->amount,
 				'phone' => $payload->phone,
-				'signUuid' => $payload->signUuid,
+				'internalReference' => $payload->email,
 				'callbackUrl' => $payload->callbackUrl,
 			]);
 

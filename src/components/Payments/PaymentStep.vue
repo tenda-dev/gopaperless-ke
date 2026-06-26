@@ -19,13 +19,13 @@
 						</div>
 
 						<span class="notecard-doc__name">
-							{{ paymentSummaryTitle }}
+							{{ presentation.summary.title }}
 						</span>
 					</div>
 
 					<!-- Reason -->
 					<div class="notecard-reason">
-						{{ paymentSummarySubtitle }}
+						{{ presentation.summary.subtitle }}
 					</div>
 
 					<!-- FX -->
@@ -400,7 +400,8 @@ import {
 	type ResolvedPaymentRoute,
 	type HydratedPayment,
 	type SelectedMno,
-	type PaymentPurpose
+	type PaymentPurpose,
+	type PaymentPresentation
 } from '@/payment'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
@@ -426,6 +427,7 @@ const props = defineProps<{
 	productCode: string
 	pricing: ProductPricing
 	initialPayment?: HydratedPayment | null
+	presentation: PaymentPresentation
 }>()
 
 const emit = defineEmits([

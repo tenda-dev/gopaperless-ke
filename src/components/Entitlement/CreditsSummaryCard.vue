@@ -20,7 +20,7 @@
       :disabled="loading"
       @click="showPurchaseFlow = true"
     >
-      Buy Credits
+      Top up
     </button>
 
     <CreditPurchaseFlow
@@ -28,6 +28,7 @@
       :product-code="DEFAULT_PRODUCT_CODE"
 	  payment-purpose="credit_purchase"
 	  :allow-quantity-selection="true"
+	  :presentation="purchasePresentation"
       @success="handlePurchaseSuccess"
       @close="showPurchaseFlow = false"
     />
@@ -40,6 +41,7 @@ import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
 import { useEntitlementStore } from '@/store/entitlement'
 import { useUserContextStore } from '@/store/userContext'
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
+import type { PaymentPresentation } from '@/payment'
 
 const entitlementStore = useEntitlementStore()
 const userContext = useUserContextStore()
@@ -54,6 +56,15 @@ const entitlement = entitlementStore.getEntitlement(DEFAULT_PRODUCT_CODE)
 const remainingUses = computed(() => entitlement.value?.remainingUses ?? 0)
 
 const initial = computed(() => email.value.charAt(0).toUpperCase())
+
+const purchasePresentation: PaymentPresentation = {
+    modalTitle: 'Purchase Credits',
+
+    summary: {
+        title: 'Credits',
+        subtitle: 'Credits are added to your account after payment.',
+    },
+}
 
 watch(remainingUses, () => {
   countClass.value = 'flip-out'

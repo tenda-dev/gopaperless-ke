@@ -5,9 +5,11 @@
 		<div class="banner-header">
 			<span class="banner-label">Signing credits</span>
 
-			<div class="credit-pill" :class="hasCredits ? 'credit-pill--filled' : 'credit-pill--empty'">
-				<NcIconSvgWrapper :path="mdiLightningBolt" :size="12" />
-				<span>{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}</span>
+			<div class="banner-header__badge">
+				<div class="credit-pill" :class="hasCredits ? 'credit-pill--filled' : 'credit-pill--empty'">
+					<NcIconSvgWrapper :path="mdiLightningBolt" :size="12" />
+					<span>{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}</span>
+				</div>
 			</div>
 		</div>
 
@@ -28,7 +30,7 @@
 		<Transition name="fade-slide">
 			<div v-if="!hasCredits" class="payment-chooser">
 				<p class="payment-chooser__prompt">
-					Choose how to complete this signing.
+					Choose how you'd like to purchase signing credits.
 				</p>
 
 				<div class="option-cards">
@@ -47,20 +49,25 @@
 							:value="PaymentFlowType.ONE_TIME"
 						>
 
-						<div
-							class="option-card__icon"
-							:class="{ 'option-card__icon--active': selectedFlow === PaymentFlowType.ONE_TIME }"
-						>
-							<NcIconSvgWrapper :path="mdiCreditCardOutline" :size="18" />
-						</div>
-
 						<div class="option-card__body">
-							<div class="option-card__title">
-								Pay for this signature
+
+							<div class="option-card__title-row">
+
+								<div class="option-card__title">
+									<NcIconSvgWrapper
+										:path="mdiCreditCardOutline"
+										:size="18"
+									/>
+
+									<span>Buy required credits</span>
+								</div>
+
 							</div>
+
 							<div class="option-card__desc">
-								One-time payment. No commitment.
+								If you only need to sign this document.
 							</div>
+
 						</div>
 
 						<div
@@ -84,26 +91,38 @@
 							:value="PaymentFlowType.CREDIT_PACK"
 						>
 
-						<div
-							class="option-card__icon"
-							:class="{ 'option-card__icon--active': selectedFlow === PaymentFlowType.CREDIT_PACK }"
-						>
-							<NcIconSvgWrapper :path="mdiCartOutline" :size="18" />
-						</div>
-
 						<div class="option-card__body">
+
 							<div class="option-card__title-row">
-								<span class="option-card__title">Buy signing credits</span>
-								<span class="option-card__badge" v-if="offersEnabled">Save 20%</span>
+
+								<div class="option-card__title">
+									<NcIconSvgWrapper
+										:path="mdiStar"
+										:size="18"
+									/>
+
+									<span>Purchase signing credits</span>
+								</div>
+
+								<span class="option-card__badge">
+									Recommended
+								</span>
+
 							</div>
+
 							<div class="option-card__desc">
-								Sign this and future documents instantly, no prompts.
+								Purchase extra credits and use them across future document signings.
 							</div>
-							<!-- Price row: shown now, discount slot ready for later -->
-							<div class="option-card__price" v-if="offersEnabled">
-								<span class="option-card__price-was">Ksh 500</span>
-								<span class="option-card__price-now">Ksh 400 / credit</span>
+
+							<div class="option-card__sparkle">
+
+								<NcIconSvgWrapper
+									:path="mdiStarCircleOutline"
+									:size="32"
+								/>
+
 							</div>
+
 						</div>
 
 						<div
@@ -113,10 +132,15 @@
 					</label>
 				</div>
 
-				<p class="banner-reassurance">
-					<NcIconSvgWrapper class="banner-reassurance__icon" :path="mdiShieldCheckOutline" :size="13" />
-					After purchase, signing continues automatically using your new balance.
-				</p>
+				<div class="banner-reassurance">
+					<div>
+						<NcIconSvgWrapper class="banner-reassurance__icon" :path="mdiShieldCheckOutline" :size="16" />
+                    </div>
+
+					<div class="banner-reassurance__content">
+						After payment, signing will continue automatically.
+					</div>
+				</div>
 			</div>
 		</Transition>
 
@@ -132,6 +156,8 @@ import {
 	mdiLightningBolt,
 	mdiCheckCircleOutline,
 	mdiShieldCheckOutline,
+	mdiStarCircleOutline,
+	mdiStar,
 } from '@mdi/js'
 
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -147,7 +173,6 @@ const entitlement = entitlementStore.getEntitlement(DEFAULT_PRODUCT_CODE)
 
 const remainingUses = computed(() => entitlement.value?.remainingUses ?? 0)
 const hasCredits = computed(() => remainingUses.value > 0)
-const offersEnabled = computed(() => false)
 
 const selectedFlow = computed({
 	get: () => paymentContext.flowType,
@@ -192,7 +217,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	gap: 10px;
 	padding: 14px;
 	border-radius: 12px;
-	background: var(--color-background-hover);
 	border: 1px solid var(--color-border-dark);
 }
 
@@ -201,6 +225,10 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+
+	&__badge {
+		flex: 0 0 auto;
+	}
 }
 
 .banner-label {
@@ -218,7 +246,7 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	gap: 4px;
 	font-size: 11px;
 	font-weight: 500;
-	padding: 3px 8px;
+	padding: 0 8px;
 	border-radius: 20px;
 	transition: background .3s $ease-out, color .3s $ease-out;
 
@@ -298,7 +326,8 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 .option-card {
 	position: relative;
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
+	position: relative;
 	gap: 11px;
 	padding: 11px 13px;
 	border-radius: 10px;
@@ -333,8 +362,32 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 
 	// Preferred card: teal top-edge accent
 	&--preferred {
-		border-top: 2px solid $accent;
-		padding-top: 10px; // compensate for the extra border-top px
+		position:relative;
+
+		overflow:hidden;
+
+		background:
+
+			radial-gradient(
+				circle at top left,
+				rgba($accent,.08),
+				transparent 45%
+			),
+
+			linear-gradient(
+				180deg,
+				rgba($accent-light,.65),
+				var(--color-main-background)
+			);
+
+		border-color:rgba($accent,.25);
+
+		box-shadow:
+
+			0 8px 20px rgba($accent,.08),
+
+			inset 0 1px rgba(255,255,255,.7);
+
 	}
 
 	// Hide the native radio — selection driven by classes
@@ -379,31 +432,52 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	&__title-row {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		margin-bottom: 2px;
+		justify-content:space-between;
+		gap:12px;
+		margin-bottom:6px;
 	}
 
 	&__title {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--color-main-text);
+		display:flex;
+		align-items:center;
+		gap:8px;
+
+		font-size:12.5px;
+		font-weight:600;
+		color:var(--color-main-text);
+
+		:deep(svg) {
+			color:$accent;
+			flex-shrink:0;
+		}
 	}
 
 	&__badge {
-		font-size: 10px;
-		font-weight: 500;
-		padding: 1px 6px;
-		border-radius: 20px;
-		background: $accent-light;
-		color: $accent-dark;
-		flex-shrink: 0;
+		display:inline-flex;
+		align-items:center;
+
+		padding:3px 8px;
+
+		border-radius:999px;
+
+		font-size:10px;
+		font-weight:700;
+
+		letter-spacing:.02em;
+
+		color:$accent-dark;
+
+		background:rgba($accent,.08);
+
+		white-space:nowrap;
 	}
 
 	&__desc {
-		font-size: 11.5px;
+		font-size: 12px;
 		color: var(--color-text-maxcontrast);
-		line-height: 1.4;
-		margin-top: 1px;
+		line-height: 1.5;
+		margin-top: 2px;
+		max-width: 90%;
 	}
 
 	// Price row — hidden when no discount data; show by default for now
@@ -427,13 +501,22 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 		color: $accent-mid;
 	}
 
+	&__sparkle {
+		position:absolute;
+		top:55px;
+		right:15px;
+		opacity:.18;
+		color:$accent;
+		pointer-events:none;
+	}
+
 	// Custom radio dot — border-width transition mimics iOS filled dot
 	&__dot {
 		position: absolute;
-		top: 13px;
+		top: 16px;
 		right: 13px;
-		width: 15px;
-		height: 15px;
+		width: 17px;
+		height: 17px;
 		border-radius: 50%;
 		border: 1.5px solid var(--color-border-maxcontrast);
 		background: var(--color-main-background);
@@ -451,8 +534,8 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 // ─── Reassurance line ─────────────────────────────────────────────────────────
 .banner-reassurance {
 	display: flex;
-	align-items: flex-start;
-	gap: 5px;
+	align-items: center;
+	gap: 8px;
 	font-size: 11px;
 	color: var(--color-text-maxcontrast);
 	line-height: 1.45;
@@ -461,8 +544,13 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 
 	&__icon {
 		flex-shrink: 0;
-		margin-top: 1px;
+		flex: 0 0 auto;
 		:deep(svg) { display: block }
+	}
+
+	&__content {
+		flex: 1;
+		line-height: 1.45;
 	}
 }
 

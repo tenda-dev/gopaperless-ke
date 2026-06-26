@@ -8,7 +8,7 @@
 			<Signatures v-if="hasSignatures" />
 		</div>
 
-		<SignCreditsBanner v-if="!loading"/>
+		<SignCreditsBanner v-if="showSignCreditsBanner"/>
 
 		<div v-if="!loading" class="button-wrapper">
 			<div v-if="needCreateSignature" class="no-signature-warning">
@@ -112,19 +112,6 @@
 			@close="signMethodsStore.closeModal('emailToken')" />
 	</div>
 
-	<!-- <PaymentModal
-		v-if="showPaymentModal && signerContextStore.isReady"
-		:sign-uuid="signerContextStore.signUuid"
-		:sign-request-id="signerContextStore.signRequestId"
-		:document="signStore.document"
-		:signer="currentSigner"
-		:quantity="1"
-		:payment-purpose="'sign_request'"
-		:product-code="signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE"
-		@close="handlePaymentClose"
-		@success="onPaymentSuccess"
-	/> -->
-
 	<CreditPurchaseFlow
 		v-if="showPaymentModal"
 		:payment-purpose="'sign_request'"
@@ -135,6 +122,7 @@
 		:allow-quantity-selection="
 			paymentContextStore.flowType ===
 			PaymentFlowType.CREDIT_PACK"
+		:presentation="paymentPresentation"
 		@success="onPaymentSuccess"
 		@close="handlePaymentClose"
     />
@@ -197,6 +185,7 @@ import { useUserContextStore } from '@/store/userContext'
 import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
 import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
 import SignCreditsBanner from '@/components/Entitlement/SignCreditsBanner.vue'
+import type { PaymentPresentation } from '@/payment/types.ts'
 
 type OpenApiAccountMe = operations['account-me']['responses'][200]['content']['application/json']['ocs']['data']
 type LibreSignAccountMe = Omit<OpenApiAccountMe, 'settings'> & {
@@ -499,6 +488,39 @@ const paymentContext = computed(() => ({
 }))
 
 const requiredQuantity = computed(() => 1)
+
+const paymentPresentation = computed<PaymentPresentation>(() => {
+	switch (paymentContextStore.flowType) {
+		case PaymentFlowType.CREDIT_PACK:
+			return {
+				modalTitle: 'Purchase signing credits',
+				summary: {
+					title: `${requiredQuantity.value} Signing Credits`,
+					subtitle: 'Credits are added to your account for future documents.',
+				},
+			}
+
+		case PaymentFlowType.ONE_TIME:
+		default:
+			return {
+				modalTitle: 'Complete payment',
+				summary: {
+					title:
+						requiredQuantity.value === 1
+							? 'Required signing credit'
+							: `${requiredQuantity.value} Required signing credits`,
+					subtitle: 'Credits required to complete this document.',
+				},
+			}
+	}
+})
+
+const showSignCreditsBanner = computed(() => {
+	return (
+		!loading.value &&
+		!needCreateSignature.value
+	)
+})
 
 async function consumeEntitlementAfterSign() {
 
@@ -821,13 +843,6 @@ async function confirmSignDocument() {
 }
 
 function triggerPaymentFlow() {
-
-	console.log('[Payment Flow]', {
-		flowType: paymentContextStore.flowType,
-		allowQuantitySelection:
-			paymentContextStore.flowType === PaymentFlowType.CREDIT_PACK,
-	})
-
 	// set productCode here
 	signStore.productCode =
 		signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE
@@ -894,6 +909,10 @@ onMounted(async () => {
 		signerContextStore.initialise(route.params.uuid as string),
 		entitlementStore.initialise(),
 	])
+
+	paymentContextStore.setFlowType(
+        PaymentFlowType.CREDIT_PACK,
+    )
 
 	initializeServices()
 

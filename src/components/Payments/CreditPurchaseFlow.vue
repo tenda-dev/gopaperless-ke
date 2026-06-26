@@ -1,6 +1,6 @@
 <template>
 	<NcDialog
-	name=""
+	:name="presentation.modalTitle || 'Complete Payment'"
 	size="normal"
 	@closing="handleClose"
 >
@@ -42,6 +42,7 @@
 	  :pricing="pricing"
 	  :initial-payment="hydratedPayment"
 	  :quantity="quantity"
+	  :presentation="props.presentation"
       @payment-success="onSuccess"
       @state-change="onStateChange"
 	  @payment-runtime-invalid="onPaymentRuntimeInvalid"
@@ -58,7 +59,7 @@ import PaymentRecoveryCard from '@/components/Payments/PaymentRecoveryCard.vue'
 import CreditQuantitySelector from './CreditQuantitySelector.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { type PaymentState } from '@/payment/usePayment'
-import type { HydratedPayment, PaymentPurpose } from '@/payment/types'
+import type { HydratedPayment, PaymentPresentation, PaymentPurpose } from '@/payment/types'
 import { notifyInfo } from '@/services/toast'
 import { useProductPricing } from '@/composables/useProductPricing';
 
@@ -77,6 +78,8 @@ const props = defineProps<{
 	quantity?: number
 	// preselectedQuantity?: number
 	allowQuantitySelection: boolean
+
+	presentation: PaymentPresentation
 }>()
 
 const step = ref<CreditPurchaseStep>(
@@ -162,7 +165,6 @@ const isQuantityLocked = computed(
 function handleQuantitySelected(
 	payload: { quantity: number }
 ) {
-	console.log(`xxxxxx quantity payload`, payload)
 	quantity.value = payload.quantity
 
 	step.value = 'payment'
