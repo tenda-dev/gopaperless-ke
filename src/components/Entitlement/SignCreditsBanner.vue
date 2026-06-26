@@ -196,9 +196,6 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-// ─── Design tokens ────────────────────────────────────────────────────────────
-// Teal accent — matches GoPaperless signing success colour.
-// Centralised here so swapping for a CSS custom-prop later is one edit.
 $accent:        #1D9E75;
 $accent-light:  #E1F5EE;
 $accent-mid:    #0F6E56;
@@ -206,11 +203,9 @@ $accent-dark:   #085041;
 $amber-light:   #FAEEDA;
 $amber-dark:    #633806;
 
-// ─── Easing ───────────────────────────────────────────────────────────────────
 $spring:  cubic-bezier(.34, 1.56, .64, 1);
 $ease-out: cubic-bezier(.4, 0, .2, 1);
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
 .sign-credits-banner {
 	display: flex;
 	flex-direction: column;
@@ -220,7 +215,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	border: 1px solid var(--color-border-dark);
 }
 
-// ─── Header ───────────────────────────────────────────────────────────────────
 .banner-header {
 	display: flex;
 	align-items: center;
@@ -239,7 +233,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	color: var(--color-text-maxcontrast);
 }
 
-// ─── Credit pill ──────────────────────────────────────────────────────────────
 .credit-pill {
 	display: inline-flex;
 	align-items: center;
@@ -250,7 +243,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	border-radius: 20px;
 	transition: background .3s $ease-out, color .3s $ease-out;
 
-	// NcIconSvgWrapper renders an <svg> — nudge it into vertical alignment
 	:deep(svg) {
 		display: block;
 		flex-shrink: 0;
@@ -267,7 +259,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	}
 }
 
-// ─── Has-credits card ─────────────────────────────────────────────────────────
 .has-credits-card {
 	display: flex;
 	align-items: center;
@@ -303,7 +294,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	}
 }
 
-// ─── Payment chooser ──────────────────────────────────────────────────────────
 .payment-chooser {
 	display: flex;
 	flex-direction: column;
@@ -322,7 +312,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	gap: 6px;
 }
 
-// ─── Option card ──────────────────────────────────────────────────────────────
 .option-card {
 	position: relative;
 	display: flex;
@@ -531,7 +520,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	}
 }
 
-// ─── Reassurance line ─────────────────────────────────────────────────────────
 .banner-reassurance {
 	display: flex;
 	align-items: center;
@@ -554,7 +542,6 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	}
 }
 
-// ─── State transitions ────────────────────────────────────────────────────────
 .fade-slide-enter-active {
 	transition: opacity .3s $ease-out, transform .3s $ease-out;
 }

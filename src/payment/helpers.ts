@@ -1,31 +1,35 @@
 /**
- * Extract payment-related query params from URL
+ * Extract payment-related query params from the current URL.
+ *
+ * DPO preserves any custom query parameters supplied on RedirectURL,
+ * allowing us to recover the original destination after verification.
  */
 export function getPaymentFromUrl() {
 	const params = new URLSearchParams(window.location.search)
 
-	const transactionToken = params.get('TransactionToken')
-	const signUuid = params.get('signUuid')
-	const companyRef = params.get('CompanyRef')
-
 	return {
-		transactionToken,
-		signUuid: signUuid || companyRef || null,
-		companyRef,
-		status: params.get('status'),
+		transactionToken: params.get('TransactionToken'),
+		companyRef: params.get('CompanyRef'),
+		transId: params.get('TransID'),
+		ccdApproval: params.get('CCDapproval'),
+		pnrId: params.get('PnrID'),
+		returnTo: params.get('returnTo'),
 	}
 }
 
 /**
- * Remove payment query params from URL (clean UX)
+ * Remove payment-related query params from the current URL
+ * after verification completes.
  */
 export function clearPaymentParamsFromUrl() {
-  const url = new URL(window.location.href)
+	const url = new URL(window.location.href)
 
-  url.searchParams.delete('TransactionToken')
-  url.searchParams.delete('CompanyRef')
-  url.searchParams.delete('signUuid')
-  url.searchParams.delete('status')
+	url.searchParams.delete('TransactionToken')
+	url.searchParams.delete('CompanyRef')
+	url.searchParams.delete('TransID')
+	url.searchParams.delete('CCDapproval')
+	url.searchParams.delete('PnrID')
+	url.searchParams.delete('returnTo')
 
-  window.history.replaceState({}, '', url.toString())
+	window.history.replaceState({}, '', url.toString())
 }

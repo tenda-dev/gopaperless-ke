@@ -495,7 +495,7 @@ const paymentPresentation = computed<PaymentPresentation>(() => {
 			return {
 				modalTitle: 'Purchase signing credits',
 				summary: {
-					title: `${requiredQuantity.value} Signing Credits`,
+					title: `Signing Credits`,
 					subtitle: 'Credits are added to your account for future documents.',
 				},
 			}

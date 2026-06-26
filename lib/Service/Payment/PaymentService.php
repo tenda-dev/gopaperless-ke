@@ -462,8 +462,6 @@ class PaymentService
 					new CardPaymentPayloadDTO(
 						amount: $normalisedAmount,
 						currency: $fxEngineResult->displayCurrency,
-						signUuid: $signUuid,
-						signRequestId: $signRequestId,
 						userId: $userId,
 						email: $userEmail,
 						redirectUrl: $redirectUrl,
@@ -1304,7 +1302,7 @@ class PaymentService
 	 * - 902 → FAILED (payment declined)
 	 * - 904 → CANCELLED (user cancelled)
 	 */
-	public function handleDpoCallback(array $payload): void
+	public function handleDpoCallback(array $payload): ?PaymentStatus
 	{
 		$reference = $payload['TransactionToken'] ?? null;
 		$result = (string)($payload['Result'] ?? '');
@@ -1314,7 +1312,7 @@ class PaymentService
 			$this->logger->error('[DPO Callback] Missing TransactionToken', [
 				'payload' => $payload,
 			]);
-			return;
+			return null;
 		}
 
 		if ($result === '') {
@@ -1322,7 +1320,7 @@ class PaymentService
 				'reference' => $reference,
 				'payload' => $payload,
 			]);
-			return;
+			return null;
 		}
 
 		try {
@@ -1343,7 +1341,7 @@ class PaymentService
 					'reference' => $reference,
 					'status' => $payment->getPaymentStatus()->value,
 				]);
-				return;
+				return $payment->getPaymentStatus();
 			}
 
 			/**
@@ -1361,9 +1359,13 @@ class PaymentService
 					providerPayload: $this->getProviderPayload($meta)->withCallback($payload)
 				);
 				$payment->setProviderMetadataObject($meta);
+				$payment->setVerificationStatus('SUCCESS');
+				$payment->setVerificationLastCheckedAt(
+					$this->now()
+				);
 
 				$this->finalisePayment($payment);
-				return;
+				return $payment->getPaymentStatus();
 			}
 
 			/**
@@ -1392,7 +1394,7 @@ class PaymentService
 				$payment->setProviderMetadataObject($meta);
 
 				$this->paymentMapper->update($payment);
-				return;
+				return $payment->getPaymentStatus();;
 			}
 
 			/**
@@ -1431,6 +1433,7 @@ class PaymentService
 			// Re-throw error and propagate to controller
 			throw $e;
 		}
+		return $payment->getPaymentStatus();
 	}
 
 	/**

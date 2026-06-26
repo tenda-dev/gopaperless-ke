@@ -32,7 +32,18 @@ export const paymentDriver =
 		: realPaymentDriver
 
 function buildPaymentRedirectUrl(): string {
-	return window.location.href
+	const returnUrl = new URL(
+		`${window.location.origin}/apps/libresign/f/payment/return`,
+	)
+
+	returnUrl.searchParams.set(
+		'returnTo',
+		window.location.pathname +
+		window.location.search +
+		window.location.hash,
+	)
+
+	return returnUrl.toString()
 }
 
 /**

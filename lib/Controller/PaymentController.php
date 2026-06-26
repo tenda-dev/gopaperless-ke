@@ -24,7 +24,9 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\Route;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\DB\Exception;
 
 use OCP\IRequest;
@@ -253,13 +255,12 @@ class PaymentController extends AEnvironmentAwareController
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
+	#[Route(
+		type: Route::TYPE_FRONTPAGE,
 		verb: 'GET',
-		url: '/api/{apiVersion}/payment/webhook/dpo',
-		requirements: ['apiVersion' => '(v1)']
+		url: '/payment/webhook/dpo',
 	)]
-	public function dpoCallback(): DataResponse
+	public function dpoCallback(): DataResponse | RedirectResponse
 	{
 		// DPO contract: always respond with OK regardless of outcome
 		$responseXml = '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>';
@@ -269,6 +270,7 @@ class PaymentController extends AEnvironmentAwareController
 		$payload = $this->request->getParams();
 
 		$token = $payload['TransactionToken'] ?? null;
+		$returnTo = $payload['returnTo'] ?? null;
 
 		if (!$token) {
 			$this->logger->error('[DPO Callback] Missing TransactionToken', [
@@ -284,6 +286,18 @@ class PaymentController extends AEnvironmentAwareController
 				'token' => $token,
 				'error' => $e->getMessage(),
 			]);
+		}
+
+		if ($returnTo) {
+			$status = $this->paymentService->getPaymentStatus($token);
+
+			if ($status === PaymentStatus::CANCELLED) {
+				$separator = str_contains($returnTo, '?') ? '&' : '?';
+
+				return new RedirectResponse(
+					$returnTo . $separator . 'paymentCancelled=true'
+				);
+			}
 		}
 
 		return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
