@@ -28,6 +28,7 @@ class ResultEnricher {
 			!empty($method)
 			&& $method !== 'account'
 			&& $method !== 'email'
+			&& $method !== 'all'
 		) {
 			return $return;
 		}
@@ -74,7 +75,7 @@ class ResultEnricher {
 	}
 
 	public function addHerselfEmail(array $return, string $search, string $method = ''): array {
-		if (!empty($method) && $method !== 'email') {
+		if (!empty($method) && $method !== 'email' && $method !== 'all') {
 			return $return;
 		}
 

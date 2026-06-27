@@ -31,6 +31,25 @@ export const paymentDriver =
 		? mockPaymentDriver
 		: realPaymentDriver
 
+const PAYMENT_FAILURE_MESSAGES: Record<string, string> = {
+	cancelled: 'Payment cancelled. You can try again.',
+	timeout: 'Payment request timed out. Please try again.',
+	expired: 'Payment session expired. Please try again.',
+	wrong_pin: 'The PIN entered was incorrect. Please try again.',
+	insufficient_balance: 'Your M-Pesa balance is insufficient. Please top up and try again.',
+	transaction_in_progress: 'Another M-Pesa transaction is in progress. Please wait a moment and try again.',
+	provider_error: 'The payment could not be processed. Please try again.',
+	generic_failure: 'Payment failed. Please try again.',
+}
+
+function resolvePaymentErrorMessage(reason?: string | null): string {
+	if (!reason) {
+		return 'Payment failed'
+	}
+
+	return PAYMENT_FAILURE_MESSAGES[reason] ?? 'Payment failed'
+}
+
 function buildPaymentRedirectUrl(): string {
 	const returnUrl = new URL(
 		`${window.location.origin}/apps/libresign/f/payment/return`,
@@ -606,12 +625,13 @@ export function usePayment() {
 				elapsed: pollingElapsedMs.value,
 			})
 
-			// Pause during offline (do NOT count attempt)
+			// If we believe we are offline we still attempt the poll.
+			// Relying only on the browser `online` event can deadlock when
+			// the event fires but the server is still unreachable, or when
+			// the browser's online state is out of sync. A failed request
+			// is caught below and marks us offline again.
 			if (isOffline.value) {
-				pollingWasInterrupted = true
-
-				console.warn('[Payment] offline - skipping poll tick')
-				return
+				console.warn('[Payment] offline - attempting poll tick anyway')
 			}
 
 			// Prevent overlapping requests
@@ -684,10 +704,10 @@ export function usePayment() {
 					retryCount.value = 0
 					stopPolling()
 					state.value = 'error'
-					error.value = res?.reason || 'Payment failed'
+					error.value = resolvePaymentErrorMessage(res.reason)
 					clearPersistedPaymentSession()
 
-					showError(error.value || 'Payment failed')
+					showError(error.value)
 					onTerminal?.('FAILED')
 					return
 				}
@@ -696,10 +716,10 @@ export function usePayment() {
 					retryCount.value = 0
 					stopPolling()
 					state.value = 'cancelled'
-					error.value = res?.reason || 'Payment cancelled'
+					error.value = resolvePaymentErrorMessage(res.reason)
 					clearPersistedPaymentSession()
 
-					showInfo(`Payment was cancelled, you can try again if you wish`)
+					showInfo(error.value)
 					onTerminal?.('CANCELLED')
 					return
 				}
@@ -716,6 +736,7 @@ export function usePayment() {
 			} catch (err) {
 				if (isNetworkError(err)) {
 					console.warn('[Payment] network issue during polling')
+					pollingWasInterrupted = true
 					markOffline()
 					return
 				}

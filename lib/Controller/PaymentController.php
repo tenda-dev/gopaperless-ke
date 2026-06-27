@@ -118,13 +118,17 @@ class PaymentController extends AEnvironmentAwareController
 				strtolower((string)$purpose)
 			) ?? PaymentPurpose::SIGN_REQUEST;
 
+			$providerEnum = $provider !== null
+				? PaymentProvider::tryFrom($provider)
+				: null;
+
 			$dto = new StartPaymentDTO(
 				userEmail: $userEmail,
 				signUuid: $signUuid,
 				signRequestId: $signRequestId,
 				redirectUrl: $redirectUrl,
 				userId: $userId,
-				provider: null,
+				provider: $providerEnum,
 				productCode: $productCode,
 				paymentMethod: $methodEnum,
 				callbackUrl: $callbackUrl,
@@ -149,7 +153,6 @@ class PaymentController extends AEnvironmentAwareController
 			return new DataResponse([
 				'success' => false,
 				'error' => $e->getMessage(),
-				'trace' => $e->getTraceAsString(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -160,7 +163,6 @@ class PaymentController extends AEnvironmentAwareController
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'GET',
@@ -169,12 +171,17 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function verify(string $providerReference): DataResponse
 	{
+		$user = $this->userSession->getUser();
+		if (!$user) {
+			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		}
 
+		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
 		$status = $this->paymentService->verifyPayment($providerReference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
-			'reason' => $status->value
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 
@@ -183,7 +190,6 @@ class PaymentController extends AEnvironmentAwareController
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'GET',
@@ -192,11 +198,17 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function status(string $providerReference): DataResponse
 	{
+		$user = $this->userSession->getUser();
+		if (!$user) {
+			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		}
 
+		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
 		$status = $this->paymentService->getPaymentStatus($providerReference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 
@@ -308,7 +320,6 @@ class PaymentController extends AEnvironmentAwareController
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'POST',
@@ -317,11 +328,17 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function queryDaraja(string $reference): DataResponse
 	{
+		$user = $this->userSession->getUser();
+		if (!$user) {
+			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		}
 
+		$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
 		$status = $this->paymentService->queryPayment($reference);
 
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
+			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 		], Http::STATUS_OK);
 	}
 
@@ -386,7 +403,6 @@ class PaymentController extends AEnvironmentAwareController
 
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'POST',
@@ -401,6 +417,10 @@ class PaymentController extends AEnvironmentAwareController
 	): DataResponse {
 
 		try {
+			$user = $this->userSession->getUser();
+			if (!$user) {
+				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+			}
 
 			if (trim($reference) === '') {
 				return new DataResponse([
@@ -427,6 +447,16 @@ class PaymentController extends AEnvironmentAwareController
 				return new DataResponse([
 					'success' => false,
 					'error' => 'Missing mobile provider country',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
+
+			$storedPhone = $payment->getPhoneE164Digits();
+			if ($storedPhone !== null && $storedPhone !== $phone) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Phone number does not match the payment',
 				], Http::STATUS_BAD_REQUEST);
 			}
 
@@ -462,7 +492,6 @@ class PaymentController extends AEnvironmentAwareController
 
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'GET',
@@ -473,6 +502,13 @@ class PaymentController extends AEnvironmentAwareController
 	{
 
 		try {
+			$user = $this->userSession->getUser();
+			if (!$user) {
+				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+			}
+
+			$this->paymentService->assertPaymentOwnership($reference, $user->getUID());
+
 			$options = $this->paymentService->getMobileOptions($reference, $country);
 
 			return new DataResponse([

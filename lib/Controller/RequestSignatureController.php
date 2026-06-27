@@ -25,6 +25,7 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 
 /**
  * @psalm-import-type LibresignNewFile from \OCA\Libresign\ResponseDefinitions
@@ -47,8 +48,40 @@ class RequestSignatureController extends AEnvironmentAwareController {
 		protected ValidateHelper $validateHelper,
 		protected RequestSignatureService $requestSignatureService,
 		protected FileMapper $fileMapper,
+		protected LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
+	}
+
+	/**
+	 * Format an exception into a safe frontend response.
+	 *
+	 * LibresignException messages are considered user-friendly and are returned
+	 * as-is. Any other exception is logged and replaced with a generic message
+	 * so that internal details (SQL queries, paths, etc.) are not leaked.
+	 */
+	private function handleRequestException(\Throwable $th, int $statusCode = Http::STATUS_UNPROCESSABLE_ENTITY): DataResponse {
+		if ($th instanceof LibresignException) {
+			$errorMessage = $th->getMessage();
+			$decoded = json_decode($errorMessage, true);
+			if (json_last_error() === JSON_ERROR_NONE && isset($decoded['errors'])) {
+				$errorMessage = $decoded['errors'][0]['message'] ?? $errorMessage;
+			}
+			return new DataResponse(
+				[
+					'message' => $errorMessage,
+				],
+				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
+		}
+
+		$this->logger->error($th->getMessage(), ['exception' => $th]);
+		return new DataResponse(
+			[
+				'message' => $this->l10n->t('An unexpected error occurred while processing the request.'),
+			],
+			$statusCode
+		);
 	}
 
 	/**
@@ -115,13 +148,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 				Http::STATUS_UNPROCESSABLE_ENTITY
 			);
 		} catch (\Throwable $th) {
-			$errorMessage = $th->getMessage();
-			return new DataResponse(
-				[
-					'message' => $errorMessage,
-				],
-				Http::STATUS_UNPROCESSABLE_ENTITY
-			);
+			return $this->handleRequestException($th, Http::STATUS_UNPROCESSABLE_ENTITY);
 		}
 	}
 
@@ -223,12 +250,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 			$fileData = $this->fileListService->formatFileWithChildren($fileEntity, $childFiles, $user);
 			return new DataResponse($fileData, Http::STATUS_OK);
 		} catch (\Throwable $th) {
-			return new DataResponse(
-				[
-					'message' => $th->getMessage(),
-				],
-				Http::STATUS_UNPROCESSABLE_ENTITY
-			);
+			return $this->handleRequestException($th, Http::STATUS_UNPROCESSABLE_ENTITY);
 		}
 	}
 
@@ -344,12 +366,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 			$this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
 			$this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
 		} catch (\Throwable $th) {
-			return new DataResponse(
-				[
-					'message' => $th->getMessage(),
-				],
-				Http::STATUS_UNAUTHORIZED
-			);
+			return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
 		}
 		return new DataResponse(
 			[
@@ -384,12 +401,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 			$this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
 			$this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
 		} catch (\Throwable $th) {
-			return new DataResponse(
-				[
-					'message' => $th->getMessage(),
-				],
-				Http::STATUS_UNAUTHORIZED
-			);
+			return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
 		}
 		return new DataResponse(
 			[
@@ -427,12 +439,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 			$this->validateHelper->validateExistingFile($data);
 			$this->requestSignatureService->deleteRequestSignature($data);
 		} catch (\Throwable $th) {
-			return new DataResponse(
-				[
-					'message' => $th->getMessage(),
-				],
-				Http::STATUS_UNAUTHORIZED
-			);
+			return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
 		}
 		return new DataResponse(
 			[

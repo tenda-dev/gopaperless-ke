@@ -43,10 +43,15 @@
 						)
 					"
 					:placeholder="
-						t(
-							'libresign',
-							'Webhook shared secret'
-						)
+						webhookOtpSharedSecretSet
+							? t(
+								'libresign',
+								'Shared secret is already set'
+							)
+							: t(
+								'libresign',
+								'Webhook shared secret'
+							)
 					"
 					@update:modelValue="
 						saveAppConfigValue(

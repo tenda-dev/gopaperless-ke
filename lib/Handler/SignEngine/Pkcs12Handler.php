@@ -512,7 +512,14 @@ class Pkcs12Handler extends SignEngineHandler {
 	public function sign(): File {
 		$this->beforeSign();
 
-		$signedContent = $this->getHandler()
+		$handler = $this->getHandler();
+		$this->logger->debug('Pkcs12Handler::sign() delegating to inner handler', [
+			'handlerClass' => $handler::class,
+			'visibleElementCount' => count($this->getVisibleElements()),
+			'signatureParamKeys' => array_keys($this->getSignatureParams()),
+		]);
+
+		$signedContent = $handler
 			->setCertificate($this->getCertificate())
 			->setInputFile($this->getInputFile())
 			->setPassword($this->getPassword())

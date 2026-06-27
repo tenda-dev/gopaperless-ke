@@ -88,12 +88,13 @@ class MnoRoutingRegistry
 				'match'            => ['safaricom', 'mpesa', 'm-pesa'],
 				'mnoKey'           => 'Mpesa',
 				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
+				'preferredProvider'=> PaymentProvider::DARAJA,
 				'mode'             => PaymentFlowMode::STK_PUSH,
 				'currency'         => 'KES',
 				'minAmount'        => 1,
 				'maxAmount'        => 250000,
 				'supportsDecimals' => false,
+				'notes'            => 'Safaricom/M-Pesa is routed natively through Daraja STK push',
 			],
 			[
 				'match'            => ['airtel'],
@@ -461,7 +462,6 @@ class MnoRoutingRegistry
 
 	];
 
-	private const FORCE_AMBIGUOUS_TESTING = true;
 
 	/**
 	 * Route a carrier to a capability + provider decision.
@@ -503,12 +503,6 @@ class MnoRoutingRegistry
 				region: $region,
 			);
 		}
-
-		$forceAmbiguous =
-			self::FORCE_AMBIGUOUS_TESTING &&
-			$region === 'KE' &&
-			$carrier !== null &&
-			$capability === PaymentCapability::MOBILE_MONEY;
 
 		$region  = $region  ? strtoupper(trim($region))  : null;
 		$carrier = $carrier ? strtolower(trim($carrier)) : null;
@@ -563,13 +557,9 @@ class MnoRoutingRegistry
 			foreach ($route['match'] as $fragment) {
 				if (str_contains($carrier, $fragment)) {
 
-					$resolvedConfidence = $forceAmbiguous
+					$resolvedConfidence = $route['mnoKey'] === null
 						? ResolutionConfidence::AMBIGUOUS
-						: (
-							$route['mnoKey'] === null
-							? ResolutionConfidence::AMBIGUOUS
-							: $confidence
-						);
+						: $confidence;
 
 					return $this->build(
 						$route['capability'],

@@ -140,6 +140,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 		$imagePath = $this->signatureBackgroundService->isEnabled()
 			? $this->signatureBackgroundService->getImagePath()
 			: null;
+		$imagePath = $this->prepareBackgroundImage($imagePath, $width, $height);
 
 		// GRAPHIC_AND_DESCRIPTION: user's drawn image goes into the n2 xObject layer
 		// on the left half of the bbox so it does not distort or cover the description text.
@@ -172,6 +173,70 @@ class PhpNativeHandler extends Pkcs12Handler {
 			signatureImagePath: $userImgPath,
 			signatureImageFrame: $userImgRect,
 		);
+	}
+
+	private function prepareBackgroundImage(?string $imagePath, int $width, int $height): ?string {
+		if (!$this->signatureTextService->hasQrCodeInTemplate()) {
+			return $imagePath;
+		}
+
+		$params = $this->getSignatureParams();
+		$documentUuid = $params['DocumentUUID'] ?? null;
+		if (empty($documentUuid) || !is_string($documentUuid)) {
+			return $imagePath;
+		}
+
+		$validationUrl = $this->signatureTextService->buildValidationUrl($documentUuid);
+		$base64 = $this->signatureTextService->getQrCodeImageBase64($validationUrl);
+		$content = base64_decode($base64, true);
+		if ($content === false) {
+			return $imagePath;
+		}
+
+		$tempManager = \OCP\Server::get(\OCP\ITempManager::class);
+		$qrCodePath = $tempManager->getTemporaryFile('_qrcode.png');
+		if (!$qrCodePath) {
+			return $imagePath;
+		}
+		file_put_contents($qrCodePath, $content);
+
+		if (!extension_loaded('imagick')) {
+			return $imagePath;
+		}
+
+		$canvas = new \Imagick();
+		$canvas->newImage($width, $height, new \ImagickPixel('transparent'));
+		$canvas->setImageFormat('png32');
+		$canvas->setImageAlphaChannel(\Imagick::ALPHACHANNEL_ACTIVATE);
+
+		if ($imagePath !== null && $imagePath !== '' && is_file($imagePath)) {
+			$background = new \Imagick($imagePath);
+			$background->setImageFormat('png');
+			$background->setImageAlphaChannel(\Imagick::ALPHACHANNEL_ACTIVATE);
+			$background->resizeImage($width, $height, \Imagick::FILTER_LANCZOS, 1, true);
+			$bgX = (int)(($width - $background->getImageWidth()) / 2);
+			$bgY = (int)(($height - $background->getImageHeight()) / 2);
+			$canvas->compositeImage($background, \Imagick::COMPOSITE_OVER, $bgX, $bgY);
+			$background->clear();
+		}
+
+		$qrCode = new \Imagick($qrCodePath);
+		$qrCode->setImageFormat('png');
+		$qrSize = (int)(min($width, $height) * 0.35);
+		$qrCode->resizeImage($qrSize, $qrSize, \Imagick::FILTER_LANCZOS, 1, true);
+		$qrX = $width - $qrCode->getImageWidth() - max(4, (int)($qrSize * 0.05));
+		$qrY = max(4, (int)($qrSize * 0.05));
+		$canvas->compositeImage($qrCode, \Imagick::COMPOSITE_OVER, $qrX, $qrY);
+		$qrCode->clear();
+
+		$compositePath = $tempManager->getTemporaryFile('_background_qr.png');
+		if (!$compositePath) {
+			return $imagePath;
+		}
+		$canvas->writeImage($compositePath);
+		$canvas->clear();
+
+		return $compositePath;
 	}
 
 	#[\Override]
@@ -267,9 +332,8 @@ class PhpNativeHandler extends Pkcs12Handler {
 		}
 
 		$params = $this->getSignatureParams();
-		$serverTimezone = new \DateTimeZone(date_default_timezone_get());
-		$now = new \DateTime('now', $serverTimezone);
-		$params['ServerSignatureDate'] = $now->format('Y.m.d H:i:s \U\T\C');
+		$params['ServerSignatureDate'] = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
+			->format(\DateTimeInterface::ATOM);
 
 		$textData = $this->signatureTextService->parse(context: $params);
 		$parsed = trim((string)($textData['parsed'] ?? ''));

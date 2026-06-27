@@ -6,7 +6,7 @@
                 "package": "phpseclib/phpseclib",
                 "description": "Fix loadCRL method parameter type annotation",
                 "url": ".patches/x509-loadcrl-param-fix.diff",
-                "sha256": "902d4ccdbc5178bba4d27f4ee3b57d8e41227492ced56e2252e05da0d65a4956",
+                "sha256": "72e64f412842f908d783294f9be617c215469aa0f64a8ed0d02bc1992aefe6a7",
                 "depth": 1,
                 "extra": {
                     "provenance": "patches-file:patches.json"

@@ -22,6 +22,7 @@ use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -35,6 +36,7 @@ final class RequestSignatureControllerTest extends TestCase {
 	private ValidateHelper&MockObject $validateHelper;
 	private RequestSignatureService&MockObject $requestSignatureService;
 	private FileMapper&MockObject $fileMapper;
+	private LoggerInterface&MockObject $logger;
 	private IUser&MockObject $user;
 
 	protected function setUp(): void {
@@ -46,6 +48,7 @@ final class RequestSignatureControllerTest extends TestCase {
 		$this->validateHelper = $this->createMock(ValidateHelper::class);
 		$this->requestSignatureService = $this->createMock(RequestSignatureService::class);
 		$this->fileMapper = $this->createMock(FileMapper::class);
+		$this->logger = $this->createMock(LoggerInterface::class);
 		$this->user = $this->createMock(IUser::class);
 
 		$this->userSession->method('getUser')->willReturn($this->user);
@@ -59,6 +62,7 @@ final class RequestSignatureControllerTest extends TestCase {
 			$this->validateHelper,
 			$this->requestSignatureService,
 			$this->fileMapper,
+			$this->logger,
 		);
 	}
 

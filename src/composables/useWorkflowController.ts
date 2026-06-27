@@ -66,7 +66,7 @@ import type {
 	SignatureFlowValue,
 } from '../types/index'
 import type { EditableSignerDraft } from '../store/files'
-import { showError, showSuccess } from '../services/toast'
+import { showError, showSuccess, showWarning } from '../services/toast'
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * LOCAL TYPES
@@ -202,6 +202,7 @@ export type WorkflowController = {
 	isSignerSigned:             (signer: Partial<EditableSignerDraft>) => boolean
 	canSignerActInOrder:        (signer: Partial<EditableSignerDraft>) => boolean
 	getSvgIcon:                 (name: string) => string
+	registerSvgIcons:           (map: Record<string, string>) => void
 	showRequestError:           (error: unknown, fallbackMessage: string) => void
 	debouncedSave:              ReturnType<typeof debounce>
 	hasAnyDraftSigner:          (file: EditableRequestFile | null | undefined) => boolean
@@ -688,6 +689,12 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	function addSigner(): void {
+		if (enabledMethods.value.length === 0) {
+			showWarning(
+				t('libresign', 'No identification methods are enabled. Enable them in Administration settings.'),
+			)
+			return
+		}
 		signerToEdit.value = {}
 		activeTab.value    = userConfigStore.files_list_signer_identify_tab ?? ''
 		filesStore.enableIdentifySigner()
@@ -814,6 +821,15 @@ export function useWorkflowController(
 		hasLoading.value = true
 		try {
 			const response = await filesStore.saveOrUpdateSignatureRequest({ status: 1 })
+
+			if ((response as any)?.success === false) {
+				showRequestError(
+					(response as any).error ?? new Error((response as any).message),
+					t('libresign', 'Failed to request signatures'),
+				)
+				return
+			}
+
 			showSuccess(t('libresign', (response as any)?.message ?? 'Signature requested'), true, true)
 			showConfirmRequest.value = false
 		} catch (error: unknown) {
@@ -920,7 +936,7 @@ export function useWorkflowController(
 				return s
 			})
 
-			await filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
+			const response = await filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
 			showSuccess(t('libresign', 'Signature requested'), true, true)
 			showConfirmRequestSigner.value = false
 			selectedSigner.value           = null
@@ -1111,6 +1127,7 @@ export function useWorkflowController(
 		isSignerSigned,
 		canSignerActInOrder,
 		getSvgIcon,
+		registerSvgIcons,
 		showRequestError,
 		debouncedSave,
 		hasAnyDraftSigner,

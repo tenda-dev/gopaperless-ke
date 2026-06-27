@@ -167,8 +167,36 @@ class SignRequestMapper extends CachedQBMapper {
 			->where($qb->expr()->eq('im.identifier_key', $qb->createNamedParameter($identifyMethod->getEntity()->getIdentifierKey())))
 			->andWhere($qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($identifyMethod->getEntity()->getIdentifierValue())))
 			->andWhere($qb->expr()->eq('sr.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
-		/** @var SignRequest */
-		$signRequest = $this->findEntity($qb);
+		$cursor = $qb->executeQuery();
+		$signRequests = [];
+		while ($row = $cursor->fetch()) {
+			$signRequests[] = SignRequest::fromRow($row);
+		}
+		$cursor->closeCursor();
+		if (empty($signRequests)) {
+			throw new DoesNotExistException('Sign request not found');
+		}
+
+		// Prefer the active pending sign request when duplicates exist, then the
+		// newest draft, then any other record. This prevents a stale draft or
+		// signed duplicate from being used for signing/update.
+		usort($signRequests, function (SignRequest $a, SignRequest $b): int {
+			$statusA = $a->getStatus();
+			$statusB = $b->getStatus();
+			$ableA = $statusA === SignRequestStatus::ABLE_TO_SIGN->value ? 0 : 1;
+			$ableB = $statusB === SignRequestStatus::ABLE_TO_SIGN->value ? 0 : 1;
+			if ($ableA !== $ableB) {
+				return $ableA <=> $ableB;
+			}
+			$draftA = $statusA === SignRequestStatus::DRAFT->value ? 0 : 1;
+			$draftB = $statusB === SignRequestStatus::DRAFT->value ? 0 : 1;
+			if ($draftA !== $draftB) {
+				return $draftB <=> $draftA;
+			}
+			return ($b->getId() ?? 0) <=> ($a->getId() ?? 0);
+		});
+
+		$signRequest = reset($signRequests);
 		$this->cacheEntity($signRequest);
 		return $signRequest;
 	}

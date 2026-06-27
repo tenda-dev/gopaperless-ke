@@ -40,10 +40,10 @@ class TokenService {
 	}
 
 	public function sendCodeByGateway(string $identifier, string $gatewayName): string {
-		// $gateway = $this->getGateway($gatewayName);
+		$gateway = $this->getGateway($gatewayName);
 
 		$code = $this->secureRandom->generate(self::TOKEN_LENGTH, ISecureRandom::CHAR_DIGITS);
-		// $gateway->send($identifier, $this->l10n->t('%s is your LibreSign verification code.', $code));
+		$gateway->send($identifier, $this->l10n->t('%s is your LibreSign verification code.', $code));
 		return $this->hasher->hash($code);
 	}
 
@@ -52,17 +52,16 @@ class TokenService {
 	 * @return \OCA\TwoFactorGateway\Provider\Gateway\IGateway
 	 */
 	private function getGateway(string $gatewayName) {
-		// try {
-		// 	$factory = Server::get(\OCA\TwoFactorGateway\Provider\Gateway\Factory::class);
-		// } catch (NotFoundExceptionInterface) {
-		// 	throw new LibresignException('App Two-Factor Gateway is not installed.');
-
-		// }
-		// $gateway = $factory->get($gatewayName);
-		// if (!$gateway->isComplete()) {
-		// 	throw new OCSForbiddenException($this->l10n->t('Gateway %s not configured on Two-Factor Gateway.', $gatewayName));
-		// }
-		// return $gateway;
+		try {
+			$factory = Server::get(\OCA\TwoFactorGateway\Provider\Gateway\Factory::class);
+		} catch (NotFoundExceptionInterface) {
+			throw new LibresignException('App Two-Factor Gateway is not installed.');
+		}
+		$gateway = $factory->get($gatewayName);
+		if (!$gateway->isComplete()) {
+			throw new OCSForbiddenException($this->l10n->t('Gateway %s not configured on Two-Factor Gateway.', $gatewayName));
+		}
+		return $gateway;
 	}
 
 	public function sendCodeByEmail(string $email, string $displayName, ?string $uuid): string {

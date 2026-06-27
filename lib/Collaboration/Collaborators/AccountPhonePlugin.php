@@ -25,6 +25,7 @@ use Psr\Log\LoggerInterface;
 class AccountPhonePlugin implements ISearchPlugin {
 	public const TYPE_SIGNER_ACCOUNT_PHONE = 51;
 	private const PHONE_BASED_METHODS = ['whatsapp', 'sms', 'telegram', 'signal', 'email'];
+	private const PHONE_METHODS = ['whatsapp', 'sms', 'telegram', 'signal'];
 
 	public function __construct(
 		private IAppConfig $appConfig,
@@ -39,6 +40,32 @@ class AccountPhonePlugin implements ISearchPlugin {
 	) {
 	}
 
+	private function isIdentifyMethodEnabled(string $name): bool {
+		$methods = $this->appConfig->getValueArray('libresign', 'identify_methods', []);
+		foreach ($methods as $method) {
+			if (($method['name'] ?? '') === $name) {
+				return (bool)($method['enabled'] ?? false);
+			}
+		}
+		return false;
+	}
+
+	private function isAnyPhoneMethodEnabled(): bool {
+		return $this->getFirstEnabledPhoneMethod() !== null;
+	}
+
+	private function getFirstEnabledPhoneMethod(): ?string {
+		$methods = $this->appConfig->getValueArray('libresign', 'identify_methods', []);
+		foreach ($methods as $method) {
+			$name = $method['name'] ?? '';
+			if ((bool)($method['enabled'] ?? false)
+				&& in_array($name, self::PHONE_METHODS, true)) {
+				return $name;
+			}
+		}
+		return null;
+	}
+
 	/**
 	 * {@inheritdoc}
 	 */
@@ -47,19 +74,26 @@ class AccountPhonePlugin implements ISearchPlugin {
 		$method = $this->searchContext->getMethod();
 		$search = trim((string)$search);
 
-		$this->logger->warning('PHONE SEARCH', [
-			'search' => $search,
-		]);
-
 		if ($search === '') {
 			return false;
 		}
 
-		if ($method === 'email') {
+		$isUnified = $method === 'all' || $method === 'email';
+		$isPhoneMethod = in_array($method, self::PHONE_METHODS, true);
+		if ($isUnified) {
 			if (!$this->searchNormalizer->isPhoneSearch($search)) {
 				return false;
 			}
-		} elseif (!in_array($method, self::PHONE_BASED_METHODS, true)) {
+			// Unified phone lookups can return account signers when Account is enabled,
+			// or phone signers when a phone method is enabled. They must not depend on
+			// the Email toggle being enabled.
+			if (!$this->isIdentifyMethodEnabled('account')
+				&& !$this->isAnyPhoneMethodEnabled()) {
+				return false;
+			}
+		} elseif (!$isPhoneMethod) {
+			return false;
+		} elseif (!$this->isIdentifyMethodEnabled($method)) {
 			return false;
 		}
 
@@ -87,9 +121,6 @@ class AccountPhonePlugin implements ISearchPlugin {
 
 		$matches = $this->accountManager->searchUsers(IAccountManager::PROPERTY_PHONE, [$search]);
 
-		$this->logger->warning('PHONE MATCHES', [
-			'matches' => $matches,
-		]);
 		$items = [];
 		foreach ($matches as $phone => $userId) {
 			// Filter out users with phone numbers that cannot be normalized
@@ -99,9 +130,6 @@ class AccountPhonePlugin implements ISearchPlugin {
 			}
 
 			$userId = (string)$userId;
-			if ($userId === $currentUser->getUID()) {
-				continue;
-			}
 			$user = $this->userManager->get($userId);
 			if ($user === null || !$user->isEnabled()) {
 				continue;
@@ -134,7 +162,7 @@ class AccountPhonePlugin implements ISearchPlugin {
 
 			$displayName = $user->getDisplayName() !== '' ? $user->getDisplayName() : $userId;
 
-			if ($method === 'email') {
+			if ($isUnified && $this->isIdentifyMethodEnabled('account')) {
 				/**
 				 * Product direction:
 				 *
@@ -143,7 +171,7 @@ class AccountPhonePlugin implements ISearchPlugin {
 				 * Requesters should search for people rather than understand which
 				 * identity method (account, email, phone, etc.) a signer belongs to.
 				 *
-				 * When a search performed through the Email tab resolves to an
+				 * When a search performed through the unified tab resolves to an
 				 * existing account, we always return an account signer regardless
 				 * of which identifier matched the account.
 				 *
@@ -162,7 +190,7 @@ class AccountPhonePlugin implements ISearchPlugin {
 			} else {
 				$shareType = self::TYPE_SIGNER_ACCOUNT_PHONE;
 				$shareWith = $normalizedPhone;
-				$resultMethod = $method;
+				$resultMethod = $isUnified ? ($this->getFirstEnabledPhoneMethod() ?? 'sms') : $method;
 			}
 
 			$items[] = [

@@ -347,11 +347,11 @@ async function handleInitialStatePdfs(urls: string[]) {
 			const data = parsePdfFetchError(await response.json())
 			sidebarStore.hideSidebar()
 			if (data.errors?.length) {
-				signStore.errors = data.errors
+				setPdfLoadErrors(data.errors)
 			} else {
-				signStore.errors = [
+				setPdfLoadErrors([
 					{ message: t('libresign', 'File not found') },
-				]
+				])
 			}
 			return
 		}
@@ -433,6 +433,7 @@ async function fetchEnvelopeFiles(parentFileId: number | string): Promise<RawSig
 		length: '100',
 		parentFileId: parentFileId.toString(),
 		signer_uuid: getRouteUuid() || '',
+		details: 'true',
 	})
 	const finalUrl = addIdDocApprovalParam(`${url}?${params.toString()}`) || `${url}?${params.toString()}`
 	const response = await axios.get<EnvelopeFileListResponse>(finalUrl)

@@ -220,13 +220,14 @@ final class MobileMoneyService
 			providerReference: $reference ?? '',
 			flow: PaymentFlow::UNKNOWN,
 			provider: $provider,
-			message: $this->mapErrorMessage($e),
+			message: $e->getMessage(),
 			errorCode: $this->mapErrorCode($e),
 			meta: [
 				'providerError' => [
 					'message' => $e->getMessage(),
 					'exception' => get_class($e),
 				],
+				'userMessage' => $this->mapErrorMessage($e),
 			]
 		);
 	}

@@ -10,10 +10,12 @@ namespace OCA\Libresign\Service\Identify;
 
 use OCA\Libresign\Collaboration\Collaborators\AccountPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\ContactPhonePlugin;
+use OCA\Libresign\Collaboration\Collaborators\EmailAccountPlugin;
 use OCA\Libresign\Collaboration\Collaborators\ManualPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\SignerPlugin;
 use OCA\Libresign\Service\IdentifyMethod\Account;
 use OCA\Libresign\Service\IdentifyMethod\Email;
+use OCP\IAppConfig;
 use OCP\Share\IShare;
 
 class ShareTypeResolver
@@ -23,6 +25,7 @@ class ShareTypeResolver
 	public function __construct(
 		private Email $identifyEmailMethod,
 		private Account $identifyAccountMethod,
+		private IAppConfig $appConfig,
 	) {}
 
 	public function resolve(string $method = ''): array
@@ -30,6 +33,7 @@ class ShareTypeResolver
 		$normalizedMethod = strtolower(trim($method));
 
 		$isAllMethods = $normalizedMethod === '' || $normalizedMethod === 'all';
+		$isEmailMethod = $normalizedMethod === 'email';
 
 		$includeAccount = $isAllMethods || $normalizedMethod === 'account';
 
@@ -50,24 +54,31 @@ class ShareTypeResolver
 		 * If this behaviour changes in the future, ensure that searching by
 		 * email continues to resolve existing users to account signers.
 		 */
-		$includeEmail = $isAllMethods || $normalizedMethod === 'email';
+		$includeEmail = $isAllMethods || $isEmailMethod;
 
 		$includePhone = $isAllMethods
+			|| $isEmailMethod
 			|| in_array($normalizedMethod, self::PHONE_METHODS, true);
 
 		$shareTypes = [];
+		$accountEnabled = false;
+		$emailEnabled = false;
 
 		if ($includeEmail) {
 			$emailSettings = $this->identifyEmailMethod->getSettings();
+			$emailEnabled = $emailSettings['enabled'];
 
-			if ($emailSettings['enabled']) {
+			if ($emailEnabled) {
 				$shareTypes[] = IShare::TYPE_EMAIL;
+				// Resolve email addresses to existing internal accounts.
+				$shareTypes[] = EmailAccountPlugin::TYPE_SIGNER_EMAIL_ACCOUNT;
 			}
 
 			// Include existing account users in email searches.
 			$accountSettings = $this->identifyAccountMethod->getSettings();
+			$accountEnabled = $accountSettings['enabled'];
 
-			if ($accountSettings['enabled']) {
+			if ($accountEnabled) {
 				$shareTypes[] = IShare::TYPE_USER;
 			}
 		}
@@ -76,20 +87,40 @@ class ShareTypeResolver
 		// through the unified email search behaviour.
 		if ($includeAccount && !$includeEmail) {
 			$settings = $this->identifyAccountMethod->getSettings();
+			$accountEnabled = $settings['enabled'];
 
-			if ($settings['enabled']) {
+			if ($accountEnabled) {
 				$shareTypes[] = IShare::TYPE_USER;
 			}
 		}
 
 		$shareTypes[] = SignerPlugin::TYPE_SIGNER;
 
-		if ($includePhone) {
+		$phonePluginsEnabled = $includePhone && $this->isAnyPhoneMethodEnabled();
+		$unifiedPhoneLookup = ($isAllMethods || $isEmailMethod) && $accountEnabled;
+
+		// AccountPhonePlugin must run for unified/email phone lookups when Account
+		// is enabled, even if no phone-specific identification factor is enabled.
+		if ($phonePluginsEnabled || $unifiedPhoneLookup) {
 			$shareTypes[] = AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE;
+		}
+
+		if ($phonePluginsEnabled) {
 			$shareTypes[] = ContactPhonePlugin::TYPE_SIGNER_CONTACT_PHONE;
 			$shareTypes[] = ManualPhonePlugin::TYPE_SIGNER_MANUAL_PHONE;
 		}
 
 		return array_unique($shareTypes);
+	}
+
+	private function isAnyPhoneMethodEnabled(): bool {
+		$methods = $this->appConfig->getValueArray('libresign', 'identify_methods', []);
+		foreach ($methods as $method) {
+			if ((bool)($method['enabled'] ?? false)
+				&& in_array($method['name'] ?? '', self::PHONE_METHODS, true)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

@@ -11,6 +11,7 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Collaboration\Collaborators\AccountPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\ContactPhonePlugin;
+use OCA\Libresign\Collaboration\Collaborators\EmailAccountPlugin;
 use OCA\Libresign\Collaboration\Collaborators\ManualPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\SignerPlugin;
 use OCA\Libresign\Middleware\Attribute\RequireManager;
@@ -82,6 +83,7 @@ class IdentifyController extends AEnvironmentAwareController {
 		$result['exact'] = $this->resultFilter->unify($result['exact']);
 		$result = $this->resultFilter->unify($result);
 		$result = $this->resultFilter->excludeEmpty($result);
+		$result = $this->resultFilter->filterAccountMatches($result, $search);
 
 		$return = $this->resultFormatter->formatForNcSelect($result);
 		$return = $this->resultEnricher->addHerselfAccount($return, $search, $method);
@@ -103,6 +105,7 @@ class IdentifyController extends AEnvironmentAwareController {
 		$plugins = $refProperty->getValue($this->collaboratorSearch);
 		$plugins[SignerPlugin::TYPE_SIGNER] = [SignerPlugin::class];
 		$plugins[AccountPhonePlugin::TYPE_SIGNER_ACCOUNT_PHONE] = [AccountPhonePlugin::class];
+		$plugins[EmailAccountPlugin::TYPE_SIGNER_EMAIL_ACCOUNT] = [EmailAccountPlugin::class];
 		$plugins[ContactPhonePlugin::TYPE_SIGNER_CONTACT_PHONE] = [ContactPhonePlugin::class];
 		$plugins[ManualPhonePlugin::TYPE_SIGNER_MANUAL_PHONE] = [ManualPhonePlugin::class];
 

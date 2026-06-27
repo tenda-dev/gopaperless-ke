@@ -12,8 +12,6 @@ use Ramsey\Uuid\Uuid;
 
 final class TiaraService
 {
-	private const API_URL = 'https://api.tiaraconnect.io/api/messaging/sendsms';
-
 	public function __construct(
 		private LoggerInterface $logger,
 		private IClientService $httpClientService,
@@ -59,7 +57,7 @@ final class TiaraService
 			);
 
 			$response = $client->post(
-				self::API_URL,
+				$config->apiUrl,
 				[
 					'headers' => [
 						'Authorization' => 'Bearer ' . $config->apiKey,

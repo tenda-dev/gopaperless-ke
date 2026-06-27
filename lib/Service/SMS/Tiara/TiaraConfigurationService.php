@@ -11,6 +11,8 @@ use Psr\Log\LoggerInterface;
 
 final class TiaraConfigurationService
 {
+	private const DEFAULT_API_URL = 'https://api.tiaraconnect.io/api/messaging/sendsms';
+
 	public function __construct(
 		private IAppConfig $appConfig,
 		private LoggerInterface $logger,
@@ -44,9 +46,18 @@ final class TiaraConfigurationService
 			)
 		);
 
+		$apiUrl = trim(
+			$this->appConfig->getValueString(
+				Application::APP_ID,
+				'tiara_api_url',
+				self::DEFAULT_API_URL
+			)
+		);
+
 		if (
 			$apiKey === '' ||
-			$senderId === ''
+			$senderId === '' ||
+			$apiUrl === ''
 		) {
 
 			$this->logger->error(
@@ -54,6 +65,7 @@ final class TiaraConfigurationService
 				[
 					'missingApiKey' => $apiKey === '',
 					'missingSenderId' => $senderId === '',
+					'missingApiUrl' => $apiUrl === '',
 					'app' => Application::APP_ID,
 				]
 			);
@@ -64,6 +76,7 @@ final class TiaraConfigurationService
 		return new TiaraConfigDTO(
 			apiKey: $apiKey,
 			senderId: $senderId,
+			apiUrl: $apiUrl,
 		);
 	}
 }

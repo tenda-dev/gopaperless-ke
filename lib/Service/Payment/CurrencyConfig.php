@@ -19,6 +19,9 @@ final class CurrencyConfig
 		'MWK' => ['decimals' => 2, 'countries' => ['MW']],
 		'ZMW' => ['decimals' => 2, 'countries' => ['ZM']],
 		'ZWL' => ['decimals' => 2, 'countries' => ['ZW']],
+		'GHS' => ['decimals' => 2, 'countries' => ['GH']],
+		'XOF' => ['decimals' => 0, 'countries' => ['CI']],
+		'USD' => ['decimals' => 2, 'countries' => ['ZW']],
 	];
 
 	public static function decimals(string $currency): int

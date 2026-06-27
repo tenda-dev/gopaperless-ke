@@ -66,7 +66,7 @@
 				<NcButton :disabled="loading" @click="signMethodsStore.closeModal('clickToSign')">
 					{{ t('libresign', 'Cancel') }}
 				</NcButton>
-				<NcButton variant="primary" :disabled="loading" @click="signWithClick">
+				<NcButton variant="primary" :disabled="loading || isProcessingPayment" @click="signWithClickGated">
 					<template #icon>
 						<NcLoadingIcon v-if="loading" :size="20" />
 					</template>
@@ -626,6 +626,74 @@ function handlePaymentClose() {
 
 async function signWithClick() {
 	await submitSignature({ method: 'clickToSign' })
+}
+
+async function signWithClickGated() {
+	// Prevent double submission while entitlement is being verified
+	if (isProcessingPayment.value) {
+		return
+	}
+	isProcessingPayment.value = true
+	loading.value = true
+
+	const signer = currentSigner.value
+
+	if (!signer || !signer.sign_uuid || !signer.signRequestId) {
+		console.warn('[PaymentContext] no signer data for gated sign action')
+		loading.value = false
+		isProcessingPayment.value = false
+		return
+	}
+
+	const resolvedUserId = await resolveUserId(user.value)
+
+	if (!resolvedUserId) {
+		notifyError({
+			message: 'Unable to identify user. Please refresh and try again.',
+			important: true,
+		})
+		loading.value = false
+		isProcessingPayment.value = false
+		return
+	}
+
+	if (!signStore.productCode) {
+		signStore.productCode = DEFAULT_SIGN_PRODUCT_CODE
+	}
+
+	paymentContextStore.setContext({
+		userId: resolvedUserId,
+		signUuid: signer.sign_uuid,
+		signRequestId: signer.signRequestId,
+		productCode: signStore.productCode,
+	})
+
+	const paywall = usePaywall()
+
+	try {
+		const { allowed } = await paywall.checkEntitlement(signStore.productCode)
+
+		if (!allowed) {
+			// Same behaviour as the sidebar "Sign the document." button: open payment flow
+			signMethodsStore.closeModal('clickToSign')
+			triggerPaymentFlow()
+			return
+		}
+
+		// Entitlement confirmed; proceed to sign and release the payment guard
+		isProcessingPayment.value = false
+		await signWithClick()
+	} catch (err) {
+		console.error('[Sign] entitlement check failed in gated sign action', err)
+		// Fail closed: treat any verification error as requiring payment
+		signMethodsStore.closeModal('clickToSign')
+		triggerPaymentFlow()
+	} finally {
+		// signWithClick manages loading internally; reset only when we diverted to payment
+		if (showPaymentModal.value) {
+			loading.value = false
+		}
+	}
 }
 
 async function signWithPassword() {

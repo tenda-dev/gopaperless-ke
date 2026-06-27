@@ -16,6 +16,11 @@ final readonly class TiaraConfigDTO
 		 * Approved sender ID registered with Tiara.
 		 */
 		public string $senderId,
+
+		/**
+		 * Tiara API endpoint URL.
+		 */
+		public string $apiUrl,
 	) {
 	}
 }

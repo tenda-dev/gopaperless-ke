@@ -148,6 +148,25 @@ final class MnoRoutingResultDTO
 	/**
 	 * Debug-safe snapshot
 	 */
+	public function withPreferredProvider(PaymentProvider $preferredProvider): self
+	{
+		return new self(
+			capability: $this->capability,
+			preferredProvider: $preferredProvider,
+			mnoKey: $this->mnoKey,
+			mode: $this->mode,
+			currency: $this->currency,
+			altCurrency: $this->altCurrency,
+			minAmount: $this->minAmount,
+			maxAmount: $this->maxAmount,
+			supportsDecimals: $this->supportsDecimals,
+			confidence: $this->confidence,
+			notes: $this->notes,
+			country: $this->country,
+			region: $this->region,
+		);
+	}
+
 	public function __toString(): string
 	{
 		return json_encode($this->toArray(), JSON_THROW_ON_ERROR);

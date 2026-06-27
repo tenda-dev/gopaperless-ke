@@ -213,6 +213,7 @@ const props = withDefaults(defineProps<{
 	canCustomizeMessage?: boolean
 
 	requireRequestPermission?: boolean
+	methods?: IdentifyMethodSetting[]
 }>(), {
 	event: '',
 	isOrderedNumeric: false,
@@ -223,6 +224,7 @@ const props = withDefaults(defineProps<{
 	canSendReminder: false,
 	canCustomizeMessage: false,
 	requireRequestPermission: true,
+	methods: () => [],
 })
 
 const emit = defineEmits<{
@@ -238,6 +240,13 @@ const identifyMethodsSettings = loadState<IdentifyMethodSetting[]>(
 	'identify_methods',
 	[],
 )
+
+const effectiveIdentifyMethodsSettings = computed<IdentifyMethodSetting[]>(() => {
+	if (props.methods.length > 0) {
+		return props.methods
+	}
+	return identifyMethodsSettings
+})
 
 const canRequestSign = loadState(
 	'libresign',

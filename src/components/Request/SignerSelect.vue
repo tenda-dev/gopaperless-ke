@@ -4,7 +4,7 @@
 -->
 <template>
 	<div id="account-or-email">
-		<label for="account-or-email-input">{{ t('libresign', 'Search signer') }}</label>
+		<label for="account-or-email-input">{{ placeholder }}</label>
 		<NcSelect ref="select"
 			:model-value="selectedSigner"
 			input-id="account-or-email-input"

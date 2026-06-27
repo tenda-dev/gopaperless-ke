@@ -17,6 +17,7 @@ use OCA\Libresign\Db\IdentifyMethod;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignatureFlow;
+use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\ResponseDefinitions;
 use OCA\Libresign\Service\FileElementService;
 use OCA\Libresign\Service\IdentifyMethodService;
@@ -278,8 +279,32 @@ class FileListService {
 				$meSignRequestId,
 			);
 			$file['signers'][] = $signerData;
-			if (!empty($signerData['me']) && !isset($file['signUuid'])) {
+		}
+
+		if ($user instanceof IUser && $meSignRequestId === null) {
+			$this->resolveSignerMeFlags($file['signers'], $user);
+		}
+
+		// Prefer the sign UUID of a ready current-user signer. With duplicate
+		// sign requests for the same identifier, a stale draft row can appear
+		// before the active able-to-sign row, so the first match is not always
+		// the one that can actually sign.
+		foreach ($file['signers'] as $signerData) {
+			if (
+				!empty($signerData['me'])
+				&& ($signerData['status'] ?? null) === SignRequestStatus::ABLE_TO_SIGN->value
+				&& !empty($signerData['sign_uuid'])
+			) {
 				$file['signUuid'] = $signerData['sign_uuid'];
+				break;
+			}
+		}
+		if (!isset($file['signUuid'])) {
+			foreach ($file['signers'] as $signerData) {
+				if (!empty($signerData['me']) && !empty($signerData['sign_uuid'])) {
+					$file['signUuid'] = $signerData['sign_uuid'];
+					break;
+				}
 			}
 		}
 		if (isset($file['signUuid'])) {
@@ -338,17 +363,35 @@ class FileListService {
 			? null
 			: min(array_map(fn (SignRequest $signer) => $signer->getSigningOrder() ?: 1, $pendingSigners));
 
+		$hasAbleSigner = array_filter($mySigners, fn (SignRequest $signer) => $signer->getStatus() === SignRequestStatus::ABLE_TO_SIGN->value);
 		$canSign = $fileEntity->getStatus() > 0
 			&& !empty($mySigners)
 			&& !empty($pendingSigners)
+			&& !empty($hasAbleSigner)
 			&& !array_filter($mySigners, fn (SignRequest $signer) => $signer->getSigned() !== null)
 			&& (!$isOrderedNumeric || array_filter($mySigners, fn (SignRequest $signer) => ($signer->getSigningOrder() ?: 1) === $minOrder));
 
 		$signUuid = null;
 		foreach ($mySigners as $signer) {
-			if ($signer->getUuid() !== '') {
+			if ($signer->getUuid() !== '' && $signer->getStatus() === SignRequestStatus::ABLE_TO_SIGN->value) {
 				$signUuid = $signer->getUuid();
 				break;
+			}
+		}
+		if ($signUuid === null) {
+			foreach ($mySigners as $signer) {
+				if ($signer->getUuid() !== '' && $signer->getSigned() === null) {
+					$signUuid = $signer->getUuid();
+					break;
+				}
+			}
+		}
+		if ($signUuid === null) {
+			foreach ($mySigners as $signer) {
+				if ($signer->getUuid() !== '') {
+					$signUuid = $signer->getUuid();
+					break;
+				}
 			}
 		}
 
@@ -592,6 +635,68 @@ class FileListService {
 	}
 
 	/**
+	 * When more than one signer matches the current user (for example because
+	 * two accounts share the same email), keep only one as "me". Prefer an
+	 * account identifier that matches the user's UID or email, then an email
+	 * match, and finally the signer that is still able to sign.
+	 *
+	 * @param list<LibresignSignerDetail> $signers
+	 */
+	private function resolveSignerMeFlags(array &$signers, IUser $user): void {
+		$meIndexes = [];
+		foreach ($signers as $index => $signer) {
+			if (!empty($signer['me'])) {
+				$meIndexes[] = $index;
+			}
+		}
+		if (count($meIndexes) <= 1) {
+			return;
+		}
+
+		$scoreByIndex = [];
+		foreach ($meIndexes as $index) {
+			$signer = $signers[$index];
+			$score = 0;
+			foreach ($signer['identifyMethods'] ?? [] as $identifyMethod) {
+				$method = $identifyMethod['method'] ?? '';
+				$value = $identifyMethod['value'] ?? '';
+				if ($method === IdentifyMethodService::IDENTIFY_ACCOUNT) {
+					if ($value === $user->getUID()) {
+						$score = max($score, 3);
+					} elseif ($value === $user->getEMailAddress()) {
+						$score = max($score, 2);
+					}
+				} elseif ($method === IdentifyMethodService::IDENTIFY_EMAIL && $value === $user->getEMailAddress()) {
+					$score = max($score, 1);
+				}
+			}
+			$scoreByIndex[$index] = $score;
+		}
+
+		$maxScore = max($scoreByIndex);
+		$candidates = array_keys(array_filter($scoreByIndex, fn (int $score): bool => $score === $maxScore));
+
+		$bestIndex = null;
+		foreach ($candidates as $index) {
+			if (($signers[$index]['status'] ?? null) === SignRequestStatus::ABLE_TO_SIGN->value) {
+				$bestIndex = $index;
+				break;
+			}
+		}
+		if ($bestIndex === null) {
+			$bestIndex = $candidates[0] ?? $meIndexes[0];
+		}
+
+		foreach ($meIndexes as $index) {
+			if ($index === $bestIndex) {
+				continue;
+			}
+			$signers[$index]['me'] = false;
+			unset($signers[$index]['sign_uuid'], $signers[$index]['signatureMethods']);
+		}
+	}
+
+	/**
 	 * Format file response with child files for envelopes.
 	 * Used by controllers to format main entity with its children.
 	 *
@@ -633,6 +738,17 @@ class FileListService {
 				}
 			} else {
 				$signers[] = $this->formatSignerDataBasic($signer, $identifyMethods, $visibleElementsData);
+			}
+		}
+
+		if ($user instanceof IUser) {
+			$this->resolveSignerMeFlags($signers, $user);
+			// Refresh signUuid after resolving me flags
+			foreach ($signers as $signerData) {
+				if ($signUuid === null && !empty($signerData['me']) && isset($signerData['sign_uuid'])) {
+					$signUuid = $signerData['sign_uuid'];
+					break;
+				}
 			}
 		}
 

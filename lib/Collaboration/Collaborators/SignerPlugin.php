@@ -41,7 +41,7 @@ class SignerPlugin implements ISearchPlugin {
 		$identifiers = $this->identifyMethodMapper->searchByIdentifierValue(
 			$search,
 			$user,
-			$method,
+			$method === 'all' ? '' : $method,
 			$limit,
 			$offset,
 		);

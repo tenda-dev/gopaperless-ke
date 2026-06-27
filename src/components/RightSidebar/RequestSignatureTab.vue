@@ -692,7 +692,11 @@ const hasSignersWithDisabledMethods = computed(() => {
 			return false
 		}
 		const methodConfig = getMethodConfig(method)
-		return !methodConfig?.enabled
+		// Only flag as disabled when the setting exists and is explicitly off.
+		if (!methodConfig) {
+			return false
+		}
+		return !methodConfig.enabled
 	})
 })
 
