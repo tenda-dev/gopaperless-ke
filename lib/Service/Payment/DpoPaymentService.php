@@ -33,8 +33,7 @@ use Throwable;
  * - verifyToken is REQUIRED fallback
  * - Amounts are passed in MAJOR units (e.g. 80.00)
  */
-class DpoPaymentService
-{
+class DpoPaymentService {
 	private const DPO_WEBHOOK_PATH = '/apps/libresign/payment/webhook/dpo';
 	private string $defaultCurrency = 'KES';
 	private IClientService $clientService;
@@ -72,7 +71,7 @@ class DpoPaymentService
 		string $currency,
 		?string $method = null, // card | mobile
 		?string $defaultPayment = null,
-		?string $defaultPaymentCountry = null
+		?string $defaultPaymentCountry = null,
 	): array {
 
 		$config = $this->getConfig();
@@ -112,8 +111,8 @@ class DpoPaymentService
 				'UTF-8'
 			);
 
-			$redirectXml =
-				"<RedirectURL>{$escapedRedirectUrl}</RedirectURL>";
+			$redirectXml
+				= "<RedirectURL>{$escapedRedirectUrl}</RedirectURL>";
 		}
 
 		/**
@@ -125,11 +124,11 @@ class DpoPaymentService
 		 * Optional UX hints for DPO UI
 		 */
 		$defaultPaymentXml = $defaultPayment
-			? "<DefaultPayment>" . $this->escapeXml($defaultPayment) . "</DefaultPayment>"
+			? '<DefaultPayment>' . $this->escapeXml($defaultPayment) . '</DefaultPayment>'
 			: '';
 
 		$defaultPaymentCountryXml = $defaultPaymentCountry
-			? "<DefaultPaymentCountry>" . $this->escapeXml($defaultPaymentCountry) . "</DefaultPaymentCountry>"
+			? '<DefaultPaymentCountry>' . $this->escapeXml($defaultPaymentCountry) . '</DefaultPaymentCountry>'
 			: '';
 
 		/**
@@ -150,7 +149,7 @@ class DpoPaymentService
 		 * - BackURL = server callback
 		 * - RedirectURL = user redirect
 		 */
-		$xml =  "
+		$xml = "
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>createToken</Request>
@@ -241,7 +240,7 @@ class DpoPaymentService
 		string $transactionToken,
 		string $phone,
 		string $mno,
-		string $mnoCountry = 'kenya'
+		string $mnoCountry = 'kenya',
 	): array {
 
 		$formattedPhone = $this->formatPhone($phone);
@@ -254,11 +253,11 @@ class DpoPaymentService
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>ChargeTokenMobile</Request>
-			<TransactionToken>" . $this->escapeXml($transactionToken) . "</TransactionToken>
-			<PhoneNumber>" . $this->escapeXml($formattedPhone) . "</PhoneNumber>
-			<MNO>" . $this->escapeXml($mno) . "</MNO>
-			<MNOcountry>" . $this->escapeXml($mnoCountry) . "</MNOcountry>
-		</API3G>";
+			<TransactionToken>" . $this->escapeXml($transactionToken) . '</TransactionToken>
+			<PhoneNumber>' . $this->escapeXml($formattedPhone) . '</PhoneNumber>
+			<MNO>' . $this->escapeXml($mno) . '</MNO>
+			<MNOcountry>' . $this->escapeXml($mnoCountry) . '</MNOcountry>
+		</API3G>';
 
 		$response = $this->sendRequest($xml);
 
@@ -336,7 +335,7 @@ class DpoPaymentService
 	 */
 	public function verifyToken(
 		string $token,
-		bool $acknowledge = true
+		bool $acknowledge = true,
 	): DPOVerifyTokenResultDTO {
 
 		$config = $this->getConfig();
@@ -349,9 +348,9 @@ class DpoPaymentService
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>verifyToken</Request>
-			<TransactionToken>" . $this->escapeXml($token) . "</TransactionToken>
-			<VerifyTransaction>" . $this->escapeXml($verifyTransaction) . "</VerifyTransaction>
-		</API3G>";
+			<TransactionToken>" . $this->escapeXml($token) . '</TransactionToken>
+			<VerifyTransaction>' . $this->escapeXml($verifyTransaction) . '</VerifyTransaction>
+		</API3G>';
 
 		$response = $this->sendRequest($xml);
 
@@ -368,7 +367,7 @@ class DpoPaymentService
 			);
 		}
 
-		$resultCode = (string) $response->Result;
+		$resultCode = (string)$response->Result;
 
 		/**
 		 * IMPORTANT:
@@ -475,8 +474,7 @@ class DpoPaymentService
 	 * @throws RuntimeException If no mobile options are available or response is invalid
 	 * @throws Throwable On network / XML parsing errors
 	 */
-	public function getMobilePaymentOptions(string $transactionToken): array
-	{
+	public function getMobilePaymentOptions(string $transactionToken): array {
 		$config = $this->getConfig();
 		$companyToken = $this->escapeXml($config['companyToken']);
 
@@ -484,8 +482,8 @@ class DpoPaymentService
 		<API3G>
 			<CompanyToken>{$companyToken}</CompanyToken>
 			<Request>GetMobilePaymentOptions</Request>
-			<TransactionToken>" . $this->escapeXml($transactionToken) . "</TransactionToken>
-		</API3G>";
+			<TransactionToken>" . $this->escapeXml($transactionToken) . '</TransactionToken>
+		</API3G>';
 
 		$response = $this->sendRequest($xml);
 
@@ -495,8 +493,8 @@ class DpoPaymentService
 		]);
 
 		if (
-			!isset($response->paymentoptions) ||
-			!isset($response->paymentoptions->mobileoption)
+			!isset($response->paymentoptions)
+			|| !isset($response->paymentoptions->mobileoption)
 		) {
 			throw new RuntimeException('Invalid response from DPO (mobile options)');
 		}
@@ -537,8 +535,7 @@ class DpoPaymentService
 	 *
 	 * @return 'SUCCESS'|'PENDING'|'FAILED'
 	 */
-	public function mapVerifyStatus(string $result): string
-	{
+	public function mapVerifyStatus(string $result): string {
 		return match ($result) {
 			'000' => 'SUCCESS',
 			'001', '002' => 'PENDING',
@@ -546,8 +543,7 @@ class DpoPaymentService
 		};
 	}
 
-	public function testDpo(): array
-	{
+	public function testDpo(): array {
 		return [
 			'test' => true,
 			'provider' => 'dpo'
@@ -559,8 +555,7 @@ class DpoPaymentService
 	 *
 	 * +254712345678 → 254712345678 / +255712345678 → 255712345678
 	 */
-	private function formatPhone(string $phone): string
-	{
+	private function formatPhone(string $phone): string {
 
 		if (!str_starts_with($phone, '+')) {
 			throw new RuntimeException('[DPOPaymentService] - Phone number must be in E.164 format (+254...)');
@@ -573,7 +568,7 @@ class DpoPaymentService
 
 
 	private function normaliseXmlResponse(
-		SimpleXMLElement $response
+		SimpleXMLElement $response,
 	): array {
 		return json_decode(
 			json_encode($response),
@@ -584,16 +579,14 @@ class DpoPaymentService
 	/**
 	 * Escape a string for safe inclusion in XML element text/attributes.
 	 */
-	private function escapeXml(string $value): string
-	{
+	private function escapeXml(string $value): string {
 		return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 	}
 
 	/**
 	 * Redact the DPO CompanyToken from XML before logging.
 	 */
-	private function redactCompanyToken(string $xml): string
-	{
+	private function redactCompanyToken(string $xml): string {
 		return preg_replace(
 			'/<CompanyToken>[^<]*<\/CompanyToken>/i',
 			'<CompanyToken>***REDACTED***</CompanyToken>',
@@ -605,8 +598,7 @@ class DpoPaymentService
 	 * Sends an XML request to the DPO API and returns the parsed XML response.
 	 * Throws exceptions on network errors or invalid responses.
 	 */
-	private function sendRequest(string $xml): SimpleXMLElement
-	{
+	private function sendRequest(string $xml): SimpleXMLElement {
 		$config = $this->getConfig();
 		$client = $this->clientService->newClient();
 		$endpoint = $config['endpoint'];
@@ -672,15 +664,14 @@ class DpoPaymentService
 		}
 	}
 
-	private function buildBlockPaymentXml(?string $method): string
-	{
+	private function buildBlockPaymentXml(?string $method): string {
 		if (!$method) {
 			return '';
 		}
 
 		$blockMap = [
 			'mobile' => ['CC', 'PP', 'BT', 'XP'],
-			'card'   => ['MO', 'PP', 'BT', 'XP'],
+			'card' => ['MO', 'PP', 'BT', 'XP'],
 		];
 
 		if (!isset($blockMap[$method])) {
@@ -688,7 +679,7 @@ class DpoPaymentService
 		}
 
 		$blocks = array_map(
-			fn($code) => "<BlockPayment>{$code}</BlockPayment>",
+			fn ($code) => "<BlockPayment>{$code}</BlockPayment>",
 			$blockMap[$method]
 		);
 
@@ -696,8 +687,7 @@ class DpoPaymentService
 	}
 
 
-	private function getConfig(): array
-	{
+	private function getConfig(): array {
 		$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
 		$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
 		$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
@@ -717,8 +707,7 @@ class DpoPaymentService
 		];
 	}
 
-	private function sanitiseMalformedXml(string $xml): string
-	{
+	private function sanitiseMalformedXml(string $xml): string {
 		$xml = preg_replace(
 			'/&#(\d+)(?!;)/',
 			'&#$1;',

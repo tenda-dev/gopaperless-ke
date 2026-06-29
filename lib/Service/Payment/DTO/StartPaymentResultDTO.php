@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
@@ -13,8 +14,7 @@ use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\ProviderExecutionState;
 
-final class StartPaymentResultDTO
-{
+final class StartPaymentResultDTO {
 	public function __construct(
 		public readonly ?\DateTimeImmutable $updatedAt,
 		public readonly int $paymentId,
@@ -42,10 +42,10 @@ final class StartPaymentResultDTO
 		public readonly PaymentPurpose $paymentPurpose,
 		public readonly int $quantity,
 		public readonly int $unitAmount,
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'updatedAt' => $this->updatedAt?->format(DATE_ATOM),
 			'paymentId' => $this->paymentId,
@@ -61,9 +61,9 @@ final class StartPaymentResultDTO
 			'providerExecutionState' => $this->providerExecutionState->value,
 			'alreadyCharged' => $this->alreadyCharged,
 			'selected' => (
-				$this->selected &&
-				$this->selected->mno &&
-				$this->selected->country
+				$this->selected
+				&& $this->selected->mno
+				&& $this->selected->country
 			)
 				? $this->selected->toArray()
 				: null,

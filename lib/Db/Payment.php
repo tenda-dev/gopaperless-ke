@@ -128,8 +128,7 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUnitAmount(int $unitAmount)
  * @method int getUnitAmount()
  */
-class Payment extends Entity
-{
+class Payment extends Entity {
 
 	/**
 	 * 🚨 CRITICAL:
@@ -192,8 +191,7 @@ class Payment extends Entity
 	/**
 	 * @throws \Exception
 	 */
-	public function __construct()
-	{
+	public function __construct() {
 
 		$now = $this->now();
 		/**
@@ -253,8 +251,7 @@ class Payment extends Entity
 	/**
 	 * Defensive check to ensure entity is valid before insert
 	 */
-	public function validate(): void
-	{
+	public function validate(): void {
 		if ($this->paymentAttemptId === '') {
 			throw new \InvalidArgumentException('paymentAttemptId is required');
 		}
@@ -277,8 +274,7 @@ class Payment extends Entity
 		}
 	}
 
-	public function touch(): self
-	{
+	public function touch(): self {
 		$this->setUpdatedAt(
 			$this->nowString()
 		);
@@ -286,8 +282,7 @@ class Payment extends Entity
 		return $this;
 	}
 
-	public function markPaid(): self
-	{
+	public function markPaid(): self {
 
 		$this->setPaymentStatus(PaymentStatus::PAID);
 		$this->setPaidAt($this->nowString());
@@ -301,7 +296,7 @@ class Payment extends Entity
 
 	public function markFailed(
 		?string $errorCode = null,
-		?string $errorMessage = null
+		?string $errorMessage = null,
 	): self {
 
 		$now = $this->nowString();
@@ -319,8 +314,7 @@ class Payment extends Entity
 		return $this;
 	}
 
-	public function markExpired(): self
-	{
+	public function markExpired(): self {
 		$this->setPaymentStatus(PaymentStatus::EXPIRED);
 
 		$this->clearVerificationState();
@@ -331,43 +325,35 @@ class Payment extends Entity
 	}
 
 
-	public function getPaymentPurpose(): PaymentPurpose
-	{
+	public function getPaymentPurpose(): PaymentPurpose {
 		return PaymentPurpose::from($this->purpose);
 	}
 
-	public function setPaymentPurpose(PaymentPurpose $purpose): void
-	{
+	public function setPaymentPurpose(PaymentPurpose $purpose): void {
 		$this->setPurpose($purpose->value);
 	}
 
-	public function getPaymentStatus(): PaymentStatus
-	{
+	public function getPaymentStatus(): PaymentStatus {
 		return PaymentStatus::from($this->status);
 	}
 
-	public function setPaymentStatus(PaymentStatus $status): void
-	{
+	public function setPaymentStatus(PaymentStatus $status): void {
 		$this->setStatus($status->value);
 	}
 
-	public function getPaymentProvider(): PaymentProvider
-	{
+	public function getPaymentProvider(): PaymentProvider {
 		return PaymentProvider::from($this->provider);
 	}
 
-	public function setPaymentProvider(PaymentProvider $provider): void
-	{
+	public function setPaymentProvider(PaymentProvider $provider): void {
 		$this->setProvider($provider->value);
 	}
 
-	public function getProviderEnum(): PaymentProvider
-	{
+	public function getProviderEnum(): PaymentProvider {
 		return PaymentProvider::from($this->provider);
 	}
 
-	public function getProviderMetadataDecoded(): array
-	{
+	public function getProviderMetadataDecoded(): array {
 		if ($this->providerMetadata === null || $this->providerMetadata === '') {
 			return [];
 		}
@@ -377,8 +363,7 @@ class Payment extends Entity
 		return is_array($decoded) ? $decoded : [];
 	}
 
-	public function mergeProviderMetadata(array $data): void
-	{
+	public function mergeProviderMetadata(array $data): void {
 		if (empty($data)) {
 			return;
 		}
@@ -392,15 +377,13 @@ class Payment extends Entity
 		);
 	}
 
-	public function getProviderMetadataObject(): PaymentMetadataDTO
-	{
+	public function getProviderMetadataObject(): PaymentMetadataDTO {
 		return PaymentMetadataDTO::fromArray(
 			$this->getProviderMetadataDecoded()
 		);
 	}
 
-	public function setProviderMetadataObject(PaymentMetadataDTO $dto): void
-	{
+	public function setProviderMetadataObject(PaymentMetadataDTO $dto): void {
 		$now = $this->now();
 
 		$dto = $dto->with(updatedAt: $now);
@@ -418,8 +401,7 @@ class Payment extends Entity
 	 * Prevents concurrent background workers
 	 * from verifying the same payment simultaneously.
 	 */
-	public function lockVerification(): self
-	{
+	public function lockVerification(): self {
 		$this->setVerificationLockedAt($this->nowString());
 		$this->touch();
 
@@ -432,8 +414,7 @@ class Payment extends Entity
 	 * Allows future verification attempts
 	 * if payment remains pending.
 	 */
-	public function unlockVerification(): self
-	{
+	public function unlockVerification(): self {
 		$this->setVerificationLockedAt(null);
 		$this->touch();
 
@@ -449,17 +430,16 @@ class Payment extends Entity
 	/**
 	 * Check whether reconciliation is currently in progress.
 	 */
-	public function isLocked(): bool
-	{
+	public function isLocked(): bool {
 		if ($this->verificationLockedAt === null) {
 			return false;
 		}
 
 		$timeout = (
 			new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
-			->modify(
-				'-' . self::VERIFICATION_LOCK_TIMEOUT_SECONDS . ' seconds'
-			);
+				->modify(
+					'-' . self::VERIFICATION_LOCK_TIMEOUT_SECONDS . ' seconds'
+				);
 
 		$lockedAt = $this->asDateTime(
 			$this->verificationLockedAt
@@ -479,7 +459,7 @@ class Payment extends Entity
 	 * to avoid excessive provider polling.
 	 */
 	public function scheduleNextVerification(
-		int $retryCount
+		int $retryCount,
 	): self {
 
 		// $delay = match ($retryCount) {
@@ -524,8 +504,7 @@ class Payment extends Entity
 	 * - stop retries on non-recoverable failures
 	 * - consider capped exponential backoff
 	 */
-	public function shouldRetry(): bool
-	{
+	public function shouldRetry(): bool {
 		if ($this->getPaymentStatus() === PaymentStatus::PAID) {
 			return false;
 		}
@@ -560,8 +539,7 @@ class Payment extends Entity
 		return true;
 	}
 
-	public function incrementVerificationRetryCount(): self
-	{
+	public function incrementVerificationRetryCount(): self {
 		$this->setVerificationRetryCount(
 			$this->verificationRetryCount + 1
 		);
@@ -572,8 +550,7 @@ class Payment extends Entity
 	}
 
 
-	public function clearVerificationState(): self
-	{
+	public function clearVerificationState(): self {
 		// Release reconciliation lock
 		$this->setVerificationLockedAt(null);
 
@@ -586,8 +563,7 @@ class Payment extends Entity
 	}
 
 
-	public function isReadyForVerification(): bool
-	{
+	public function isReadyForVerification(): bool {
 		if (
 			in_array(
 				$this->getPaymentStatus(),
@@ -612,8 +588,8 @@ class Payment extends Entity
 			return true;
 		}
 
-		$nextVerificationAt =
-			$this->asDateTime($this->nextVerificationAt);
+		$nextVerificationAt
+			= $this->asDateTime($this->nextVerificationAt);
 
 		if ($nextVerificationAt === null) {
 			return true;
@@ -625,54 +601,45 @@ class Payment extends Entity
 		);
 	}
 
-	public function getUpdatedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getUpdatedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->updatedAt);
 	}
 
-	public function getExpiresAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getExpiresAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->expiresAt);
 	}
 
 	// Date time helpers
-	public function getCreatedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getCreatedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->createdAt);
 	}
 
-	public function getPaidAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getPaidAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->paidAt);
 	}
 
-	public function getVerificationLockedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getVerificationLockedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->verificationLockedAt);
 	}
 
-	public function getNextVerificationAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getNextVerificationAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->nextVerificationAt);
 	}
 
-	public function getVerificationLastCheckedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getVerificationLastCheckedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->verificationLastCheckedAt);
 	}
 
-	public function getLastErrorAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getLastErrorAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->lastErrorAt);
 	}
 
-	public function getFxRateLockedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getFxRateLockedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->fxRateLockedAt);
 	}
 
 	private function asDateTime(
-		\DateTimeInterface|string|null $value
+		\DateTimeInterface|string|null $value,
 	): ?\DateTimeImmutable {
 
 		if ($value === null) {
@@ -690,16 +657,14 @@ class Payment extends Entity
 		}
 	}
 
-	private function now(): \DateTimeImmutable
-	{
+	private function now(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
 		);
 	}
 
-	private function nowString(): string
-	{
+	private function nowString(): string {
 		return $this->now()->format(DATE_ATOM);
 	}
 }

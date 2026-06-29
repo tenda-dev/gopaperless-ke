@@ -11,28 +11,23 @@ namespace OCA\Libresign\Service\Payment\DTO;
 
 use InvalidArgumentException;
 
-final class CardPaymentPayloadDTO
-{
+final class CardPaymentPayloadDTO {
 	public function __construct(
 		public readonly float $amount,
 		public readonly string $currency,
-
 		// Business context
 		public readonly string $userId,
 		public readonly string $email,
-
 		// Required for redirect flows
 		public readonly string $redirectUrl,
 		public readonly ?string $callbackUrl = null,
-
 		// Future-safe metadata
 		public readonly array $meta = [],
 	) {
 		$this->validate();
 	}
 
-	private function validate(): void
-	{
+	private function validate(): void {
 		if ($this->amount <= 0) {
 			throw new InvalidArgumentException('amount must be greater than 0');
 		}
@@ -54,8 +49,7 @@ final class CardPaymentPayloadDTO
 		}
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'amount' => $this->amount,
 			'currency' => $this->currency,

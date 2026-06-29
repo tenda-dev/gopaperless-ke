@@ -15,8 +15,8 @@ use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Product\ProductService;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
-use RuntimeException;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 class EntitlementService {
 
@@ -327,8 +327,7 @@ class EntitlementService {
 	/**
 	 * @throws \Exception
 	 */
-	private function now(): string
-	{
+	private function now(): string {
 		return (new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),

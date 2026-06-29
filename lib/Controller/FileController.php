@@ -62,8 +62,7 @@ use Psr\Log\LoggerInterface;
  * @psalm-import-type LibresignValidateMetadata from \OCA\Libresign\ResponseDefinitions
  * @psalm-import-type LibresignVisibleElement from \OCA\Libresign\ResponseDefinitions
  */
-class FileController extends AEnvironmentAwareController
-{
+class FileController extends AEnvironmentAwareController {
 	public function __construct(
 		IRequest $request,
 		private IL10N $l10n,
@@ -166,8 +165,7 @@ class FileController extends AEnvironmentAwareController
 	#[NoCSRFRequired]
 	#[PublicPage]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/file/validate/', requirements: ['apiVersion' => '(v1)'])]
-	public function validateBinary(): DataResponse
-	{
+	public function validateBinary(): DataResponse {
 		try {
 			$file = $this->request->getUploadedFile('file');
 			$return = $this->fileService
@@ -317,7 +315,7 @@ class FileController extends AEnvironmentAwareController
 			'start' => $start,
 			'end' => $end,
 			'parentFileId' => $parentFileId,
-		], static fn($var) => $var !== null);
+		], static fn ($var) => $var !== null);
 		$sort = [
 			'sortBy' => $sortBy,
 			'sortDirection' => $sortDirection,
@@ -558,8 +556,8 @@ class FileController extends AEnvironmentAwareController
 			$attributes = $share->getAttributes();
 
 			if (
-				$attributes !== null &&
-				$attributes->getAttribute('permissions', 'download') === false
+				$attributes !== null
+				&& $attributes->getAttribute('permissions', 'download') === false
 			) {
 				$this->logger->error('Preview debug: shared storage download forbidden', [
 					'nodeId' => $node->getId(),
@@ -727,8 +725,7 @@ class FileController extends AEnvironmentAwareController
 	#[NoCSRFRequired]
 	#[RequireManager]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/file/{uuid}/add-file', requirements: ['apiVersion' => '(v1)'])]
-	public function addFileToEnvelope(string $uuid): DataResponse
-	{
+	public function addFileToEnvelope(string $uuid): DataResponse {
 		try {
 			$this->validateHelper->canRequestSign($this->userSession->getUser());
 
@@ -795,8 +792,7 @@ class FileController extends AEnvironmentAwareController
 	/**
 	 * @return array{node: Node, name: string}
 	 */
-	private function prepareFileForSaving(array $fileData, string $name, array $settings): array
-	{
+	private function prepareFileForSaving(array $fileData, string $name, array $settings): array {
 		if (empty($name)) {
 			$name = $this->extractFileName($fileData);
 		}
@@ -849,8 +845,7 @@ class FileController extends AEnvironmentAwareController
 	 * @return list<array{uploadedFile?: array, fileNode?: \OCP\Files\Node, name?: string}>
 	 * @throws LibresignException
 	 */
-	private function prepareFilesForSaving(array $file, array $files, array $settings): array
-	{
+	private function prepareFilesForSaving(array $file, array $files, array $settings): array {
 		$normalized = [];
 
 		// 1. Handle uploaded files (multipart)
@@ -885,9 +880,9 @@ class FileController extends AEnvironmentAwareController
 				// - ['url' => ...] (existing support)
 
 				if (
-					!isset($f['fileNode']) &&
-					!isset($f['file']) &&
-					!isset($f['url'])
+					!isset($f['fileNode'])
+					&& !isset($f['file'])
+					&& !isset($f['url'])
 				) {
 					throw new LibresignException(
 						$this->l10n->t("Invalid file structure at index {$index}")
@@ -933,8 +928,7 @@ class FileController extends AEnvironmentAwareController
 	/**
 	 * @return list<array{uploadedFile: array, name: string}>
 	 */
-	private function processUploadedFiles(array $uploadedFiles): array
-	{
+	private function processUploadedFiles(array $uploadedFiles): array {
 		$filesArray = [];
 
 		if (isset($uploadedFiles['tmp_name'])) {
@@ -973,8 +967,7 @@ class FileController extends AEnvironmentAwareController
 	/**
 	 * @return DataResponse<Http::STATUS_OK, LibresignDetailedFileResponse, array{}>
 	 */
-	private function saveFiles(array $files, string $name, array $settings): DataResponse
-	{
+	private function saveFiles(array $files, string $name, array $settings): DataResponse {
 		if (empty($files)) {
 			throw new LibresignException($this->l10n->t('File or files parameter is required'));
 		}
@@ -990,8 +983,7 @@ class FileController extends AEnvironmentAwareController
 		return new DataResponse($response, Http::STATUS_OK);
 	}
 
-	private function extractFileName(array $fileData): string
-	{
+	private function extractFileName(array $fileData): string {
 		if (!empty($fileData['name'])) {
 			return $fileData['name'];
 		}
@@ -1018,8 +1010,7 @@ class FileController extends AEnvironmentAwareController
 	#[NoCSRFRequired]
 	#[RequireManager]
 	#[ApiRoute(verb: 'DELETE', url: '/api/{apiVersion}/file/file_id/{fileId}', requirements: ['apiVersion' => '(v1)'])]
-	public function deleteAllRequestSignatureUsingFileId(int $fileId, bool $deleteFile = true): DataResponse
-	{
+	public function deleteAllRequestSignatureUsingFileId(int $fileId, bool $deleteFile = true): DataResponse {
 		try {
 			$data = [
 				'userManager' => $this->userSession->getUser(),
@@ -1062,12 +1053,11 @@ class FileController extends AEnvironmentAwareController
 	#[NoCSRFRequired]
 	#[PublicPage]
 	#[ApiRoute(
-    verb: 'GET',
-    url: '/api/{apiVersion}/file/context/{uuid}',
-    requirements: ['apiVersion' => '(v1)']
+		verb: 'GET',
+		url: '/api/{apiVersion}/file/context/{uuid}',
+		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function getContext(string $uuid): DataResponse
-	{
+	public function getContext(string $uuid): DataResponse {
 		$response = $this->validate(
 			type: 'Uuid',
 			identifier: $uuid,

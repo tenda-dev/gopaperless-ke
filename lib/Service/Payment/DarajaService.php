@@ -453,8 +453,7 @@ class DarajaService {
 	 * Raw provider descriptions are kept out of the API surface to avoid
 	 * leaking internal system state or subscriber details.
 	 */
-	public static function mapResultCodeToReason(?int $code): string
-	{
+	public static function mapResultCodeToReason(?int $code): string {
 		return match ($code) {
 			0 => 'success',
 			1 => 'insufficient_balance',

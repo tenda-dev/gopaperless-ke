@@ -26,8 +26,7 @@ use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
 
-final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifiableProvider
-{
+final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifiableProvider {
 	private DpoPaymentService $dpo;
 	private LoggerInterface $logger;
 	private IRequest $request;
@@ -43,8 +42,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	}
 
 
-	public function getName(): PaymentProvider
-	{
+	public function getName(): PaymentProvider {
 		return PaymentProvider::DPO;
 	}
 
@@ -56,8 +54,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 * - No fallback
 	 * - No intelligence
 	 */
-	public function initiateMobileMoney(MobileMoneyPayloadDTO $payload): MobileMoneyResultDTO
-	{
+	public function initiateMobileMoney(MobileMoneyPayloadDTO $payload): MobileMoneyResultDTO {
 		try {
 			$result = $this->dpo->createToken(
 				$payload->email,
@@ -107,8 +104,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	/**
 	 * MOBILE MONEY CHARGE
 	 */
-	public function charge(MobileMoneyChargeDTO $payload): MobileMoneyResultDTO
-	{
+	public function charge(MobileMoneyChargeDTO $payload): MobileMoneyResultDTO {
 		try {
 			$response = $this->dpo->chargeTokenMobile(
 				$payload->providerReference,
@@ -161,12 +157,11 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	/**
 	 * CARD INITIATE
 	 */
-	public function initiateCard(CardPaymentPayloadDTO $payload): CardPaymentResultDTO
-	{
+	public function initiateCard(CardPaymentPayloadDTO $payload): CardPaymentResultDTO {
 
 		if (
-			!$payload->redirectUrl ||
-			!filter_var($payload->redirectUrl, FILTER_VALIDATE_URL)
+			!$payload->redirectUrl
+			|| !filter_var($payload->redirectUrl, FILTER_VALIDATE_URL)
 		) {
 			throw new RuntimeException(
 				'Valid redirect URL required'
@@ -211,8 +206,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 * Used by VerificationService / MobileMoneyService
 	 * Will be removed once fully abstracted into service layer
 	 */
-	public function verifyStatus(string $reference): string
-	{
+	public function verifyStatus(string $reference): string {
 		try {
 
 			$result = $this->dpo->verifyToken($reference, false);
@@ -246,8 +240,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 		}
 	}
 
-	public function getMobileOptions(string $reference): array
-	{
+	public function getMobileOptions(string $reference): array {
 		return $this->dpo->getMobilePaymentOptions($reference);
 	}
 
@@ -257,8 +250,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 * Defaults to the current request host. Override via app config if
 	 * additional staging/white-label hosts are required.
 	 */
-	private function getAllowedRedirectHosts(): array
-	{
+	private function getAllowedRedirectHosts(): array {
 		$currentHost = $this->request->getServerHost();
 		return $currentHost !== '' ? [$currentHost] : [];
 	}
@@ -266,13 +258,11 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	/**
 	 * TEMP DEBUG
 	 */
-	public function test(): array
-	{
+	public function test(): array {
 		return $this->dpo->testDpo();
 	}
 
-	public function query(string $reference): array
-	{
+	public function query(string $reference): array {
 		throw new RuntimeException($this->getName()->value . ' does not support query fallback');
 	}
 }

@@ -15,8 +15,7 @@ use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\ProviderExecutionState;
 
-final class ExistingPaymentResultDTO
-{
+final class ExistingPaymentResultDTO {
 	public function __construct(
 		public readonly ?\DateTimeImmutable $updatedAt,
 		public readonly int $paymentId,
@@ -46,10 +45,10 @@ final class ExistingPaymentResultDTO
 		public readonly PaymentPurpose $paymentPurpose,
 		public readonly int $quantity,
 		public readonly int $unitAmount,
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'updatedAt' => $this->updatedAt?->format(DATE_ATOM),
 			'paymentId' => $this->paymentId,
@@ -67,9 +66,9 @@ final class ExistingPaymentResultDTO
 			'alreadyCharged' => $this->alreadyCharged,
 			'providerExecutionState' => $this->providerExecutionState?->value,
 			'selected' => (
-				$this->selected &&
-				$this->selected->mno &&
-				$this->selected->country
+				$this->selected
+				&& $this->selected->mno
+				&& $this->selected->country
 			)
 				? $this->selected->toArray()
 				: null,

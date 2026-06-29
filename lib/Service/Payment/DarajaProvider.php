@@ -20,25 +20,21 @@ use OCA\Libresign\Service\Payment\Interfaces\IVerifiableProvider;
 use RuntimeException;
 use Throwable;
 
-final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
-{
+final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider {
 	private DarajaService $daraja;
 
-	public function __construct(DarajaService $daraja)
-	{
+	public function __construct(DarajaService $daraja) {
 		$this->daraja = $daraja;
 	}
 
-	public function getName(): PaymentProvider
-	{
+	public function getName(): PaymentProvider {
 		return PaymentProvider::DARAJA;
 	}
 
 	/**
 	 * INITIATE (EXECUTES STK IMMEDIATELY)
 	 */
-	public function initiateMobileMoney(MobileMoneyPayloadDTO $payload): MobileMoneyResultDTO
-	{
+	public function initiateMobileMoney(MobileMoneyPayloadDTO $payload): MobileMoneyResultDTO {
 		try {
 			$response = $this->daraja->initiatePayment([
 				'amount' => $payload->amount,
@@ -77,8 +73,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	/**
 	 * Daraja does NOT support deferred charge
 	 */
-	public function charge(MobileMoneyChargeDTO $payload): MobileMoneyResultDTO
-	{
+	public function charge(MobileMoneyChargeDTO $payload): MobileMoneyResultDTO {
 		return new MobileMoneyResultDTO(
 			providerExecutionState: ProviderExecutionState::CANCELLED,
 			provider: PaymentProvider::DARAJA,
@@ -94,8 +89,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	 *
 	 * Daraja is async → always pending here
 	 */
-	public function verifyStatus(string $reference): string
-	{
+	public function verifyStatus(string $reference): string {
 		// async → DB is source of truth
 		return 'PENDING';
 	}
@@ -103,8 +97,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	/**
 	 * 🔁 TEMP — fallback polling
 	 */
-	public function query(string $reference): array
-	{
+	public function query(string $reference): array {
 		try {
 			return $this->daraja->queryStkStatus($reference);
 		} catch (Throwable $e) {
@@ -115,8 +108,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	/**
 	 * 🔁 TEMP DEBUG
 	 */
-	public function test(): array
-	{
+	public function test(): array {
 		return $this->daraja->test();
 	}
 }

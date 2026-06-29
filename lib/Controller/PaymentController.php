@@ -10,11 +10,10 @@ declare(strict_types=1);
 namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
-use OCA\Libresign\Enum\PaymentStatus;
-use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCP\AppFramework\Http;
@@ -31,8 +30,7 @@ use OCP\IRequest;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
-class PaymentController extends AEnvironmentAwareController
-{
+class PaymentController extends AEnvironmentAwareController {
 
 	private PaymentService $paymentService;
 	protected LoggerInterface $logger;
@@ -166,8 +164,7 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/verify',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function verify(string $providerReference): DataResponse
-	{
+	public function verify(string $providerReference): DataResponse {
 		$user = $this->userSession->getUser();
 		if (!$user) {
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
@@ -209,8 +206,7 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/status',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function status(string $providerReference): DataResponse
-	{
+	public function status(string $providerReference): DataResponse {
 		$user = $this->userSession->getUser();
 		if (!$user) {
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
@@ -234,8 +230,7 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/webhook/daraja',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function darajaCallback(): DataResponse
-	{
+	public function darajaCallback(): DataResponse {
 
 		$rawBody = file_get_contents('php://input');
 		$data = json_decode($rawBody, true);
@@ -285,8 +280,7 @@ class PaymentController extends AEnvironmentAwareController
 		verb: 'GET',
 		url: '/payment/webhook/dpo',
 	)]
-	public function dpoCallback(): DataResponse
-	{
+	public function dpoCallback(): DataResponse {
 		// DPO contract: always respond with OK regardless of outcome
 		$responseXml = '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>';
 		$xmlHeaders = ['Content-Type' => 'application/xml'];
@@ -324,8 +318,7 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/daraja/query',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function queryDaraja(string $reference): DataResponse
-	{
+	public function queryDaraja(string $reference): DataResponse {
 		$user = $this->userSession->getUser();
 		if (!$user) {
 			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
@@ -411,7 +404,7 @@ class PaymentController extends AEnvironmentAwareController
 		string $reference,
 		string $phone,
 		?string $mno = null,
-		?string $country = null
+		?string $country = null,
 	): DataResponse {
 
 		try {
@@ -496,8 +489,7 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/mobile-options',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function getMobileOptions(string $reference, string $country): DataResponse
-	{
+	public function getMobileOptions(string $reference, string $country): DataResponse {
 
 		try {
 			$user = $this->userSession->getUser();
@@ -527,8 +519,7 @@ class PaymentController extends AEnvironmentAwareController
 		}
 	}
 
-	private function parseDpoXml(string $xml): array
-	{
+	private function parseDpoXml(string $xml): array {
 		$data = simplexml_load_string($xml);
 
 		return [

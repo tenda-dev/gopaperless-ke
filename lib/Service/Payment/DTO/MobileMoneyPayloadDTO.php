@@ -11,27 +11,23 @@ namespace OCA\Libresign\Service\Payment\DTO;
 
 use InvalidArgumentException;
 
-final class MobileMoneyPayloadDTO
-{
+final class MobileMoneyPayloadDTO {
 	public function __construct(
-		public readonly string $phone, // MUST be e164_digits
+		public readonly string $phone,
+		// MUST be e164_digits
 		public readonly float $amount,
 		public readonly string $currency,
-
 		// Core business context
 		public readonly ?string $signUuid,
 		public readonly ?int $signRequestId,
 		public readonly string $userId,
 		public readonly string $email,
-
 		// URLs
 		public readonly ?string $callbackUrl = null,
 		public readonly ?string $redirectUrl = null,
-
 		// Optional hints (from FE or resolution)
 		public readonly ?string $mno = null,
 		public readonly ?string $country = null,
-
 		// Future-safe metadata
 		public readonly array $meta = [],
 	) {
@@ -45,12 +41,12 @@ final class MobileMoneyPayloadDTO
 	 * without reconstructing DTOs manually.
 	 */
 	public function with(
-	?string $phone = null,
-	?string $callbackUrl = null,
-	?string $redirectUrl = null,
-	?string $mno = null,
-	?string $country = null,
-	?array $meta = null,
+		?string $phone = null,
+		?string $callbackUrl = null,
+		?string $redirectUrl = null,
+		?string $mno = null,
+		?string $country = null,
+		?array $meta = null,
 	): self {
 		return new self(
 			phone: $phone ?? $this->phone,
@@ -77,8 +73,7 @@ final class MobileMoneyPayloadDTO
 	/**
 	 * Validation (STRICT)
 	 */
-	private function validate(): void
-	{
+	private function validate(): void {
 		if ($this->phone === '') {
 			throw new InvalidArgumentException('phone is required');
 		}
@@ -104,21 +99,18 @@ final class MobileMoneyPayloadDTO
 	 * Domain helpers
 	 */
 
-	public function hasMno(): bool
-	{
+	public function hasMno(): bool {
 		return $this->mno !== null && $this->mno !== '';
 	}
 
-	public function hasCountry(): bool
-	{
+	public function hasCountry(): bool {
 		return $this->country !== null && $this->country !== '';
 	}
 
 	/**
 	 * Provider adapters can safely extract base payload
 	 */
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'phone' => $this->phone,
 			'amount' => $this->amount,
@@ -135,8 +127,7 @@ final class MobileMoneyPayloadDTO
 		];
 	}
 
-	public function __toString(): string
-	{
+	public function __toString(): string {
 		return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
 	}
 }

@@ -23,25 +23,23 @@ use OCA\Libresign\Enum\ProviderExecutionState;
 use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Payment\Dispatchers\VerificationDispatcherFactory;
-use OCA\Libresign\Service\Payment\DarajaService;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyChargeDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyPayloadDTO;
-use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\PaymentMetadataDTO;
 use OCA\Libresign\Service\Payment\DTO\ProviderPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\SelectedMnoDTO;
 use OCA\Libresign\Service\Payment\DTO\SelectionDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
+use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\SuggestedMnoDTO;
 use OCA\Libresign\Service\Product\ProductService;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
-use Random\RandomException;
 use RuntimeException;
 
 /**
@@ -54,8 +52,7 @@ use RuntimeException;
  * - Verify payments
  * - Process Daraja callbacks
  */
-class PaymentService
-{
+class PaymentService {
 	/**
 	 * Operational payment expiry window.
 	 *
@@ -154,8 +151,7 @@ class PaymentService
 	 *
 	 * @throws \Throwable
 	 */
-	public function startPayment(StartPaymentDTO $dto): StartPaymentResultDTO | ExistingPaymentResultDTO
-	{
+	public function startPayment(StartPaymentDTO $dto): StartPaymentResultDTO|ExistingPaymentResultDTO {
 		$userEmail = $dto->userEmail;
 		$signUuid = $dto->signUuid;
 		$signRequestId = $dto->signRequestId;
@@ -238,7 +234,7 @@ class PaymentService
 				$resolutionDto->national,
 			);
 
-			$finalCarrier    = $detection['mno'] ?? $resolutionDto->carrierHint;
+			$finalCarrier = $detection['mno'] ?? $resolutionDto->carrierHint;
 
 			$finalConfidence = $detection['confidence'];
 
@@ -256,8 +252,8 @@ class PaymentService
 
 			$ctxMetadata = [
 				'confidenceBreakdown' => $finalConfidence,
-				'carrier'             => $finalCarrier,
-				'region'              => $region,
+				'carrier' => $finalCarrier,
+				'region' => $region,
 			];
 
 			$this->logger->info('Mobile money routing result', [
@@ -372,8 +368,8 @@ class PaymentService
 				 * DPO to Daraja). Do not recycle a stale route.
 				 */
 				if (
-					$route !== null &&
-					$pending->getProviderEnum() !== $route->preferredProvider
+					$route !== null
+					&& $pending->getProviderEnum() !== $route->preferredProvider
 				) {
 
 					$this->logger->info('[Payment] Expiring pending payment because route provider changed', [
@@ -387,10 +383,10 @@ class PaymentService
 
 					$this->expirePayment($pending);
 				} elseif (
-					$methodEnum === PaymentMethod::MOBILE &&
-					$e164 !== null &&
-					$pending->getPhoneE164Digits() !== null &&
-					$pending->getPhoneE164Digits() !== $e164
+					$methodEnum === PaymentMethod::MOBILE
+					&& $e164 !== null
+					&& $pending->getPhoneE164Digits() !== null
+					&& $pending->getPhoneE164Digits() !== $e164
 				) {
 
 					$this->expirePayment($pending);
@@ -456,8 +452,8 @@ class PaymentService
 		$totalAmount = $unitAmount * $quantity;
 
 		$amountMinor = $totalAmount;
-		$currency    = $product->getCurrency();
-		$uses        = $totalUses;
+		$currency = $product->getCurrency();
+		$uses = $totalUses;
 
 		if ($uses <= 0) {
 			throw new RuntimeException('Invalid product configuration');
@@ -532,8 +528,8 @@ class PaymentService
 
 			$res = match ($route->capability) {
 
-				PaymentCapability::MOBILE_MONEY =>
-				$this->mobileMoneyService->initiate(
+				PaymentCapability::MOBILE_MONEY
+				=> $this->mobileMoneyService->initiate(
 					$route,
 					new MobileMoneyPayloadDTO(
 						phone: $e164,
@@ -548,8 +544,8 @@ class PaymentService
 					)
 				),
 
-				PaymentCapability::CARD =>
-				$this->cardService->initiateCard(
+				PaymentCapability::CARD
+				=> $this->cardService->initiateCard(
 					new CardPaymentPayloadDTO(
 						amount: $normalisedAmount,
 						currency: $fxEngineResult->displayCurrency,
@@ -747,8 +743,7 @@ class PaymentService
 	 * - If expired → mark as failed
 	 * - Otherwise → return current state (likely PENDING)
 	 */
-	public function getPaymentStatus(string $reference): PaymentStatus
-	{
+	public function getPaymentStatus(string $reference): PaymentStatus {
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
 		// Fast path → already resolved
@@ -808,26 +803,26 @@ class PaymentService
 		?string $signUuid = null,
 		?string $productCode = null,
 		?string $userId = null,
-	): ExistingPaymentResultDTO | null {
+	): ?ExistingPaymentResultDTO {
 
 		/**
 		 * Resolve pending payment based on purpose
 		 */
 		$payment = match ($purpose) {
 
-			PaymentPurpose::SIGN_REQUEST =>
-			$signRequestId !== null
+			PaymentPurpose::SIGN_REQUEST
+			=> $signRequestId !== null
 				? $this->paymentMapper
-				->findLatestPendingByTransactionId($signRequestId)
+					->findLatestPendingByTransactionId($signRequestId)
 				: null,
 
-			PaymentPurpose::CREDIT_PURCHASE =>
-			$userId !== null && $productCode !== null
+			PaymentPurpose::CREDIT_PURCHASE
+			=> $userId !== null && $productCode !== null
 				? $this->paymentMapper
-				->findLatestPendingCreditPurchaseByUserId(
-					$userId,
-					$productCode
-				)
+					->findLatestPendingCreditPurchaseByUserId(
+						$userId,
+						$productCode
+					)
 				: null,
 		};
 
@@ -844,8 +839,8 @@ class PaymentService
 		 * - leaking payment metadata
 		 */
 		if (
-			$purpose === PaymentPurpose::SIGN_REQUEST &&
-			$payment->getTransactionReference() !== $signUuid
+			$purpose === PaymentPurpose::SIGN_REQUEST
+			&& $payment->getTransactionReference() !== $signUuid
 		) {
 			return null;
 		}
@@ -857,9 +852,9 @@ class PaymentService
 		 * so only enforce when present.
 		 */
 		if (
-			$userId !== null &&
-			$payment->getUserId() !== null &&
-			$payment->getUserId() !== $userId
+			$userId !== null
+			&& $payment->getUserId() !== null
+			&& $payment->getUserId() !== $userId
 		) {
 			return null;
 		}
@@ -900,8 +895,7 @@ class PaymentService
 	 * - No locking
 	 * - Background job remains source of truth
 	 */
-	public function verifyPayment(string $reference): PaymentStatus
-	{
+	public function verifyPayment(string $reference): PaymentStatus {
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
 		// Already resolved → return immediately
@@ -972,9 +966,8 @@ class PaymentService
 	 * - PENDING → schedule retry
 	 */
 	public function syncPaymentStatus(
-		Payment $payment
-		): void
-	{
+		Payment $payment,
+	): void {
 		$this->logger->info('[Payment] syncPaymentStatus start', [
 			'paymentId' => $payment->getId(),
 			'provider' => $payment->getProvider(),
@@ -1142,8 +1135,7 @@ class PaymentService
 	 * 	Only applies to async providers (currently Daraja)
 	 * @throws Exception
 	 */
-	public function queryPayment(string $reference): PaymentStatus
-	{
+	public function queryPayment(string $reference): PaymentStatus {
 
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
@@ -1250,8 +1242,7 @@ class PaymentService
 	/**
 	 * Check if payment is complete
 	 */
-	public function isPaymentComplete(int $signRequestId): bool
-	{
+	public function isPaymentComplete(int $signRequestId): bool {
 		$payment = $this->paymentMapper->findLatestPaidByTransactionId($signRequestId);
 
 		return $payment !== null;
@@ -1271,8 +1262,7 @@ class PaymentService
 	 * - 1037 → FAILED (timeout — user didn't respond)
 	 * - any other non-zero → FAILED
 	 */
-	public function handleDarajaCallback(array $payload): void
-	{
+	public function handleDarajaCallback(array $payload): void {
 		$reference = $payload['CheckoutRequestID'] ?? null;
 		$resultCode = $payload['ResultCode'] ?? null;
 		$resultDesc = $payload['ResultDesc'] ?? null;
@@ -1424,8 +1414,7 @@ class PaymentService
 	 * - 902 → FAILED (payment declined)
 	 * - 904 → CANCELLED (user cancelled)
 	 */
-	public function handleDpoCallback(array $payload): ?PaymentStatus
-	{
+	public function handleDpoCallback(array $payload): ?PaymentStatus {
 		$reference = $payload['TransactionToken'] ?? null;
 		$result = (string)($payload['Result'] ?? '');
 
@@ -1577,14 +1566,14 @@ class PaymentService
 	 * - FE must poll getPaymentStatus() to resolve final state
 	 *
 	 * @throws RuntimeException if:
-	 * - payment is not DPO
-	 * - payment is not in PENDING state
+	 *                          - payment is not DPO
+	 *                          - payment is not in PENDING state
 	 */
 	public function chargeMobile(
 		string $reference,
 		string $phone,
 		?string $inputMno = null,
-		?string $inputCountry = null
+		?string $inputCountry = null,
 	): ExistingPaymentResultDTO {
 		$payment = $this->fetchPaymentByProviderReference($reference);
 		/**
@@ -1609,8 +1598,8 @@ class PaymentService
 		}
 
 		if (
-			$payment->getDisplayAmount() === null ||
-			$payment->getDisplayCurrency() === null
+			$payment->getDisplayAmount() === null
+			|| $payment->getDisplayCurrency() === null
 		) {
 			throw new RuntimeException('Missing display pricing information');
 		}
@@ -1733,11 +1722,10 @@ class PaymentService
 	 * - FE must allow user to select one of the returned providers before calling chargeMobile()
 	 *
 	 * @throws RuntimeException if:
-	 * - payment is not DPO
-	 * - payment is not in PENDING state
+	 *                          - payment is not DPO
+	 *                          - payment is not in PENDING state
 	 */
-	public function getMobileOptions(string $reference, string $country): array
-	{
+	public function getMobileOptions(string $reference, string $country): array {
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
 		if ($payment->getProviderEnum() !== PaymentProvider::DPO) {
@@ -1768,16 +1756,14 @@ class PaymentService
 		return $options;
 	}
 
-	public function health(): array
-	{
+	public function health(): array {
 		return [
 			'dpo' => $this->mobileMoneyService->testDpo(),
 			'daraja' => $this->mobileMoneyService->testDaraja(),
 		];
 	}
 
-	private function validatePhoneNumber(string $phone): void
-	{
+	private function validatePhoneNumber(string $phone): void {
 		$phoneUtil = PhoneNumberUtil::getInstance();
 
 		// Enforce international format strictly
@@ -1813,8 +1799,7 @@ class PaymentService
 	/**
 	 * Extract Daraja metadata into key-value map
 	 */
-	private function extractMetadata(array $callback): array
-	{
+	private function extractMetadata(array $callback): array {
 
 		$items = $callback['CallbackMetadata']['Item'] ?? [];
 
@@ -1837,8 +1822,7 @@ class PaymentService
 	 * @throws \Throwable
 	 * @throws Exception
 	 */
-	private function finalisePayment(Payment $payment): void
-	{
+	private function finalisePayment(Payment $payment): void {
 
 		/**
 		 * IDEMPOTENCY GUARD
@@ -1937,8 +1921,7 @@ class PaymentService
 	/**
 	 * Specific for deferred charge step in this case (DPO)
 	 */
-	private function validateOptionsSelection(array $options, string $mno, string $country): void
-	{
+	private function validateOptionsSelection(array $options, string $mno, string $country): void {
 		foreach ($options as $option) {
 			$optionMno = is_string($option['provider'] ?? null)
 				? strtolower($option['provider'])
@@ -1949,8 +1932,8 @@ class PaymentService
 				: null;
 
 			if (
-				$optionMno === strtolower($mno) &&
-				$optionCountry === strtolower($country)
+				$optionMno === strtolower($mno)
+				&& $optionCountry === strtolower($country)
 			) {
 				return;
 			}
@@ -1970,8 +1953,7 @@ class PaymentService
 	 * This guarantees a clean, fully mapped entity before mutation.
 	 * also ensures $payment is a managed entity
 	 */
-	private function fetchPaymentByProviderReference(string $reference): Payment
-	{
+	private function fetchPaymentByProviderReference(string $reference): Payment {
 		$payment = $this->paymentMapper->findByProviderReference($reference);
 
 		if (!$payment) {
@@ -1993,8 +1975,7 @@ class PaymentService
 	 *
 	 * @throws RuntimeException if the payment does not exist or the user is not the owner.
 	 */
-	public function assertPaymentOwnership(string $reference, string $userId): Payment
-	{
+	public function assertPaymentOwnership(string $reference, string $userId): Payment {
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
 		$paymentUserId = $payment->getUserId();
@@ -2005,8 +1986,7 @@ class PaymentService
 		return $payment;
 	}
 
-	private function fetchByTransactionId(int $signRequestId): Payment
-	{
+	private function fetchByTransactionId(int $signRequestId): Payment {
 		$payment = $this->paymentMapper->findLatestPendingByTransactionId($signRequestId);
 
 		if (!$payment) {
@@ -2022,8 +2002,7 @@ class PaymentService
 		return $this->paymentMapper->findById($payment->getId());
 	}
 
-	private function buildExistingPaymentResponse(Payment $payment): ExistingPaymentResultDTO
-	{
+	private function buildExistingPaymentResponse(Payment $payment): ExistingPaymentResultDTO {
 		$meta = $payment->getProviderMetadataObject();
 
 		$status = $payment->getPaymentStatus();
@@ -2108,8 +2087,7 @@ class PaymentService
 		);
 	}
 
-	private function expirePayment(Payment $payment): void
-	{
+	private function expirePayment(Payment $payment): void {
 		$payment->setPaymentStatus(PaymentStatus::FAILED);
 
 		$meta = $payment->getProviderMetadataObject();
@@ -2128,8 +2106,7 @@ class PaymentService
 		$this->paymentMapper->update($payment);
 	}
 
-	public function mapPaymentStatus(PaymentStatus $status): string
-	{
+	public function mapPaymentStatus(PaymentStatus $status): string {
 		return match ($status) {
 			PaymentStatus::PAID => 'SUCCESS',
 			PaymentStatus::INITIATION_FAILED => 'INITIATION_FAILED',
@@ -2148,8 +2125,7 @@ class PaymentService
 	 * localised message. This prevents data leakage / harvesting of provider
 	 * error text, subscriber identifiers, or system internals.
 	 */
-	public function getPaymentFailureReason(Payment $payment): ?string
-	{
+	public function getPaymentFailureReason(Payment $payment): ?string {
 		$status = $payment->getPaymentStatus();
 
 		if (!in_array($status, [PaymentStatus::FAILED, PaymentStatus::CANCELLED, PaymentStatus::EXPIRED], true)) {
@@ -2192,8 +2168,7 @@ class PaymentService
 	 * - are still pending
 	 * - are not expired
 	 */
-	private function hasPaymentExpired(Payment $payment): bool
-	{
+	private function hasPaymentExpired(Payment $payment): bool {
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
 			return false;
 		}
@@ -2222,8 +2197,7 @@ class PaymentService
 	 * stale window, the user is effectively blocked and needs a new
 	 * attempt. The old row is left to expire or reconcile via callback.
 	 */
-	private function isPendingStaleForRetry(Payment $payment): bool
-	{
+	private function isPendingStaleForRetry(Payment $payment): bool {
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
 			return false;
 		}
@@ -2249,8 +2223,7 @@ class PaymentService
 	/**
 	 * @throws \Exception
 	 */
-	private function now(): string
-	{
+	private function now(): string {
 		return (new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
@@ -2258,8 +2231,7 @@ class PaymentService
 	}
 
 
-	private function nowImmutable(): \DateTimeImmutable
-	{
+	private function nowImmutable(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
@@ -2267,7 +2239,7 @@ class PaymentService
 	}
 
 	private function asDateTime(
-		\DateTimeInterface|string|null $value
+		\DateTimeInterface|string|null $value,
 	): ?\DateTimeImmutable {
 
 		if ($value === null) {
@@ -2287,7 +2259,7 @@ class PaymentService
 
 	private function appendProviderError(
 		PaymentMetadataDTO $meta,
-		array $error
+		array $error,
 	): PaymentMetadataDTO {
 
 		return $meta->with(
@@ -2300,7 +2272,7 @@ class PaymentService
 	}
 
 	private function getProviderPayload(
-		PaymentMetadataDTO $meta
+		PaymentMetadataDTO $meta,
 	): ProviderPayloadDTO {
 
 		return $meta->providerPayload
