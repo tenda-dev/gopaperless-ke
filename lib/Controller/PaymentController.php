@@ -14,6 +14,7 @@ use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
+use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Service\SMS\SMSService;
@@ -39,6 +40,7 @@ class PaymentController extends AEnvironmentAwareController
 	private PaymentService $paymentService;
 	protected LoggerInterface $logger;
 	protected SMSService $smsService;
+	private SignRequestMapper $signRequestMapper;
 
 	public function __construct(
 		IRequest $request,
@@ -46,11 +48,13 @@ class PaymentController extends AEnvironmentAwareController
 		LoggerInterface $logger,
 		SMSService $smsService,
 		protected IUserSession $userSession,
+		SignRequestMapper $signRequestMapper,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->paymentService = $paymentService;
 		$this->logger = $logger;
 		$this->smsService = $smsService;
+		$this->signRequestMapper = $signRequestMapper;
 	}
 
 	/**
@@ -179,9 +183,25 @@ class PaymentController extends AEnvironmentAwareController
 		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
 		$status = $this->paymentService->verifyPayment($providerReference);
 
+		$signRequestUuid = null;
+		$signRequestId = $payment->getTransactionId();
+		if ($signRequestId > 0) {
+			try {
+				$signRequest = $this->signRequestMapper->getById($signRequestId);
+				$signRequestUuid = $signRequest->getUuid();
+			} catch (\Throwable $e) {
+				$this->logger->warning('[PaymentController] Could not resolve sign request UUID for payment', [
+					'providerReference' => $providerReference,
+					'signRequestId' => $signRequestId,
+					'error' => $e->getMessage(),
+				]);
+			}
+		}
+
 		return new DataResponse([
 			'status' => $this->paymentService->mapPaymentStatus($status),
 			'reason' => $this->paymentService->getPaymentFailureReason($payment),
+			'signRequestUuid' => $signRequestUuid,
 		], Http::STATUS_OK);
 	}
 

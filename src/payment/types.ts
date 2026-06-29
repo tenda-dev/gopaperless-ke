@@ -116,6 +116,11 @@ export interface ApiResumeResponse {
 export interface VerifyPaymentResponse {
 	status: PaymentStatus;
 	reason?: string;
+	/**
+	 * Canonical sign request UUID returned by the backend.
+	 * Used after redirect flows to route the user back to the correct document.
+	 */
+	signRequestUuid?: string;
 }
 
 export type SupportedRegion = 'KE' | 'TZ' | 'UG' | 'RW' | 'MW' | 'ZM' | 'ZW'
