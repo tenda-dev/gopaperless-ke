@@ -57,7 +57,9 @@ class EntitlementService {
 		$entitlement->setCreatedAt($this->now());
 		$entitlement->validate();
 
-		return $this->entitlementMapper->insert($entitlement);
+		/** @var Entitlement $inserted */
+		$inserted = $this->entitlementMapper->insert($entitlement);
+		return $inserted;
 	}
 
 	/**

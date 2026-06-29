@@ -42,6 +42,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	}
 
 
+	#[\Override]
 	public function getName(): PaymentProvider {
 		return PaymentProvider::DPO;
 	}
@@ -54,6 +55,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 * - No fallback
 	 * - No intelligence
 	 */
+	#[\Override]
 	public function initiateMobileMoney(MobileMoneyPayloadDTO $payload): MobileMoneyResultDTO {
 		try {
 			$result = $this->dpo->createToken(
@@ -104,6 +106,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	/**
 	 * MOBILE MONEY CHARGE
 	 */
+	#[\Override]
 	public function charge(MobileMoneyChargeDTO $payload): MobileMoneyResultDTO {
 		try {
 			$response = $this->dpo->chargeTokenMobile(
@@ -157,6 +160,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	/**
 	 * CARD INITIATE
 	 */
+	#[\Override]
 	public function initiateCard(CardPaymentPayloadDTO $payload): CardPaymentResultDTO {
 
 		if (
@@ -206,6 +210,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 * Used by VerificationService / MobileMoneyService
 	 * Will be removed once fully abstracted into service layer
 	 */
+	#[\Override]
 	public function verifyStatus(string $reference): string {
 		try {
 
@@ -262,6 +267,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 		return $this->dpo->testDpo();
 	}
 
+	#[\Override]
 	public function query(string $reference): array {
 		throw new RuntimeException($this->getName()->value . ' does not support query fallback');
 	}
