@@ -31,8 +31,7 @@ namespace OCA\Libresign\Enum;
  * - callback reconciliation active
  * - verification polling running
  */
-enum ProviderExecutionState: string
-{
+enum ProviderExecutionState: string {
 	/**
 	 * Payment session initialized.
 	 *
@@ -119,51 +118,48 @@ enum ProviderExecutionState: string
 	case INVALID_REQUEST = 'invalid_request';
 
 	/**
+	 * Fallback state when the provider response cannot be mapped
+	 * to any of the well-known execution states.
+	 */
+	case UNKNOWN = 'unknown';
+
+	/**
 	 * Lifecycle helpers
 	 */
 
-	public function isInitiated(): bool
-	{
+	public function isInitiated(): bool {
 		return $this === self::INITIATED;
 	}
 
-	public function requiresSelection(): bool
-	{
+	public function requiresSelection(): bool {
 		return $this === self::REQUIRES_SELECTION;
 	}
 
-	public function isExecuting(): bool
-	{
+	public function isExecuting(): bool {
 		return $this === self::EXECUTING;
 	}
 
-	public function isReconciling(): bool
-	{
+	public function isReconciling(): bool {
 		return $this === self::RECONCILING;
 	}
 
-	public function isSuccess(): bool
-	{
+	public function isSuccess(): bool {
 		return $this === self::SUCCESS;
 	}
 
-	public function isFailed(): bool
-	{
+	public function isFailed(): bool {
 		return $this === self::FAILED;
 	}
 
-	public function isExpired(): bool
-	{
+	public function isExpired(): bool {
 		return $this === self::EXPIRED;
 	}
 
-	public function isCancelled(): bool
-	{
+	public function isCancelled(): bool {
 		return $this === self::CANCELLED;
 	}
 
-	public function isInvalidRequest(): bool
-	{
+	public function isInvalidRequest(): bool {
 		return $this === self::INVALID_REQUEST;
 	}
 
@@ -176,8 +172,7 @@ enum ProviderExecutionState: string
 	 * - retry semantics
 	 * - resume orchestration
 	 */
-	public function hasExecutionStarted(): bool
-	{
+	public function hasExecutionStarted(): bool {
 		return match ($this) {
 			self::EXECUTING,
 			self::RECONCILING,
@@ -193,8 +188,7 @@ enum ProviderExecutionState: string
 	/**
 	 * Whether execution lifecycle is terminal.
 	 */
-	public function isTerminal(): bool
-	{
+	public function isTerminal(): bool {
 		return match ($this) {
 			self::SUCCESS,
 			self::FAILED,

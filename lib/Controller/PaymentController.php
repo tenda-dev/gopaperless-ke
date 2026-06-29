@@ -518,14 +518,4 @@ class PaymentController extends AEnvironmentAwareController {
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
-
-	private function parseDpoXml(string $xml): array {
-		$data = simplexml_load_string($xml);
-
-		return [
-			'reference' => (string)$data->TransToken,
-			'status' => ((string)$data->Result === '000') ? 'SUCCESS' : 'FAILED',
-			'raw' => json_decode(json_encode($data), true),
-		];
-	}
 }
