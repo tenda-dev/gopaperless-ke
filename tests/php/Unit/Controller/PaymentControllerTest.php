@@ -12,7 +12,6 @@ use OCA\Libresign\Controller\PaymentController;
 use OCA\Libresign\Db\Payment as PaymentEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Payment\PaymentService;
-use OCA\Libresign\Service\SMS\SMSService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\AppFramework\Http;
 use OCP\IRequest;
@@ -25,7 +24,6 @@ final class PaymentControllerTest extends TestCase {
 	private IRequest&MockObject $request;
 	private PaymentService&MockObject $paymentService;
 	private LoggerInterface&MockObject $logger;
-	private SMSService&MockObject $smsService;
 	private IUserSession&MockObject $userSession;
 	private SignRequestMapper&MockObject $signRequestMapper;
 	private PaymentController $controller;
@@ -36,7 +34,6 @@ final class PaymentControllerTest extends TestCase {
 		$this->request = $this->createMock(IRequest::class);
 		$this->paymentService = $this->createMock(PaymentService::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
-		$this->smsService = $this->createMock(SMSService::class);
 		$this->userSession = $this->createMock(IUserSession::class);
 		$this->signRequestMapper = $this->createMock(SignRequestMapper::class);
 
@@ -44,7 +41,6 @@ final class PaymentControllerTest extends TestCase {
 			request: $this->request,
 			paymentService: $this->paymentService,
 			logger: $this->logger,
-			smsService: $this->smsService,
 			userSession: $this->userSession,
 			signRequestMapper: $this->signRequestMapper,
 		);

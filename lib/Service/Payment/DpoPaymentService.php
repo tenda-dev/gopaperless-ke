@@ -135,9 +135,10 @@ class DpoPaymentService
 		/**
 		 * Escape user-controlled fields
 		 */
-		$escapedEmail = htmlspecialchars($userEmail, ENT_XML1, 'UTF-8');
-
-		$escapedCallbackUrl = htmlspecialchars($callbackUrl, ENT_XML1, 'UTF-8');
+		$escapedAmount = $this->escapeXml((string)$amount);
+		$escapedCurrency = $this->escapeXml($currency);
+		$escapedEmail = $this->escapeXml($userEmail);
+		$escapedCallbackUrl = $this->escapeXml($callbackUrl);
 
 		$serviceDate = date('Y/m/d H:i');
 		$escapedServiceDate = $this->escapeXml($serviceDate);
@@ -155,8 +156,8 @@ class DpoPaymentService
 			<Request>createToken</Request>
 
 			<Transaction>
-				<PaymentAmount>{$amount}</PaymentAmount>
-				<PaymentCurrency>{$currency}</PaymentCurrency>
+				<PaymentAmount>{$escapedAmount}</PaymentAmount>
+				<PaymentCurrency>{$escapedCurrency}</PaymentCurrency>
 				<CompanyRef>{$escapedEmail}</CompanyRef>
 
 				<customerEmail>{$escapedEmail}</customerEmail>

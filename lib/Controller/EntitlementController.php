@@ -245,45 +245,19 @@ class EntitlementController extends AEnvironmentAwareController {
 				'consumed' => $consumed
 			]);
 
-		} catch (\Throwable $e) {
+		} catch (\RuntimeException $e) {
 			return new DataResponse([
 				'success' => false,
 				'error' => $e->getMessage(),
-				'trace' => $e->getTrace(),
 			], Http::STATUS_BAD_REQUEST);
-		}
-	}
-
-	/**
-	 * (Optional) Create entitlement manually
-	 *
-	 * Useful for:
-	 * - testing
-	 * - admin tooling
-	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[ApiRoute(
-		verb: 'POST',
-		url: '/api/{apiVersion}/entitlement/create',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function create(string $userId, string $productCode, int $uses = 1): DataResponse {
-		try {
-			$entitlement = $this->entitlementService->create($userId, $productCode, $uses);
-
-			return new DataResponse([
-				'entitlement' => $entitlement
-			], Http::STATUS_OK);
-
 		} catch (\Throwable $e) {
-			$this->logger->error('Entitlement consumption failed', [
-				'exception' => $e
+			$this->logger->error('Consume after sign failed', [
+				'exception' => $e,
 			]);
 
 			return new DataResponse([
 				'success' => false,
-				'error' => 'Failed to create entitlement'
+				'error' => 'Failed to consume entitlement',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

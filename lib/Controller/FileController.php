@@ -1077,7 +1077,10 @@ class FileController extends AEnvironmentAwareController
 		);
 
 		if ($response->getStatus() !== Http::STATUS_OK) {
-			return $response;
+			return new DataResponse(
+				['message' => $this->l10n->t('Signer context not found')],
+				Http::STATUS_NOT_FOUND,
+			);
 		}
 
 		$data = $response->getData();

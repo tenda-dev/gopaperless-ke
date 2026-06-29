@@ -17,17 +17,14 @@ use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
-use OCA\Libresign\Service\SMS\SMSService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\CORS;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\Route;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\AppFramework\Http\RedirectResponse;
 use OCP\DB\Exception;
 
 use OCP\IRequest;
@@ -39,21 +36,18 @@ class PaymentController extends AEnvironmentAwareController
 
 	private PaymentService $paymentService;
 	protected LoggerInterface $logger;
-	protected SMSService $smsService;
 	private SignRequestMapper $signRequestMapper;
 
 	public function __construct(
 		IRequest $request,
 		PaymentService $paymentService,
 		LoggerInterface $logger,
-		SMSService $smsService,
 		protected IUserSession $userSession,
 		SignRequestMapper $signRequestMapper,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->paymentService = $paymentService;
 		$this->logger = $logger;
-		$this->smsService = $smsService;
 		$this->signRequestMapper = $signRequestMapper;
 	}
 
@@ -62,7 +56,6 @@ class PaymentController extends AEnvironmentAwareController
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'POST',
@@ -156,7 +149,7 @@ class PaymentController extends AEnvironmentAwareController
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage(),
+				'error' => 'Payment creation failed',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -292,7 +285,7 @@ class PaymentController extends AEnvironmentAwareController
 		verb: 'GET',
 		url: '/payment/webhook/dpo',
 	)]
-	public function dpoCallback(): DataResponse | RedirectResponse
+	public function dpoCallback(): DataResponse
 	{
 		// DPO contract: always respond with OK regardless of outcome
 		$responseXml = '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>';
@@ -302,12 +295,9 @@ class PaymentController extends AEnvironmentAwareController
 		$payload = $this->request->getParams();
 
 		$token = $payload['TransactionToken'] ?? null;
-		$returnTo = $payload['returnTo'] ?? null;
 
 		if (!$token) {
-			$this->logger->error('[DPO Callback] Missing TransactionToken', [
-				'params' => $payload,
-			]);
+			$this->logger->error('[DPO Callback] Missing TransactionToken');
 			return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
 		}
 
@@ -318,18 +308,6 @@ class PaymentController extends AEnvironmentAwareController
 				'token' => $token,
 				'error' => $e->getMessage(),
 			]);
-		}
-
-		if ($returnTo) {
-			$status = $this->paymentService->getPaymentStatus($token);
-
-			if ($status === PaymentStatus::CANCELLED) {
-				$separator = str_contains($returnTo, '?') ? '&' : '?';
-
-				return new RedirectResponse(
-					$returnTo . $separator . 'paymentCancelled=true'
-				);
-			}
 		}
 
 		return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
@@ -545,66 +523,6 @@ class PaymentController extends AEnvironmentAwareController
 			return new DataResponse([
 				'success' => false,
 				'error' => $e->getMessage()
-			], Http::STATUS_INTERNAL_SERVER_ERROR);
-		}
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/health',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function test(): DataResponse
-	{
-
-		$result = $this->paymentService->health();
-		return new DataResponse([
-			'result' => $result
-		], Http::STATUS_OK);
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-sms',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testSMSService(
-		string $phoneNumber,
-		string $message = 'This is a test message'
-	): DataResponse {
-		if (empty($phoneNumber) || !$phoneNumber) {
-			return new DataResponse([
-				'success' => false,
-				'error' => 'Phone number is required',
-			], Http::STATUS_BAD_REQUEST);
-		}
-
-		try {
-			$result = $this->smsService->send(
-				$phoneNumber,
-				$message
-			);
-
-			return new DataResponse([
-				'result' => $result
-			], Http::STATUS_OK);
-		} catch (\Throwable $e) {
-
-			$this->logger->error('Test SMS failed', [
-				'exception' => $e
-			]);
-
-			return new DataResponse([
-				'success' => false,
-				'error' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

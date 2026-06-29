@@ -1279,16 +1279,13 @@ class PaymentService
 
 		// Controller already validates CheckoutRequestID but we guard defensively
 		if (!$reference) {
-			$this->logger->error('[Daraja Callback] Missing CheckoutRequestID', [
-				'payload' => $payload,
-			]);
+			$this->logger->error('[Daraja Callback] Missing CheckoutRequestID');
 			return;
 		}
 
 		if ($resultCode === null) {
 			$this->logger->error('[Daraja Callback] Missing ResultCode', [
 				'reference' => $reference,
-				'payload' => $payload,
 			]);
 			return;
 		}
@@ -1434,16 +1431,13 @@ class PaymentService
 
 		// Controller already validates TransactionToken but we guard defensively
 		if (!$reference) {
-			$this->logger->error('[DPO Callback] Missing TransactionToken', [
-				'payload' => $payload,
-			]);
+			$this->logger->error('[DPO Callback] Missing TransactionToken');
 			return null;
 		}
 
 		if ($result === '') {
 			$this->logger->error('[DPO Callback] Missing Result code', [
 				'reference' => $reference,
-				'payload' => $payload,
 			]);
 			return null;
 		}
@@ -1519,7 +1513,7 @@ class PaymentService
 				$payment->setProviderMetadataObject($meta);
 
 				$this->paymentMapper->update($payment);
-				return $payment->getPaymentStatus();;
+				return $payment->getPaymentStatus();
 			}
 
 			/**

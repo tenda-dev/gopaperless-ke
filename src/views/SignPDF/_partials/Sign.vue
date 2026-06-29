@@ -661,17 +661,10 @@ async function signWithClickGated() {
 		signStore.productCode = DEFAULT_SIGN_PRODUCT_CODE
 	}
 
-	paymentContextStore.setContext({
-		userId: resolvedUserId,
-		signUuid: signer.sign_uuid,
-		signRequestId: signer.signRequestId,
-		productCode: signStore.productCode,
-	})
-
-	const paywall = usePaywall()
+	paymentContextStore.setFlowType(PaymentFlowType.ONE_TIME)
 
 	try {
-		const { allowed } = await paywall.checkEntitlement(signStore.productCode)
+		const { allowed } = await entitlementStore.check(signStore.productCode)
 
 		if (!allowed) {
 			// Same behaviour as the sidebar "Sign the document." button: open payment flow

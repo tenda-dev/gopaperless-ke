@@ -27,7 +27,7 @@ export type PersistedPaymentSession = {
 export type PersistPaymentSessionPayload = Omit<PersistedPaymentSession, 'timestamp'>
 
 function persistPaymentSession({ reference, flow, paymentPurpose, signRequestId, signUuid }: PersistPaymentSessionPayload) {
-	localStorage.setItem(
+	sessionStorage.setItem(
 		ACTIVE_PAYMENT_KEY,
 		JSON.stringify({
 			reference,
@@ -41,14 +41,14 @@ function persistPaymentSession({ reference, flow, paymentPurpose, signRequestId,
 }
 
 function clearPersistedPaymentSession() {
-	localStorage.removeItem(ACTIVE_PAYMENT_KEY)
+	sessionStorage.removeItem(ACTIVE_PAYMENT_KEY)
 }
 
 function getPersistedPaymentSession() {
 
 	try {
 
-		const raw = localStorage.getItem(
+		const raw = sessionStorage.getItem(
 			ACTIVE_PAYMENT_KEY
 		)
 
