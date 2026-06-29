@@ -46,6 +46,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import { CREDIT_PURCHASE_PRESENTATION } from '@/constants/purchasePresentation'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
 
@@ -59,14 +60,7 @@ import {
 } from '@mdi/js'
 import type { PaymentPresentation } from '@/payment'
 
-const purchasePresentation: PaymentPresentation = {
-    modalTitle: 'Purchase Credits',
-
-    summary: {
-        title: 'Credits',
-        subtitle: 'Credits are added to your account after payment.',
-    },
-}
+const purchasePresentation = CREDIT_PURCHASE_PRESENTATION
 
 const entitlementStore =
 	useEntitlementStore()

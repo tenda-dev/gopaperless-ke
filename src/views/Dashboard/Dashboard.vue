@@ -135,7 +135,6 @@ const filesStore = useFilesStore()
 onMounted(async () => {
 	await dashboard.loadDashboard()
 
-	console.log(PageContainer)
 })
 
 onBeforeUnmount(() => {

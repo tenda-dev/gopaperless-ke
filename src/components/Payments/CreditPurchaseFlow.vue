@@ -76,7 +76,6 @@ const props = defineProps<{
 	signRequestId?: number
 
 	quantity?: number
-	// preselectedQuantity?: number
 	allowQuantitySelection: boolean
 
 	presentation: PaymentPresentation
@@ -171,11 +170,6 @@ function handleQuantitySelected(
 }
 
 onMounted(async () => {
-	// await checkRecovery({
-	// 	paymentPurpose: props.paymentPurpose || 'credit_purchase',
-	// 	productCode: props.productCode,
-	// })
-
 	if (hasPreselectedQuantity.value) {
 		handleQuantitySelected({
 			quantity: quantity.value,

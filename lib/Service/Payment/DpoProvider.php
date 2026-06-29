@@ -21,6 +21,7 @@ use OCA\Libresign\Service\Payment\DTO\MobileMoneyResultDTO;
 use OCA\Libresign\Service\Payment\Interfaces\ICardProvider;
 use OCA\Libresign\Service\Payment\Interfaces\IMobileMoneyProvider;
 use OCA\Libresign\Service\Payment\Interfaces\IVerifiableProvider;
+use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
@@ -29,13 +30,16 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 {
 	private DpoPaymentService $dpo;
 	private LoggerInterface $logger;
+	private IRequest $request;
 
 	public function __construct(
 		DpoPaymentService $dpo,
 		LoggerInterface $logger,
+		IRequest $request,
 	) {
 		$this->dpo = $dpo;
 		$this->logger = $logger;
+		$this->request = $request;
 	}
 
 
@@ -169,6 +173,12 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 			);
 		}
 
+		$allowedHosts = $this->getAllowedRedirectHosts();
+		$redirectHost = parse_url($payload->redirectUrl, PHP_URL_HOST);
+		if (!$redirectHost || !in_array($redirectHost, $allowedHosts, true)) {
+			throw new RuntimeException('Redirect URL host not allowed');
+		}
+
 		$result = $this->dpo->createToken(
 			$payload->email,
 			$payload->amount,
@@ -239,6 +249,18 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	public function getMobileOptions(string $reference): array
 	{
 		return $this->dpo->getMobilePaymentOptions($reference);
+	}
+
+	/**
+	 * Returns the list of hosts that are allowed as redirect targets.
+	 *
+	 * Defaults to the current request host. Override via app config if
+	 * additional staging/white-label hosts are required.
+	 */
+	private function getAllowedRedirectHosts(): array
+	{
+		$currentHost = $this->request->getServerHost();
+		return $currentHost !== '' ? [$currentHost] : [];
 	}
 
 	/**

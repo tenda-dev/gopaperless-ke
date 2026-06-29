@@ -120,7 +120,7 @@ const formattedTotal = computed(() => {
 		'en-KE',
 		{
 			style: 'currency',
-			currency: currency.value!,
+			currency: currency.value ?? 'KES',
 		}
 	).format(majorUnits)
 })

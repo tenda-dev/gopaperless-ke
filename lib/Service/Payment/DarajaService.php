@@ -36,7 +36,8 @@ class DarajaService {
 
 	/**
 	 * Daraja API configuration
-	 * TODO: Should be moved to config/env
+	 *
+	 * Base URL and credentials are read from IAppConfig at runtime.
 	 */
 
 	public function __construct(
@@ -445,38 +446,6 @@ class DarajaService {
 		return $formatted;
 	}
 
-//		private function getConfig(): array {
-//			return [
-//				'baseUrl' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_base_url'
-//				),
-//				'consumerKey' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_consumer_key'
-//				),
-//				'consumerSecret' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_consumer_secret'
-//				),
-//				'passKey' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_pass_key'
-//				),
-//				'shortCode' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_shortcode'
-//				),
-//				'goPaperlessCallbackUrl' => $this->appConfig->getValueString(
-//					Application::APP_ID,
-//					'daraja_gopaperless_callback_base_url'
-//				),
-//			];
-//		}
-
-	// private function getConfig(): array {
-	// 	return $this->getTestConfig();
-	// }
 
 	/**
 	 * Map a Safaricom Daraja result code to a safe, user-facing reason key.

@@ -475,7 +475,6 @@ const signRequestUuid = computed(() => {
 const currentSigner = computed(() => {
 	const signers = signStore.document.signers || []
 	const currentSigner = signers.find(s => s.me) || signers[0] || null
-	console.log('[Sign] Current signer:', currentSigner);
 	return currentSigner
 })
 
@@ -727,7 +726,6 @@ async function signWithTokenCode(token: string) {
 async function signWithEmailToken(token: string) {
 	const emailTokenSettings = signMethodsStore.settings.emailToken
 
-	console.log('Email token settings:', emailTokenSettings)
 
 	if (!emailTokenSettings) {
 		throw new Error('Email token config missing')
@@ -736,7 +734,6 @@ async function signWithEmailToken(token: string) {
 	// STORE TOKEN (important for consistency)
 	emailTokenSettings.token = token
 
-	console.log('Updated email token settings with token:', emailTokenSettings)
 
 	const identifyMethod = emailTokenSettings.identifyMethod
 
@@ -787,8 +784,7 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 			}
 		}
 
-		console.log('Submitting signature with payload:', payload, 'and signRequestUuid:', signRequestUuid.value)
-		const result = await signStore.submitSignature(
+			const result = await signStore.submitSignature(
 			payload,
 			signRequestUuid.value,
 			{
@@ -884,9 +880,6 @@ async function confirmSignDocument() {
 	ensureServices()
 	signStore.clearSigningErrors()
 
-	console.log(
-		`User is entitled to sign. Proceeding with signing action for product code: ${signStore.productCode}`
-	)
 
 	const unmetRequirement = requirementValidator!.getFirstUnmetRequirement({
 		errors: signStore.errors,
@@ -956,7 +949,6 @@ function executeSigningAction(action: string) {
 }
 
 watch(showPaymentModal, value => {
-	console.log('[Modal]', value)
 })
 
 onMounted(async () => {

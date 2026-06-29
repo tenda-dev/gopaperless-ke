@@ -695,35 +695,6 @@ class DpoPaymentService
 		return '<Additional>' . implode('', $blocks) . '</Additional>';
 	}
 
-	//	private function getConfig(): array {
-	//		return [
-	//			'endpoint' => $this->appConfig->getValueString(
-	//				Application::APP_ID,
-	//				'dpo_endpoint'
-	//			),
-	//			'companyToken' => $this->appConfig->getValueString(
-	//				Application::APP_ID,
-	//				'dpo_company_token'
-	//			),
-	//			'serviceId' => $this->appConfig->getValueString(
-	//				Application::APP_ID,
-	//				'dpo_service_id'
-	//			),
-	//			'paymentUrl' => $this->appConfig->getValueString(
-	//				Application::APP_ID,
-	//				'dpo_payment_url'
-	//			),
-	//			'goPaperlessCallbackBaseUrl' => $this->appConfig->getValueString(
-	//				Application::APP_ID,
-	//				'gopaperless_callback_base_url'
-	//			)
-	//		];
-	//	}
-
-	// private function getConfig(): array
-	// {
-	// 	return $this->getTestConfig();
-	// }
 
 	private function getConfig(): array
 	{

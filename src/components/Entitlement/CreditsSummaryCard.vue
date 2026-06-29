@@ -39,6 +39,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
 import { useEntitlementStore } from '@/store/entitlement'
+import { CREDIT_PURCHASE_PRESENTATION } from '@/constants/purchasePresentation'
 import { useUserContextStore } from '@/store/userContext'
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 import type { PaymentPresentation } from '@/payment'
@@ -57,14 +58,7 @@ const remainingUses = computed(() => entitlement.value?.remainingUses ?? 0)
 
 const initial = computed(() => email.value.charAt(0).toUpperCase())
 
-const purchasePresentation: PaymentPresentation = {
-    modalTitle: 'Purchase Credits',
-
-    summary: {
-        title: 'Credits',
-        subtitle: 'Credits are added to your account after payment.',
-    },
-}
+const purchasePresentation = CREDIT_PURCHASE_PRESENTATION
 
 watch(remainingUses, () => {
   countClass.value = 'flip-out'
