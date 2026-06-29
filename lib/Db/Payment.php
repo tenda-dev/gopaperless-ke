@@ -26,8 +26,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setPaymentAttemptId(string $id)
  * @method string getPaymentAttemptId()
  *
- * @method void setTransactionId(int $id)
- * @method int getTransactionId()
+ * @method void setTransactionId(?int $id)
+ * @method ?int getTransactionId()
  *
  * @method void setTransactionReference(?string $reference)
  * @method ?string getTransactionReference()
@@ -138,7 +138,7 @@ class Payment extends Entity
 	 */
 
 	protected string $paymentAttemptId = '';
-	protected int $transactionId = 0;
+	protected ?int $transactionId = 0;
 	protected ?string $transactionReference = null;
 	protected ?string $userId = null;
 

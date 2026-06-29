@@ -136,7 +136,7 @@ class DarajaService {
 			 * - Visible to user
 			 * - NOT used for reconciliation
 			 */
-			'AccountReference' => $payload['signUuid'],
+			'AccountReference' => $payload['internalReference'],
 
 			'TransactionDesc' => 'GoPaperless Signature Payment',
 		];
@@ -144,7 +144,7 @@ class DarajaService {
 		$this->logger->debug('Sending Daraja STK Push', [
 			'phone' => $formattedPhone,
 			'amount' => $payload['amount'],
-			'sign_uuid' => $payload['signUuid']
+			'internal_reference' => $payload['internalReference']
 		]);
 
 		$response = $client->post(

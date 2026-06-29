@@ -256,6 +256,75 @@ class EntitlementService {
 	}
 
 	/**
+	 * Get the user's available credit balance for a product.
+	 *
+	 * Entitlements are additive. A user may own multiple entitlement
+	 * records for the same product due to multiple purchases.
+	 *
+	 * This method aggregates all currently usable entitlements and returns
+	 * a summarized balance suitable for UI display and purchase flows.
+	 *
+	 * Example:
+	 *
+	 * Entitlement A -> 5 remaining uses
+	 * Entitlement B -> 10 remaining uses
+	 * Entitlement C -> expired
+	 *
+	 * Result:
+	 * - remainingUses = 15
+	 * - activeEntitlements = 2
+	 * - canUse = true
+	 *
+	 * NOTE:
+	 * This is intentionally a summary projection rather than returning
+	 * individual entitlement records. The UI only cares about available
+	 * credits, not how those credits are distributed across purchases.
+	 *
+	 * FUTURE:
+	 * If subscriptions, sponsorships, promotional credits, or other
+	 * entitlement sources are introduced, this method may evolve into a
+	 * dedicated balance projection/DTO without affecting callers.
+	 *
+	 * @return array{
+	 *     productCode: string,
+	 *     remainingUses: int,
+	 *     activeEntitlements: int,
+	 *     canUse: bool
+	 * }
+	 */
+	public function getAvailableCredits(
+		string $userId,
+		string $productCode,
+	): array {
+
+		$product = $this->productService->getDefaultByCode($productCode);
+
+		$productCode = $product->getCode();
+
+		$entitlements = $this->entitlementMapper
+			->findByUserAndProduct($userId, $productCode);
+
+		$remainingUses = 0;
+		$activeEntitlements = 0;
+
+		foreach ($entitlements as $entitlement) {
+			if (!$entitlement->canUse()) {
+				continue;
+			}
+
+			$remainingUses += $entitlement->getRemainingUses();
+			$activeEntitlements++;
+		}
+
+		return [
+			'productCode' => $productCode,
+			'remainingUses' => $remainingUses,
+			'activeEntitlements' => $activeEntitlements,
+			'canUse' => $remainingUses > 0,
+		];
+	}
+
+	/**
 	 * @throws \Exception
 	 */
 	private function now(): string

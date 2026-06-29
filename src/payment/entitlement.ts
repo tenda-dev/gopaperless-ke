@@ -1,9 +1,26 @@
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
-import { getUser } from './user'
-import { usePaymentContextStore } from '@/store/paymentContext'
 
-const CONSUME_ENDPOINT = '/apps/libresign/api/v1/entitlement/xzy-mspw-cbs'
+const BASE_URL = '/apps/libresign/api/v1/entitlement'
+const CONSUME_ENDPOINT = `${BASE_URL}/xzy-mspw-cbs`
+
+export interface AvailableCredits {
+	productCode: string
+	remainingUses: number
+	activeEntitlements: number
+	canUse: boolean
+}
+
+export interface ConsumeEntitlementPayload {
+	userId: string
+	signUuid: string
+	signRequestId: number
+	productCode: string
+}
+
+export interface EntitlementAuthorisation {
+	allowed: boolean
+}
 
 /**
  * Calls the entitlement consumption endpoint after a successful signing.
@@ -16,54 +33,75 @@ const CONSUME_ENDPOINT = '/apps/libresign/api/v1/entitlement/xzy-mspw-cbs'
  *   - userId: string (optional) - user ID, if not provided it will be fetched from getUser()
  */
 
-export async function consumeEntitlement() {
-  try {
-	const paymentContextStore = usePaymentContextStore()
-	if (!paymentContextStore.isReady()) {
-		console.warn('[Entitlement] context not ready')
-		return null
-    }
-	const payload = {
-		userId: paymentContextStore.userId,
-		signUuid: paymentContextStore.signUuid,
-		signRequestId: paymentContextStore.signRequestId,
-		productCode: paymentContextStore.productCode,
-    }
-	const { signUuid, signRequestId, productCode, userId } = payload
-	if (!signUuid || !signRequestId || !productCode) {
-		console.warn('[Entitlement] Missing required fields, skipping entitlement consumption', payload)
-		return null
-	}
-	if (!userId) {
-		console.warn('[Entitlement] No user ID provided, get user info first')
-		const user = await getUser()
-		if (!user) {
-			console.error('[Entitlement] Failed to get user info')
-			return null
+export async function consumeEntitlement(
+	payload: ConsumeEntitlementPayload,
+): Promise<boolean> {
+
+	try {
+
+		const { data } = await axios.post(
+			generateOcsUrl(CONSUME_ENDPOINT),
+			payload,
+			{
+				timeout: 10000,
+			},
+		)
+
+		const result = data?.ocs?.data
+
+		if (!result?.success) {
+
+			console.error(
+				'[Entitlement] Consumption failed',
+				result?.message,
+			)
+
+			return false
 		}
 
-		payload.userId = user.uid
-		console.log('[Entitlement] Retrieved user ID for entitlement consumption:', payload.userId)
+		return true
+
+	} catch (err) {
+
+		console.error(
+			'[Entitlement] Consumption failed',
+			err,
+		)
+
+		return false
 	}
-    const { data } = await axios.post(
-      generateOcsUrl(CONSUME_ENDPOINT),
-      payload,
-      { timeout: 10000 }
-    )
+}
 
-    const result = data?.ocs?.data
+export async function getCurrentEntitlement(
+	productCode: string,
+): Promise<AvailableCredits | null> {
 
-	console.log('[Entitlement] Consumption result:', result)
+	const { data } = await axios.get(
+		generateOcsUrl(
+			`${BASE_URL}/credits?productCode=${productCode}`
+		),
+		{
+			timeout: 10000,
+		},
+	)
 
-	if (!result?.success) {
-	  console.error('[Entitlement] Consumption failed:', result?.message || 'Unknown error')
-	  return null
+	return data?.ocs?.data?.credits ?? null
+}
+
+export async function checkEntitlement(
+	productCode: string,
+): Promise<EntitlementAuthorisation> {
+
+	const { data } = await axios.get(
+		generateOcsUrl(
+			`${BASE_URL}/check?productCode=${productCode}`,
+		),
+		{
+			timeout: 10000,
+		},
+	)
+
+	return data?.ocs?.data ?? {
+		allowed: false,
 	}
-
-  } catch (err) {
-    console.error('[Entitlement] consumption failed', err)
-
-    // DO NOT throw (non-blocking)
-    return null
-  }
 }

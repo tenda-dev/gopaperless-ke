@@ -18,8 +18,6 @@ final class CardPaymentPayloadDTO
 		public readonly string $currency,
 
 		// Business context
-		public readonly string $signUuid,
-		public readonly int $signRequestId,
 		public readonly string $userId,
 		public readonly string $email,
 
@@ -43,14 +41,6 @@ final class CardPaymentPayloadDTO
 			throw new InvalidArgumentException('currency is required');
 		}
 
-		if ($this->signUuid === '') {
-			throw new InvalidArgumentException('signUuid is required');
-		}
-
-		if ($this->signRequestId <= 0) {
-			throw new InvalidArgumentException('signRequestId is invalid');
-		}
-
 		if ($this->userId === '') {
 			throw new InvalidArgumentException('userId is required');
 		}
@@ -69,8 +59,6 @@ final class CardPaymentPayloadDTO
 		return [
 			'amount' => $this->amount,
 			'currency' => $this->currency,
-			'signUuid' => $this->signUuid,
-			'signRequestId' => $this->signRequestId,
 			'userId' => $this->userId,
 			'email' => $this->email,
 			'redirectUrl' => $this->redirectUrl,

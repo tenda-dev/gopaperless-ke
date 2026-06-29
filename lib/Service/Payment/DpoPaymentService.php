@@ -35,7 +35,7 @@ use Throwable;
  */
 class DpoPaymentService
 {
-	private const DPO_WEBHOOK_PATH = '/api/v1/payment/webhook/dpo';
+	private const DPO_WEBHOOK_PATH = '/apps/libresign/payment/webhook/dpo';
 	private string $defaultCurrency = 'KES';
 	private IClientService $clientService;
 	private LoggerInterface $logger;
@@ -59,7 +59,6 @@ class DpoPaymentService
 	 * DPO hosted payment page.
 	 * NOTE: DPO expects amounts in major units as FLOAT values.
 	 * @param string $userEmail
-	 * @param string $signUuid
 	 * @param float $amount
 	 * @param string $redirectUrl
 	 * @param string|null $currency
@@ -68,7 +67,6 @@ class DpoPaymentService
 	 */
 	public function createToken(
 		string $userEmail,
-		string $signUuid,
 		float $amount,
 		string $redirectUrl,
 		string $currency,
@@ -84,6 +82,7 @@ class DpoPaymentService
 		$paymentUrl = $config['paymentUrl'];
 		$callbackBaseUrl = $config['callbackBaseUrl'];
 		$callbackUrl = null;
+		$redirectXml = '';
 
 		if (!$callbackBaseUrl) {
 			throw new RuntimeException('DPO callbackBaseUrl is not configured');
@@ -95,25 +94,26 @@ class DpoPaymentService
 		$blockPaymentXml = $this->buildBlockPaymentXml($method ?? 'card');
 
 		/**
-		 * Build Redirect URL (user-facing)
-		 */
-		$redirectUrlWithContext = $redirectUrl
-			. (str_contains($redirectUrl, '?') ? '&' : '?')
-			. http_build_query(['signUuid' => $signUuid]);
-
-		/**
 		 * Apply callback base URL (important for DPO routing)
 		 */
 		if ($callbackBaseUrl) {
-			$path = parse_url($redirectUrlWithContext, PHP_URL_PATH);
-			$query = parse_url($redirectUrlWithContext, PHP_URL_QUERY);
-
-			$redirectUrlWithContext = rtrim($callbackBaseUrl, '/') . $path;
 			$callbackUrl = rtrim($callbackBaseUrl ?? '', '/') . self::DPO_WEBHOOK_PATH;
+		}
 
-			if ($query) {
-				$redirectUrlWithContext .= '?' . $query;
-			}
+		/**
+		 * RedirectURL is user-facing.
+		 * Card payments require it.
+		 * Mobile money flows may omit it.
+		 */
+		if ($redirectUrl !== null && $redirectUrl !== '') {
+			$escapedRedirectUrl = htmlspecialchars(
+				$redirectUrl,
+				ENT_XML1,
+				'UTF-8'
+			);
+
+			$redirectXml =
+				"<RedirectURL>{$escapedRedirectUrl}</RedirectURL>";
 		}
 
 		/**
@@ -135,12 +135,10 @@ class DpoPaymentService
 		/**
 		 * Escape user-controlled fields
 		 */
-		$escapedEmail = $this->escapeXml($userEmail);
-		$escapedRedirectUrl = $this->escapeXml($redirectUrlWithContext);
-		$escapedSignUuid = $this->escapeXml($signUuid);
-		$escapedAmount = $this->escapeXml((string)$amount);
-		$escapedCurrency = $this->escapeXml($currency);
-		$escapedCallbackUrl = $this->escapeXml(rtrim($callbackBaseUrl ?? '', '/') . self::DPO_WEBHOOK_PATH);
+		$escapedEmail = htmlspecialchars($userEmail, ENT_XML1, 'UTF-8');
+
+		$escapedCallbackUrl = htmlspecialchars($callbackUrl, ENT_XML1, 'UTF-8');
+
 		$serviceDate = date('Y/m/d H:i');
 		$escapedServiceDate = $this->escapeXml($serviceDate);
 
@@ -157,13 +155,13 @@ class DpoPaymentService
 			<Request>createToken</Request>
 
 			<Transaction>
-				<PaymentAmount>{$escapedAmount}</PaymentAmount>
-				<PaymentCurrency>{$escapedCurrency}</PaymentCurrency>
-				<CompanyRef>{$escapedSignUuid}</CompanyRef>
+				<PaymentAmount>{$amount}</PaymentAmount>
+				<PaymentCurrency>{$currency}</PaymentCurrency>
+				<CompanyRef>{$escapedEmail}</CompanyRef>
 
 				<customerEmail>{$escapedEmail}</customerEmail>
 
-				<RedirectURL>{$escapedRedirectUrl}</RedirectURL>
+				{$redirectXml}
 				<BackURL>{$escapedCallbackUrl}</BackURL>
 
 				{$defaultPaymentXml}

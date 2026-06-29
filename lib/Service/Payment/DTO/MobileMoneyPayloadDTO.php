@@ -19,8 +19,8 @@ final class MobileMoneyPayloadDTO
 		public readonly string $currency,
 
 		// Core business context
-		public readonly string $signUuid,
-		public readonly int $signRequestId,
+		public readonly ?string $signUuid,
+		public readonly ?int $signRequestId,
 		public readonly string $userId,
 		public readonly string $email,
 
@@ -89,14 +89,6 @@ final class MobileMoneyPayloadDTO
 
 		if ($this->currency === '') {
 			throw new InvalidArgumentException('currency is required');
-		}
-
-		if ($this->signUuid === '') {
-			throw new InvalidArgumentException('signUuid is required');
-		}
-
-		if ($this->signRequestId <= 0) {
-			throw new InvalidArgumentException('signRequestId is invalid');
 		}
 
 		if ($this->userId === '') {

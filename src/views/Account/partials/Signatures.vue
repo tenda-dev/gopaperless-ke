@@ -4,7 +4,7 @@
 -->
 <template>
 	<div v-if="isSignaturesAvailable()" class="signatures">
-		<h1>{{ t('libresign', 'Your signatures') }}</h1>
+		<p class="sign-section-title">{{ t('libresign', 'Your signatures') }}</p>
 
 		<Signature type="signature">
 			<template #title>
@@ -58,11 +58,12 @@ defineExpose({
 	max-width: 350px;
 
 	h1{
-		font-size: 1.3rem;
-		font-weight: bold;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: .08em;
+		text-transform: uppercase;
+		color: var(--color-text-maxcontrast);
 		border-bottom: 1px solid #000;
-		padding-left: 5px;
-		width: 100%;
 	}
 }
 </style>

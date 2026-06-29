@@ -1046,6 +1046,61 @@ class FileController extends AEnvironmentAwareController
 	}
 
 	/**
+	 * Returns authoritative signer context for the current document signer.
+	 *
+	 * Used by frontend payment and entitlement flows to hydrate signer
+	 * identifiers directly from the backend and avoid stale client-side state.
+	 *
+	 * This endpoint only exposes signer context and does not perform
+	 * entitlement, payment, or signing authorization checks.
+	 *
+	 * @param string $uuid File UUID or signer UUID
+	 * @return DataResponse
+	 */
+	#[PrivateValidation]
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[ApiRoute(
+    verb: 'GET',
+    url: '/api/{apiVersion}/file/context/{uuid}',
+    requirements: ['apiVersion' => '(v1)']
+	)]
+	public function getContext(string $uuid): DataResponse
+	{
+		$response = $this->validate(
+			type: 'Uuid',
+			identifier: $uuid,
+			showVisibleElements: false,
+			showMessages: false,
+			showValidateFile: false,
+		);
+
+		if ($response->getStatus() !== Http::STATUS_OK) {
+			return $response;
+		}
+
+		$data = $response->getData();
+
+		foreach ($data['signers'] ?? [] as $signer) {
+			if (!empty($signer['me'])) {
+				return new DataResponse([
+					'signRequestId' => $signer['signRequestId'],
+					'signUuid' => $signer['sign_uuid'],
+					'email' => $signer['email'] ?? null,
+				]);
+			}
+		}
+
+		return new DataResponse(
+			[
+				'message' => $this->l10n->t('Signer context not found'),
+			],
+			Http::STATUS_NOT_FOUND,
+		);
+	}
+
+	/**
 	 * @deprecated Use deleteAllRequestSignatureUsingFileId() instead. Kept for backward compatibility.
 	 */
 	#[NoAdminRequired]

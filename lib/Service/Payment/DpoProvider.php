@@ -57,7 +57,6 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 		try {
 			$result = $this->dpo->createToken(
 				$payload->email,
-				$payload->signUuid,
 				$payload->amount,
 				$payload->redirectUrl ?? '',
 				$payload->currency,
@@ -160,9 +159,18 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	 */
 	public function initiateCard(CardPaymentPayloadDTO $payload): CardPaymentResultDTO
 	{
+
+		if (
+			!$payload->redirectUrl ||
+			!filter_var($payload->redirectUrl, FILTER_VALIDATE_URL)
+		) {
+			throw new RuntimeException(
+				'Valid redirect URL required'
+			);
+		}
+
 		$result = $this->dpo->createToken(
 			$payload->email,
-			$payload->signUuid,
 			$payload->amount,
 			$payload->redirectUrl,
 			$payload->currency,

@@ -18,8 +18,8 @@ final class StartPaymentResultDTO
 	public function __construct(
 		public readonly ?\DateTimeImmutable $updatedAt,
 		public readonly int $paymentId,
-		public readonly int $signRequestId,
-		public readonly string $signUuid,
+		public readonly ?int $signRequestId,
+		public readonly ?string $signUuid,
 		public readonly string $reference,
 		public readonly PaymentProvider $provider,
 		public readonly PaymentFlow $flow,

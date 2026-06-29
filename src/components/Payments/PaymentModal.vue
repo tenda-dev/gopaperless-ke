@@ -27,11 +27,12 @@
 	<!-- Payment execution -->
     <PaymentStep
 	  v-else
-      :document="document"
-      :signer="signer"
+      :payment-purpose="props.paymentPurpose"
       :sign-request-id="signRequestId"
       :sign-uuid="signUuid"
       :product-code="productCode"
+	  :pricing="pricing"
+	  :quantity="props.quantity"
 	  :initial-payment="hydratedPayment"
       @payment-success="onSuccess"
       @state-change="onStateChange"
@@ -47,15 +48,18 @@ import PaymentStep from '@/components/Payments/PaymentStep.vue'
 import PaymentRecoveryCard from '@/components/Payments/PaymentRecoveryCard.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { type PaymentState } from '@/payment/usePayment'
-import type { HydratedPayment } from '@/payment/types'
+import type { HydratedPayment, PaymentPurpose } from '@/payment/types'
 import { notifyInfo } from '@/services/toast'
+import { useProductPricing } from '@/composables/useProductPricing';
 
 const props = defineProps<{
-  signUuid: string
-  signRequestId: number
-  document: any
-  signer: any
-  productCode: string
+	paymentPurpose: PaymentPurpose
+	productCode: string
+
+	quantity: number
+
+	signUuid?: string
+	signRequestId?: number
 }>()
 
 const emit = defineEmits([
@@ -75,6 +79,10 @@ const {
 	resumeRecovery,
 	discardRecovery,
 } = usePaymentRecovery()
+
+const pricing = useProductPricing(
+	props.productCode
+)
 
 const hasAcceptedRecovery = ref(false)
 
@@ -97,6 +105,8 @@ const currentState = ref<PaymentState>('idle')
 
 onMounted(async () => {
 	await checkRecovery({
+		paymentPurpose: props.paymentPurpose,
+		productCode: props.productCode,
 		signRequestId: props.signRequestId,
 		signUuid: props.signUuid,
 	})

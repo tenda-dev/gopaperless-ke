@@ -16,7 +16,7 @@ use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
-use OCA\Libresign\Service\SMSService;
+use OCA\Libresign\Service\SMS\SMSService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\CORS;
@@ -24,7 +24,9 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\Route;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\DB\Exception;
 
 use OCP\IRequest;
@@ -65,8 +67,8 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function start(
 		string $userEmail,
-		string $signUuid,
-		int $signRequestId,
+		?string $signUuid,
+		?int $signRequestId,
 		string $userId,
 		?string $redirectUrl,
 		string $productCode,
@@ -265,13 +267,12 @@ class PaymentController extends AEnvironmentAwareController
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
+	#[Route(
+		type: Route::TYPE_FRONTPAGE,
 		verb: 'GET',
-		url: '/api/{apiVersion}/payment/webhook/dpo',
-		requirements: ['apiVersion' => '(v1)']
+		url: '/payment/webhook/dpo',
 	)]
-	public function dpoCallback(): DataResponse
+	public function dpoCallback(): DataResponse | RedirectResponse
 	{
 		// DPO contract: always respond with OK regardless of outcome
 		$responseXml = '<?xml version="1.0" encoding="utf-8"?><API3G><Response>OK</Response></API3G>';
@@ -281,6 +282,7 @@ class PaymentController extends AEnvironmentAwareController
 		$payload = $this->request->getParams();
 
 		$token = $payload['TransactionToken'] ?? null;
+		$returnTo = $payload['returnTo'] ?? null;
 
 		if (!$token) {
 			$this->logger->error('[DPO Callback] Missing TransactionToken', [
@@ -296,6 +298,18 @@ class PaymentController extends AEnvironmentAwareController
 				'token' => $token,
 				'error' => $e->getMessage(),
 			]);
+		}
+
+		if ($returnTo) {
+			$status = $this->paymentService->getPaymentStatus($token);
+
+			if ($status === PaymentStatus::CANCELLED) {
+				$separator = str_contains($returnTo, '?') ? '&' : '?';
+
+				return new RedirectResponse(
+					$returnTo . $separator . 'paymentCancelled=true'
+				);
+			}
 		}
 
 		return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
@@ -521,49 +535,13 @@ class PaymentController extends AEnvironmentAwareController
 	#[CORS]
 	#[ApiRoute(
 		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test',
+		url: '/api/{apiVersion}/payment/health',
 		requirements: ['apiVersion' => '(v1)']
 	)]
 	public function test(): DataResponse
 	{
 
-		return new DataResponse([
-			'test' => true
-		], Http::STATUS_OK);
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-daraja',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testDarajaService(): DataResponse
-	{
-
 		$result = $this->paymentService->health();
-		return new DataResponse([
-			'result' => $result
-		], Http::STATUS_OK);
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-dpo',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testDpoService(): DataResponse
-	{
-
-		$result = $this->paymentService->health();
-
 		return new DataResponse([
 			'result' => $result
 		], Http::STATUS_OK);
@@ -578,34 +556,38 @@ class PaymentController extends AEnvironmentAwareController
 		url: '/api/{apiVersion}/payment/test-sms',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function testSMSService(): DataResponse
-	{
+	public function testSMSService(
+		string $phoneNumber,
+		string $message = 'This is a test message'
+	): DataResponse {
+		if (empty($phoneNumber) || !$phoneNumber) {
+			return new DataResponse([
+				'success' => false,
+				'error' => 'Phone number is required',
+			], Http::STATUS_BAD_REQUEST);
+		}
 
-		$result = $this->smsService->testSendSMS();
+		try {
+			$result = $this->smsService->send(
+				$phoneNumber,
+				$message
+			);
 
-		return new DataResponse([
-			'result' => $result
-		], Http::STATUS_OK);
+			return new DataResponse([
+				'result' => $result
+			], Http::STATUS_OK);
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Test SMS failed', [
+				'exception' => $e
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
 	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[PublicPage]
-	#[CORS]
-	#[ApiRoute(
-		verb: 'GET',
-		url: '/api/{apiVersion}/payment/test-verify',
-		requirements: ['apiVersion' => '(v1)']
-	)]
-	public function testQueryParam(string $providerReference): DataResponse
-	{
-
-		return new DataResponse([
-			'result' => 'ok',
-			'reference' => $providerReference
-		], Http::STATUS_OK);
-	}
-
 
 	private function parseDpoXml(string $xml): array
 	{

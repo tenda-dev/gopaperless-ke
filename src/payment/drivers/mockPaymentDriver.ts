@@ -3,6 +3,7 @@ import type {
 	CreatePaymentRequest,
 	InitiateResponse,
 	MnoOption,
+	PaymentPurpose,
 	PaymentResponse,
 	ResumeResponse,
 	SelectedMno,
@@ -645,9 +646,20 @@ export const mockPaymentDriver = {
 	 * RESUME PAYMENT
 	 * ===================================================== */
 
-	async resumePayment({ signRequestId, signUuid }: {
-		signRequestId: number
-		signUuid: string
+	/* =====================================================
+ * RESUME PAYMENT
+ * ===================================================== */
+
+	async resumePayment({
+		purpose,
+		productCode,
+		signRequestId,
+		signUuid,
+	}: {
+		purpose: PaymentPurpose
+		productCode?: string
+		signRequestId?: number
+		signUuid?: string
 	}): Promise<ApiResumeResponse> {
 
 		console.log(
@@ -671,6 +683,9 @@ export const mockPaymentDriver = {
 					result: createBaseResponse({
 						signRequestId,
 						signUuid,
+
+						paymentPurpose: purpose,
+
 						provider: 'daraja',
 
 						flow: 'callback',
@@ -706,6 +721,9 @@ export const mockPaymentDriver = {
 					result: createBaseResponse({
 						signRequestId,
 						signUuid,
+
+						paymentPurpose: purpose,
+
 						provider: 'daraja',
 
 						flow: 'callback',
@@ -741,6 +759,9 @@ export const mockPaymentDriver = {
 					result: createBaseResponse({
 						signRequestId,
 						signUuid,
+
+						paymentPurpose: purpose,
+
 						provider: 'dpo',
 
 						flow: 'mobile_direct',
@@ -791,6 +812,9 @@ export const mockPaymentDriver = {
 
 						signRequestId,
 						signUuid,
+
+						paymentPurpose: purpose,
+
 						provider: 'dpo',
 
 						flow: 'mobile_direct',
@@ -847,6 +871,9 @@ export const mockPaymentDriver = {
 					result: createBaseResponse({
 						signRequestId,
 						signUuid,
+
+						paymentPurpose: purpose,
+
 						provider: 'dpo',
 
 						flow: 'mobile_direct',

@@ -7,6 +7,9 @@
 		<div class="sign-elements">
 			<Signatures v-if="hasSignatures" />
 		</div>
+
+		<SignCreditsBanner v-if="showSignCreditsBanner"/>
+
 		<div v-if="!loading" class="button-wrapper">
 			<div v-if="needCreateSignature" class="no-signature-warning">
 				<p>
@@ -109,10 +112,20 @@
 			@close="signMethodsStore.closeModal('emailToken')" />
 	</div>
 
-	<PaymentModal v-if="showPaymentModal && paymentContext" :sign-uuid="paymentContext.signUuid"
-		:sign-request-id="paymentContext.signRequestId" :document="signStore.document" :signer="currentSigner"
-		:product-code="signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE" @close="handlePaymentClose"
-		@success="onPaymentSuccess" />
+	<CreditPurchaseFlow
+		v-if="showPaymentModal"
+		:payment-purpose="'sign_request'"
+		:sign-uuid="paymentContext.signUuid"
+		:sign-request-id="paymentContext.signRequestId"
+		:product-code="paymentContext.productCode"
+		:quantity="requiredQuantity"
+		:allow-quantity-selection="
+			paymentContextStore.flowType ===
+			PaymentFlowType.CREDIT_PACK"
+		:presentation="paymentPresentation"
+		@success="onPaymentSuccess"
+		@close="handlePaymentClose"
+    />
 </template>
 
 <script setup lang="ts">
@@ -162,13 +175,17 @@ import {
 } from '../../../services/signingDocumentAdapter'
 import { FILE_STATUS } from '../../../constants.js'
 import { getFileSigners, getVisibleElementsFromDocument, idsMatch, isCurrentUserSigner } from '../../../services/visibleElementsService'
-import { usePaywall } from '@/payment/usePaywall'
 import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
-import PaymentModal from '@/components/Payments/PaymentModal.vue'
+// import PaymentModal from '@/components/Payments/PaymentModal.vue'
 import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
-import { consumeEntitlement } from '@/payment/entitlement'
-import { usePaymentContextStore } from '@/store/paymentContext'
 import { resolveUserId } from '@/utils/resolveUserId'
+import { useEntitlementStore } from '@/store/entitlement'
+import { useSignerContextStore } from '@/store/signerContext'
+import { useUserContextStore } from '@/store/userContext'
+import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
+import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
+import SignCreditsBanner from '@/components/Entitlement/SignCreditsBanner.vue'
+import type { PaymentPresentation } from '@/payment/types.ts'
 
 type OpenApiAccountMe = operations['account-me']['responses'][200]['content']['application/json']['ocs']['data']
 type LibreSignAccountMe = Omit<OpenApiAccountMe, 'settings'> & {
@@ -351,11 +368,6 @@ type SubmitSignatureCompatContext = {
 	$emit: (event: string, payload: unknown) => void
 }
 
-type PaymentContext = {
-	signUuid: string
-	signRequestId: number
-}
-
 function isSignSubmissionError(error: unknown): error is SignSubmissionError {
 	return typeof error === 'object' && error !== null
 }
@@ -378,6 +390,9 @@ const signMethodsStore = useSignMethodsStore() as SignMethodsStoreContract
 const signatureElementsStore = useSignatureElementsStore() as SignatureElementsStoreContract
 const sidebarStore = useSidebarStore() as SidebarStoreContract
 const identificationDocumentStore = useIdentificationDocumentStore() as IdentificationDocumentStoreContract
+const entitlementStore = useEntitlementStore()
+const signerContextStore = useSignerContextStore()
+const userContextStore = useUserContextStore()
 const paymentContextStore = usePaymentContextStore()
 
 const loading = ref(true)
@@ -464,30 +479,66 @@ const currentSigner = computed(() => {
 	return currentSigner
 })
 
-const paymentContext = computed<PaymentContext | null>(() => {
-	const signer = currentSigner.value
+const paymentContext = computed(() => ({
+	signUuid: signerContextStore.signUuid,
+	signRequestId: signerContextStore.signRequestId,
+	productCode:
+		signStore.productCode
+		|| DEFAULT_SIGN_PRODUCT_CODE,
+}))
 
-	if (
-		!signer ||
-		signer.sign_uuid == null ||
-		signer.signRequestId == null
-	) {
-		return null
-	}
+const requiredQuantity = computed(() => 1)
 
-	return {
-		signUuid: signer.sign_uuid,
-		signRequestId: signer.signRequestId,
+const paymentPresentation = computed<PaymentPresentation>(() => {
+	switch (paymentContextStore.flowType) {
+		case PaymentFlowType.CREDIT_PACK:
+			return {
+				modalTitle: 'Purchase signing credits',
+				summary: {
+					title: `Signing Credits`,
+					subtitle: 'Credits are added to your account for future documents.',
+				},
+			}
+
+		case PaymentFlowType.ONE_TIME:
+		default:
+			return {
+				modalTitle: 'Complete payment',
+				summary: {
+					title:
+						requiredQuantity.value === 1
+							? 'Required signing credit'
+							: `${requiredQuantity.value} Required signing credits`,
+					subtitle: 'Credits required to complete this document.',
+				},
+			}
 	}
 })
 
+const showSignCreditsBanner = computed(() => {
+	return (
+		!loading.value &&
+		!needCreateSignature.value
+	)
+})
+
 async function consumeEntitlementAfterSign() {
+
 	try {
-		await consumeEntitlement()
-		paymentContextStore.clear()
+
+		await entitlementStore.consume({
+			userId: userContextStore.uid,
+			signUuid: signerContextStore.signUuid,
+			signRequestId: signerContextStore.signRequestId,
+			productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
+		})
+
 	} catch (err) {
-		// DO NOT BLOCK UX
-		console.error('[Entitlement] failed silently', err)
+
+		console.error(
+			'[Sign] entitlement consumption failed',
+			err,
+		)
 	}
 }
 
@@ -823,17 +874,10 @@ async function confirmSignDocument() {
 		signStore.productCode = DEFAULT_SIGN_PRODUCT_CODE
 	}
 
-	paymentContextStore.setContext({
-		userId: resolvedUserId,
-		signUuid: sign_uuid,
-		signRequestId: signRequestId,
-		productCode: signStore.productCode,
-	})
-
-	const paywall = usePaywall()
-
 	// 2. Check entitlement FIRST
-	const { allowed } = await paywall.checkEntitlement(signStore.productCode)
+	const { allowed } = await entitlementStore.check(
+		signStore.productCode,
+	)
 
 	// 3. BLOCK signing if not allowed
 	if (!allowed) {
@@ -867,7 +911,6 @@ async function confirmSignDocument() {
 }
 
 function triggerPaymentFlow() {
-
 	// set productCode here
 	signStore.productCode =
 		signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE
@@ -875,10 +918,12 @@ function triggerPaymentFlow() {
 	showPaymentModal.value = true
 }
 
-function onPaymentSuccess() {
+async function onPaymentSuccess() {
 	showPaymentModal.value = false
 
 	isProcessingPayment.value = false // IMPORTANT RESET
+
+	await entitlementStore.refresh()
 
 	notifySuccess({
 		message: 'Payment successful',
@@ -917,11 +962,25 @@ function executeSigningAction(action: string) {
 	}
 }
 
+watch(showPaymentModal, value => {
+	console.log('[Modal]', value)
+})
+
 onMounted(async () => {
 	loading.value = true
 	signatureElementsStore.signRequestUuid = signRequestUuid.value
 	signatureElementsStore.loadSignatures()
-	paymentContextStore.hydrate()
+
+
+	await Promise.all([
+		userContextStore.initialise(),
+		signerContextStore.initialise(route.params.uuid as string),
+		entitlementStore.initialise(),
+	])
+
+	paymentContextStore.setFlowType(
+        PaymentFlowType.CREDIT_PACK,
+    )
 
 	initializeServices()
 
@@ -950,23 +1009,6 @@ onMounted(async () => {
 		await nextTick()
 
 		notifyInfo({ message: 'Payment successful. Proceeding with signing...', important: true })
-
-		if (!paymentContextStore.isReady()) {
-			await nextTick() // ensure signer is ready
-			console.warn('[PaymentContext] rebuilding after redirect')
-
-			const signer = currentSigner.value
-			const resolvedUserId = await resolveUserId(user.value)
-
-			if (signer && resolvedUserId && signer.sign_uuid && signer.signRequestId) {
-				paymentContextStore.setContext({
-					userId: resolvedUserId,
-					signUuid: signer.sign_uuid,
-					signRequestId: signer.signRequestId,
-					productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
-				})
-			}
-		}
 
 		// Guard
 		if (!signStore.pendingAction) {
@@ -1023,6 +1065,9 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
+.document-sign {
+	margin-top: -1rem;
+}
 .progress-indicator {
 	font-weight: bold;
 	color: var(--color-primary-element);

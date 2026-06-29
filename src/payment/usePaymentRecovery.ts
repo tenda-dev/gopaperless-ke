@@ -2,8 +2,8 @@ import { ref } from 'vue'
 
 import { paymentDriver as realPaymentDriver } from '@/payment/drivers/paymentDriver'
 import { mockPaymentDriver } from '@/payment/drivers/mockPaymentDriver'
-import { clearPersistedPaymentSession, getPersistedPaymentSession } from '@/utils/paymentPersistence'
-import type { HydratedPayment } from './types'
+import { clearPersistedPaymentSession } from '@/utils/paymentPersistence'
+import type { HydratedPayment, PaymentPurpose } from './types'
 import { resolvePhone } from '@/utils/phoneResolver'
 import { isNetworkError, markOffline } from '@/utils/network'
 import { showRequestError } from '@/utils/network/requestMessaging'
@@ -20,7 +20,6 @@ export const paymentDriver =
  * Payment recovery composable.
  *
  * Handles:
- * - persisted payment session lookup
  * - backend recovery hydration
  * - resumable payment validation
  * - recovery acceptance/discard flows
@@ -47,8 +46,10 @@ export function usePaymentRecovery() {
 	 * Hydrate existing persisted payment
 	 */
 	async function checkRecovery(payload: {
-		signRequestId: number
-		signUuid: string
+		paymentPurpose: PaymentPurpose,
+		productCode: string,
+		signRequestId?: number
+		signUuid?: string
 	}) {
 
 		isChecking.value = true
@@ -56,6 +57,8 @@ export function usePaymentRecovery() {
 		try {
 
 			const res = await paymentDriver.resumePayment({
+				purpose: payload.paymentPurpose,
+				productCode: payload.productCode,
 				signRequestId: payload.signRequestId,
 				signUuid: payload.signUuid,
 			})

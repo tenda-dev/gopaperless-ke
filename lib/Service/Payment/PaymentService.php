@@ -66,9 +66,9 @@ class PaymentService
 	 *
 	 * Typical payment completion:
 	 * - 30s → 5 mins
-	 * - >15 mins usually abandoned
+	 * - >10 mins usually abandoned
 	 */
-	private const PAYMENT_EXPIRY_SECONDS = 15 * 60; // 15 minutes
+	private const PAYMENT_EXPIRY_SECONDS = 12 * 60; // 12 minutes
 
 	/**
 	 * How long an already-charged async payment may stay PENDING
@@ -553,8 +553,6 @@ class PaymentService
 					new CardPaymentPayloadDTO(
 						amount: $normalisedAmount,
 						currency: $fxEngineResult->displayCurrency,
-						signUuid: $signUuid,
-						signRequestId: $signRequestId,
 						userId: $userId,
 						email: $userEmail,
 						redirectUrl: $redirectUrl,
@@ -1429,7 +1427,7 @@ class PaymentService
 	 * - 902 → FAILED (payment declined)
 	 * - 904 → CANCELLED (user cancelled)
 	 */
-	public function handleDpoCallback(array $payload): void
+	public function handleDpoCallback(array $payload): ?PaymentStatus
 	{
 		$reference = $payload['TransactionToken'] ?? null;
 		$result = (string)($payload['Result'] ?? '');
@@ -1439,7 +1437,7 @@ class PaymentService
 			$this->logger->error('[DPO Callback] Missing TransactionToken', [
 				'payload' => $payload,
 			]);
-			return;
+			return null;
 		}
 
 		if ($result === '') {
@@ -1447,7 +1445,7 @@ class PaymentService
 				'reference' => $reference,
 				'payload' => $payload,
 			]);
-			return;
+			return null;
 		}
 
 		try {
@@ -1468,7 +1466,7 @@ class PaymentService
 					'reference' => $reference,
 					'status' => $payment->getPaymentStatus()->value,
 				]);
-				return;
+				return $payment->getPaymentStatus();
 			}
 
 			/**
@@ -1486,9 +1484,13 @@ class PaymentService
 					providerPayload: $this->getProviderPayload($meta)->withCallback($payload)
 				);
 				$payment->setProviderMetadataObject($meta);
+				$payment->setVerificationStatus('SUCCESS');
+				$payment->setVerificationLastCheckedAt(
+					$this->now()
+				);
 
 				$this->finalisePayment($payment);
-				return;
+				return $payment->getPaymentStatus();
 			}
 
 			/**
@@ -1517,7 +1519,7 @@ class PaymentService
 				$payment->setProviderMetadataObject($meta);
 
 				$this->paymentMapper->update($payment);
-				return;
+				return $payment->getPaymentStatus();;
 			}
 
 			/**
@@ -1556,6 +1558,7 @@ class PaymentService
 			// Re-throw error and propagate to controller
 			throw $e;
 		}
+		return $payment->getPaymentStatus();
 	}
 
 	/**
@@ -1876,12 +1879,40 @@ class PaymentService
 			$this->paymentMapper->update($payment);
 
 			/**
-			 * Create entitlement ONCE per successful payment
+			 * BUSINESS FINALITY
+			 *
+			 * IMPORTANT:
+			 * Different payment purposes may trigger
+			 * different business workflows.
+			 */
+			switch ($payment->getPaymentPurpose()) {
+
+				case PaymentPurpose::CREDIT_PURCHASE:
+					// Future:
+					// - invoicing
+					// - bulk credit notifications
+					break;
+
+				case PaymentPurpose::SIGN_REQUEST:
+					// Future:
+					// - signer-specific workflows
+					// - document-level reconciliation
+					break;
+			}
+
+			/**
+			 * Grant entitlement from successful payment.
+			 *
+			 * IMPORTANT:
+			 * Current business model grants entitlement
+			 * for both:
+			 * - direct signer payments
+			 * - requester credit purchases
 			 */
 
 			$this->entitlementService->create(
 				$payment->getUserId(),
-				$payment->getProductCode(), // TODO: derive from product_code later
+				$payment->getProductCode(),
 				$payment->getProductUses()
 			);
 
@@ -1890,6 +1921,7 @@ class PaymentService
 			$this->logger->info('[PAYMENT FINALISE] After update call', [
 				'id' => $payment->getId(),
 				'status' => $payment->getPaymentStatus()->value,
+				'purpose' => $payment->getPaymentPurpose()->value,
 			]);
 		} catch (\Throwable $e) {
 
@@ -1901,6 +1933,7 @@ class PaymentService
 			$this->logger->error('[PAYMENT FINALISE] failed', [
 				'exception' => $e,
 				'paymentId' => $payment->getId(),
+				'purpose' => $payment->getPaymentPurpose()->value,
 			]);
 
 			throw $e;

@@ -1,116 +1,118 @@
 <template>
-	<div class="dashboard">
-
-		<!-- ===================== -->
-		<!-- PAGE HEADER -->
-		<!-- ===================== -->
-
-		<div class="page-header">
-
-			<div class="header-content">
-				<h1>Workflow Dashboard</h1>
-
-				<p>
-					Manage signatures request workflows from one operational workspace.
-				</p>
-			</div>
-
-		</div>
-
-		<!-- ===================== -->
-		<!-- LOADING -->
-		<!-- ===================== -->
-
-		<div v-if="dashboard.loading" class="dashboard-loading">
-
-			<!-- HERO -->
-			<div class="skeleton-hero" />
-
-			<!-- STATS -->
-			<div class="stats-skeleton-grid">
-				<div
-					v-for="i in 3"
-					:key="i"
-					class="skeleton-card"
-				/>
-			</div>
-
-			<!-- TABLE -->
-			<div class="table-skeleton">
-				<div
-					v-for="i in 5"
-					:key="i"
-					class="skeleton-row"
-				/>
-			</div>
-
-		</div>
-
-		<!-- ===================== -->
-		<!-- ERROR -->
-		<!-- ===================== -->
-
-		<div v-else-if="dashboard.error" class="empty-state">
-			<h3>Something went wrong</h3>
-
-			<p>{{ dashboard.error }}</p>
-		</div>
-
-		<!-- ===================== -->
-		<!-- CONTENT -->
-		<!-- ===================== -->
-
-		<div v-else class="dashboard-content">
+	<PageContainer>
+		<div class="dashboard">
 
 			<!-- ===================== -->
-			<!-- HERO + SIDE -->
+			<!-- PAGE HEADER -->
 			<!-- ===================== -->
 
-			<div class="top-grid">
+			<div class="page-header">
 
-				<!-- LEFT -->
-				<div class="hero-column">
-					<UploadHero />
+				<div class="header-content">
+					<h1>Workflow Dashboard</h1>
+
+					<p>
+						Manage signatures request workflows from one operational workspace.
+					</p>
 				</div>
 
-				<!-- RIGHT -->
-				<div class="side-column">
+			</div>
 
-					<StatsCards :stats="dashboard.stats" />
+			<!-- ===================== -->
+			<!-- LOADING -->
+			<!-- ===================== -->
 
-					<EntitlementCard
-						:remaining="dashboard.entitlements?.SIGN_DOCUMENT?.remainingUses || 0"
+			<div v-if="dashboard.loading" class="dashboard-loading">
+
+				<!-- HERO -->
+				<div class="skeleton-hero" />
+
+				<!-- STATS -->
+				<div class="stats-skeleton-grid">
+					<div
+						v-for="i in 3"
+						:key="i"
+						class="skeleton-card"
+					/>
+				</div>
+
+				<!-- TABLE -->
+				<div class="table-skeleton">
+					<div
+						v-for="i in 5"
+						:key="i"
+						class="skeleton-row"
+					/>
+				</div>
+
+			</div>
+
+			<!-- ===================== -->
+			<!-- ERROR -->
+			<!-- ===================== -->
+
+			<div v-else-if="dashboard.error" class="empty-state">
+				<h3>Something went wrong</h3>
+
+				<p>{{ dashboard.error }}</p>
+			</div>
+
+			<!-- ===================== -->
+			<!-- CONTENT -->
+			<!-- ===================== -->
+
+			<div v-else class="dashboard-content">
+
+				<!-- ===================== -->
+				<!-- HERO + SIDE -->
+				<!-- ===================== -->
+
+				<div class="top-grid">
+
+					<!-- LEFT -->
+					<div class="hero-column">
+						<UploadHero />
+					</div>
+
+					<!-- RIGHT -->
+					<div class="side-column">
+
+						<StatsCards :stats="dashboard.stats" />
+
+						<EntitlementCard
+							:remaining="dashboard.entitlements?.SIGN_DOCUMENT?.remainingUses || 0"
+						/>
+
+					</div>
+
+				</div>
+
+				<!-- ===================== -->
+				<!-- ACTION REQUIRED -->
+				<!-- ===================== -->
+
+				<section class="dashboard-section">
+					<ActionableRequiredTable
+						:items="dashboard.actionableDocuments"
+					/>
+				</section>
+
+				<!-- ===================== -->
+				<!-- MY DOCUMENTS -->
+				<!-- ===================== -->
+
+				<section class="dashboard-section">
+
+					<MyDocumentsTable
+						:items="dashboard.myDocuments"
 					/>
 
-				</div>
+				</section>
 
 			</div>
 
-			<!-- ===================== -->
-			<!-- ACTION REQUIRED -->
-			<!-- ===================== -->
-
-			<section class="dashboard-section">
-				<ActionableRequiredTable
-					:items="dashboard.actionableDocuments"
-				/>
-			</section>
-
-			<!-- ===================== -->
-			<!-- MY DOCUMENTS -->
-			<!-- ===================== -->
-
-			<section class="dashboard-section">
-
-				<MyDocumentsTable
-					:items="dashboard.myDocuments"
-				/>
-
-			</section>
-
 		</div>
-
-	</div>
+	</PageContainer>
 </template>
 
 <script setup lang="ts">
@@ -119,6 +121,7 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { useDashboardStore } from '@/store/dashboard'
 import { useFilesStore } from '@/store/files'
 
+import PageContainer from '@/components/Layout/PageContainer.vue'
 import UploadHero from './components/UploadHero.vue'
 import StatsCards from './components/StatsCards.vue'
 import EntitlementCard from './components/EntitlementCard.vue'
@@ -132,11 +135,7 @@ const filesStore = useFilesStore()
 onMounted(async () => {
 	await dashboard.loadDashboard()
 
-	console.log('[Dashboard]', {
-		actionable: dashboard.actionableDocuments,
-		myDocuments: dashboard.myDocuments,
-		stats: dashboard.stats,
-	})
+	console.log(PageContainer)
 })
 
 onBeforeUnmount(() => {

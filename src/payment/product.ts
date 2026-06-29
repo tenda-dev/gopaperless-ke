@@ -1,7 +1,7 @@
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 
-type Product = {
+export type Product = {
   id: number
   code: string
   amount: number

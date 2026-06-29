@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 defineOptions({ name: 'LibreSign' })
 
@@ -41,8 +41,11 @@ import { initialActionCode, ACTION_CODES } from './helpers/ActionMapping'
 import TendaworldSign from '../img/tenda-icon.png'
 import { useNetworkState } from '@/composables/useNetworkState'
 import { useForceLightMode } from '@/composables/useForceLightMode'
+import { useUserContextStore } from '@/store/userContext'
 
 const route = useRoute()
+const userContext = useUserContextStore()
+
 const loading = ref(false)
 
 const isRoot = computed(() => route.path === '/')
@@ -50,9 +53,13 @@ const isSignExternalPage = computed(() => route.path.startsWith('/p/'))
 const isDoNothingError = computed(() => initialActionCode.value === ACTION_CODES.DO_NOTHING)
 const showLeftSidebar = computed(() => !route.matched.some(record => record.meta?.hideLeftSidebar === true))
 
-useNetworkState()
-// Actively strip and block Nextcloud dark mode variations
-useForceLightMode()
+onMounted(async () => {
+	useNetworkState()
+	// Actively strip and block Nextcloud dark mode variations
+	useForceLightMode()
+
+	await userContext.hydrate()
+})
 </script>
 
 <style lang="scss" scoped>
