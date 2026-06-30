@@ -34,6 +34,15 @@ namespace OCA\Libresign\Enum;
 enum ProviderExecutionState: string
 {
 	/**
+	 * Execution state could not be determined.
+	 *
+	 * Used when:
+	 * - metadata has not yet been written
+	 * - legacy payment records are hydrated
+	 * - provider execution state is unavailable
+	 */
+	case UNKNOWN = 'unknown';
+	/**
 	 * Payment session initialized.
 	 *
 	 * No provider execution has occurred yet.
@@ -121,6 +130,11 @@ enum ProviderExecutionState: string
 	/**
 	 * Lifecycle helpers
 	 */
+
+	public function isUnknown(): bool
+	{
+		return $this === self::UNKNOWN;
+	}
 
 	public function isInitiated(): bool
 	{

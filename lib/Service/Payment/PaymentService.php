@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
+use DateTimeImmutable;
 use libphonenumber\NumberParseException;
 use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\Db\Payment;
@@ -29,6 +30,7 @@ use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyChargeDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyPayloadDTO;
+use OCA\Libresign\Service\Payment\DTO\MobileMoneyResultDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\PaymentMetadataDTO;
 use OCA\Libresign\Service\Payment\DTO\ProviderPayloadDTO;
@@ -563,61 +565,30 @@ class PaymentService
 				default => throw new RuntimeException('Unsupported capability'),
 			};
 		} catch (\Throwable $e) {
-
-			$this->logger->error('Payment initiation failed', [
-				'error' => $e->getMessage(),
-				'attempt' => $paymentAttemptId,
-				'trace' => $e->getTrace(),
-			]);
-
-			$payment->setPaymentStatus(PaymentStatus::INITIATION_FAILED);
-
-			$meta = $payment->getProviderMetadataObject();
-
-			$meta = $meta->with(
-				providerExecutionState: ProviderExecutionState::FAILED,
-				updatedAt: $this->nowImmutable(),
-				providerError: [
-					'message' => $e->getMessage(),
-					'provider' => $route?->preferredProvider?->value ?? 'unknown',
-					'timestamp' => time(),
-				]
+			$this->failPaymentInitiation(
+				payment: $payment,
+				message: $e->getMessage(),
+				provider: $route->preferredProvider,
+				exception: $e
 			);
-
-			$payment->setProviderMetadataObject($meta);
-
-			$this->paymentMapper->update($payment);
-
-			throw $e;
+			return $this->buildExistingPaymentResponse($payment);
 		}
 
 		/**
 		 * VALIDATE PROVIDER RESPONSE
 		 */
-		if (!$res->providerReference || !$res->flow) {
+		try {
+			$this->validateProviderResult($res);
+		} catch (RuntimeException $e) {
 			$message = 'Invalid provider response: ' . ($res->message ?? 'empty result');
 
-			$this->logger->error('Payment provider response invalid', [
-				'error' => $message,
-				'attempt' => $paymentAttemptId,
-			]);
-
-			$payment->setPaymentStatus(PaymentStatus::INITIATION_FAILED);
-
-			$meta = $payment->getProviderMetadataObject();
-			$meta = $meta->with(
-				providerExecutionState: ProviderExecutionState::FAILED,
-				updatedAt: $this->nowImmutable(),
-				providerError: [
-					'message' => $message,
-					'provider' => $route?->preferredProvider?->value ?? 'unknown',
-					'timestamp' => time(),
-				]
+			$this->failPaymentInitiation(
+				payment: $payment,
+				message: $message,
+				provider: $res->provider,
+				exception: $e
 			);
-			$payment->setProviderMetadataObject($meta);
-			$this->paymentMapper->update($payment);
-
-			throw new RuntimeException($message);
+			return $this->buildExistingPaymentResponse($payment);
 		}
 
 		/**
@@ -666,6 +637,19 @@ class PaymentService
 		$payment->setProviderMetadataObject($metadata);
 		$this->paymentMapper->update($payment);
 
+		try {
+			$this->validateInitiatedPayment($payment);
+		} catch (RuntimeException $e) {
+			$this->failPaymentInitiation(
+				payment: $payment,
+				message: $e->getMessage(),
+				provider: $payment->getProviderEnum(),
+				exception: $e,
+			);
+
+			return $this->buildExistingPaymentResponse($payment);
+		}
+
 
 		$displayAmountMinor = $payment->getDisplayAmount();
 		$displayCurrency = $payment->getDisplayCurrency();
@@ -692,6 +676,8 @@ class PaymentService
 			);
 		}
 
+		$metadata = $payment->getProviderMetadataObject();
+
 		/**
 		 * RESPONSE TO FRONTEND
 		 */
@@ -700,10 +686,10 @@ class PaymentService
 			paymentId: $payment->getId(),
 			signRequestId: $payment->getTransactionId(),
 			signUuid: $payment->getTransactionReference(),
-			reference: $res->providerReference,
-			provider: $res->provider,
-			flow: $res->flow,
-			method: $methodEnum,
+			reference: $payment->getProviderReference(),
+			provider: $payment->getProviderEnum(),
+			flow: PaymentFlow::from($metadata->flow),
+			method: PaymentMethod::from($metadata->method),
 			redirectUrl: $metadata->redirectUrl,
 			mno: $metadata->suggested->mno,
 			country: $metadata->suggested->country,
@@ -2293,11 +2279,12 @@ class PaymentService
 
 	private function appendProviderError(
 		PaymentMetadataDTO $meta,
-		array $error
+		array $error,
+		?DateTimeImmutable $nowImmutable = null
 	): PaymentMetadataDTO {
 
 		return $meta->with(
-			updatedAt: $this->nowImmutable(),
+			updatedAt: $nowImmutable ?? $this->nowImmutable(),
 			providerError: [
 				...($meta->providerError ?? []),
 				...$error,
@@ -2311,5 +2298,129 @@ class PaymentService
 
 		return $meta->providerPayload
 			?? new ProviderPayloadDTO();
+	}
+
+	/**
+	 * Validate the minimum provider response contract required to continue
+	 * payment processing.
+	 *
+	 * @throws RuntimeException When the provider response is incomplete.
+	 */
+	private function validateProviderResult(
+		MobileMoneyResultDTO | CardPaymentResultDTO $result
+	): void
+	{
+		if ($result->providerReference === null || $result->providerReference === '') {
+			throw new RuntimeException('Provider response missing provider reference.');
+		}
+
+		if ($result->provider === null) {
+			throw new RuntimeException('Provider response missing provider.');
+		}
+
+		if ($result->flow === null) {
+			throw new RuntimeException('Provider response missing payment flow.');
+		}
+	}
+
+	/**
+	 * Validate that an initiated payment is internally consistent
+	 * before returning it to the frontend.
+	 *
+	 * This is a defensive invariant check performed after provider
+	 * execution and persistence. If the payment is missing any
+	 * required orchestration state, initiation is considered to
+	 * have failed and the payment is downgraded to
+	 * INITIATION_FAILED.
+	 *
+	 * @throws RuntimeException
+	 */
+	private function validateInitiatedPayment(
+		Payment $payment,
+	): void {
+		if (!$payment->getProviderReference()) {
+			throw new RuntimeException('Payment is missing provider reference.');
+		}
+
+		$metadata = $payment->getProviderMetadataObject();
+
+		if ($metadata === null) {
+			throw new RuntimeException('Payment is missing provider metadata.');
+		}
+
+		if ($metadata->flow === null || $metadata->flow === '') {
+			throw new RuntimeException('Payment is missing payment flow.');
+		}
+
+		if ($payment->getPaymentProvider() === null) {
+			throw new RuntimeException('Payment is missing executed provider.');
+		}
+
+		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
+			throw new RuntimeException(sprintf(
+				'Expected payment status "%s", got "%s".',
+				PaymentStatus::PENDING->value,
+				$payment->getPaymentStatus()->value,
+			));
+		}
+	}
+
+	/**
+	 * Mark a payment attempt as having failed during provider initiation.
+	 *
+	 * IMPORTANT:
+	 * - No provider session was successfully established.
+	 * - No reconciliation or polling should continue.
+	 * - FE may safely reset its payment state and allow a fresh attempt.
+	 *
+	 * This is used when:
+	 * - Provider throws during initiation.
+	 * - Provider returns an invalid initiation response.
+	 */
+	private function failPaymentInitiation(
+		Payment $payment,
+		string $message,
+		?PaymentProvider $provider = null,
+		?\Throwable $exception = null,
+	): void {
+
+		$nowImmutable = $this->nowImmutable();
+        $now = $nowImmutable->format(DATE_ATOM);
+		$status = PaymentStatus::INITIATION_FAILED;
+
+		$payment->setUpdatedAt($now);
+		$payment->setPaymentStatus($status);
+
+		$meta = $payment->getProviderMetadataObject();
+
+		$error = [
+			'type' => $status->value,
+			'message' => $message,
+			'provider' => $provider?->value ?? 'unknown',
+			'timestamp' => $now,
+		];
+
+		if ($meta !== null) {
+			$payment->setProviderMetadataObject(
+				$this->appendProviderError(
+					$meta,
+					$error,
+					$nowImmutable,
+				)->with(
+					providerExecutionState: ProviderExecutionState::FAILED,
+				)
+			);
+		}
+
+		$this->paymentMapper->update($payment);
+
+		$this->logger->warning('[Payment] Provider initiation failed', [
+			'paymentId' => $payment->getId(),
+			'userId' => $payment->getUserId(),
+			'provider' => $provider?->value,
+			'message' => $message,
+			'status' => $status->value,
+			'exception' => $exception?->getMessage(),
+		]);
 	}
 }
