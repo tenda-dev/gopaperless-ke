@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import { resolvePhone } from '@/utils/phoneResolver'
 import { normaliseRegion } from '@/utils/mobileMoney'
 import type {
@@ -10,6 +10,7 @@ import type {
 	PaymentResponse,
 	SelectedMno,
 } from '@/payment'
+import { showError, showInfo, showSuccess } from '@/services/toast'
 
 /**
  * Payment session composable.
@@ -41,7 +42,6 @@ export function usePaymentSession({
 	detectedRegion,
 	normalisedPhone,
 	mobilePaymentContext,
-	instructions,
 	selectedMethod,
 	isHydrating,
 	props,
@@ -49,8 +49,6 @@ export function usePaymentSession({
 	emit,
 	discardRecovery,
 	selectMethod,
-	showError,
-	showInfo,
 }: {
 	payment: ReturnType<typeof import('@/payment').usePayment>
 	mnoDetection: {
@@ -71,7 +69,6 @@ export function usePaymentSession({
 	detectedRegion: Ref<string>
 	normalisedPhone: Ref<string>
 	mobilePaymentContext: Ref<MobilePaymentContext | null>
-	instructions: Ref<string | null>
 	selectedMethod: Ref<PaymentMethod>
 	isHydrating: Ref<boolean>
 	props: {
@@ -81,12 +78,57 @@ export function usePaymentSession({
 		quantity: number
 	}
 	user: Ref<any>
-	emit: (event: string) => void
+	emit: (event:
+		'payment-success' |
+		'state-change' |
+		'payment-runtime-invalid'
+	) => void
 	discardRecovery: () => void
 	selectMethod: (m: PaymentMethod) => void
-	showError: (msg: string) => void
-	showInfo: (msg: string) => void
 }) {
+
+	const instructions = ref<string | null>(null)
+	const processingStage = ref(0)
+
+	let hasShownOfflineToast = false
+	let processingTimers: ReturnType<typeof setTimeout>[] = []
+
+   /**
+	* Processing stage timer
+	*/
+	watch(() => payment.state.value, (state) => {
+		processingTimers.forEach(clearTimeout)
+		processingTimers = []
+
+		processingStage.value = 0
+
+		if (state !== 'processing') {
+			return
+		}
+
+		processingTimers.push(
+			setTimeout(() => (processingStage.value = 1), 2500),
+			setTimeout(() => (processingStage.value = 2), 6000),
+		)
+    })
+
+
+	/**
+	* Network detection watcher
+	*/
+	watch(payment.isOffline, (offline) => {
+		if (offline) {
+			if (!hasShownOfflineToast) {
+				showInfo(`Connection lost. We'll keep trying…`)
+				hasShownOfflineToast = true
+			}
+		} else {
+			if (payment.state.value === 'processing') {
+				showSuccess('Back online. Resuming payment…')
+				hasShownOfflineToast = false
+			}
+		}
+	})
 
 	/**
 	 * Shared confidence → mnoDetection.state mapping.
@@ -153,17 +195,18 @@ export function usePaymentSession({
 
 	function handleTerminalReset() {
 		resetMnoDetectionState()
-		payment.activeReference.value = null
-		payment.alreadyCharged.value = false
-		payment.resetProviderLock()
+		payment.cancelActivePaymentSession()
 	}
 
-	function resetPaymentFlow() {
+	function resetPaymentSession() {
 		selectMethod('mobile')
 		phoneInput.value = ''
 		detectedRegion.value = 'KE'
 		instructions.value = null
 		mobilePaymentContext.value = null
+		processingStage.value = 0
+		hasShownOfflineToast = false
+
 		resetMnoDetectionState()
 	}
 
@@ -213,7 +256,7 @@ export function usePaymentSession({
 					showInfo('Restarting payment session. Please try again.')
 					payment.activeReference.value = null
 					mnoDetection.reference = null
-					resetPaymentFlow()
+					resetPaymentSession()
 					emit('payment-runtime-invalid')
 				}, 2500)
 
@@ -280,7 +323,7 @@ export function usePaymentSession({
 			payment.activeReference.value = null
 			mnoDetection.reference = null
 			setTimeout(() => {
-				resetPaymentFlow()
+				resetPaymentSession()
 				emit('payment-runtime-invalid')
 			}, 2500)
 
@@ -517,7 +560,7 @@ export function usePaymentSession({
 	 */
 	async function cancelSession() {
 		await payment.cancelActivePaymentSession()
-		resetPaymentFlow()
+		resetPaymentSession()
 	}
 
 	return {
@@ -526,7 +569,9 @@ export function usePaymentSession({
 		chargeSession,
 		retrySession,
 		cancelSession,
-		resetPaymentFlow,
+		resetPaymentSession,
 		handleTerminalReset,
+		instructions,
+		processingStage,
 	}
 }
