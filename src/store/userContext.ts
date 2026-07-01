@@ -7,7 +7,7 @@ export interface UserContext {
 	uid: string
 	emailAddress: string
 	displayName: string
-	phoneNumber: string
+	phoneNumber: string | null
 }
 
 export const useUserContextStore = defineStore('userContext', () => {
@@ -20,7 +20,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 	const uid = ref('')
 	const emailAddress = ref('')
 	const displayName = ref('')
-	const phoneNumber = ref('')
+	const phoneNumber = ref<string | null>('')
 
 	/**
 	 * Guards against repeated hydration calls.
@@ -50,6 +50,20 @@ export const useUserContextStore = defineStore('userContext', () => {
 		emailAddress.value = context.emailAddress
 		displayName.value = context.displayName
 		phoneNumber.value = context.phoneNumber
+	}
+
+	/**
+	 * Get UserContext store state
+	 */
+	function getContext(): UserContext | null {
+		if (!isAuthenticated) return null
+
+		return {
+			uid: uid.value,
+			emailAddress: emailAddress.value,
+			displayName: displayName.value,
+			phoneNumber: phoneNumber.value ?? null
+		}
 	}
 
 	/**
@@ -133,6 +147,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 		initialised,
 
 		setContext,
+		getContext,
 		hydrate,
 		initialise,
 		clear,

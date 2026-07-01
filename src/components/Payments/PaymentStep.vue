@@ -240,9 +240,9 @@
 						<span class="status-text__sub">Don't close this window</span>
 					</div>
 					<div class="progress-dots" aria-hidden="true">
-						<span class="dot" :class="{ 'dot--on': paymentSession.processingStage.value >= 0 }"></span>
-						<span class="dot" :class="{ 'dot--on': paymentSession.processingStage.value >= 1 }"></span>
-						<span class="dot" :class="{ 'dot--on': paymentSession.processingStage.value >= 2 }"></span>
+						<span class="dot" :class="{ 'dot--on': processingStage >= 0 }"></span>
+						<span class="dot" :class="{ 'dot--on': processingStage >= 1 }"></span>
+						<span class="dot" :class="{ 'dot--on': processingStage >= 2 }"></span>
 					</div>
 				</div>
 
@@ -315,7 +315,7 @@
 					</div>
 				</div>
 
-				<button class="payment-reset-card__button" @click="paymentSession.cancelSession">
+				<button class="payment-reset-card__button" @click="cancelSession">
 					Restart Payment
 				</button>
 			</div>
@@ -388,7 +388,7 @@
  *
  * Retry / resume flows are handled by usePayment (not here).
  */
-import { ref, computed, watch, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, type ComputedRef } from 'vue'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
 
@@ -401,7 +401,8 @@ import {
 	type HydratedPayment,
 	type SelectedMno,
 	type PaymentPurpose,
-	type PaymentPresentation
+	type PaymentPresentation,
+	type PaymentSessionContext,
 } from '@/payment'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
@@ -415,7 +416,7 @@ import { usePaymentDisplay } from '@/payment/usePaymentDisplay'
 import { usePaymentSession } from '@/payment/usePaymentSession'
 import { useMnoDetection } from '@/payment/useMnoDetection'
 import type { ProductPricing } from '@/composables/useProductPricing'
-import { useUserContextStore } from '@/store/userContext.ts'
+import { useUserContextStore, type UserContext } from '@/store/userContext.ts'
 import type { Product } from '@/payment/product.ts'
 
 // ─────────────────────────────────────────────────────────────
@@ -457,7 +458,7 @@ const phoneFocused = ref(false)
 const phoneInputRef = ref<HTMLInputElement | null>(null)
 
 const product = ref<Product | null>(null)
-const user = ref<any>(null)
+const user = ref<UserContext | null>(null)
 const isLoadingData = ref(true)
 const hasEmittedSuccess = ref(false)
 const mobilePaymentContext = ref<MobilePaymentContext | null>(null)
@@ -465,6 +466,15 @@ const isHydrating = ref(false)
 
 const hasActivePaymentSession = computed(() => {
 	return !!payment.activeReference.value
+})
+
+const paymentSessionContext: ComputedRef<PaymentSessionContext> = computed(() => {
+	return {
+		signUuid: props.signUuid,
+		signRequestId: props.signRequestId,
+		productCode: props.productCode,
+		quantity: props.quantity
+	}
 })
 
 let resetMnoDetectionStateRef: () => void = () => {}
@@ -536,7 +546,14 @@ const {
     quantity: props.quantity,
 })
 
-const paymentSession = usePaymentSession({
+const {
+	handlePay,
+    applyHydratedPayment,
+    cancelSession,
+    buttonLabel,
+    paymentMessage,
+    processingStage,
+} = usePaymentSession({
 	payment,
 	mnoDetection,
 	routing,
@@ -549,11 +566,12 @@ const paymentSession = usePaymentSession({
 	mobilePaymentContext,
 	selectedMethod,
 	isHydrating,
-	props,
+	sessionContext: paymentSessionContext.value,
 	user,
-	emit,
+	onRuntimeInvalid,
 	discardRecovery,
 	selectMethod,
+	paymentDisplayLabel
 })
 
 /**
@@ -603,80 +621,6 @@ const canContinue = computed(() => {
 	}
 })
 
-const buttonLabel = computed(() => {
-	if (payment.isOffline.value) return 'Waiting for connection…'
-
-	if (mnoDetection.state === 'detecting') {
-		return 'Detecting your network…'
-	}
-
-	switch (payment.state.value) {
-		case 'timeout':
-			return 'Retry payment'
-
-		case 'error':
-			return 'Try again'
-
-		case 'cancelled':
-			return 'Try again'
-
-		case 'processing':
-			return 'Approve on your phone…'
-
-		case 'requesting':
-			return 'Sending payment request...'
-
-		case 'initiating':
-			return 'Starting payment…'
-
-		default:
-
-			if (selectedMethod.value === 'card') {
-				return 'Continue to card payment'
-			}
-
-			if (
-				mnoDetection.state === 'detected' ||
-				mnoDetection.state === 'selected'
-			) {
-				return paymentDisplayLabel.value
-					? `Confirm — pay ${paymentDisplayLabel.value}`
-					: 'Confirm & pay'
-			}
-
-			if (
-				mnoDetection.state === 'suggested' ||
-				mnoDetection.state === 'requires-selection'
-			) {
-				return mnoDetection.selected
-					? `Confirm — pay ${paymentDisplayLabel.value ?? ''}`
-					: 'Select a provider to continue'
-			}
-
-			return 'Continue'
-	}
-})
-
-const paymentMessage = computed(() => {
-	if (payment.isOffline.value) {
-		return `Connection lost. We'll resume automatically…`
-	}
-
-	if (paymentSession.instructions.value) return paymentSession.instructions.value
-
-	if (paymentSession.processingStage.value === 2) {
-		return 'Almost there… waiting for confirmation'
-	}
-
-	if (paymentSession.processingStage.value === 1) {
-		return 'Still working… this can take a few seconds'
-	}
-
-	return resolution.value?.provider === 'daraja'
-		? 'Check your phone and enter your M-Pesa PIN'
-		: 'Approve payment on your phone'
-})
-
 const statusKey = computed(() => {
 	if (payment.isOffline.value) return 'offline'
 	return payment.state.value
@@ -713,44 +657,6 @@ watch(() => payment.state.value, (state) => {
 	}
 })
 
-async function handlePay() {
-	if (payment.state.value === 'processing' || payment.state.value === 'hydrating') return
-
-	const canContinueExistingFlow =
-		!!mnoDetection.reference &&
-		(
-			mnoDetection.state === 'detected' ||
-			mnoDetection.state === 'selected' ||
-			mnoDetection.state === 'requires-selection' ||
-			mnoDetection.state === 'suggested'
-		)
-
-	if (
-		(payment.state.value === 'timeout' ||
-			payment.state.value === 'error') &&
-		!canContinueExistingFlow
-	) {
-		return paymentSession.retrySession()
-	}
-
-	try {
-		if (selectedMethod.value === 'mobile') {
-			await paymentSession.initiateSession()
-		} else if (selectedMethod.value === 'card') {
-			await paymentSession.chargeSession()
-		} else {
-			showError(`Invalid payment method selected`)
-			return
-		}
-
-
-	} catch (err) {
-		payment.state.value = 'error'
-
-		console.error('[PaymentStep] Payment failed', err)
-	}
-}
-
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
@@ -758,6 +664,10 @@ async function handlePay() {
 function selectMethod(m: PaymentMethod) {
 	if (isProcessing.value) return
 	selectedMethod.value = m
+}
+
+function onRuntimeInvalid() {
+	emit('payment-runtime-invalid')
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -769,12 +679,11 @@ onMounted(async () => {
 		showInfo('This is a demo environment. No real money is being transacted.')
 	}
 	try {
-		const { uid, emailAddress, phoneNumber } = useUserContextStore()
-		user.value = { uid, emailAddress, phoneNumber }
+		user.value = userContext.getContext()
 		product.value = props.pricing.product.value
 
 		if (props.initialPayment) {
-			paymentSession.applyHydratedPayment(props.initialPayment)
+			applyHydratedPayment(props.initialPayment)
 		} else {
 			payment.paymentPurpose.value = props.paymentPurpose;
 		}

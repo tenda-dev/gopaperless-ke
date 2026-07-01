@@ -5,7 +5,7 @@ import type {
 	SelectedMno,
 } from '@/payment'
 
-interface MnoDetectionState {
+export interface MnoDetectionState {
 	state:
 	| 'idle'
 	| 'detecting'

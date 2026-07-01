@@ -204,3 +204,10 @@ export interface PaymentPresentation {
 		subtitle: string
 	}
 }
+
+export interface PaymentSessionContext {
+	signUuid?: string
+	signRequestId?: number
+	productCode: string
+	quantity: number
+}
