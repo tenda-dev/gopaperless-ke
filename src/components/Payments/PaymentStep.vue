@@ -526,6 +526,7 @@ const {
 	resetMnoDetectionState,
 	formatMnoLabel,
 	isValidSelectedProvider,
+	applyMnoDetection,
 } = useMnoDetection({
 	isDaraja,
 	resolution,
@@ -557,7 +558,7 @@ const {
 	payment,
 	mnoDetection,
 	routing,
-	isValidSelectedProvider,
+	applyMnoDetection,
 	resetMnoDetectionState,
 	phoneInput,
 	resolution,

@@ -1,9 +1,20 @@
 import { reactive, computed, type Ref } from 'vue'
 import type {
+	HydratedPayment,
 	MnoOption,
 	ResolvedPaymentRoute,
 	SelectedMno,
 } from '@/payment'
+
+export type MnoDetectionPayload = Pick<
+	PaymentResponse & HydratedPayment,
+	'reference' |
+	'confidence' |
+	'mno' |
+	'country' |
+	'options' |
+	'selected'
+>
 
 export interface MnoDetectionState {
 	state:
@@ -172,6 +183,65 @@ export function useMnoDetection({
 		}
 	}
 
+	/**
+	 * Shared confidence → mnoDetection.state mapping.
+	 *
+	 * Previously written three times (handleMobilePayment,
+	 * retryPayment, hydratePaymentState). Single source of
+	 * truth now — changes to routing confidence rules happen here.
+	 *
+	 * Also sets showSelector so callers don't have to.
+	 */
+	function applyDetectionResult(
+		confidence: 'high' | 'ambiguous' | 'unknown' | null | undefined,
+		isSelectedValid: boolean,
+	) {
+		if (isSelectedValid) {
+			mnoDetection.state = 'selected'
+			mnoDetection.showSelector = false
+			return
+		}
+
+		switch (confidence) {
+			case 'high':
+				mnoDetection.state = 'detected'
+				mnoDetection.showSelector = false
+				break
+
+			case 'ambiguous':
+				mnoDetection.state = 'suggested'
+				mnoDetection.showSelector = true
+				break
+
+			case 'unknown':
+			default:
+				mnoDetection.state = 'requires-selection'
+				mnoDetection.showSelector = true
+				break
+		}
+	}
+
+	function applyMnoDetection(response: MnoDetectionPayload) {
+		mnoDetection.reference = response.reference
+		mnoDetection.confidence = response.confidence
+		mnoDetection.mno = response.mno
+		mnoDetection.country = response.country
+		mnoDetection.options = response.options ?? []
+
+		const isSelectedValid = isValidSelectedProvider(response.selected)
+
+		mnoDetection.selected = isSelectedValid
+			? {
+				provider: response.selected!.mno,
+				country: response.selected!.country,
+			}
+			: null
+
+		applyDetectionResult(response.confidence, isSelectedValid)
+
+		return !!isSelectedValid
+	}
+
 	function resetMnoDetectionState() {
 		mnoDetection.state = 'idle'
 		mnoDetection.confidence = null
@@ -191,5 +261,6 @@ export function useMnoDetection({
 		resetMnoDetectionState,
 		formatMnoLabel,
 		isValidSelectedProvider,
+		applyMnoDetection,
 	}
 }

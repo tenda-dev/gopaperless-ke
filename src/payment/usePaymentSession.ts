@@ -3,17 +3,15 @@ import { resolvePhone } from '@/utils/phoneResolver'
 import { normaliseRegion } from '@/utils/mobileMoney'
 import type {
 	HydratedPayment,
-	MnoOption,
 	MobilePaymentContext,
 	PaymentMethod,
 	PaymentResponse,
 	PaymentSessionContext,
 	PaymentTerminalStatus,
-	SelectedMno,
 } from '@/payment'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 import type { UserContext } from '@/store/userContext'
-import type { MnoDetectionState } from './useMnoDetection'
+import type { MnoDetectionPayload, MnoDetectionState } from './useMnoDetection'
 
 //
 // Types
@@ -23,7 +21,7 @@ export type PaymentSession = {
 	payment: ReturnType<typeof import('@/payment').usePayment>
 	mnoDetection: MnoDetectionState
 	routing: { shouldStartPolling: (res: PaymentResponse | HydratedPayment) => boolean }
-	isValidSelectedProvider: (selected?: SelectedMno | null) => boolean
+	applyMnoDetection: (response: MnoDetectionPayload) => boolean
 	resetMnoDetectionState: () => void
 	phoneInput: Ref<string>
 	resolution: Ref<ReturnType<typeof resolvePhone> | null>
@@ -71,7 +69,7 @@ export function usePaymentSession({
 	payment,
 	mnoDetection,
 	routing,
-	isValidSelectedProvider,
+	applyMnoDetection,
 	resetMnoDetectionState,
 	phoneInput,
 	resolution,
@@ -666,17 +664,11 @@ export function usePaymentSession({
 			}
 
 			if (response.flow === 'mobile_direct') {
-				const selected        = response.selected
-				const isSelectedValid = !!selected && isValidSelectedProvider(selected)
+				const isSelectedValid = applyMnoDetection(response)
 
-				mnoDetection.confidence = response.confidence
-				mnoDetection.mno        = isSelectedValid ? selected.mno : response.mno
-				mnoDetection.country    = isSelectedValid ? selected.country : response.country
-
-				// Already charged — polling is running, just update detection state
+				// Already charged — polling is running
 				if (response.alreadyCharged) {
 					payment.retryCount.value += 1
-					mnoDetection.state = isSelectedValid ? 'selected' : 'detected'
 					return
 				}
 
@@ -687,10 +679,6 @@ export function usePaymentSession({
 					mnoDetection.options      = response.options ?? []
 					return
 				}
-
-				// Apply remaining confidence cases via shared helper
-				applyDetectionResult(response.confidence, isSelectedValid)
-				mnoDetection.options = response.options ?? []
 			}
 
 		} catch {
@@ -755,23 +743,10 @@ export function usePaymentSession({
 		}
 
 		// MNO detection state
-		mnoDetection.reference  = hydratedPayment.reference
-		mnoDetection.confidence = hydratedPayment.confidence
-		mnoDetection.mno        = hydratedPayment.mno
-		mnoDetection.country    = hydratedPayment.country
-		mnoDetection.options    = hydratedPayment.options ?? []
-
-		const selected        = hydratedPayment.selected
-		const isSelectedValid = !!(selected && isValidSelectedProvider(selected))
-
-		mnoDetection.selected = isSelectedValid
-			? { provider: selected!.mno, country: selected!.country }
-			: null
-
-		applyDetectionResult(hydratedPayment.confidence, isSelectedValid)
+		applyMnoDetection(hydratedPayment)
 
 		/**
-		 * applyDetectionResult sets showSelector for detected/selected/requires-selection.
+		 * applyMnoDetection sets showSelector for detected/selected/requires-selection.
 		 * Hydration must also show the selector for 'suggested' — the user was mid-selection
 		 * before the page refreshed and should be returned to that state.
 		 */
