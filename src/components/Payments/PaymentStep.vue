@@ -445,6 +445,14 @@ const { discardRecovery } = usePaymentRecovery()
 const routing = usePaymentRouting()
 const userContext = useUserContextStore()
 
+/**
+ * Backend may resolve signUuid from signRequestId during initiate().
+ * Cache the resolved UUID so phase-2 validation and the charge call
+ * can proceed even when the parent component only passed signRequestId.
+ */
+const resolvedSignUuid = ref<string | null>(props.signUuid ?? null)
+const effectiveSignUuid = computed(() => resolvedSignUuid.value ?? props.signUuid ?? null)
+
 // ─────────────────────────────────────────────────────────────
 // UI state
 // ─────────────────────────────────────────────────────────────
@@ -1027,7 +1035,7 @@ async function handleMobilePayment() {
 			paymentMethod: 'mobile',
 			phoneNumber: resolvedPhone.e164,
 			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
+			signUuid: effectiveSignUuid.value ?? undefined,
 			productCode: props.productCode,
 			userId: user.value?.uid,
 			userEmail: user.value?.emailAddress,
@@ -1081,6 +1089,14 @@ async function handleMobilePayment() {
 
 		if (response.paymentPurpose) {
 			payment.lockPaymentPurpose(response.paymentPurpose)
+		}
+
+		/**
+		 * Cache backend-resolved signer UUID. The parent may only have
+		 * passed signRequestId, but charge() needs the UUID.
+		 */
+		if (response.signUuid) {
+			resolvedSignUuid.value = response.signUuid
 		}
 
 		/**
@@ -1257,7 +1273,7 @@ async function handleMobilePayment() {
 		!mnoToUse ||
 		!countryToUse ||
 		!props.signRequestId ||
-		!props.signUuid
+		!effectiveSignUuid.value
 	) {
 
 		payment.state.value = 'error'
@@ -1282,7 +1298,7 @@ async function handleMobilePayment() {
 	}
 
 	const signRequestId = props.signRequestId ?? 0
-	const signUuid = props.signUuid ?? ''
+	const signUuid = effectiveSignUuid.value ?? ''
 	await payment.chargeExistingReference(
 		{
 			reference:
@@ -1313,7 +1329,7 @@ async function handleCardPayment() {
 		{
 			provider: 'dpo',
 			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
+			signUuid: effectiveSignUuid.value ?? undefined,
 			paymentMethod: 'card',
 			userEmail: user.value?.emailAddress,
 			userId: user.value?.uid,
@@ -1339,7 +1355,7 @@ async function retryPayment() {
 		const payRes = await payment.startPayment(
 			{
 				signRequestId: props.signRequestId,
-				signUuid: props.signUuid,
+				signUuid: effectiveSignUuid.value ?? undefined,
 				paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
 				phoneNumber: normalisedPhone.value || undefined,
 				userEmail: user.value?.emailAddress,
@@ -1374,6 +1390,10 @@ async function retryPayment() {
 		payment.alreadyCharged.value = !!payRes.alreadyCharged
 		if (payRes.paymentPurpose) {
 			payment.lockPaymentPurpose(payRes.paymentPurpose)
+		}
+
+		if (payRes.signUuid) {
+			resolvedSignUuid.value = payRes.signUuid
 		}
 
 		if (payRes.flow === 'redirect') return
