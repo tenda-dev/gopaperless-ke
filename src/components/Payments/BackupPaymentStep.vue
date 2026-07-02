@@ -933,6 +933,7 @@ async function handleMobilePayment() {
 			productCode: props.productCode,
 			userId: user.value?.uid,
 			userEmail: props.signer.email,
+			purpose: 'sign_request',
 		})
 
 		if (res.flow !== 'callback') {
@@ -974,6 +975,7 @@ async function handleMobilePayment() {
 			productCode: props.productCode,
 			userId: user.value?.uid,
 			userEmail: props.signer.email,
+			purpose: 'sign_request',
 		})
 
 		if (!res?.reference || !res?.flow) {
@@ -1068,7 +1070,8 @@ async function handleCardPayment() {
 		userEmail: props.signer.email,
 		userId: user.value?.uid,
 		productCode: props.productCode,
-		redirectUrl: payment.buildPaymentRedirectUrl()
+		redirectUrl: payment.buildPaymentRedirectUrl(),
+		purpose: 'sign_request',
 	})
 }
 
@@ -1088,6 +1091,7 @@ async function retryPayment() {
 			userEmail: props.signer.email,
 			userId: user.value?.uid,
 			productCode: props.productCode,
+			purpose: 'sign_request',
 		})
 
 		if (!payRes) return

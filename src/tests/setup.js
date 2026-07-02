@@ -79,6 +79,35 @@ afterEach(() => {
 
 setActivePinia(createPinia())
 
+// Prevent the user context store from issuing real network requests during tests.
+import { useUserContextStore } from '@/store/userContext.ts'
+useUserContextStore().$patch({
+	initialised: true,
+	uid: 'test-user',
+	emailAddress: 'test@example.com',
+	displayName: 'Test User',
+	phoneNumber: '',
+})
+
+// Provide a fallback account/me response for components that create a fresh Pinia.
+import axios from '@nextcloud/axios'
+axios.get = vi.fn().mockResolvedValue({
+	data: {
+		ocs: {
+			data: {
+				account: {
+					uid: 'test-user',
+					emailAddress: 'test@example.com',
+					displayName: 'Test User',
+				},
+				settings: {
+					phoneNumber: '',
+				},
+			},
+		},
+	},
+})
+
 import './testHelpers/jsdomMocks.js'
 import './testHelpers/nextcloudMocks.js'
 import './testHelpers/vueMocks.js'

@@ -339,6 +339,7 @@ describe('CreateAccount.vue - Business Logic', () => {
 				email: 'test@example.com',
 				password: 'password123',
 				passwordConfirm: 'password123',
+				termsAccepted: true,
 				loading: false,
 			})
 			expect(wrapper.vm.canSave).toBe(true)
@@ -411,6 +412,7 @@ describe('CreateAccount.vue - Business Logic', () => {
 				email: 'test@example.com',
 				password: 'validPassword123',
 				passwordConfirm: 'validPassword123',
+				termsAccepted: true,
 				loading: false,
 			})
 
@@ -475,6 +477,7 @@ describe('CreateAccount.vue - Business Logic', () => {
 				email: 'test@example.com',
 				password: '12345',
 				passwordConfirm: '12345',
+				termsAccepted: true,
 				loading: false,
 			})
 
@@ -487,6 +490,7 @@ describe('CreateAccount.vue - Business Logic', () => {
 				email: 'test@example.com',
 				password: 'validPassword123',
 				passwordConfirm: 'validPassword123',
+				termsAccepted: true,
 				loading: true,
 			})
 
@@ -518,8 +522,11 @@ describe('CreateAccount.vue - Business Logic', () => {
 				uuid: 'test-uuid',
 			})
 			expect(axiosPostMock).toHaveBeenCalledWith('/apps/libresign/api/v1/account/create/{uuid}', {
+				uuid: 'test-uuid',
 				email: 'test@example.com',
+				phoneNumber: null,
 				password: 'validPassword123',
+				termsAccepted: false,
 			})
 		})
 	})

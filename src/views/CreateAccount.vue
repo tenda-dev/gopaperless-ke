@@ -68,6 +68,43 @@
 					:error="confirmPasswordError.length > 0"
 					@blur="v$.passwordConfirm.$touch()"
 					required />
+				<div class="terms-row">
+					<NcButton variant="tertiary"
+						size="small"
+						:disabled="loading"
+						@click="openTermsModal">
+						{{ t('libresign', 'View Terms of Service') }}
+					</NcButton>
+					<NcCheckboxRadioSwitch v-model="state.termsAccepted"
+						:disabled="loading"
+						type="checkbox">
+						{{ t('libresign', 'I agree to the Terms of Service') }}
+					</NcCheckboxRadioSwitch>
+				</div>
+				<NcModal v-if="state.showTermsModal"
+					:size="'large'"
+					@close="state.showTermsModal = false">
+					<div class="terms-modal-content">
+						<h3>{{ t('libresign', 'Terms of Service') }}</h3>
+						<NcNoteCard v-if="state.termsError" type="error">
+							{{ state.termsError }}
+						</NcNoteCard>
+						<NcLoadingIcon v-else-if="state.termsLoading" :size="32" />
+						<div v-else class="terms-body" v-html="termsBody" />
+						<div class="terms-modal-actions">
+							<NcButton variant="secondary"
+								:disabled="state.termsLoading"
+								@click="state.showTermsModal = false">
+								{{ t('libresign', 'Close') }}
+							</NcButton>
+							<NcButton variant="primary"
+								:disabled="state.termsLoading || !!state.termsError"
+								@click="acceptTermsAndClose">
+								{{ t('libresign', 'I agree') }}
+							</NcButton>
+						</div>
+					</div>
+				</NcModal>
 				<div class="login-button-container">
 					<NcButton :wide="true"
 						variant="primary"
@@ -100,7 +137,9 @@ import { loadState } from '@nextcloud/initial-state'
 import { generateOcsUrl } from '@nextcloud/router'
 
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+import NcModal from '@nextcloud/vue/components/NcModal'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcPasswordField from '@nextcloud/vue/components/NcPasswordField'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
@@ -120,6 +159,13 @@ type RouteState = {
 	params: {
 		uuid?: string
 	}
+}
+
+type TermOfService = {
+	id: number
+	countryCode: string
+	languageCode: string
+	renderedBody: string
 }
 
 type RouterState = {
@@ -150,10 +196,15 @@ const state = reactive({
 	phoneNumber: '',
 	password: '',
 	passwordConfirm: '',
+	termsAccepted: false,
 	settings: loadState<CreateAccountSettings>('libresign', 'settings', {}),
 	message: loadState<string>('libresign', 'message', ''),
 	errorMessage: '',
 	enabledFeatures: [] as unknown[],
+	showTermsModal: false,
+	terms: [] as TermOfService[],
+	termsLoading: false,
+	termsError: '',
 })
 
 const {
@@ -297,6 +348,7 @@ const canSave = computed(() => {
 		&& state.email.length > 0
 		&& state.password.length > 0
 		&& state.passwordConfirm.length > 0
+		&& state.termsAccepted
 		&& !state.loading
 })
 
@@ -333,6 +385,45 @@ onBeforeMount(() => {
 	}
 })
 
+const termsBody = computed(() => {
+	if (state.terms.length === 0) {
+		return ''
+	}
+
+	const language = (window?.OC?.getLanguage?.() ?? navigator.language ?? 'en').split('-')[0]
+	const matching = state.terms.find((term) => term.languageCode === language)
+	return matching?.renderedBody ?? state.terms[0].renderedBody
+})
+
+async function loadTerms() {
+	if (state.terms.length > 0) {
+		return
+	}
+
+	state.termsLoading = true
+	state.termsError = ''
+	try {
+		const response = await axios.get<{ ocs: { data: { terms: TermOfService[] } } }>(
+			generateOcsUrl('/apps/terms_of_service/terms'),
+		)
+		state.terms = response.data.ocs.data.terms ?? []
+	} catch (error: any) {
+		state.termsError = error?.response?.data?.ocs?.data?.message ?? t('libresign', 'Could not load Terms of Service')
+	} finally {
+		state.termsLoading = false
+	}
+}
+
+async function openTermsModal() {
+	await loadTerms()
+	state.showTermsModal = true
+}
+
+function acceptTermsAndClose() {
+	state.termsAccepted = true
+	state.showTermsModal = false
+}
+
 async function createAccount() {
 	state.loading = true
 
@@ -351,11 +442,16 @@ async function createAccount() {
 	}
 
 	try {
-		await axios.post(generateOcsUrl('/apps/libresign/api/v1/account/create/{uuid}'), {
-			uuid: route.value.params.uuid ?? '',
+		const signUuid = Array.isArray(route.value.params.uuid)
+			? route.value.params.uuid[0]
+			: route.value.params.uuid
+
+		await axios.post(generateOcsUrl('/apps/libresign/api/v1/account/create/{uuid}', { uuid: signUuid }), {
+			uuid: signUuid,
 			email: state.email,
 			phoneNumber: normalisedPhone,
 			password: state.password,
+			termsAccepted: state.termsAccepted,
 		})
 		if (!router.value) {
 			return
@@ -601,5 +697,41 @@ body {
 		font-size: 22px;
 	}
 
+}
+
+.terms-row {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	align-items: flex-start;
+	margin-top: 4px;
+}
+
+.terms-modal-content {
+	padding: 24px;
+	max-width: 720px;
+	max-height: 80vh;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+
+	h3 {
+		margin: 0;
+	}
+
+	.terms-body {
+		overflow-y: auto;
+		max-height: 50vh;
+		padding: 12px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--border-radius);
+		background: var(--color-background-dark);
+	}
+
+	.terms-modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 12px;
+	}
 }
 </style>

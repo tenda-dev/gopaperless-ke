@@ -30,6 +30,8 @@ use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Config\IUserConfig;
+use OCP\DB\Exception as DBException;
+use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -60,6 +62,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		private Chain $loginChain,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
+		private IDBConnection $connection,
 		protected IUserSession $userSession,
 		protected SessionService $sessionService,
 		private ValidateHelper $validateHelper,
@@ -87,7 +90,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	#[PublicPage]
 	#[UseSession]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/account/create/{uuid}', requirements: ['apiVersion' => '(v1)'])]
-	public function createToSign(string $uuid, string $email, string $password, ?string $signPassword, ?string $phoneNumber = null): DataResponse {
+	public function createToSign(string $uuid, string $email, string $password, ?string $signPassword, ?string $phoneNumber = null, bool $termsAccepted = false): DataResponse {
 		try {
 			$data = [
 				'uuid' => $uuid,
@@ -109,7 +112,11 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 			$fileToSign = $validated['file'];
 			$signRequest = $validated['signRequest'];
 
-			$this->accountService->createToSign($uuid, $email, $password, $signPassword, $phoneNumber);
+			$userId = $this->accountService->createToSign($uuid, $email, $password, $signPassword, $phoneNumber);
+			if ($termsAccepted) {
+				$this->acceptTermsOnAccountCreation($userId);
+			}
+
 			$response = [
 				'message' => $this->l10n->t('Success'),
 				'action' => JSActions::ACTION_SIGN,
@@ -141,6 +148,61 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		);
 	}
 
+	/**
+	 * Accept the active Terms of Service on behalf of a newly created invited
+	 * signer so that the subsequent login chain does not block account creation.
+	 *
+	 * This only touches the Terms of Service tables when they exist; it does
+	 * nothing when the app is not installed/enabled.
+	 */
+	private function acceptTermsOnAccountCreation(string $userId): void {
+		if (!$this->connection->tableExists('termsofservice_terms')
+			|| !$this->connection->tableExists('termsofservice_sigs')) {
+			return;
+		}
+
+		try {
+			$qb = $this->connection->getQueryBuilder();
+			$qb->select('id')
+				->from('termsofservice_terms');
+			$result = $qb->executeQuery();
+			$termIds = [];
+			while ($row = $result->fetch()) {
+				$termIds[] = (int)$row['id'];
+			}
+			$result->closeCursor();
+
+			if (empty($termIds)) {
+				return;
+			}
+
+			foreach ($termIds as $termId) {
+				$check = $this->connection->getQueryBuilder();
+				$check->select($check->expr()->literal(1))
+					->from('termsofservice_sigs')
+					->where($check->expr()->eq('user_id', $check->createNamedParameter($userId)))
+					->andWhere($check->expr()->eq('terms_id', $check->createNamedParameter($termId)))
+					->setMaxResults(1);
+				$checkResult = $check->executeQuery();
+				$exists = $checkResult->fetchOne();
+				$checkResult->closeCursor();
+				if ($exists) {
+					continue;
+				}
+
+				$insert = $this->connection->getQueryBuilder();
+				$insert->insert('termsofservice_sigs')
+					->setValue('user_id', $insert->createNamedParameter($userId))
+					->setValue('terms_id', $insert->createNamedParameter($termId))
+					->setValue('timestamp', $insert->createNamedParameter(time()));
+				$insert->executeStatement();
+			}
+
+			$this->logger->info('Accepted Terms of Service on behalf of newly created invited signer', ['userId' => $userId]);
+		} catch (DBException $e) {
+			$this->logger->warning('Could not accept Terms of Service for new user: ' . $e->getMessage(), ['exception' => $e]);
+		}
+	}
 
 	/**
 	 * Create a standalone GoPaperless account.
@@ -177,7 +239,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	public function create(
 		string $email,
 		string $password,
-		?string $phoneNumber = null
+		?string $phoneNumber = null,
 	): DataResponse {
 		try {
 			$email = trim(strtolower($email));

@@ -227,11 +227,12 @@ class DpoPaymentService {
 	 * @param string $mnoCountry Country name (default: "kenya")
 	 *
 	 * @return array{
-	 *     status: 'PENDING'|'FAILED',
+	 *     status: 'ACCEPTED'|'FAILED',
 	 *     instructions?: string,
 	 *     redirect?: bool,
 	 *     error?: string,
-	 *     code?: string
+	 *     code?: string,
+	 *     raw: array<array-key, mixed>
 	 * }
 	 *
 	 * @throws Throwable On network / XML parsing errors
@@ -302,7 +303,7 @@ class DpoPaymentService {
 			'956' => 'Terminal not configured',
 		];
 
-		$message = $errorMap[$statusCode]
+		$message = $errorMap[(int)$statusCode]
 			?? ($explanation !== '' ? $explanation : 'Unknown error');
 
 		$this->logger->error('DPO chargeTokenMobile failed', [
@@ -719,7 +720,7 @@ class DpoPaymentService {
 			'/<br\s*>/i',
 			'<br/>',
 			$xml
-		);
+		) ?? $xml;
 
 		return $xml;
 	}

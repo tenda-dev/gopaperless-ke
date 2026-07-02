@@ -230,7 +230,7 @@ class AccountService {
 		return $this->signRequest;
 	}
 
-	public function createToSign(string $uuid, string $email, string $password, ?string $signPassword, ?string $phoneNumber = null): void {
+	public function createToSign(string $uuid, string $email, string $password, ?string $signPassword, ?string $phoneNumber = null): string {
 		$signRequest = $this->getSignRequestByUuid($uuid);
 
 		$newUser = $this->userManager->createUser($email, $password);
@@ -272,12 +272,14 @@ class AccountService {
 			);
 			$this->pkcs12Handler->savePfx($newUser->getPrimaryEMailAddress(), $certificate);
 		}
+
+		return $newUser->getUID();
 	}
 
 	public function createOnly(
 		string $email,
 		string $password,
-		?string $phoneNumber = null
+		?string $phoneNumber = null,
 	): array {
 		$email = trim(strtolower($email));
 
@@ -391,8 +393,7 @@ class AccountService {
 		return $userAccount->getProperty(IAccountManager::PROPERTY_PHONE)->getValue();
 	}
 
-	private function setPhoneNumber(?IUser $user, ?string $phone): bool
-	{
+	private function setPhoneNumber(?IUser $user, ?string $phone): bool {
 		if (!$user || !$phone) {
 			return false;
 		}

@@ -117,6 +117,22 @@ class PaymentController extends AEnvironmentAwareController {
 				? PaymentProvider::tryFrom($provider)
 				: null;
 
+			if (
+				$purposeEnum === PaymentPurpose::SIGN_REQUEST
+				&& ($signUuid === null || $signUuid === '')
+				&& $signRequestId !== null
+			) {
+				try {
+					$signRequest = $this->signRequestMapper->getById($signRequestId);
+					$signUuid = $signRequest->getUuid();
+				} catch (\Throwable $e) {
+					$this->logger->warning('[PaymentStart] Could not resolve sign UUID from sign request ID', [
+						'signRequestId' => $signRequestId,
+						'error' => $e->getMessage(),
+					]);
+				}
+			}
+
 			$dto = new StartPaymentDTO(
 				userEmail: $userEmail,
 				signUuid: $signUuid,

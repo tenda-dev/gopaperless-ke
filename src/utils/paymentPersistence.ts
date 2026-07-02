@@ -19,6 +19,7 @@ export type PersistedPaymentSession = {
 	reference: string
 	flow: PaymentFlow
 	paymentPurpose: PaymentPurpose
+	productCode?: string
 	signRequestId?: number
 	signUuid?: string
 	timestamp: number // prefer timestamp to not confuse payment createdAt
@@ -26,13 +27,19 @@ export type PersistedPaymentSession = {
 
 export type PersistPaymentSessionPayload = Omit<PersistedPaymentSession, 'timestamp'>
 
-function persistPaymentSession({ reference, flow, paymentPurpose, signRequestId, signUuid }: PersistPaymentSessionPayload) {
+function persistPaymentSession({ reference, flow, paymentPurpose, productCode, signRequestId, signUuid }: PersistPaymentSessionPayload) {
+	const existing = getPersistedPaymentSession()
+
+	const mergedProductCode = productCode
+		?? (existing?.reference === reference ? existing.productCode : undefined)
+
 	sessionStorage.setItem(
 		ACTIVE_PAYMENT_KEY,
 		JSON.stringify({
 			reference,
 			flow,
 			paymentPurpose,
+			productCode: mergedProductCode,
 			signRequestId,
 			signUuid,
 			timestamp: Date.now(),

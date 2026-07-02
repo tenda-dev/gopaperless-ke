@@ -58,7 +58,7 @@ onMounted(async () => {
 	// Actively strip and block Nextcloud dark mode variations
 	useForceLightMode()
 
-	await userContext.hydrate()
+	await userContext.initialise()
 })
 </script>
 

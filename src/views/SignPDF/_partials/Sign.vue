@@ -178,6 +178,7 @@ import { getFileSigners, getVisibleElementsFromDocument, idsMatch, isCurrentUser
 import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
 // import PaymentModal from '@/components/Payments/PaymentModal.vue'
 import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
+import { getPersistedPaymentSession, clearPersistedPaymentSession } from '@/utils/paymentPersistence'
 import { resolveUserId } from '@/utils/resolveUserId'
 import { useEntitlementStore } from '@/store/entitlement'
 import { useSignerContextStore } from '@/store/signerContext'
@@ -524,14 +525,25 @@ const showSignCreditsBanner = computed(() => {
 async function consumeEntitlementAfterSign() {
 
 	try {
+		const session = getPersistedPaymentSession()
+
+		const productCode = session?.productCode
+			?? signStore.productCode
+			?? DEFAULT_SIGN_PRODUCT_CODE
+
+		const signUuid = signerContextStore.signUuid || signRequestUuid.value
+		const signRequestId = signerContextStore.signRequestId
+			|| currentSigner.value?.signRequestId
+			|| 0
 
 		await entitlementStore.consume({
 			userId: userContextStore.uid,
-			signUuid: signerContextStore.signUuid,
-			signRequestId: signerContextStore.signRequestId,
-			productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
+			signUuid,
+			signRequestId,
+			productCode,
 		})
 
+		clearPersistedPaymentSession()
 	} catch (err) {
 
 		console.error(
@@ -957,11 +969,15 @@ onMounted(async () => {
 	signatureElementsStore.loadSignatures()
 
 
-	await Promise.all([
+	const signerUuid = signRequestUuid.value || route?.params?.uuid
+	const initPromises = [
 		userContextStore.initialise(),
-		signerContextStore.initialise(route.params.uuid as string),
 		entitlementStore.initialise(),
-	])
+	]
+	if (signerUuid) {
+		initPromises.push(signerContextStore.initialise(String(signerUuid)))
+	}
+	await Promise.all(initPromises)
 
 	paymentContextStore.setFlowType(
         PaymentFlowType.CREDIT_PACK,

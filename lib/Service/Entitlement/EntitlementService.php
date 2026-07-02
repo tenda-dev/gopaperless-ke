@@ -121,10 +121,33 @@ class EntitlementService {
 				'productCode' => $productCode,
 			]);
 
-			// 1 Fetch sign request (fresh)
+			// 1 Resolve sign UUID from sign request ID if the frontend did not provide it
+			if (($signUuid === '' || $signUuid === '0') && $signRequestId > 0) {
+				try {
+					$resolved = $this->signRequestMapper->getById($signRequestId);
+					$signUuid = $resolved->getUuid();
+
+					$this->logger->info('[EntitlementService] resolved signUuid from signRequestId', [
+						'signRequestId' => $signRequestId,
+						'signUuid' => $signUuid,
+					]);
+				} catch (\Throwable $e) {
+					$this->logger->error('[EntitlementService] could not resolve sign request by ID', [
+						'signRequestId' => $signRequestId,
+						'error' => $e->getMessage(),
+					]);
+					throw new \RuntimeException('Invalid sign request ID');
+				}
+			}
+
+			if ($signUuid === '' || $signUuid === '0') {
+				throw new \RuntimeException('signUuid is required');
+			}
+
+			// 2 Fetch sign request (fresh)
 			$signRequest = $this->signRequestMapper->getByUuidUncached($signUuid);
 
-			// 2 Validate request integrity
+			// 3 Validate request integrity
 			if ($signRequest->getId() !== $signRequestId) {
 				$this->logger->warning('[EntitlementService] Invalid sign request', [
 					'userId' => $userId,
@@ -135,7 +158,7 @@ class EntitlementService {
 				throw new \RuntimeException('Invalid sign request');
 			}
 
-			// 3 Ensure signed
+			// 4 Ensure signed
 			if ($signRequest->getSigned() === null) {
 				$this->logger->warning('[EntitlementService] File is not signed yet', [
 					'userId' => $userId,
@@ -146,7 +169,7 @@ class EntitlementService {
 				throw new \RuntimeException('File is not signed yet');
 			}
 
-			// 4 Metadata (idempotency)
+			// 5 Metadata (idempotency)
 			$metadata = $signRequest->getMetadata() ?? [];
 
 			if (!empty($metadata['entitlement_consumed'])) {
@@ -160,11 +183,11 @@ class EntitlementService {
 				return false; // already consumed
 			}
 
-			// 5 Validate product (BE source of truth)
+			// 6 Validate product (BE source of truth)
 			$product = $this->productService->getDefaultByCode($productCode);
 			$productCode = $product->getCode();
 
-			// 6 Get user entitlement
+			// 7 Get user entitlement
 			$entitlement = $this->getValid($userId, $productCode);
 
 			if (!$entitlement) {
@@ -176,11 +199,11 @@ class EntitlementService {
 				throw new \RuntimeException('No valid entitlement available');
 			}
 
-			// 7 Consume
+			// 8 Consume
 			$entitlement->consume();
 			$this->entitlementMapper->update($entitlement);
 
-			// 8 Mark consumed
+			// 9 Mark consumed
 			$metadata['entitlement_consumed'] = true;
 			$metadata['productCode'] = $productCode;
 

@@ -651,7 +651,7 @@ class FileController extends AEnvironmentAwareController {
 	 * @param LibresignNewFile $file File to save
 	 * @param string $name The name of file to sign
 	 * @param LibresignFolderSettings $settings Settings to define how and where the file should be stored
-	 * @param list<LibresignNewFile> $files Multiple files to create an envelope (optional, use either file or files)
+	 * @param string|list<LibresignNewFile> $files Multiple files to create an envelope (optional, use either file or files)
 	 * @return DataResponse<Http::STATUS_OK, LibresignDetailedFileResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>
 	 *
 	 * 200: OK
@@ -666,7 +666,7 @@ class FileController extends AEnvironmentAwareController {
 		array $file = [],
 		string $name = '',
 		array $settings = [],
-		$files = [], // allow mixed type (string|array)
+		string|array $files = [],
 	): DataResponse {
 		try {
 			$this->validateHelper->canRequestSign($this->userSession->getUser());

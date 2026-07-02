@@ -41,7 +41,7 @@ onMounted(async () => {
 	const { transactionToken, signUuid } = getPaymentFromUrl()
 
 	const paymentContextStore = usePaymentContextStore()
-	paymentContextStore.clear()
+	paymentContextStore.reset()
 
 	// The callback URL is the authoritative source for which document
 	// the payment belongs to. signUuid/PnrID/CompanyRef all point to the
@@ -57,7 +57,6 @@ onMounted(async () => {
 		return
 	}
 
-	console.log('[PaymentReturn] Verifying payment with token', transactionToken, 'and signUuid', resolvedSignUuid)
 
 	// Fallback to the URL value; will be overwritten with the backend's canonical UUID after verification.
 	let targetSignUuid = resolvedSignUuid
@@ -78,7 +77,7 @@ onMounted(async () => {
 
 			// Redirect back with retry flag
 			router.replace({
-				name: 'SignPDFExternal',
+				name: 'SignPDF',
 				params: {
 					uuid: targetSignUuid
 				},
@@ -97,7 +96,7 @@ onMounted(async () => {
 		})
 
 		router.replace({
-			name: 'SignPDFExternal',
+			name: 'SignPDF',
 			params: {
 				uuid: targetSignUuid
 			},
@@ -105,8 +104,6 @@ onMounted(async () => {
 		})
 
 	} catch (err) {
-		console.error('[PaymentReturn] verification failed', err)
-
 		status.value = 'error'
 
 		notifyError({
@@ -118,7 +115,7 @@ onMounted(async () => {
 		clearPaymentParamsFromUrl()
 
 		router.replace({
-			name: 'SignPDFExternal',
+			name: 'SignPDF',
 			params: {
 				uuid: targetSignUuid
 			},

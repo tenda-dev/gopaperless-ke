@@ -1255,7 +1255,9 @@ async function handleMobilePayment() {
 		!payment.activeReference.value ||
 		!phoneNumber ||
 		!mnoToUse ||
-		!countryToUse
+		!countryToUse ||
+		!props.signRequestId ||
+		!props.signUuid
 	) {
 
 		payment.state.value = 'error'
@@ -1279,7 +1281,8 @@ async function handleMobilePayment() {
 		)
 	}
 
-	const paymentPurpose = payment.paymentPurpose.value ?? 'sign_request'
+	const signRequestId = props.signRequestId ?? 0
+	const signUuid = props.signUuid ?? ''
 	await payment.chargeExistingReference(
 		{
 			reference:
@@ -1287,11 +1290,8 @@ async function handleMobilePayment() {
 			phoneNumber,
 			mno: mnoToUse,
 			mnoCountry: countryToUse,
-			paymentPurpose,
-			signRequestId:
-				props.signRequestId,
-			signUuid:
-				props.signUuid,
+			signRequestId,
+			signUuid,
 		},
 		(status) => {
 			if (status === 'FAILED' || status === 'CANCELLED') {

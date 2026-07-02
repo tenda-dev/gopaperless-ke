@@ -9,7 +9,7 @@ import {
 } from './helpers'
 
 import { showSuccess, showError, showInfo } from '@/services/toast'
-import type { InitiateResponse, MnoOption, PaymentFlow, PaymentProvider, PaymentResponse, StartPaymentPayload, PaymentTerminalStatus } from './types'
+import type { InitiateResponse, MnoOption, PaymentFlow, PaymentProvider, PaymentPurpose, PaymentResponse, StartPaymentPayload, PaymentTerminalStatus } from './types'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNetworkState } from '@/composables/useNetworkState'
@@ -177,6 +177,8 @@ export function usePayment() {
 	const alreadyCharged = ref<boolean>(false)
 	const provider = ref<PaymentProvider | null>(null)
 	const providerLocked = ref(false)
+	const paymentPurpose = ref<PaymentPurpose>('sign_request')
+	const purposeLocked = ref(false)
 	const error = ref<string | null>(null)
 	const processingStartedAt = ref<number | null>(null)
 	const retryCount = ref(0)
@@ -255,6 +257,19 @@ export function usePayment() {
 		providerLocked.value = false
 	}
 
+	function lockPaymentPurpose(nextPurpose: PaymentPurpose) {
+		if (purposeLocked.value) {
+			return
+		}
+		paymentPurpose.value = nextPurpose
+		purposeLocked.value = true
+	}
+
+	function resetPaymentPurposeLock() {
+		paymentPurpose.value = 'sign_request'
+		purposeLocked.value = false
+	}
+
 	/**
 	 * Initialise payment session only.
 	 *
@@ -271,9 +286,12 @@ export function usePayment() {
 				activeReference.value = res.reference
 				alreadyCharged.value = !!res.alreadyCharged
 
+				paymentPurpose.value = payload.purpose ?? 'sign_request'
 				persistPaymentSession({
 					reference: res.reference,
 					flow: res.flow,
+					paymentPurpose: paymentPurpose.value,
+					productCode: payload.productCode,
 					signRequestId: payload.signRequestId,
 					signUuid: payload.signUuid
 				})
@@ -321,6 +339,7 @@ export function usePayment() {
 			persistPaymentSession({
 				reference: payload.reference,
 				flow: 'mobile_direct',
+				paymentPurpose: paymentPurpose.value,
 				signRequestId,
 				signUuid,
 			})
@@ -429,12 +448,6 @@ export function usePayment() {
 		payload?: any,
 		onTerminal?: (status: PaymentTerminalStatus) => void
 	): Promise<void> {
-		console.log('[executeFlow]', {
-			flow: res.flow,
-			status: res.status,
-			hasInstructions: !!res.instructions,
-			requiresSelection: res.requiresProviderSelection,
-		})
 
 		if (res.status === 'SUCCESS') {
 			state.value = 'success'
@@ -478,6 +491,8 @@ export function usePayment() {
 			persistPaymentSession({
 				reference,
 				flow,
+				paymentPurpose: paymentPurpose.value,
+				productCode: payload?.productCode,
 				signRequestId,
 				signUuid
 			})
@@ -501,6 +516,8 @@ export function usePayment() {
 			persistPaymentSession({
 				reference,
 				flow,
+				paymentPurpose: paymentPurpose.value,
+				productCode: payload?.productCode,
 				signRequestId,
 				signUuid
 			})
@@ -877,5 +894,9 @@ export function usePayment() {
 		providerLocked,
 		lockPaymentProvider,
 		resetProviderLock,
+		paymentPurpose,
+		purposeLocked,
+		lockPaymentPurpose,
+		resetPaymentPurposeLock,
 	}
 }
