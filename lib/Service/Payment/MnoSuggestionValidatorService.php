@@ -8,8 +8,7 @@ use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Payment\DTO\MnoSuggestionValidationResultDTO;
 use Psr\Log\LoggerInterface;
 
-final class MnoSuggestionValidatorService
-{
+final class MnoSuggestionValidatorService {
 	private const DPO_MNO_PROVIDER_MAPPING = [
 
 		'KE' => [
@@ -104,8 +103,9 @@ final class MnoSuggestionValidatorService
 	];
 
 	public function __construct(
-		private LoggerInterface $logger
-	) {}
+		private LoggerInterface $logger,
+	) {
+	}
 
 	/**
 	 * Validates whether the suggested MNO from routing
@@ -125,8 +125,8 @@ final class MnoSuggestionValidatorService
 	): MnoSuggestionValidationResultDTO {
 
 		if (
-			$suggestedMno === null ||
-			$region === null
+			$suggestedMno === null
+			|| $region === null
 		) {
 			return new MnoSuggestionValidationResultDTO(
 				ResolutionConfidence::UNKNOWN,
@@ -141,51 +141,43 @@ final class MnoSuggestionValidatorService
 		$suggestedMno = trim($suggestedMno);
 
 		/**
-		 * Resolve expected DPO provider identifiers for the
-		 * suggested MNO within the detected region.
+		 * Build a set of aliases for the suggested MNO.
+		 *
+		 * The DPO mobile option names returned by GetMobilePaymentOptions
+		 * can be either the user-facing name ("airtel", "mpesa") or a
+		 * terminal-specific identifier ("airtelke", "safaricomstkv2").
+		 * We therefore match by exact alias, substring, and the configured
+		 * mapping so the charge step sends the exact string DPO returned.
 		 */
-		$expectedProviders = self::DPO_MNO_PROVIDER_MAPPING[$region][$suggestedMno]
-			?? [];
-
-		/**
-		 * Unknown mappings should not block payment flow.
-		 * Downgrade confidence and require FE selection.
-		 */
-		if ($expectedProviders === []) {
-			$this->logger->warning(
-				'[MnoSuggestionValidator] Missing DPO mapping',
-				[
-					'region' => $region,
-					'mno' => $suggestedMno,
-				]
-			);
-
-			return new MnoSuggestionValidationResultDTO(
-				ResolutionConfidence::UNKNOWN,
-				null,
-			);
-		}
-
-		/**
-		 * Convert expected providers into a lookup set for
-		 * constant-time case-insensitive membership checks.
-		 */
-		$expectedProviders = array_flip(
-			array_map(
-				'strtolower',
-				$expectedProviders,
+		$baseAlias = strtolower($suggestedMno);
+		$aliases = array_unique(
+			array_merge(
+				[$baseAlias],
+				array_map(
+					'strtolower',
+					self::DPO_MNO_PROVIDER_MAPPING[$region][$suggestedMno] ?? []
+				)
 			)
 		);
 
-		foreach ($options as $option) {
+		$aliasSet = array_flip($aliases);
 
-			if (isset(
-					$expectedProviders[
-						strtolower($option['provider'])
-					]
-			)) {
+		foreach ($options as $option) {
+			$optionProvider = strtolower((string)($option['provider'] ?? ''));
+
+			if ($optionProvider === '') {
+				continue;
+			}
+
+			$exactMatch = isset($aliasSet[$optionProvider]);
+			$fuzzyMatch = str_contains($optionProvider, $baseAlias)
+				|| str_contains($baseAlias, $optionProvider);
+
+			if ($exactMatch || $fuzzyMatch) {
 				/**
 				 * Suggested MNO is supported by DPO for this region.
+				 * Return the provider string exactly as DPO returned it
+				 * so the charge step uses the terminal-native identifier.
 				 */
 				return new MnoSuggestionValidationResultDTO(
 					ResolutionConfidence::HIGH,
@@ -198,6 +190,19 @@ final class MnoSuggestionValidatorService
 		 * Suggested MNO could not be validated against DPO options.
 		 * Require explicit user selection.
 		 */
+		$this->logger->warning(
+			'[MnoSuggestionValidator] Suggested MNO not found in DPO options',
+			[
+				'region' => $region,
+				'mno' => $suggestedMno,
+				'aliases' => $aliases,
+				'optionProviders' => array_map(
+					static fn (array $o): string => strtolower((string)($o['provider'] ?? '')),
+					$options
+				),
+			]
+		);
+
 		return new MnoSuggestionValidationResultDTO(
 			ResolutionConfidence::UNKNOWN,
 			null,

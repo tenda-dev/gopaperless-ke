@@ -72,6 +72,7 @@ class DpoPaymentService {
 		?string $method = null, // card | mobile
 		?string $defaultPayment = null,
 		?string $defaultPaymentCountry = null,
+		?string $defaultPaymentMno = null,
 	): array {
 
 		$config = $this->getConfig();
@@ -131,6 +132,10 @@ class DpoPaymentService {
 			? '<DefaultPaymentCountry>' . $this->escapeXml($defaultPaymentCountry) . '</DefaultPaymentCountry>'
 			: '';
 
+		$defaultPaymentMnoXml = $defaultPaymentMno
+			? '<DefaultPaymentMNO>' . $this->escapeXml($defaultPaymentMno) . '</DefaultPaymentMNO>'
+			: '';
+
 		/**
 		 * Escape user-controlled fields
 		 */
@@ -166,6 +171,7 @@ class DpoPaymentService {
 
 				{$defaultPaymentXml}
 				{$defaultPaymentCountryXml}
+				{$defaultPaymentMnoXml}
 			</Transaction>
 
 			<Services>

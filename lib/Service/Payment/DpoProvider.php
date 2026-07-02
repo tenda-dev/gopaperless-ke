@@ -65,7 +65,8 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 				$payload->currency,
 				'mobile',
 				'MO',
-				$payload->country // already resolved upstream
+				$payload->country, // already resolved upstream
+				$payload->mno
 			);
 
 			if (!isset($result['reference'])) {
