@@ -919,7 +919,6 @@ export function usePayment() {
 		processingStartedAt.value = null
 		retryCount.value = 0
 		pollingElapsedMs.value = 0
-		resetPaymentPurpose()
 	}
 
 	return {

@@ -12,6 +12,7 @@ import type {
 import { showError, showInfo, showSuccess } from '@/services/toast'
 import type { UserContext } from '@/store/userContext'
 import type { MnoDetectionPayload, MnoDetectionState } from './useMnoDetection'
+import { useNetworkState } from '@/composables/useNetworkState'
 
 //
 // Types
@@ -91,6 +92,10 @@ export function usePaymentSession({
 	selectMethod,
 	paymentDisplayLabel,
 }: PaymentSession) {
+
+	const {
+		isOffline,
+	} = useNetworkState()
 
 	//
 	// Local state
@@ -455,23 +460,38 @@ export function usePaymentSession({
 
 			payment.state.value = 'initiating'
 
-			const response = await payment.initiateOnly({
-				/**
-				 * Provider hint only — backend is the routing authority.
-				 * We pass 'daraja' when the resolved phone is a KE Safaricom
-				 * number so the backend can skip DPO provider detection.
-				 */
-				provider:      resolvedPhone.provider === 'daraja' ? 'daraja' : 'dpo',
-				paymentMethod: 'mobile',
-				phoneNumber:   resolvedPhone.e164,
-				signRequestId,
-				signUuid,
-				productCode,
-				userId:        user.value.uid,
-				userEmail:     user.value.emailAddress,
-				purpose:       payment.paymentPurpose.value!,
-				quantity,
-			})
+			let response
+
+			try {
+
+				response = await payment.initiateOnly({
+				   /**
+					* Provider hint only — backend is the routing authority.
+					* We pass 'daraja' when the resolved phone is a KE Safaricom
+					* number so the backend can skip DPO provider detection.
+					*/
+					provider:      resolvedPhone.provider === 'daraja' ? 'daraja' : 'dpo',
+					paymentMethod: 'mobile',
+					phoneNumber:   resolvedPhone.e164,
+					signRequestId,
+					signUuid,
+					productCode,
+					userId:        user.value.uid,
+					userEmail:     user.value.emailAddress,
+					purpose:       payment.paymentPurpose.value!,
+					quantity,
+				})
+			} catch (err) {
+				// initiateOnly re-throws network/timeout/request errors without
+				// touching state (by design). We own the 'initiating' → 'error'
+				// transition here so the UI doesn't hang on "initiating" state.
+				if (!payment.isOffline.value) {
+					payment.state.value = 'error'
+					payment.error.value = 'Unable to start payment session. Please try again.'
+				}
+				throw err
+
+			}
 
 			/**
 			 * Defensive guard: a response without reference or flow
