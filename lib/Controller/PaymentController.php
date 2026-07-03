@@ -529,6 +529,69 @@ class PaymentController extends AEnvironmentAwareController
 		}
 	}
 
+
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[CORS]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/payment/invalidate',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function invalidatePayment(
+		string $reference
+	): DataResponse {
+
+		try {
+			$user = $this->userSession->getUser();
+
+			if (!$user) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Unauthorized'
+				], Http::STATUS_UNAUTHORIZED);
+			}
+
+			if (trim($reference) === '') {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Missing payment reference',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$status = $this->paymentService->invalidatePayment(
+				$reference,
+				$user->getUID(),
+			);
+
+			return new DataResponse([
+				'success' => true,
+				'status' => $this->paymentService->mapPaymentStatus($status),
+			], Http::STATUS_OK);
+		} catch (\RuntimeException $e) {
+
+			// payment not found / ownership failure
+			return new DataResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+			], Http::STATUS_BAD_REQUEST);
+		} catch (\Throwable $e) {
+
+			$this->logger->error(
+				'[PaymentController] Failed to invalidate payment',
+				[
+					'reference' => $reference,
+					'exception' => $e,
+				]
+			);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => 'Failed to invalidate payment',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[PublicPage]

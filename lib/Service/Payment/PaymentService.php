@@ -874,6 +874,178 @@ class PaymentService
 	}
 
 	/**
+	 * Invalidate an active payment reference at the user's explicit request.
+	 *
+	 * Called from the recovery flow when a user chooses to restart a payment
+	 * that has timed out on the frontend (missed STK push, dismissed prompt,
+	 * wrong PIN, or switching numbers). This is a deliberate user action —
+	 * distinct from automatic expiry (hasPaymentExpired) or stale-retry
+	 * reconciliation (isPendingStaleForRetry).
+	 *
+	 * BEHAVIOUR:
+	 * - Idempotent: calling on an already-terminal payment (PAID / FAILED /
+	 *   CANCELLED) is a no-op that returns the current status. This protects
+	 *   against double-invalidation from rapid clicks or retried requests.
+	 * - PAID guard: if the payment completed while the user was on the recovery
+	 *   screen (delayed callback landed), we do NOT invalidate — the money moved.
+	 *   The caller should surface the success instead.
+	 * - Provider cancellation is best-effort: DPO tokens can be cancelled via the
+	 *   verification service; Daraja has no cancellation API, so we only mark the
+	 *   row FAILED and let the reference expire naturally on Safaricom's side.
+	 * - The row is marked FAILED with providerError.type = 'invalidated_by_user'
+	 *   so it is distinguishable from timeouts and genuine failures in reporting.
+	 *
+	 * The frontend calls this fire-and-forget — it never blocks the restart.
+	 * If this fails entirely, startPayment's stale-pending detection will expire
+	 * the orphaned row on the next initiation, so correctness is preserved either
+	 * way. This method exists to make the invalidation explicit and prompt.
+	 *
+	 * @param string $reference providerReference (DPO transactionToken /
+	 *                          Daraja CheckoutRequestID).
+	 * @param string $userId    Authenticated user — ownership is asserted.
+	 *
+	 * @return PaymentStatus The resulting status (PAID if already completed,
+	 *                       otherwise FAILED).
+	 *
+	 * @throws RuntimeException if the payment does not exist or is not owned
+	 *                          by the user.
+	 */
+	public function invalidatePayment(string $reference, string $userId): PaymentStatus
+	{
+		$payment = $this->assertPaymentOwnership($reference, $userId);
+
+		$currentStatus = $payment->getPaymentStatus();
+
+		/**
+		 * IDEMPOTENCY + PAID GUARD
+		 *
+		 * If the payment already reached a terminal state, do nothing.
+		 * Crucially this includes PAID: a delayed callback may have landed
+		 * while the user was deciding on the recovery screen. We must never
+		 * invalidate money that actually moved.
+		 */
+		if ($currentStatus !== PaymentStatus::PENDING) {
+
+			$this->logger->info('[Payment] invalidatePayment no-op (already terminal)', [
+				'reference' => $reference,
+				'status' => $currentStatus->value,
+			]);
+
+			return $currentStatus;
+		}
+
+		/**
+		 * DELAYED-SUCCESS RECONCILIATION (DPO only)
+		 *
+		 * Before invalidating a PENDING DPO payment, do a one-shot verify.
+		 * The frontend polling already reconciles during the session, but the
+		 * user may have sat on the recovery screen long enough for a late
+		 * success to land. Daraja is callback-only and has no query here —
+		 * its polling loop (queryDarajaPayment) already covered reconciliation.
+		 */
+		if ($payment->getProviderEnum() === PaymentProvider::DPO) {
+
+			try {
+
+				$status = $this->verificationService->verifyStatus(
+					$payment->getProviderEnum(),
+					$reference
+				);
+
+				if ($status === 'SUCCESS') {
+
+					$this->finalisePayment($payment);
+
+					$this->logger->info('[Payment] invalidatePayment aborted — payment completed during recovery', [
+						'reference' => $reference,
+					]);
+
+					return PaymentStatus::PAID;
+				}
+
+			} catch (\Throwable $e) {
+
+				/**
+				 * Non-blocking: if verification fails we proceed with
+				 * invalidation. Worst case is a stale reference the provider
+				 * expires on its own — the same safety net as everywhere else.
+				 */
+				$this->logger->warning('[Payment] invalidatePayment verify failed (non-blocking)', [
+					'reference' => $reference,
+					'error' => $e->getMessage(),
+				]);
+			}
+
+			/**
+			 * BEST-EFFORT PROVIDER-SIDE CANCELLATION (DPO)
+			 *
+			 * Ask the verification service to cancel the DPO token so the
+			 * reference cannot be charged later. Failure here is tolerated —
+			 * marking the row FAILED below is what protects our side.
+			 */
+			try {
+
+				$result = $this->verificationService->cancelPayment(
+					$payment->getProviderEnum(),
+					$reference
+				);
+
+				if ($result['status'] !== 'SUCCESS') {
+					$this->logger->warning('[Payment] Provider cancellation unsuccessful', [
+						'reference' => $reference,
+						'code' => $result['code'],
+						'explanation' => $result['explanation'],
+					]);
+				}
+
+			} catch (\Throwable $e) {
+
+				$this->logger->warning(
+					'[Payment] Provider cancellation failed (non-blocking)',
+					[
+						'reference' => $reference,
+						'provider' => $payment->getProviderEnum()->value,
+						'error' => $e->getMessage(),
+					]
+				);
+			}
+		}
+
+		/**
+		 * MARK FAILED — user-invalidated
+		 *
+		 * Distinct providerError.type so this is separable from timeouts
+		 * and genuine provider failures in audit trail.
+		 */
+		$payment->setPaymentStatus(PaymentStatus::FAILED);
+
+		$meta = $payment->getProviderMetadataObject();
+		$nowImmutable = $this->nowImmutable();
+
+		$providerError = [
+			'type' => 'invalidated_by_user',
+			'reason' => 'invalidated_by_user',
+			'timestamp' => $this->now(),
+		];
+
+		$meta = $this->appendProviderError($meta, $providerError, $nowImmutable);
+
+		$payment->setProviderMetadataObject($meta);
+
+		$this->paymentMapper->update($payment);
+
+		$this->logger->info('[Payment] Payment invalidated by user', [
+			'reference' => $reference,
+			'payment_id' => $payment->getId(),
+			'provider' => $payment->getProviderEnum()->value,
+			'purpose' => $payment->getPaymentPurpose(),
+		]);
+
+		return PaymentStatus::FAILED;
+	}
+
+
+	/**
 	 * Verify payment after redirect (LIGHT CHECK)
 	 *
 	 * PURPOSE:

@@ -5,6 +5,7 @@ export const paymentDriver = {
   chargeMobilePayment: api.chargeMobilePayment,
   getPaymentStatus: api.getPaymentStatus,
   verifyPayment: api.verifyPayment,
+  invalidatePayment: api.invalidatePayment,
   fetchMobileOptions: api.fetchMobileOptions,
   queryDarajaPayment: api.queryDarajaPayment,
   resumePayment: api.resumePayment,

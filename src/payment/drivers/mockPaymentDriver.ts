@@ -2,6 +2,7 @@ import type {
 	ApiResumeResponse,
 	CreatePaymentRequest,
 	InitiateResponse,
+	InvalidatePaymentResponse,
 	MnoOption,
 	PaymentPurpose,
 	PaymentResponse,
@@ -998,6 +999,47 @@ export const mockPaymentDriver = {
 				return {
 					status: 'PENDING',
 					reason: 'pending',
+				}
+		}
+	},
+
+   /* =====================================================
+	* INVALIDATE PAYMENT
+	* ===================================================== */
+
+	async invalidatePayment(
+		reference: string,
+	): Promise<InvalidatePaymentResponse> {
+
+		console.log(
+			'[mock] invalidate payment',
+			reference,
+		)
+
+		await randomWait(300, 600)
+
+		switch (paymentScenario.current) {
+
+			/**
+			 * Simulate the payment completing while the user
+			 * was on the recovery screen.
+			 */
+			case 'daraja-success':
+
+				return {
+					success: true,
+					status: 'SUCCESS',
+				}
+
+			/**
+			 * All other scenarios invalidate successfully,
+			 * allowing a fresh payment to be started.
+			 */
+			default:
+
+				return {
+					success: true,
+					status: 'FAILED',
 				}
 		}
 	},

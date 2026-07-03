@@ -118,6 +118,12 @@ export interface VerifyPaymentResponse {
 	reason?: string;
 }
 
+export interface InvalidatePaymentResponse {
+	success: boolean
+	status?: PaymentStatus
+	error?: string
+}
+
 export type SupportedRegion = 'KE' | 'TZ' | 'UG' | 'RW' | 'MW' | 'ZM' | 'ZW'
 
 

@@ -533,42 +533,58 @@ class DarajaService {
 		};
 	}
 
+	// private function getConfig(): array {
+	// 	$baseUrl = $this->appConfig->getValueString(Application::APP_ID, 'daraja_base_url', '');
+	// 	$consumerKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_key', '');
+	// 	$consumerSecret = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', '');
+	// 	$passKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', '');
+	// 	$shortCode = $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', '');
+
+	// 	$missing = [];
+	// 	if ($baseUrl === '') {
+	// 		$missing[] = 'daraja_base_url';
+	// 	}
+	// 	if ($consumerKey === '') {
+	// 		$missing[] = 'daraja_consumer_key';
+	// 	}
+	// 	if ($consumerSecret === '') {
+	// 		$missing[] = 'daraja_consumer_secret';
+	// 	}
+	// 	if ($passKey === '') {
+	// 		$missing[] = 'daraja_pass_key';
+	// 	}
+	// 	if ($shortCode === '') {
+	// 		$missing[] = 'daraja_shortcode';
+	// 	}
+
+	// 	if (!empty($missing)) {
+	// 		throw new \RuntimeException('Daraja payment configuration is incomplete: ' . implode(', ', $missing));
+	// 	}
+
+	// 	$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
+
+	// 	return [
+	// 		'baseUrl' => $baseUrl,
+	// 		'consumerKey' => $consumerKey,
+	// 		'consumerSecret' => $consumerSecret,
+	// 		'passKey' => $passKey,
+	// 		'shortCode' => $shortCode,
+	// 		'callbackBaseUrl' => $callbackBaseUrl,
+	// 	];
+	// }
+
 	private function getConfig(): array {
-		$baseUrl = $this->appConfig->getValueString(Application::APP_ID, 'daraja_base_url', '');
-		$consumerKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_key', '');
-		$consumerSecret = $this->appConfig->getValueString(Application::APP_ID, 'daraja_consumer_secret', '');
-		$passKey = $this->appConfig->getValueString(Application::APP_ID, 'daraja_pass_key', '');
-		$shortCode = $this->appConfig->getValueString(Application::APP_ID, 'daraja_shortcode', '');
-
-		$missing = [];
-		if ($baseUrl === '') {
-			$missing[] = 'daraja_base_url';
-		}
-		if ($consumerKey === '') {
-			$missing[] = 'daraja_consumer_key';
-		}
-		if ($consumerSecret === '') {
-			$missing[] = 'daraja_consumer_secret';
-		}
-		if ($passKey === '') {
-			$missing[] = 'daraja_pass_key';
-		}
-		if ($shortCode === '') {
-			$missing[] = 'daraja_shortcode';
-		}
-
-		if (!empty($missing)) {
-			throw new \RuntimeException('Daraja payment configuration is incomplete: ' . implode(', ', $missing));
-		}
-
-		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
+		$callbackBaseUrl = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'gopaperless_callback_base_url'
+		);
 
 		return [
-			'baseUrl' => $baseUrl,
-			'consumerKey' => $consumerKey,
-			'consumerSecret' => $consumerSecret,
-			'passKey' => $passKey,
-			'shortCode' => $shortCode,
+			'baseUrl' => 'https://sandbox.safaricom.co.ke',
+			'consumerKey' => 'QVNGIwcP7vT9m0ZS4SGmnw7x1o8MGuiAY2UiGUrRMAXJH9aY',
+			'consumerSecret' => 'LYp6RpUTAK8eGGTM1oA5RwMYhkCNA2qS23WalsX21z6kSe0h4PlzjC1op3gxkXeD',
+			'passKey' => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+			'shortCode' => '174379',
 			'callbackBaseUrl' => $callbackBaseUrl,
 		];
 	}

@@ -17,6 +17,7 @@ use OCA\Libresign\Service\Payment\DTO\MobileMoneyPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyResultDTO;
 use OCA\Libresign\Service\Payment\Interfaces\IMobileMoneyProvider;
 use OCA\Libresign\Service\Payment\Interfaces\IVerifiableProvider;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
 
@@ -24,7 +25,10 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 {
 	private DarajaService $daraja;
 
-	public function __construct(DarajaService $daraja)
+	public function __construct(
+		DarajaService $daraja,
+		private LoggerInterface $logger,
+		)
 	{
 		$this->daraja = $daraja;
 	}
@@ -90,7 +94,29 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	}
 
 	/**
-	 * 🔁 TEMP — KEEP FOR PaymentService
+	 * @return array{
+	 *     status: 'SUCCESS'|'FAILED',
+	 *     explanation: string,
+	 *     code: string,
+	 *     raw: array|null
+	 * }
+	 */
+	public function cancel(string $reference): array
+	{
+		$this->logger->info('[Daraja] cancel requested but not supported', [
+			'reference' => $reference,
+		]);
+
+		return [
+			'status' => 'FAILED',
+			'code' => 'UNSUPPORTED_OPERATION',
+			'explanation' => 'Daraja does not support payment cancellation.',
+			'raw' => null,
+		];
+	}
+
+	/**
+	 * KEEP FOR PaymentService
 	 *
 	 * Daraja is async → always pending here
 	 */
@@ -101,7 +127,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	}
 
 	/**
-	 * 🔁 TEMP — fallback polling
+	 * Fallback polling
 	 */
 	public function query(string $reference): array
 	{
@@ -113,7 +139,7 @@ final class DarajaProvider implements IMobileMoneyProvider, IVerifiableProvider
 	}
 
 	/**
-	 * 🔁 TEMP DEBUG
+	 * TEMP DEBUG
 	 */
 	public function test(): array
 	{

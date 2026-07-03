@@ -38,6 +38,12 @@ export type PaymentSession = {
 	paymentDisplayLabel: ComputedRef<string | null>
 }
 
+export type RecoveryReason =
+    | 'no_prompt'        // didn't receive STK push
+    | 'dismissed'        // dismissed by accident
+    | 'wrong_pin'        // entered wrong PIN
+    | 'different_number' // wants to change number/method
+
 /**
  * usePaymentSession
  *
@@ -98,6 +104,12 @@ export function usePaymentSession({
 	 * the user is waiting for provider confirmation.
 	 */
 	const processingStage = ref(0)
+
+	/**
+	 * Recovery
+	 */
+	const isRecovering = ref(false)
+	const isInvalidating = ref(false)
 
 	/**
 	 * Prevents the "connection lost" toast from firing on
@@ -794,6 +806,54 @@ export function usePaymentSession({
 		resetPaymentSession()
 	}
 
+
+   /**
+	* Enter recovery mode from the "Restart Payment" card.
+	* No state reset — the user can still choose to keep waiting.
+	*/
+	function enterRecovery() {
+		isRecovering.value = true
+	}
+
+   /**
+	* Exit recovery without restarting (user explicitly chose "keep waiting").
+	*/
+	function exitRecovery() {
+		isRecovering.value = false
+	}
+
+   /**
+	* Confirm restart from PaymentRecoveryScreen.
+	*
+	* Fire-and-forget invalidation — never blocks the restart.
+	* cancelSession() — awaited, stops polling + clears persistence.
+	* Clear phone only for 'different_number'.
+	* Exit recovery. DOM refocus is handled by the caller.
+	*/
+	async function restartSession(reason: RecoveryReason) {
+		isInvalidating.value = true
+
+		// On error, handleTerminalReset already nulled the reference AND
+		// the backend already marked the row FAILED — nothing to invalidate.
+		// Only invalidate when we still hold a live reference (timeout path).
+		if (payment.activeReference.value) {
+			payment.invalidatePayment(payment.activeReference.value)
+				.finally(() => { isInvalidating.value = false })
+		} else {
+			isInvalidating.value = false
+		}
+
+		await cancelSession()
+
+		if (reason === 'different_number') {
+			phoneInput.value = ''
+			detectedRegion.value = 'KE'
+			selectMethod('mobile')
+		}
+
+		isRecovering.value = false
+	}
+
 	return {
 		// Session lifecycle
 		handlePay,
@@ -809,5 +869,11 @@ export function usePaymentSession({
 		processingStage,
 		buttonLabel,
 		paymentMessage,
+		// Recovery
+		isRecovering,
+		isInvalidating,
+		enterRecovery,
+		exitRecovery,
+		restartSession,
 	}
 }

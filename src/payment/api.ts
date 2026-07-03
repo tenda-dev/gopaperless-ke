@@ -7,7 +7,8 @@ import type {
 	ChargedPaymentResponse,
 	VerifyPaymentResponse,
 	StartPaymentPayload,
-	PaymentPurpose
+	PaymentPurpose,
+	InvalidatePaymentResponse
 } from './types'
 
 const BASE = '/apps/libresign/api/v1/payment'
@@ -287,4 +288,39 @@ export async function resumePayment(payload: {
 	)
 
 	return data?.ocs?.data
+}
+
+/**
+ * =========================================================
+ * Invalidate Payment (RECOVERY)
+ * =========================================================
+ *
+ * Called when the user explicitly abandons the current payment
+ * and wants to start over.
+ *
+ * Backend:
+ * - Verifies ownership
+ * - Reconciles any late provider success
+ * - Best-effort provider cancellation
+ * - Marks payment FAILED (unless already PAID)
+ *
+ * Returns the resulting payment status.
+ */
+export async function invalidatePayment(
+	reference: string
+): Promise<InvalidatePaymentResponse> {
+
+	const { data } = await axios.post(
+		generateOcsUrl(`${BASE}/invalidate`),
+		{ reference },
+		{ timeout: 10000 }
+	)
+
+	const res = data?.ocs?.data
+
+	if (!res?.status) {
+		throw new Error('Invalid invalidate payment response')
+	}
+
+	return res
 }

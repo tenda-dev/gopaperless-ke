@@ -242,6 +242,43 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 	}
 
 	/**
+	 * Cancel an active DPO transaction token.
+	 *
+	 * This invalidates a previously created transaction token so it can no longer
+	 * be used to complete a payment.
+	 *
+	 * DPO Result Codes:
+	 * - 000 → Token successfully cancelled
+	 * - 950 → Missing mandatory fields
+	 * - 999 → Custom error
+	 * - 804 → Invalid XML
+	 *
+	 * @param string $reference providerReference(TransactionToken) returned by createToken()
+	 *
+	 * @return array{
+	 *     status: 'SUCCESS'|'FAILED',
+	 *     explanation: string,
+	 *     code: string,
+	 *     raw: array
+	 * }
+	 *
+	 * @throws Throwable On network or XML parsing errors
+	 */
+	public function cancel(string $reference): array
+	{
+		try {
+			return $this->dpo->cancelToken($reference);
+		} catch (Throwable $e) {
+			$this->logger->error('[DPO] cancel failed', [
+				'reference' => $reference,
+				'error' => $e->getMessage(),
+			]);
+
+			throw $e;
+		}
+	}
+
+	/**
 	 * TEMP DEBUG
 	 */
 	public function test(): array

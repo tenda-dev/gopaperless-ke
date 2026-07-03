@@ -98,4 +98,49 @@ final class VerificationService
 			throw $e; // important: don't silently swallow
 		}
 	}
+
+	/**
+	 * Cancel an in-flight payment with the provider.
+	 * PURE ADAPTER
+	 * - No orchestration
+	 * - No business logic
+	 * - Delegates to providers
+	 * Returns the provider's normalised cancellation response.
+	 *
+	 * @return array{
+	 *     status: 'SUCCESS'|'FAILED',
+	 *     explanation: string,
+	 *     code: string,
+	 *     raw: array
+	 * }
+	 * @throws Throwable
+	 */
+	public function cancelPayment(
+		PaymentProvider $provider,
+		string $reference
+	): array {
+		try {
+			return match ($provider) {
+
+				PaymentProvider::DPO =>
+				$this->dpo->cancel($reference),
+
+				PaymentProvider::DARAJA =>
+				$this->daraja->cancel($reference),
+
+				default => throw new RuntimeException(
+					sprintf('Unsupported provider: %s', $provider->value)
+				),
+			};
+		} catch (Throwable $e) {
+			$this->logger->error('[VerificationService] cancelPayment failed', [
+				'provider' => $provider->value,
+				'reference' => $reference,
+				'error' => $e->getMessage(),
+				'exception' => get_class($e),
+			]);
+
+			throw $e;
+		}
+	}
 }

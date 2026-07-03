@@ -151,6 +151,7 @@ export type PaymentState =
 	| 'error'
 	| 'timeout'
 	| 'cancelled'
+	| 'recovery'
 
 interface ChargePayload {
 	reference: string
@@ -224,26 +225,21 @@ export function usePayment() {
 	*/
 	const showRecoveryAction = computed(() => {
 		if (state.value === 'timeout') {
-			return retryCount.value >= 2
+			return true
+		}
+
+		if (state.value === 'error') {
+			return true   // NEW — wrong PIN, insufficient balance, etc.
 		}
 
 		if (state.value !== 'processing') {
 			return false
 		}
 
-		if (!processingStartedAt.value) {
-			return false
-		}
+		if (!processingStartedAt.value) return false
 
-		const elapsed =
-			Date.now() - processingStartedAt.value
-
-		// after retries, reduce patience window
-		const threshold =
-			retryCount.value >= 2
-				? 60_000
-				: 180_000
-
+		const elapsed = Date.now() - processingStartedAt.value
+		const threshold = retryCount.value >= 1 ? 45_000 : 60_000
 		return elapsed >= threshold
 	})
 
@@ -282,6 +278,28 @@ export function usePayment() {
 	function resetPaymentPurpose() {
 		paymentPurpose.value = null
 		paymentPurposeLocked.value = false
+	}
+
+   /**
+	* Invalidate a payment reference on the backend.
+	*
+	* Marks the payment FAILED with reason 'invalidated_by_user' and
+	* attempts provider-side cancellation where supported (DPO token;
+	* Daraja has no cancel API so backend just marks expired).
+	*
+	* Returns the promise so callers can decide whether to await or
+	* fire-and-forget. Network errors are surfaced but not thrown as
+	* offline — invalidation is best-effort, the backend's stale-pending
+	* detection is the safety net.
+	*/
+	async function invalidatePayment(reference: string): Promise<void> {
+		try {
+			await paymentDriver.invalidatePayment(reference)
+		} catch (err) {
+			console.warn('[Payment] invalidation failed', err)
+			// Deliberately swallowed — best-effort cleanup.
+			// startPayment's stale-pending detection handles the orphaned payment.
+		}
 	}
 
 	/**
@@ -571,7 +589,7 @@ export function usePayment() {
 	 * FAILED  → stop + error
 	 * PENDING → continue polling
 	 *
-	 * Timeout (~90s):
+	 * Timeout (~60s):
 	 * - UX timeout only
 	 * - Does NOT mean provider failure
 	 * - User may still complete payment later
@@ -584,12 +602,12 @@ export function usePayment() {
 		stopPolling()
 
 		processingStartedAt.value = Date.now()
-		const MAX_POLL_DURATION = 90_000 // 90s
+		const MAX_POLL_DURATION = 60_000 // 60s
 		const DARAJA_QUERY_INTERVAL = 20_000 // 20s - after this, we trigger a Daraja query in case the callback was delayed (common issue)
         const INITIAL_DARAJA_QUERY_DELAY = 15_000
 
 		const DPO_VERIFY_INTERVAL = 30_000
-		const INITIAL_DPO_VERIFY_DELAY = 30_000
+		const INITIAL_DPO_VERIFY_DELAY = 25_000
 
 		let lastDarajaQueryAt = 0
 		let lastDpoVerificationAt = 0
@@ -910,5 +928,6 @@ export function usePayment() {
 		resetProviderLock,
 		paymentPurpose,
 		lockPaymentPurpose,
+		invalidatePayment,
 	}
 }

@@ -14,4 +14,6 @@ interface IVerifiableProvider extends IProvider
 	public function verifyStatus(string $reference): string;
 
 	public function query(string $reference): array;
+
+	public function cancel(string $reference): array;
 }

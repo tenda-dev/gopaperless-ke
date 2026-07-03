@@ -525,6 +525,80 @@ class DpoPaymentService
 	}
 
 	/**
+	 * Cancel an active DPO transaction token.
+	 *
+	 * This invalidates a previously created transaction token so it can no longer
+	 * be used to complete a payment.
+	 *
+	 * DPO Result Codes:
+	 * - 000 → Token successfully cancelled
+	 * - 950 → Missing mandatory fields
+	 * - 999 → Custom error
+	 * - 804 → Invalid XML
+	 *
+	 * @param string $transactionToken TransactionToken returned by createToken()
+	 *
+	 * @return array{
+	 *     status: 'SUCCESS'|'FAILED',
+	 *     explanation: string,
+	 *     code: string,
+	 *     raw: array
+	 * }
+	 *
+	 * @throws Throwable On network or XML parsing errors
+	 */
+	public function cancelToken(string $transactionToken): array
+	{
+		$config = $this->getConfig();
+
+		$companyToken = $this->escapeXml($config['companyToken']);
+
+		$xml = "
+		<API3G>
+			<CompanyToken>{$companyToken}</CompanyToken>
+			<Request>cancelToken</Request>
+			<TransactionToken>" . $this->escapeXml($transactionToken) . "</TransactionToken>
+		</API3G>";
+
+		$response = $this->sendRequest($xml);
+
+		$raw = $this->normaliseXmlResponse($response);
+
+		$resultCode = (string)($response->Result ?? '');
+		$explanation = (string)($response->ResultExplanation ?? '');
+
+		$this->logger->info('DPO cancelToken response', [
+			'token' => $transactionToken,
+			'resultCode' => $resultCode,
+			'explanation' => $explanation,
+		]);
+
+		if ($resultCode === '000') {
+			return [
+				'status' => 'SUCCESS',
+				'code' => $resultCode,
+				'explanation' => $explanation,
+				'raw' => $raw,
+			];
+		}
+
+		$this->logger->warning('DPO cancelToken failed', [
+			'token' => $transactionToken,
+			'resultCode' => $resultCode,
+			'explanation' => $explanation,
+		]);
+
+		return [
+			'status' => 'FAILED',
+			'code' => $resultCode,
+			'explanation' => $explanation !== ''
+				? $explanation
+				: 'Unknown DPO cancellation error',
+			'raw' => $raw,
+		];
+	}
+
+	/**
 	 * Map DPO verifyToken response codes to internal payment statuses.
 	 *
 	 * DPO Codes:
@@ -724,23 +798,38 @@ class DpoPaymentService
 	// 	return $this->getTestConfig();
 	// }
 
+	// private function getConfig(): array
+	// {
+	// 	$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
+	// 	$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
+	// 	$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
+	// 	$paymentUrl = $this->appConfig->getValueString(Application::APP_ID, 'dpo_payment_url', '');
+	// 	$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
+
+	// 	if ($endpoint === '' || $companyToken === '' || $serviceId === '' || $paymentUrl === '' || $callbackBaseUrl === '') {
+	// 		throw new RuntimeException('DPO payment configuration is incomplete');
+	// 	}
+
+	// 	return [
+	// 		'endpoint' => $endpoint,
+	// 		'companyToken' => $companyToken,
+	// 		'serviceId' => $serviceId,
+	// 		'paymentUrl' => $paymentUrl,
+	// 		'callbackBaseUrl' => $callbackBaseUrl,
+	// 	];
+	// }
+
 	private function getConfig(): array
 	{
-		$endpoint = $this->appConfig->getValueString(Application::APP_ID, 'dpo_endpoint', '');
-		$companyToken = $this->appConfig->getValueString(Application::APP_ID, 'dpo_company_token', '');
-		$serviceId = $this->appConfig->getValueString(Application::APP_ID, 'dpo_service_id', '');
-		$paymentUrl = $this->appConfig->getValueString(Application::APP_ID, 'dpo_payment_url', '');
-		$callbackBaseUrl = $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', '');
-
-		if ($endpoint === '' || $companyToken === '' || $serviceId === '' || $paymentUrl === '' || $callbackBaseUrl === '') {
-			throw new RuntimeException('DPO payment configuration is incomplete');
-		}
-
+		$callbackBaseUrl = $this->appConfig->getValueString(
+			Application::APP_ID,
+			'gopaperless_callback_base_url'
+		);
 		return [
-			'endpoint' => $endpoint,
-			'companyToken' => $companyToken,
-			'serviceId' => $serviceId,
-			'paymentUrl' => $paymentUrl,
+			'endpoint' => 'https://secure.3gdirectpay.com/API/v6/',
+			'companyToken' => 'C40E4138-3DF7-4A56-A6D1-375A49407A1C',
+			'serviceId' => '54842',
+			'paymentUrl' => 'https://secure.3gdirectpay.com/payv3.php',
 			'callbackBaseUrl' => $callbackBaseUrl,
 		];
 	}

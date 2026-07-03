@@ -65,7 +65,7 @@
 		<!-- ═══════════════════════════════════════════════════════ -->
 		<!-- METHOD TOGGLE                                          -->
 		<!-- ═══════════════════════════════════════════════════════ -->
-		<div class="method-toggle" :class="{ 'method-toggle--locked': isMethodLocked }">
+		<div class="method-toggle" :class="{ 'method-toggle--locked': isMethodLocked }" v-if="!isRecovering">
 			<button class="method-tab" :class="{ active: selectedMethod === 'mobile' }" :disabled="isMethodLocked"
 				@click="selectMethod('mobile')">
 				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -86,265 +86,273 @@
 			</button>
 		</div>
 
+		<!-- RECOVERY SCREEN -->
+		<transition name="recovery-slide" mode="out-in">
+			<PaymentRecoveryScreen
+				v-if="isRecovering"
+				:is-invalidating="isInvalidating"
+				@restart="handleRestart"
+				@back="exitRecovery"
+			/>
+		</transition>
+
 		<!-- ═══════════════════════════════════════════════════════ -->
 		<!-- METHOD BODY                                            -->
 		<!-- ═══════════════════════════════════════════════════════ -->
-		<div class="method-body">
+		<template v-if="!isRecovering">
+			<div class="method-body">
 
-			<!-- ─── MOBILE TAB ─────────────────────────────────────── -->
-			<transition name="tab-switch" mode="out-in">
-				<div v-if="selectedMethod === 'mobile'" key="mobile" class="tab-content">
+				<!-- ─── MOBILE TAB ─────────────────────────────────────── -->
+				<transition name="tab-switch" mode="out-in">
+					<div v-if="selectedMethod === 'mobile'" key="mobile" class="tab-content">
 
-					<!-- PHONE FIELD -->
-					<div class="phone-field">
-						<label class="field-label">Mobile money number</label>
-						<div class="phone-row" :class="{
-							'phone-row--valid': resolution?.isValid,
-							'phone-row--focused': phoneFocused,
-							'phone-row--locked': hasActivePaymentSession || mnoDetection.state === 'detecting',
-						}">
-							<!-- <div class="phone-prefix">
-                <span v-if="detectedFlag" class="phone-flag">{{ detectedFlag }}</span>
-                <span class="phone-dialcode">{{ detectedDialCode }}</span>
-              </div> -->
-							<input ref="phoneInputRef" v-model="phoneInput" type="tel" inputmode="tel"
-								class="phone-input" placeholder="+254 712 345 678"
-								:disabled="hasActivePaymentSession || mnoDetection.state === 'detecting'"
-								@focus="phoneFocused = true" @input="onPhoneInput" />
-							<transition name="fade-icon">
-								<span v-if="resolution?.isValid && mnoDetection.state !== 'detecting'"
-									class="phone-valid-icon" aria-label="Valid">
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-										stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-										<polyline points="20,6 9,17 4,12" />
+						<!-- PHONE FIELD -->
+						<div class="phone-field">
+							<label class="field-label">Mobile money number</label>
+							<div class="phone-row" :class="{
+								'phone-row--valid': resolution?.isValid,
+								'phone-row--focused': phoneFocused,
+								'phone-row--locked': hasActivePaymentSession || mnoDetection.state === 'detecting',
+							}">
+							    <input ref="phoneInputRef" v-model="phoneInput" type="tel" inputmode="tel"
+									class="phone-input" placeholder="+254 712 345 678"
+									:disabled="hasActivePaymentSession || mnoDetection.state === 'detecting'"
+									@focus="phoneFocused = true" @input="onPhoneInput" />
+								<transition name="fade-icon">
+									<span v-if="resolution?.isValid && mnoDetection.state !== 'detecting'"
+										class="phone-valid-icon" aria-label="Valid">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+											stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+											<polyline points="20,6 9,17 4,12" />
+										</svg>
+									</span>
+								</transition>
+								<transition name="fade-icon">
+									<span v-if="mnoDetection.state === 'detecting'" class="phone-detecting-icon"
+										aria-label="Detecting">
+										<span class="spinner spinner--xs"></span>
+									</span>
+								</transition>
+							</div>
+							<transition name="fade-soft">
+								<p v-if="mnoDetection.state === 'idle' || !resolution?.isValid" class="phone-helper">
+									<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+										stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<circle cx="12" cy="12" r="10" />
+										<line x1="12" y1="8" x2="12" y2="12" />
+										<line x1="12" y1="16" x2="12.01" y2="16" />
 									</svg>
-								</span>
-							</transition>
-							<transition name="fade-icon">
-								<span v-if="mnoDetection.state === 'detecting'" class="phone-detecting-icon"
-									aria-label="Detecting">
-									<span class="spinner spinner--xs"></span>
-								</span>
+									Enter the phone number linked to your mobile money account.
+								</p>
 							</transition>
 						</div>
+
+						<!-- ── MNO RESOLUTION AREA ─────────────────────────── -->
+
+						<!-- DETECTING SKELETON -->
 						<transition name="fade-soft">
-							<p v-if="mnoDetection.state === 'idle' || !resolution?.isValid" class="phone-helper">
-								<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-									stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-									<circle cx="12" cy="12" r="10" />
-									<line x1="12" y1="8" x2="12" y2="12" />
-									<line x1="12" y1="16" x2="12.01" y2="16" />
-								</svg>
-								Enter the phone number linked to your mobile money account.
-							</p>
+							<div v-if="mnoDetection.state === 'detecting'" class="mno-detecting">
+								<span class="spinner spinner--sm"></span>
+								<span class="mno-detecting__text">Detecting your network&hellip;</span>
+							</div>
 						</transition>
+
+						<!-- HIGH CONFIDENCE DETECTED -->
+						<transition name="slide-up">
+							<PaymentRouteSummary v-if="resolvedRoute" :provider="resolvedRoute.provider"
+								:country="resolvedRoute.country" :logo="resolvedRoute.logo" :region="detectedRegion"
+								subtitle="Payment requests will be sent to this number"
+								:editable="canEditProvider && !isDaraja" :disabled="!canEditProvider || isDaraja"
+								@change="openMnoSelector" />
+						</transition>
+
+						<!-- AMBIGUOUS — CHIP CONFIRMATION REQUIRED -->
+						<transition name="slide-up">
+							<div v-if="mnoDetection.state === 'suggested'" class="mno-chips-section">
+								<p class="mno-chips-label">Looks like <span class="detected">{{ mnoDetection.mno }}.</span>
+									Confirm below or pick another:</p>
+								<div class="chips" role="group" aria-label="Select mobile provider">
+									<button v-for="option in mnoDetection.options" :key="option.provider" class="chip"
+										:class="{
+											'chip--preselected': mnoDetection.mno === option.provider && !mnoDetection.selected,
+											'chip--selected': mnoDetection.selected?.provider === option.provider,
+										}" @click.stop="selectMnoOption(option)" :disabled="isProcessing">
+										<img v-if="option.logo" :src="option.logo" :alt="option.provider"
+											class="chip__logo">
+										{{ formatMnoLabel(option.provider) }}
+									</button>
+								</div>
+							</div>
+						</transition>
+
+						<!-- UNKNOWN — FULL SELECTOR -->
+						<transition name="expand-smooth">
+							<div v-if="!isDaraja && (mnoDetection.state === 'requires-selection' || mnoDetection.showSelector)"
+								class="mno-chips-section">
+								<p class="mno-chips-label">Select your provider...</p>
+								<div class="chips" role="group" aria-label="Select mobile provider">
+									<button v-for="option in mnoDetection.options" :key="option.provider" class="chip"
+										:class="{ 'chip--selected': mnoDetection.selected?.provider === option.provider }"
+										@click.stop="selectMnoOption(option)" :disabled="isProcessing">
+										<img v-if="option.logo" :src="option.logo" :alt="option.provider"
+											class="chip__logo">
+										{{ formatMnoLabel(option.provider) }}
+									</button>
+								</div>
+							</div>
+						</transition>
+
 					</div>
 
-					<!-- ── MNO RESOLUTION AREA ─────────────────────────── -->
-
-					<!-- DETECTING SKELETON -->
-					<transition name="fade-soft">
-						<div v-if="mnoDetection.state === 'detecting'" class="mno-detecting">
-							<span class="spinner spinner--sm"></span>
-							<span class="mno-detecting__text">Detecting your network&hellip;</span>
+					<!-- ─── CARD TAB ────────────────────────────────────────── -->
+					<div v-else key="card" class="tab-content tab-content--card">
+						<div class="card-logos">
+							<span class="card-logo">VISA</span>
+							<span class="card-logo">MC</span>
 						</div>
-					</transition>
-
-					<!-- HIGH CONFIDENCE DETECTED -->
-					<transition name="slide-up">
-						<PaymentRouteSummary v-if="resolvedRoute" :provider="resolvedRoute.provider"
-							:country="resolvedRoute.country" :logo="resolvedRoute.logo" :region="detectedRegion"
-							subtitle="Payment requests will be sent to this number"
-							:editable="canEditProvider && !isDaraja" :disabled="!canEditProvider || isDaraja"
-							@change="openMnoSelector" />
-					</transition>
-
-					<!-- AMBIGUOUS — CHIP CONFIRMATION REQUIRED -->
-					<transition name="slide-up">
-						<div v-if="mnoDetection.state === 'suggested'" class="mno-chips-section">
-							<p class="mno-chips-label">Looks like <span class="detected">{{ mnoDetection.mno }}.</span>
-								Confirm below or pick another:</p>
-							<div class="chips" role="group" aria-label="Select mobile provider">
-								<button v-for="option in mnoDetection.options" :key="option.provider" class="chip"
-									:class="{
-										'chip--preselected': mnoDetection.mno === option.provider && !mnoDetection.selected,
-										'chip--selected': mnoDetection.selected?.provider === option.provider,
-									}" @click.stop="selectMnoOption(option)" :disabled="isProcessing">
-									<img v-if="option.logo" :src="option.logo" :alt="option.provider"
-										class="chip__logo">
-									{{ formatMnoLabel(option.provider) }}
-								</button>
-							</div>
+						<div class="card-hint">
+							<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+								stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+								<polyline points="15,3 21,3 21,9" />
+								<line x1="10" y1="14" x2="21" y2="3" />
+							</svg>
+							You'll be redirected to our secure payment page. No card details are stored here.
 						</div>
-					</transition>
-
-					<!-- UNKNOWN — FULL SELECTOR -->
-					<transition name="expand-smooth">
-						<div v-if="!isDaraja && (mnoDetection.state === 'requires-selection' || mnoDetection.showSelector)"
-							class="mno-chips-section">
-							<p class="mno-chips-label">Select your provider...</p>
-							<div class="chips" role="group" aria-label="Select mobile provider">
-								<button v-for="option in mnoDetection.options" :key="option.provider" class="chip"
-									:class="{ 'chip--selected': mnoDetection.selected?.provider === option.provider }"
-									@click.stop="selectMnoOption(option)" :disabled="isProcessing">
-									<img v-if="option.logo" :src="option.logo" :alt="option.provider"
-										class="chip__logo">
-									{{ formatMnoLabel(option.provider) }}
-								</button>
-							</div>
-						</div>
-					</transition>
-
-				</div>
-
-				<!-- ─── CARD TAB ────────────────────────────────────────── -->
-				<div v-else key="card" class="tab-content tab-content--card">
-					<div class="card-logos">
-						<span class="card-logo">VISA</span>
-						<span class="card-logo">MC</span>
 					</div>
-					<div class="card-hint">
-						<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-							stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-							<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-							<polyline points="15,3 21,3 21,9" />
-							<line x1="10" y1="14" x2="21" y2="3" />
+				</transition>
+
+			</div>
+
+			<!-- ═══════════════════════════════════════════════════════ -->
+			<!-- STATUS MESSAGES                                        -->
+			<!-- ═══════════════════════════════════════════════════════ -->
+			<transition :name="transitionName" mode="out-in">
+				<div :key="statusKey">
+
+					<!-- OFFLINE -->
+					<div v-if="payment.isOffline.value" class="status-box status-box--offline">
+						<span class="spinner spinner--sm"></span>
+						<div class="status-text">
+							<span class="status-text__main">No connection</span>
+							<span class="status-text__sub">Waiting to reconnect&hellip;</span>
+						</div>
+					</div>
+
+					<!-- PROCESSING -->
+					<div v-else-if="payment.state.value === 'processing'" class="status-box status-box--processing">
+						<span class="spinner spinner--sm"></span>
+						<div class="status-text">
+							<span class="status-text__main">{{ paymentMessage }}</span>
+							<span class="status-text__sub">Don't close this window</span>
+						</div>
+						<div class="progress-dots" aria-hidden="true">
+							<span class="dot" :class="{ 'dot--on': processingStage >= 0 }"></span>
+							<span class="dot" :class="{ 'dot--on': processingStage >= 1 }"></span>
+							<span class="dot" :class="{ 'dot--on': processingStage >= 2 }"></span>
+						</div>
+					</div>
+
+					<!-- TIMEOUT -->
+					<div v-else-if="payment.state.value === 'timeout'" class="status-box status-box--warning">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+							stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" />
+							<polyline points="12,6 12,12 16,14" />
 						</svg>
-						You'll be redirected to our secure payment page. No card details are stored here.
+						<div class="status-text">
+							<span class="status-text__main">Still waiting for payment confirmation</span>
+							<span class="status-text__sub">
+								Click Retry Payment below to check the latest payment status.
+							</span>
+						</div>
 					</div>
+
+					<!-- ERROR -->
+					<div v-else-if="payment.state.value === 'error'" class="status-box status-box--error">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+							stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="12" y1="8" x2="12" y2="12" />
+							<line x1="12" y1="16" x2="12.01" y2="16" />
+						</svg>
+						<div class="status-text">
+							<span class="status-text__main">{{ payment.error.value }}</span>
+							<span class="status-text__sub">You can still try again</span>
+						</div>
+					</div>
+
+					<!-- SUCCESS -->
+					<div v-else-if="payment.state.value === 'success'" class="status-box status-box--success">
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+							stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<polyline points="20,6 9,17 4,12" />
+						</svg>
+						<span class="status-text__main">Payment confirmed</span>
+					</div>
+
+
+					<!-- CANCELLED -->
+					<div v-else-if="payment.state.value === 'cancelled'" class="status-box status-box--warning">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+							stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<circle cx="12" cy="12" r="10" />
+							<line x1="15" y1="9" x2="9" y2="15" />
+							<line x1="9" y1="9" x2="15" y2="15" />
+						</svg>
+						<div class="status-text">
+							<span class="status-text__main">Payment cancelled</span>
+							<span class="status-text__sub">You can still try again whenever you're ready</span>
+						</div>
+					</div>
+
 				</div>
 			</transition>
 
-		</div>
+			<transition name="fade-soft">
+				<div v-if="payment.showRecoveryAction.value" class="payment-reset-card">
+					<div class="payment-reset-card__content">
+						<div class="payment-reset-card__title">
+							Having trouble completing payment?
+						</div>
 
-		<!-- ═══════════════════════════════════════════════════════ -->
-		<!-- STATUS MESSAGES                                        -->
-		<!-- ═══════════════════════════════════════════════════════ -->
-		<transition :name="transitionName" mode="out-in">
-			<div :key="statusKey">
-
-				<!-- OFFLINE -->
-				<div v-if="payment.isOffline.value" class="status-box status-box--offline">
-					<span class="spinner spinner--sm"></span>
-					<div class="status-text">
-						<span class="status-text__main">No connection</span>
-						<span class="status-text__sub">Waiting to reconnect&hellip;</span>
+						<div class="payment-reset-card__description">
+							You can safely restart the payment flow or choose a different
+							payment method.
+						</div>
 					</div>
+
+					<button class="payment-reset-card__button" @click="enterRecovery">
+						Restart Payment
+					</button>
 				</div>
-
-				<!-- PROCESSING -->
-				<div v-else-if="payment.state.value === 'processing'" class="status-box status-box--processing">
-					<span class="spinner spinner--sm"></span>
-					<div class="status-text">
-						<span class="status-text__main">{{ paymentMessage }}</span>
-						<span class="status-text__sub">Don't close this window</span>
-					</div>
-					<div class="progress-dots" aria-hidden="true">
-						<span class="dot" :class="{ 'dot--on': processingStage >= 0 }"></span>
-						<span class="dot" :class="{ 'dot--on': processingStage >= 1 }"></span>
-						<span class="dot" :class="{ 'dot--on': processingStage >= 2 }"></span>
-					</div>
-				</div>
-
-				<!-- TIMEOUT -->
-				<div v-else-if="payment.state.value === 'timeout'" class="status-box status-box--warning">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-						stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" />
-						<polyline points="12,6 12,12 16,14" />
-					</svg>
-					<div class="status-text">
-						<span class="status-text__main">Still waiting for payment confirmation</span>
-						<span class="status-text__sub">
-							Click Retry Payment below to check the latest payment status.
-						</span>
-					</div>
-				</div>
-
-				<!-- ERROR -->
-				<div v-else-if="payment.state.value === 'error'" class="status-box status-box--error">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-						stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" />
-						<line x1="12" y1="8" x2="12" y2="12" />
-						<line x1="12" y1="16" x2="12.01" y2="16" />
-					</svg>
-					<div class="status-text">
-						<span class="status-text__main">{{ payment.error.value }}</span>
-						<span class="status-text__sub">You can still try again</span>
-					</div>
-				</div>
-
-				<!-- SUCCESS -->
-				<div v-else-if="payment.state.value === 'success'" class="status-box status-box--success">
-					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-						stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<polyline points="20,6 9,17 4,12" />
-					</svg>
-					<span class="status-text__main">Payment confirmed</span>
-				</div>
-
-
-				<!-- CANCELLED -->
-				<div v-else-if="payment.state.value === 'cancelled'" class="status-box status-box--warning">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-						stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="10" />
-						<line x1="15" y1="9" x2="9" y2="15" />
-						<line x1="9" y1="9" x2="15" y2="15" />
-					</svg>
-					<div class="status-text">
-						<span class="status-text__main">Payment cancelled</span>
-						<span class="status-text__sub">You can still try again whenever you're ready</span>
-					</div>
-				</div>
-
-			</div>
-		</transition>
-
-		<transition name="fade-soft">
-			<div v-if="payment.showRecoveryAction.value" class="payment-reset-card">
-				<div class="payment-reset-card__content">
-					<div class="payment-reset-card__title">
-						Having trouble completing payment?
-					</div>
-
-					<div class="payment-reset-card__description">
-						You can safely restart the payment flow or choose a different
-						payment method.
-					</div>
-				</div>
-
-				<button class="payment-reset-card__button" @click="cancelSession">
-					Restart Payment
-				</button>
-			</div>
-		</transition>
-
-		<!-- ═══════════════════════════════════════════════════════ -->
-		<!-- CTA                                                    -->
-		<!-- ═══════════════════════════════════════════════════════ -->
-		<button class="cta" :class="{
-			'cta--active': canContinue && !isProcessing,
-			'cta--loading': isProcessing,
-			'cta--disabled': !canContinue || isProcessing,
-			'cta--card': selectedMethod === 'card' && canContinue,
-		}" :disabled="!canContinue || isProcessing" @click="handlePay">
-			<transition name="fade-icon" mode="out-in">
-				<span v-if="isProcessing" key="spin" class="cta__spinner">
-					<span class="spinner spinner--sm spinner--light"></span>
-				</span>
-				<span v-else-if="selectedMethod === 'card' && canContinue" key="arrow" class="cta__icon"
-					aria-hidden="true">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-						stroke-linecap="round" stroke-linejoin="round">
-						<line x1="5" y1="12" x2="19" y2="12" />
-						<polyline points="12,5 19,12 12,19" />
-					</svg>
-				</span>
 			</transition>
-			<span class="cta__label">{{ buttonLabel }}</span>
-		</button>
+
+			<!-- ═══════════════════════════════════════════════════════ -->
+			<!-- CTA                                                    -->
+			<!-- ═══════════════════════════════════════════════════════ -->
+			<button class="cta" :class="{
+				'cta--active': canContinue && !isProcessing,
+				'cta--loading': isProcessing,
+				'cta--disabled': !canContinue || isProcessing,
+				'cta--card': selectedMethod === 'card' && canContinue,
+			}" :disabled="!canContinue || isProcessing" @click="handlePay">
+				<transition name="fade-icon" mode="out-in">
+					<span v-if="isProcessing" key="spin" class="cta__spinner">
+						<span class="spinner spinner--sm spinner--light"></span>
+					</span>
+					<span v-else-if="selectedMethod === 'card' && canContinue" key="arrow" class="cta__icon"
+						aria-hidden="true">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+							stroke-linecap="round" stroke-linejoin="round">
+							<line x1="5" y1="12" x2="19" y2="12" />
+							<polyline points="12,5 19,12 12,19" />
+						</svg>
+					</span>
+				</transition>
+				<span class="cta__label">{{ buttonLabel }}</span>
+			</button>
+		</template>
 
 		<!-- ═══════════════════════════════════════════════════════ -->
 		<!-- FOOTER                                                 -->
@@ -388,7 +396,7 @@
  *
  * Retry / resume flows are handled by usePayment (not here).
  */
-import { ref, computed, watch, onMounted, onUnmounted, type ComputedRef } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, type ComputedRef, nextTick } from 'vue'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
 
@@ -406,14 +414,14 @@ import {
 } from '@/payment'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
-import { normaliseRegion } from '@/utils/mobileMoney'
 import '@/style/global.scss'
 import PaymentRouteSummary from './PaymentRouteSummary.vue'
+import PaymentRecoveryScreen from './PaymentRecoveryScreen.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { usePaymentRouting } from '@/payment/usePaymentRouting'
 import { usePhoneResolution } from '@/payment/usePhoneResolution'
 import { usePaymentDisplay } from '@/payment/usePaymentDisplay'
-import { usePaymentSession } from '@/payment/usePaymentSession'
+import { usePaymentSession, type RecoveryReason } from '@/payment/usePaymentSession'
 import { useMnoDetection } from '@/payment/useMnoDetection'
 import type { ProductPricing } from '@/composables/useProductPricing'
 import { useUserContextStore, type UserContext } from '@/store/userContext.ts'
@@ -525,7 +533,6 @@ const {
 	openMnoSelector,
 	resetMnoDetectionState,
 	formatMnoLabel,
-	isValidSelectedProvider,
 	applyMnoDetection,
 } = useMnoDetection({
 	isDaraja,
@@ -554,6 +561,11 @@ const {
     buttonLabel,
     paymentMessage,
     processingStage,
+	enterRecovery,
+	exitRecovery,
+	restartSession,
+	isRecovering,
+	isInvalidating,
 } = usePaymentSession({
 	payment,
 	mnoDetection,
@@ -648,13 +660,14 @@ const hasChargedPayment = computed(() => {
  */
 watch(() => payment.state.value, (state) => {
 	emit('state-change', state)
+
+	if (state === 'success' || state === 'idle') {
+		isRecovering.value = false
+	}
+
 	if (state === 'success' && !hasEmittedSuccess.value) {
 		hasEmittedSuccess.value = true
-
-		// allow animation to finish then close modal and sign
-		setTimeout(() => {
-			emit('payment-success')
-		}, 1000)
+		setTimeout(() => emit('payment-success'), 1000)
 	}
 })
 
@@ -669,6 +682,12 @@ function selectMethod(m: PaymentMethod) {
 
 function onRuntimeInvalid() {
 	emit('payment-runtime-invalid')
+}
+
+async function handleRestart(reason: RecoveryReason) {
+	await restartSession(reason)
+	await nextTick()
+	phoneInputRef.value?.focus()
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1847,5 +1866,21 @@ onUnmounted(() => {
 .success-pop-enter-from {
 	opacity: 0;
 	transform: scale(0.92);
+}
+
+/* Recovery slide — enters from right */
+.recovery-slide-enter-active {
+	transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.recovery-slide-leave-active {
+	transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.recovery-slide-enter-from {
+	opacity: 0;
+	transform: translateX(12px);
+}
+.recovery-slide-leave-to {
+	opacity: 0;
+	transform: translateX(-8px);
 }
 </style>
