@@ -67,19 +67,43 @@ function markOnline() {
 }
 
 /**
- * Network error classifier
+ * Connectivity failure classifier.
  *
- * IMPORTANT:
- * Axios/network requests:
- * - no response + request exists
- * - timeout
+ * True when the request could not reach the server or no response
+ * was received. This represents an actual connectivity problem and
+ * is safe to use for offline detection.
  */
-function isNetworkError(error: any): boolean {
+function isConnectivityError(error: any): boolean {
 	return (
-		(!error?.response && !!error?.request) ||
-		error?.code === 'ECONNABORTED'
+		!error?.response &&
+		!!error?.request &&
+		!isRequestTimeout(error)
 	)
 }
+
+/**
+ * Request timeout classifier.
+ *
+ * Axios reports client-side request timeouts using ECONNABORTED.
+ * A timeout does NOT necessarily mean the user is offline—it may
+ * simply indicate a slow backend, provider, or proxy.
+ */
+function isRequestTimeout(error: any): boolean {
+	return error?.code === 'ECONNABORTED'
+}
+
+/**
+ * @deprecated
+ * Kept for backwards compatibility.
+ *
+ * Historically this function treated request timeouts as network
+ * failures. New code should prefer:
+ *
+ *   - isConnectivityError() → enter offline mode
+ *   - isRequestTimeout()    → payment/request timeout handling
+ */
+const isNetworkError = (error: any) =>
+	isConnectivityError(error) || isRequestTimeout(error)
 
 /**
  * Register reconnect callback
@@ -261,6 +285,8 @@ export function useNetworkState() {
 		isOffline,
 		markOffline,
 		markOnline,
+		isConnectivityError,
+		isRequestTimeout,
 		isNetworkError,
 		onReconnect,
 		initialise,

@@ -5,8 +5,8 @@ import { mockPaymentDriver } from '@/payment/drivers/mockPaymentDriver'
 import { clearPersistedPaymentSession } from '@/utils/paymentPersistence'
 import type { HydratedPayment, PaymentPurpose } from './types'
 import { resolvePhone } from '@/utils/phoneResolver'
-import { isNetworkError, markOffline } from '@/utils/network'
 import { showRequestError } from '@/utils/network/requestMessaging'
+import { useNetworkState } from '@/composables/useNetworkState'
 
 const useMockPayments = localStorage.getItem('mock-payments') === 'true'
 
@@ -33,6 +33,8 @@ export const paymentDriver =
  * backend payment sessions only.
  */
 export function usePaymentRecovery() {
+
+	const { isConnectivityError, markOffline } = useNetworkState()
 
 	const isChecking = ref(false)
 
@@ -103,7 +105,7 @@ export function usePaymentRecovery() {
 
 		} catch (err) {
 
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
 				throw err
 			}

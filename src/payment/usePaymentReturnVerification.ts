@@ -100,7 +100,7 @@ export function usePaymentReturnVerification(
 		isOffline,
 		markOffline,
 		markOnline,
-		isNetworkError,
+		isConnectivityError,
 		onReconnect,
 	} = useNetworkState()
 
@@ -276,7 +276,7 @@ export function usePaymentReturnVerification(
 					return
 			}
 		} catch (err) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				// Transient connectivity issue — pause and wait for reconnect
 				markOffline()
 				pauseElapsed()
@@ -337,7 +337,7 @@ export function usePaymentReturnVerification(
 					return false
 			}
 		} catch (err) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				// Can't reach the backend yet — skip straight to Phase 2
 				// which will handle offline similarly
 				markOffline()

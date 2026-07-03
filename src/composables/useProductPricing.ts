@@ -1,6 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import { getProductByCode, type Product } from '@/payment/product'
 import { useNetworkState } from './useNetworkState'
+import { showRequestError } from '@/utils/network/requestMessaging'
 
 export interface ProductPricing {
 	loadingProduct: Ref<boolean>
@@ -17,7 +18,7 @@ export function useProductPricing(
 	productCode: string
 ): ProductPricing {
 
-	const { isNetworkError, markOffline } = useNetworkState()
+	const { isConnectivityError, markOffline } = useNetworkState()
 
 	const loadingProduct = ref(false)
 
@@ -34,13 +35,14 @@ export function useProductPricing(
 				await getProductByCode(productCode)
 		} catch (err: unknown) {
 
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
 			}
 			error.value =
 				err instanceof Error
 					? err.message
 					: 'Failed to load pricing'
+			showRequestError(err, 'Failed to load pricing')
 		} finally {
 
 			loadingProduct.value = false

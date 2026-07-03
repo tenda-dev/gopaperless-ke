@@ -178,7 +178,8 @@ interface ChargePayload {
 export function usePayment() {
 	const {
 		isOffline,
-		isNetworkError,
+		isConnectivityError,
+		isRequestTimeout,
 		onReconnect,
 		markOffline,
 		markOnline,
@@ -329,9 +330,13 @@ export function usePayment() {
 
 			return res
 		} catch (err: any) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
-				throw err // timeout
+				throw err
+			}
+
+			if (isRequestTimeout(err)) {
+				throw err
 			}
 
 			showRequestError(err, `Failed to initialise payment request`)
@@ -384,9 +389,13 @@ export function usePayment() {
 			)
 
 		} catch (err: any) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
-				throw err // timeout
+				throw err
+			}
+
+			if (isRequestTimeout(err)) {
+				throw err
 			}
 			alreadyCharged.value = false
 			const defaultErrMsg = `Failed to send payment request`
@@ -416,9 +425,13 @@ export function usePayment() {
 		try {
 			return await paymentDriver.fetchMobileOptions(reference, country)
 		} catch (err) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
-				return { options: [] } // timeout
+				throw err
+			}
+
+			if (isRequestTimeout(err)) {
+				throw err
 			}
 			showRequestError(err, `Failed to load payment options`)
 			return { options: [] }
@@ -446,9 +459,13 @@ export function usePayment() {
 
 			return res
 		} catch (err: any) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
-				return // timeout
+				throw err
+			}
+
+			if (isRequestTimeout(err)) {
+				throw err
 			}
 
 			const defaultErrMsg = `Payment failed`
@@ -752,7 +769,7 @@ export function usePayment() {
 				}
 
 			} catch (err) {
-				if (isNetworkError(err)) {
+				if (isConnectivityError(err)) {
 					console.warn('[Payment] network issue during polling')
 					pollingWasInterrupted = true
 					markOffline()
@@ -838,6 +855,8 @@ export function usePayment() {
 	}
 
 	/**
+	 * @deprecated
+	 * Handled in usePaymentReturnVerification
 	 * REDIRECT RETURN (CARD ONLY)
 	 *
 	 * Called after DPO redirects back to our app post-payment.
@@ -864,7 +883,7 @@ export function usePayment() {
 				throw new Error('Payment failed')
 			}
 		} catch (err: any) {
-			if (isNetworkError(err)) {
+			if (isConnectivityError(err)) {
 				markOffline()
 				return
 			}
