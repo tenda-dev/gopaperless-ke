@@ -14,7 +14,7 @@
 	</div>
 
 	<!-- Recovery -->
-	<PaymentRecoveryCard
+	<PaymentResumeCard
 		v-else-if="
 			hasRecovery &&
 			recoveryPayment &&
@@ -55,7 +55,7 @@
 import { computed, onMounted, ref } from 'vue'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import PaymentStep from '@/components/Payments/PaymentStep.vue'
-import PaymentRecoveryCard from '@/components/Payments/PaymentRecoveryCard.vue'
+import PaymentResumeCard from '@/components/Payments/PaymentResumeCard.vue'
 import CreditQuantitySelector from './CreditQuantitySelector.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { type PaymentState } from '@/payment/usePayment'
