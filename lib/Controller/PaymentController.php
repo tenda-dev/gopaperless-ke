@@ -16,6 +16,7 @@ use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\Exceptions\PaymentException;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentValidationException;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Service\SMS\SMSService;
 use OCP\AppFramework\Http;
@@ -513,6 +514,7 @@ class PaymentController extends AEnvironmentAwareController
 		?string $purpose,
 		?int $signRequestId,
 		?string $signUuid,
+		?string $productCode,
 	): DataResponse {
 
 		try {
@@ -527,8 +529,6 @@ class PaymentController extends AEnvironmentAwareController
 
 			$uid = $user->getUID();
 
-			$purpose = $purpose ? strtolower($purpose) : null;
-
 			$purposeEnum = PaymentPurpose::tryFrom(
 				strtolower($purpose ?? '')
 			) ?? PaymentPurpose::SIGN_REQUEST;
@@ -536,7 +536,8 @@ class PaymentController extends AEnvironmentAwareController
 			$payment = $this->paymentService->resumePayment(
 				purpose: $purposeEnum,
 				signRequestId: $signRequestId,
-				signUuid:$signUuid,
+				signUuid: $signUuid,
+				productCode: $productCode,
 				userId: $uid,
 			);
 
@@ -551,7 +552,7 @@ class PaymentController extends AEnvironmentAwareController
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage()
+				'error' => 'An unexpected error occurred',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -578,48 +579,33 @@ class PaymentController extends AEnvironmentAwareController
 			}
 
 			if (trim($reference) === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Missing payment reference',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Missing payment reference', retryable: false);
 			}
 
 			if (trim($phone) === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Missing phone number',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Missing phone number', retryable: false);
 			}
 
 			if ($mno === null || trim($mno) === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Missing mobile provider',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing mobile provider', retryable: true);
 			}
 
 			if ($country === null || trim($country) === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Missing mobile provider country',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing mobile provider country', retryable: true);
 			}
 
 			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
 
 			$storedPhone = $payment->getPhoneE164Digits();
 			if ($storedPhone !== null && $storedPhone !== $phone) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Phone number does not match the payment',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException('PAYMENT_PHONE_MISMATCH', 'Phone number does not match the payment', retryable: false);
 			}
 
 			$payment = $this->paymentService->chargeMobile(
-				$reference,
-				$phone,
-				$mno,
-				$country,
+				reference: $reference,
+				phone: $phone,
+				inputMno: $mno,
+				inputCountry: $country,
 			);
 
 			return new DataResponse([
@@ -628,19 +614,27 @@ class PaymentController extends AEnvironmentAwareController
 					? $payment->toArray()
 					: null,
 			], Http::STATUS_OK);
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Failed to charge mobile payment', [
+				'reference' => $reference,
+				'code' => $e->getErrorCode(),
+				'retryable' => $e->isRetryable(),
+				'status' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
 		} catch (\Throwable $e) {
 
-			$this->logger->error(
-				'Failed to charge mobile payment',
-				[
-					'reference' => $reference,
-					'exception' => $e,
-				]
-			);
+			$this->logger->error('Failed to charge mobile payment', [
+				'reference' => $reference,
+				'exception' => $e,
+			]);
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage(),
+				'error' => 'An unexpected error occurred',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -670,16 +664,27 @@ class PaymentController extends AEnvironmentAwareController
 				'success' => true,
 				'options' => $options
 			], Http::STATUS_OK);
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Failed to fetch mobile options', [
+				'reference' => $reference,
+				'code' => $e->getErrorCode(),
+				'retryable' => $e->isRetryable(),
+				'status' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
 		} catch (\Throwable $e) {
 
 			$this->logger->error('Failed to fetch mobile options', [
-				'error' => $e->getMessage(),
-				'reference' => $reference
+				'reference' => $reference,
+				'exception' => $e,
 			]);
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage()
+				'error' => 'An unexpected error occurred',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

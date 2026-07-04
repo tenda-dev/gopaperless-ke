@@ -10,8 +10,6 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service\Payment;
 
 use DateTimeImmutable;
-use libphonenumber\NumberParseException;
-use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\Db\Payment;
 use OCA\Libresign\Db\PaymentMapper;
 use OCA\Libresign\Enum\PaymentCapability;
@@ -38,12 +36,16 @@ use OCA\Libresign\Service\Payment\DTO\SelectedMnoDTO;
 use OCA\Libresign\Service\Payment\DTO\SelectionDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\DTO\SuggestedMnoDTO;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentValidationException;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentInvariantException;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentNotFoundException;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentOwnershipException;
+use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Libresign\Service\Product\ProductService;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
-use Random\RandomException;
 use RuntimeException;
 
 /**
@@ -117,6 +119,7 @@ class PaymentService
 		FxEngineService $fxEngineService,
 		ProviderAmountNormaliser $providerAmountNormaliser,
 		VerificationDispatcherFactory $verificationDispatcher,
+		private PhoneNumberService $phoneNumberService,
 	) {
 		$this->paymentMapper = $paymentMapper;
 		$this->logger = $logger;
@@ -182,17 +185,19 @@ class PaymentService
 		 * CORE VALIDATION
 		 */
 		if (!$userId) {
-			throw new RuntimeException('userId is required');
+			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'userId is required', retryable: false);
 		}
 
 		if (!$productCode) {
-			throw new RuntimeException('productCode is required');
+			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'productCode is required', retryable: false);
 		}
 
 		$methodEnum = $method;
 
 		if ($methodEnum === null) {
-			throw new RuntimeException('Invalid payment method');
+			// Unreachable: StartPaymentDTO::paymentMethod is non-nullable.
+			// Kept as a defensive invariant.
+			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Invalid payment method', retryable: false);
 		}
 
 		$capability = match ($methodEnum) {
@@ -206,7 +211,7 @@ class PaymentService
 		if ($capability === PaymentCapability::MOBILE_MONEY) {
 
 			if (!$phoneNumber) {
-				throw new RuntimeException('Phone number is required');
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Phone number is required', retryable: false);
 			}
 
 			$this->validatePhoneNumber($phoneNumber);
@@ -215,15 +220,19 @@ class PaymentService
 			$region = $resolutionDto->region;
 
 			if (!$resolutionDto->valid || !$region) {
-				throw new RuntimeException('Unable to resolve phone number');
+				throw new PaymentValidationException('PAYMENT_INVALID_PHONE', 'Unable to resolve phone number', retryable: true);
 			}
 
 			if (!$this->mnoRoutingRegistry->supportsRegion($region)) {
-				throw new RuntimeException(sprintf(
-					'Unsupported region: %s. Supported regions: %s',
-					$region,
-					implode(', ', $this->mnoRoutingRegistry->supportedRegions())
-				));
+				throw new PaymentValidationException(
+					'PAYMENT_UNSUPPORTED_REGION',
+					sprintf(
+						'Unsupported region: %s. Supported regions: %s',
+						$region,
+						implode(', ', $this->mnoRoutingRegistry->supportedRegions())
+					),
+					retryable: false,
+				);
 			}
 
 			// Changed to e164 with the + (persisted - remove the + per provider if needed)
@@ -232,7 +241,7 @@ class PaymentService
 			$countryCtx = $this->countryResolver->resolve($region);
 
 			if (!$countryCtx) {
-				throw new RuntimeException('Unsupported country');
+				throw new PaymentValidationException('PAYMENT_UNSUPPORTED_REGION', 'Unsupported country', retryable: false);
 			}
 
 			$detection = $this->mnoDetectionRegistry->resolve(
@@ -253,7 +262,11 @@ class PaymentService
 			);
 
 			if (!$route->capability) {
-				throw new RuntimeException('Unable to determine payment route');
+				// Unreachable: route() always returns a routed capability
+				// (unmatched/ambiguous carriers fall back to a valid DPO
+				// mobile-money route with AMBIGUOUS confidence, not a failure).
+				// Kept as a defensive invariant.
+				throw new PaymentInvariantException('Unable to determine payment route');
 			}
 
 			$ctxMetadata = [
@@ -276,7 +289,7 @@ class PaymentService
 		if ($capability === PaymentCapability::CARD) {
 
 			if (!$redirectUrl || !filter_var($redirectUrl, FILTER_VALIDATE_URL)) {
-				throw new RuntimeException('Valid redirect URL required');
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Valid redirect URL required', retryable: false);
 			}
 
 			$route = $this->mnoRoutingRegistry->route(
@@ -334,11 +347,11 @@ class PaymentService
 		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
 
 			if ($signRequestId === null) {
-				throw new RuntimeException('signRequestId is required');
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'signRequestId is required', retryable: false);
 			}
 
 			if ($signUuid === null || $signUuid === '') {
-				throw new RuntimeException('signUuid is required');
+				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'signUuid is required', retryable: false);
 			}
 
 			$paidPayment = $this->paymentMapper->findLatestPaidByTransactionId($signRequestId);
@@ -458,7 +471,7 @@ class PaymentService
 		$uses        = $totalUses;
 
 		if ($uses <= 0) {
-			throw new RuntimeException('Invalid product configuration');
+			throw new PaymentInvariantException('Invalid product configuration');
 		}
 
 		/**
@@ -558,7 +571,7 @@ class PaymentService
 					)
 				),
 
-				default => throw new RuntimeException('Unsupported capability'),
+				default => throw new PaymentInvariantException('Unsupported capability'),
 			};
 		} catch (\Throwable $e) {
 			$this->failPaymentInitiation(
@@ -751,7 +764,7 @@ class PaymentService
 	 *
 	 * - Daraja → already handled via callback
 	 * - DPO → requires API verification, must be polled, if handling mobile_direct flow
-	 * @throws RuntimeException
+	 * @throws PaymentNotFoundException
 	 * @throws \Throwable
 	 */
 	/**
@@ -820,7 +833,6 @@ class PaymentService
 	 *
 	 * Backend remains the source of truth.
 	 *
-	 * @throws RuntimeException
 	 */
 	public function resumePayment(
 		PaymentPurpose $purpose,
@@ -856,16 +868,33 @@ class PaymentService
 		}
 
 		/**
+		 * ENTITY REHYDRATION (Nextcloud ORM quirk)
+		 *
+		 * The finder queries above may return a partially-hydrated entity.
+		 * Re-fetch by id to guarantee a fully-mapped row before we read
+		 * ownership fields and build the FE response.
+		 */
+		$payment = $this->paymentMapper->findById($payment->getId());
+
+		if (!$payment) {
+			return null;
+		}
+
+		/**
 		 * SIGN REQUEST OWNERSHIP VALIDATION
 		 *
-		 * Prevents:
-		 * - arbitrary payment hydration
-		 * - stale cross-user restoration
-		 * - leaking payment metadata
+		 * signUuid is NOT unique — one signUuid can span multiple sign
+		 * requests. So resuming a SIGN_REQUEST payment requires BOTH keys
+		 * to match: the signUuid (transactionReference) AND the specific
+		 * signRequestId (transactionId). Matching signUuid alone would let
+		 * one sign request resume another's payment under a shared uuid.
 		 */
 		if (
 			$purpose === PaymentPurpose::SIGN_REQUEST &&
-			$payment->getTransactionReference() !== $signUuid
+			(
+				$payment->getTransactionReference() !== $signUuid ||
+				$payment->getTransactionId() !== $signRequestId
+			)
 		) {
 			return null;
 		}
@@ -873,8 +902,11 @@ class PaymentService
 		/**
 		 * Authenticated ownership validation
 		 *
-		 * External signers may not have a userId,
-		 * so only enforce when present.
+		 * All users have accounts, so a
+		 * pending payment always has an owning userId. When a userId is
+		 * supplied by the caller, it must match the payment's owner.
+		 *
+		 * The $payment->getUserId() !== null guard is retained defensively
 		 */
 		if (
 			$userId !== null &&
@@ -1668,7 +1700,7 @@ class PaymentService
 		 * Only DPO supports deferred charge
 		 */
 		if ($payment->getProviderEnum() !== PaymentProvider::DPO) {
-			throw new RuntimeException('chargeMobile only supported for DPO');
+			throw new PaymentInvariantException('chargeMobile only supported for DPO');
 		}
 
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
@@ -1678,7 +1710,9 @@ class PaymentService
 		$meta = $payment->getProviderMetadataObject();
 
 		if (!$meta) {
-			throw new RuntimeException('Missing payment metadata');
+			// Unreachable: getProviderMetadataObject() always returns a DTO.
+			// Defensive invariant.
+			throw new PaymentInvariantException('Missing payment metadata');
 		}
 
 		if ($meta->alreadyCharged) {
@@ -1689,7 +1723,7 @@ class PaymentService
 			$payment->getDisplayAmount() === null ||
 			$payment->getDisplayCurrency() === null
 		) {
-			throw new RuntimeException('Missing display pricing information');
+			throw new PaymentInvariantException('Missing display pricing information');
 		}
 
 		$displayAmountMinor = $payment->getDisplayAmount();
@@ -1720,7 +1754,7 @@ class PaymentService
 			$this->validateOptionsSelection($options, $mno, $country);
 		} else {
 			if (!$mno || !$country) {
-				throw new RuntimeException('Missing MNO selection');
+				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing MNO selection', retryable: true);
 			}
 		}
 
@@ -1818,11 +1852,15 @@ class PaymentService
 		$payment = $this->fetchPaymentByProviderReference($reference);
 
 		if ($payment->getProviderEnum() !== PaymentProvider::DPO) {
-			throw new RuntimeException('Mobile options only supported for DPO');
+			throw new PaymentInvariantException('Mobile options only supported for DPO');
 		}
 
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
-			throw new RuntimeException('Cannot fetch options for completed payment');
+			throw new PaymentValidationException(
+				'PAYMENT_ALREADY_RESOLVED',
+				'Cannot fetch options for completed payment',
+				retryable: false,
+			);
 		}
 
 		$options = $this->mobileMoneyService->getMobileOptions($reference, $country);
@@ -1855,34 +1893,22 @@ class PaymentService
 
 	private function validatePhoneNumber(string $phone): void
 	{
-		$phoneUtil = PhoneNumberUtil::getInstance();
-
 		// Enforce international format strictly
 		if (!str_starts_with($phone, '+')) {
-			throw new \InvalidArgumentException(
-				'Phone number must be in international format'
+			throw new PaymentValidationException(
+				'PAYMENT_INVALID_PHONE',
+				'Phone number must be in international format',
+				retryable: true,
 			);
 		}
 
-		try {
-			$parsed = $phoneUtil->parse($phone, null);
+		$resolved = $this->phoneNumberService->resolve($phone);
 
-			if (!$phoneUtil->isValidNumber($parsed)) {
-				throw new \InvalidArgumentException(
-					'The provided phone number is not valid.'
-				);
-			}
-
-			// Optional (disabled for now):
-			// $supportedRegions = ['KE', 'UG', 'TZ'];
-			// $region = $phoneUtil->getRegionCodeForNumber($parsed);
-			// if (!in_array($region, $supportedRegions, true)) {
-			//     throw new \InvalidArgumentException("We do not support numbers from $region yet.");
-			// }
-
-		} catch (NumberParseException) {
-			throw new \InvalidArgumentException(
-				'Invalid phone number. Use international format (e.g., +254...)'
+		if (!$resolved->valid) {
+            throw new PaymentValidationException(
+					'PAYMENT_INVALID_PHONE',
+					'The provided phone number is not valid.',
+					retryable: true,
 			);
 		}
 	}
@@ -2033,7 +2059,7 @@ class PaymentService
 			}
 		}
 
-		throw new RuntimeException('Invalid MNO selection');
+		throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Invalid MNO selection', retryable: true);
 	}
 
 	/**
@@ -2056,7 +2082,7 @@ class PaymentService
 				'reference' => $reference
 			]);
 
-			throw new RuntimeException('Payment not found');
+			throw new PaymentNotFoundException();
 		}
 
 		/**
@@ -2068,7 +2094,8 @@ class PaymentService
 	/**
 	 * Verify that the authenticated user owns the payment identified by the provider reference.
 	 *
-	 * @throws RuntimeException if the payment does not exist or the user is not the owner.
+	 * @throws PaymentNotFoundException if the payment does not exist
+	 * @throws PaymentOwnershipException if the user is not the owner of the payment
 	 */
 	public function assertPaymentOwnership(string $reference, string $userId): Payment
 	{
@@ -2076,27 +2103,10 @@ class PaymentService
 
 		$paymentUserId = $payment->getUserId();
 		if ($paymentUserId !== null && $paymentUserId !== $userId) {
-			throw new RuntimeException('Access Denied');
+			throw new PaymentOwnershipException();
 		}
 
 		return $payment;
-	}
-
-	private function fetchByTransactionId(int $signRequestId): Payment
-	{
-		$payment = $this->paymentMapper->findLatestPendingByTransactionId($signRequestId);
-
-		if (!$payment) {
-			$this->logger->error('[PaymentService] Payment not found', [
-				'sign_request_id' => $signRequestId
-			]);
-
-			throw new RuntimeException('Payment not found');
-		}
-		/**
-		 * ENTITY REHYDRATION (Nextcloud ORM quirk)
-		 */
-		return $this->paymentMapper->findById($payment->getId());
 	}
 
 	private function buildExistingPaymentResponse(Payment $payment): ExistingPaymentResultDTO
