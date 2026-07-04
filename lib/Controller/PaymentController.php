@@ -15,6 +15,7 @@ use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentException;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Service\SMS\SMSService;
 use OCP\AppFramework\Http;
@@ -144,6 +145,18 @@ class PaymentController extends AEnvironmentAwareController
 				'success' => true,
 				'result' => $result->toArray()
 			], Http::STATUS_OK);
+
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Payment start failed', [
+				'code' => $e->getErrorCode(),
+				'retryable' => $e->isRetryable(),
+				'status' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
 		} catch (\Throwable $e) {
 
 			$this->logger->error('Payment creation failed', [
@@ -152,7 +165,7 @@ class PaymentController extends AEnvironmentAwareController
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage(),
+				'error' => 'An unexpected error occurred',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -272,6 +285,19 @@ class PaymentController extends AEnvironmentAwareController
 				'success' => true,
 				'result' => $result->toArray(),
 			], Http::STATUS_OK);
+
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Payment retry failed', [
+				'reference' => $reference,
+				'code' => $e->getErrorCode(),
+				'retryable' => $e->isRetryable(),
+				'status' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
 		} catch (\Throwable $e) {
 
 			$this->logger->error('Payment retry failed', [
@@ -779,6 +805,25 @@ class PaymentController extends AEnvironmentAwareController
 				'error' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Map a typed payment exception to the structured FE error envelope.
+	 *
+	 * The frontend keys its localised copy off `code` and steers its
+	 * try-again vs restart CTA off `retryable`. `message` is developer/log
+	 * context only — the FE does not display it.
+	 */
+	private function paymentErrorResponse(PaymentException $e): DataResponse
+	{
+		return new DataResponse([
+			'success' => false,
+			'error' => [
+				'code' => $e->getErrorCode(),
+				'message' => $e->getMessage(),
+				'retryable' => $e->isRetryable(),
+			],
+		], $e->getHttpStatus());
 	}
 
 	private function parseDpoXml(string $xml): array
