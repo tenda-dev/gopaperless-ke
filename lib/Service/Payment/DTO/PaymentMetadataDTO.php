@@ -61,7 +61,7 @@ final class PaymentMetadataDTO
 			'confidence' => $this->confidence,
 			'alreadyCharged' => $this->alreadyCharged,
 			'instructions' => $this->instructions,
-			'providerExecutionState' => $this->providerExecutionState,
+			'providerExecutionState' => $this->providerExecutionState?->value,
 			'providerPayload' => $this->providerPayload->toArray(),
 			'context' => $this->context,
 			'providerError' => $this->providerError,

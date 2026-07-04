@@ -47,4 +47,31 @@ class StartPaymentDTO {
 		public ?string $phoneNumber = null,
 	) {
 	}
+
+	/**
+	 * Return a copy of this DTO with a different payment attempt id.
+	 *
+	 * Used by the retry flow: after the old payment session is expired,
+	 * we hand its intent back to startPayment() to begin a fresh attempt.
+	 * The attempt id MUST change, otherwise startPayment()'s idempotency
+	 * lookup (findByAttemptId) would match the row we just failed and
+	 * return that failed payment instead of starting a new one.
+	 *
+	 * Why clone instead of `new self(...)`:
+	 * Cloning copies every field automatically, so this method keeps
+	 * working correctly even if new fields are later added to the
+	 * constructor. A hand-written `new self(...)` would silently drop
+	 * any field it forgot to list.
+	 * A shallow clone is safe here because every property is a scalar or
+	 * an immutable enum.
+	 *
+	 * @param string|null $paymentAttemptId The new attempt id. Passing null
+	 *        lets startPayment() generate a fresh one itself.
+	 */
+	public function withPaymentAttemptId(?string $paymentAttemptId): self
+	{
+		$clone = clone $this;
+		$clone->paymentAttemptId = $paymentAttemptId;
+		return $clone;
+	}
 }

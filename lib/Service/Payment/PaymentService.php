@@ -364,6 +364,8 @@ class PaymentService
 		if ($pending) {
 			$pending = $this->paymentMapper->findById($pending->getId());
 
+			$reusable = false;
+
 			if (!$this->hasPaymentExpired($pending)) {
 
 				$meta = $pending->getProviderMetadataObject();
@@ -398,36 +400,30 @@ class PaymentService
 					$this->expirePayment($pending);
 				} elseif ($this->isPendingStaleForRetry($pending)) {
 
-					/**
-					 * The existing async session is older than the retry window.
-					 * Before forcing a fresh attempt, reconcile with the provider
-					 * in case the payment actually succeeded and the callback is
-					 * merely delayed. If it succeeded, return the existing success.
-					 */
-					$resolvedStatus = $this->queryPayment(
-						$pending->getProviderReference()
-					);
+					$resolved = $this->reconcileThenExpire($pending, 'expired');
 
-					if ($resolvedStatus === PaymentStatus::PAID) {
-						$payment = $this->paymentMapper->findById($pending->getId());
-						return $this->buildExistingPaymentResponse($payment);
+					if ($resolved === PaymentStatus::PAID) {
+						$paid = $this->fetchPaymentByProviderReference(
+							$pending->getProviderReference()
+						);
+						return $this->buildExistingPaymentResponse($paid);
 					}
 
-					$this->logger->info('[Payment] Expiring stale pending payment for retry after reconciliation', [
-						'reference' => $pending->getProviderReference(),
-						'payment_id' => $pending->getId(),
-						'resolved_status' => $resolvedStatus->value,
-						'age_seconds' => $this->nowImmutable()->getTimestamp() - ($pending->getCreatedAtImmutable()?->getTimestamp() ?? 0),
-					]);
-
-					$this->expirePayment($pending);
+					// Non-PAID: reconcileThenExpire has already marked the row
+					// terminal (FAILED/CANCELLED). $reusable stays false, so we
+					// fall through to fresh init below. No extra expire needed.
 				} else {
 
-					return $this->buildExistingPaymentResponse($pending);
+					$reusable = true;
 				}
+			} else {
+				// expired by time
+				$this->expirePayment($pending);
 			}
 
-			$this->expirePayment($pending);
+			if ($reusable) {
+				return $this->buildExistingPaymentResponse($pending);
+			}
 
 			$this->logger->info('[Payment] Expired pending payment', [
 				'purpose' => $paymentPurpose->value,
@@ -713,6 +709,44 @@ class PaymentService
 
 
 	/**
+	 * Explicit user-initiated retry of a timed-out payment session.
+	 *
+	 * Reconciles the existing reference with the provider FIRST (a delayed
+	 * success must never be discarded), then — only if not paid — expires it
+	 * and starts a fresh attempt from the re-supplied intent.
+	 *
+	 * Age-independent by design: an explicit retry always reconciles against
+	 * the provider rather than guessing from a timestamp, so it does not
+	 * depend on PAYMENT_STALE_FOR_RETRY_SECONDS (that gate now only guards
+	 * accidental double-submit inside startPayment).
+	 */
+	public function retryPayment(
+		string $reference,
+		StartPaymentDTO $dto,
+	): StartPaymentResultDTO | ExistingPaymentResultDTO {
+
+		$payment = $this->assertPaymentOwnership($reference, $dto->userId);
+
+		$status = $this->reconcileThenExpire($payment, 'superseded_by_retry');
+
+		// Delayed success landed while the user was on the recovery screen.
+		// /payment/retry legitimately returns PAID; FE shows success.
+		if ($status === PaymentStatus::PAID) {
+			$paid = $this->fetchPaymentByProviderReference($reference);
+			return $this->buildExistingPaymentResponse($paid);
+		}
+
+		// Old row is now terminal → rotate the attempt id so startPayment's
+		// idempotency lookup (findByAttemptId) can't match the row we just
+		// failed. Without this, the re-supplied payload's original attempt id
+		// would return the FAILED payment instead of starting fresh.
+		return $this->startPayment(
+			$dto->withPaymentAttemptId(Uuid::uuid4()->toString())
+		);
+	}
+
+
+	/**
 	 * Check Payment Status
 	 *
 	 * - Daraja → already handled via callback
@@ -914,134 +948,14 @@ class PaymentService
 	{
 		$payment = $this->assertPaymentOwnership($reference, $userId);
 
-		$currentStatus = $payment->getPaymentStatus();
+		$status = $this->reconcileThenExpire($payment, 'invalidated_by_user');
 
-		/**
-		 * IDEMPOTENCY + PAID GUARD
-		 *
-		 * If the payment already reached a terminal state, do nothing.
-		 * Crucially this includes PAID: a delayed callback may have landed
-		 * while the user was deciding on the recovery screen. We must never
-		 * invalidate money that actually moved.
-		 */
-		if ($currentStatus !== PaymentStatus::PENDING) {
-
-			$this->logger->info('[Payment] invalidatePayment no-op (already terminal)', [
-				'reference' => $reference,
-				'status' => $currentStatus->value,
-			]);
-
-			return $currentStatus;
-		}
-
-		/**
-		 * DELAYED-SUCCESS RECONCILIATION (DPO only)
-		 *
-		 * Before invalidating a PENDING DPO payment, do a one-shot verify.
-		 * The frontend polling already reconciles during the session, but the
-		 * user may have sat on the recovery screen long enough for a late
-		 * success to land. Daraja is callback-only and has no query here —
-		 * its polling loop (queryDarajaPayment) already covered reconciliation.
-		 */
-		if ($payment->getProviderEnum() === PaymentProvider::DPO) {
-
-			try {
-
-				$status = $this->verificationService->verifyStatus(
-					$payment->getProviderEnum(),
-					$reference
-				);
-
-				if ($status === 'SUCCESS') {
-
-					$this->finalisePayment($payment);
-
-					$this->logger->info('[Payment] invalidatePayment aborted — payment completed during recovery', [
-						'reference' => $reference,
-					]);
-
-					return PaymentStatus::PAID;
-				}
-
-			} catch (\Throwable $e) {
-
-				/**
-				 * Non-blocking: if verification fails we proceed with
-				 * invalidation. Worst case is a stale reference the provider
-				 * expires on its own — the same safety net as everywhere else.
-				 */
-				$this->logger->warning('[Payment] invalidatePayment verify failed (non-blocking)', [
-					'reference' => $reference,
-					'error' => $e->getMessage(),
-				]);
-			}
-
-			/**
-			 * BEST-EFFORT PROVIDER-SIDE CANCELLATION (DPO)
-			 *
-			 * Ask the verification service to cancel the DPO token so the
-			 * reference cannot be charged later. Failure here is tolerated —
-			 * marking the row FAILED below is what protects our side.
-			 */
-			try {
-
-				$result = $this->verificationService->cancelPayment(
-					$payment->getProviderEnum(),
-					$reference
-				);
-
-				if ($result['status'] !== 'SUCCESS') {
-					$this->logger->warning('[Payment] Provider cancellation unsuccessful', [
-						'reference' => $reference,
-						'code' => $result['code'],
-						'explanation' => $result['explanation'],
-					]);
-				}
-
-			} catch (\Throwable $e) {
-
-				$this->logger->warning(
-					'[Payment] Provider cancellation failed (non-blocking)',
-					[
-						'reference' => $reference,
-						'provider' => $payment->getProviderEnum()->value,
-						'error' => $e->getMessage(),
-					]
-				);
-			}
-		}
-
-		/**
-		 * MARK FAILED — user-invalidated
-		 *
-		 * Distinct providerError.type so this is separable from timeouts
-		 * and genuine provider failures in audit trail.
-		 */
-		$payment->setPaymentStatus(PaymentStatus::FAILED);
-
-		$meta = $payment->getProviderMetadataObject();
-		$nowImmutable = $this->nowImmutable();
-
-		$providerError = [
-			'type' => 'invalidated_by_user',
-			'reason' => 'invalidated_by_user',
-			'timestamp' => $this->now(),
-		];
-
-		$meta = $this->appendProviderError($meta, $providerError, $nowImmutable);
-
-		$payment->setProviderMetadataObject($meta);
-
-		$this->paymentMapper->update($payment);
-
-		$this->logger->info('[Payment] Payment invalidated by user', [
+		$this->logger->info('[Payment] invalidatePayment result', [
 			'reference' => $reference,
-			'payment_id' => $payment->getId(),
-			'provider' => $payment->getProviderEnum()->value,
-			'purpose' => $payment->getPaymentPurpose(),
+			'status' => $status->value,
 		]);
 
-		return PaymentStatus::FAILED;
+		return $status;
 	}
 
 
@@ -1056,7 +970,6 @@ class PaymentService
 	 * - No retries
 	 * - No scheduling
 	 * - No locking
-	 * - Background job remains source of truth
 	 */
 	public function verifyPayment(string $reference): PaymentStatus
 	{
@@ -2272,7 +2185,7 @@ class PaymentService
 		);
 	}
 
-	private function expirePayment(Payment $payment): void
+	private function expirePayment(Payment $payment, string $reason = 'expired'): void
 	{
 		$payment->setPaymentStatus(PaymentStatus::FAILED);
 
@@ -2281,14 +2194,13 @@ class PaymentService
 		$meta = $meta->with(
 			updatedAt: $this->nowImmutable(),
 			providerError: [
-				'type' => 'expired',
-				'reason' => 'expired',
+				'type' => $reason,
+				'reason' => $reason,
 				'timestamp' => $this->now(),
 			]
 		);
 
 		$payment->setProviderMetadataObject($meta);
-
 		$this->paymentMapper->update($payment);
 	}
 
@@ -2594,5 +2506,122 @@ class PaymentService
 			'status' => $status->value,
 			'exception' => $exception?->getMessage(),
 		]);
+	}
+
+	/**
+	 * Reconcile a still-pending payment with its provider, then expire it
+	 * unless the provider reports the money already moved.
+	 *
+	 * The single invariant behind every "force this session to end" path
+	 * (user invalidation, stale-retry, explicit retry): never kill a
+	 * session that actually took payment. So we always ask the provider first.
+	 *
+	 * FLOW:
+	 * 1. Already terminal?        → return as-is (idempotent; a delayed
+	 *                               callback may have landed).
+	 * 2. Reconcile with provider  → DPO verify / Daraja query. Both
+	 *                               finaliseOnSuccess internally and are
+	 *                               non-blocking on provider error.
+	 * 3. Re-fetch                 → reconcile may have mutated/finalised the row.
+	 * 4. PAID?                    → return PAID. DO NOT expire. Money moved.
+	 * 5. Provider already resolved → respect its terminal status + reason
+	 *    to FAILED/CANCELLED?        (more accurate than our generic one).
+	 * 6. Still PENDING?           → best-effort cancel the provider token,
+	 *                               then mark FAILED with the caller's reason.
+	 *
+	 * @param string $failureReason providerError.type/reason applied ONLY when
+	 *                              we expire a still-pending session (step 6).
+	 */
+	private function reconcileThenExpire(
+		Payment $payment,
+		string $failureReason,
+	): PaymentStatus {
+
+		$reference = $payment->getProviderReference();
+
+		// STEP 1 — idempotency + delayed-PAID guard
+		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
+			$this->logger->info('[Payment] reconcileThenExpire no-op (already terminal)', [
+				'reference' => $reference,
+				'status' => $payment->getPaymentStatus()->value,
+			]);
+			return $payment->getPaymentStatus();
+		}
+
+		// STEP 2 — provider-appropriate reconcile (both finaliseOnSuccess)
+		match ($payment->getProviderEnum()) {
+			PaymentProvider::DPO => $this->verifyPayment($reference),
+			PaymentProvider::DARAJA => $this->queryPayment($reference),
+			default => null,
+		};
+
+		// STEP 3 — re-fetch verify/query may have finalised or failed the row
+		$payment = $this->fetchPaymentByProviderReference($reference);
+
+		// STEP 4 — money moved, never expire
+		if ($payment->getPaymentStatus() === PaymentStatus::PAID) {
+			$this->logger->info('[Payment] reconcileThenExpire aborted — payment completed', [
+				'reference' => $reference,
+			]);
+			return PaymentStatus::PAID;
+		}
+
+		// STEP 5 — provider resolved it terminal (non-PAID); respect its reason
+		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
+			$this->logger->info('[Payment] reconcileThenExpire — provider resolved terminal', [
+				'reference' => $reference,
+				'status' => $payment->getPaymentStatus()->value,
+			]);
+			return $payment->getPaymentStatus();
+		}
+
+		// STEP 6 — still pending after reconcile: cancel token, then expire
+		$this->cancelProviderToken($payment);
+		$this->expirePayment($payment, $failureReason);
+
+		$this->logger->info('[Payment] reconcileThenExpire — expired still-pending session', [
+			'reference' => $reference,
+			'reason' => $failureReason,
+			'payment_id' => $payment->getId(),
+		]);
+
+		return PaymentStatus::FAILED;
+	}
+
+	/**
+	 * Best-effort provider-side cancellation of a still-chargeable token.
+	 * DPO tokens can be cancelled so the reference can't be charged later;
+	 * Daraja has no cancellation API (its STK ref expires on Safaricom's side).
+	 * Failure is tolerated — marking the row FAILED is what protects us.
+	 */
+	private function cancelProviderToken(Payment $payment): void
+	{
+		if ($payment->getProviderEnum() !== PaymentProvider::DPO) {
+			return;
+		}
+
+		$reference = $payment->getProviderReference();
+
+		try {
+			$result = $this->verificationService->cancelPayment(
+				$payment->getProviderEnum(),
+				$reference
+			);
+
+			if (($result['status'] ?? null) !== 'SUCCESS') {
+				$this->logger->warning('[Payment] Provider cancellation unsuccessful', [
+					'reference' => $reference,
+					'status' => $result['status'] ?? null,
+					'code' => $result['code'] ?? null,
+					'explanation' => $result['explanation'] ?? null,
+				]);
+			}
+		} catch (\Throwable $e) {
+			$this->logger->warning('[Payment] Provider cancellation failed (non-blocking)', [
+				'reference' => $reference,
+				'provider' => $payment->getProviderEnum()->value,
+				'error' => $e->getMessage(),
+			]);
+		}
 	}
 }

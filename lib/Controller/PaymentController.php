@@ -54,7 +54,7 @@ class PaymentController extends AEnvironmentAwareController
 	}
 
 	/**
-	 * Start payment and return DPO token.
+	 * Start payment.
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
@@ -148,6 +148,135 @@ class PaymentController extends AEnvironmentAwareController
 
 			$this->logger->error('Payment creation failed', [
 				'exception' => $e
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+
+	/**
+	 * Retry a timed-out payment.
+	 *
+	 * Explicit user-initiated retry of a payment session that failed on the
+	 * frontend (missed STK push, dismissed prompt, wrong PIN, timeout). The
+	 * service reconciles the existing reference with the provider FIRST — a
+	 * delayed success is never discarded — then, only if not paid, expires
+	 * the old session and starts a fresh attempt from the re-supplied intent.
+	 *
+	 * Takes the SAME payload as /payment/start plus the `reference` of the
+	 * session being retried. The frontend resends the original start payload
+	 * unchanged; the server rotates the attempt id internally so idempotency
+	 * cannot return the just-failed row.
+	 *
+	 * A PAID result here is legitimate (late callback landed) — the frontend
+	 * shows success rather than re-initiating.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[CORS]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/payment/retry',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function retry(
+		string $reference,
+		string $userEmail,
+		?string $signUuid,
+		?int $signRequestId,
+		string $userId,
+		?string $redirectUrl,
+		string $productCode,
+		?string $paymentAttemptId,
+		?string $provider,
+		?string $phoneNumber,
+		?string $callbackUrl,
+		?string $paymentMethod,
+		?string $purpose,
+		?int $quantity,
+	): DataResponse {
+
+		try {
+			$user = $this->userSession->getUser();
+
+			if (!$user) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Unauthorized',
+				], Http::STATUS_UNAUTHORIZED);
+			}
+
+			$uid = $user->getUID();
+
+			$this->logger->info('[PaymentRetry]', [
+				'userId' => $userId,
+				'uid' => $uid,
+				'reference' => $reference,
+			]);
+
+			if (!$userId || $uid !== $userId) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Access Denied',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			if ($reference === '') {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Payment reference is required',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$methodEnum = PaymentMethod::tryFrom($paymentMethod);
+
+			if (!$methodEnum) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Please select valid payment method',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$purposeEnum = PaymentPurpose::tryFrom(
+				strtolower((string)$purpose)
+			) ?? PaymentPurpose::SIGN_REQUEST;
+
+			$providerEnum = $provider !== null
+				? PaymentProvider::tryFrom($provider)
+				: null;
+
+			$dto = new StartPaymentDTO(
+				userEmail: $userEmail,
+				signUuid: $signUuid,
+				signRequestId: $signRequestId,
+				redirectUrl: $redirectUrl,
+				userId: $userId,
+				provider: $providerEnum,
+				productCode: $productCode,
+				paymentMethod: $methodEnum,
+				callbackUrl: $callbackUrl,
+				paymentAttemptId: $paymentAttemptId,
+				phoneNumber: $phoneNumber,
+				purpose: $purposeEnum,
+				quantity: $quantity ?? 1,
+			);
+
+			$result = $this->paymentService->retryPayment($reference, $dto);
+
+			return new DataResponse([
+				'success' => true,
+				'result' => $result->toArray(),
+			], Http::STATUS_OK);
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Payment retry failed', [
+				'reference' => $reference,
+				'exception' => $e,
 			]);
 
 			return new DataResponse([
