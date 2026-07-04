@@ -10,12 +10,14 @@ declare(strict_types=1);
 namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\Exceptions\PaymentException;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentOwnershipException;
 use OCA\Libresign\Service\Payment\Exceptions\PaymentValidationException;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Service\SMS\SMSService;
@@ -101,19 +103,13 @@ class PaymentController extends AEnvironmentAwareController
 			]);
 
 			if (!$userId || $uid !== $userId) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Access Denied',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentOwnershipException();
 			}
 
 			$methodEnum = PaymentMethod::tryFrom($paymentMethod);
 
 			if (!$methodEnum) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Please select valid payment method',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Invalid payment method', retryable: false);
 			}
 
 			$purposeEnum = PaymentPurpose::tryFrom(
@@ -150,9 +146,9 @@ class PaymentController extends AEnvironmentAwareController
 		} catch (PaymentException $e) {
 
 			$this->logger->warning('Payment start failed', [
-				'code' => $e->getErrorCode(),
+				'code' => $e->getErrorCode()->value,
 				'retryable' => $e->isRetryable(),
-				'status' => $e->getHttpStatus(),
+				'statusCode' => $e->getHttpStatus(),
 				'exception' => $e,
 			]);
 
@@ -234,26 +230,17 @@ class PaymentController extends AEnvironmentAwareController
 			]);
 
 			if (!$userId || $uid !== $userId) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Access Denied',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentOwnershipException();
 			}
 
 			if ($reference === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Payment reference is required',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Payment reference is required', retryable: false);
 			}
 
 			$methodEnum = PaymentMethod::tryFrom($paymentMethod);
 
 			if (!$methodEnum) {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Please select valid payment method',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Invalid payment method', retryable: false);
 			}
 
 			$purposeEnum = PaymentPurpose::tryFrom(
@@ -291,9 +278,9 @@ class PaymentController extends AEnvironmentAwareController
 
 			$this->logger->warning('Payment retry failed', [
 				'reference' => $reference,
-				'code' => $e->getErrorCode(),
+				'code' => $e->getErrorCode()->value,
 				'retryable' => $e->isRetryable(),
-				'status' => $e->getHttpStatus(),
+				'statusCode' => $e->getHttpStatus(),
 				'exception' => $e,
 			]);
 
@@ -308,14 +295,13 @@ class PaymentController extends AEnvironmentAwareController
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage(),
+				'error' => 'An unexpected error occurred',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
 	/**
 	 * Verify payment after redirect.
-	 * @throws Exception
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
@@ -327,18 +313,45 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function verify(string $providerReference): DataResponse
 	{
-		$user = $this->userSession->getUser();
-		if (!$user) {
-			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		try {
+			$user = $this->userSession->getUser();
+			if (!$user) {
+				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+			}
+
+			$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
+			$status = $this->paymentService->verifyPayment($providerReference);
+
+			return new DataResponse([
+				'success' => true,
+				'status' => $this->paymentService->mapPaymentStatus($status),
+				'reason' => $this->paymentService->getPaymentFailureReason($payment),
+			], Http::STATUS_OK);
+
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Payment verify failed', [
+				'reference' => $providerReference,
+				'code' => $e->getErrorCode()->value,
+				'retryable' => $e->isRetryable(),
+				'statusCode' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Payment verify failed', [
+				'reference' => $providerReference,
+				'exception' => $e,
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => 'An unexpected error occurred',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
-
-		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
-		$status = $this->paymentService->verifyPayment($providerReference);
-
-		return new DataResponse([
-			'status' => $this->paymentService->mapPaymentStatus($status),
-			'reason' => $this->paymentService->getPaymentFailureReason($payment),
-		], Http::STATUS_OK);
 	}
 
 	/**
@@ -354,18 +367,45 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function status(string $providerReference): DataResponse
 	{
-		$user = $this->userSession->getUser();
-		if (!$user) {
-			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		try {
+			$user = $this->userSession->getUser();
+			if (!$user) {
+				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+			}
+
+			$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
+			$status = $this->paymentService->getPaymentStatus($providerReference);
+
+			return new DataResponse([
+				'success' => true,
+				'status' => $this->paymentService->mapPaymentStatus($status),
+				'reason' => $this->paymentService->getPaymentFailureReason($payment),
+			], Http::STATUS_OK);
+
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Payment status failed', [
+				'reference' => $providerReference,
+				'code' => $e->getErrorCode()->value,
+				'retryable' => $e->isRetryable(),
+				'statusCode' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Payment status failed', [
+				'reference' => $providerReference,
+				'exception' => $e,
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => 'An unexpected error occurred',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
-
-		$payment = $this->paymentService->assertPaymentOwnership($providerReference, $user->getUID());
-		$status = $this->paymentService->getPaymentStatus($providerReference);
-
-		return new DataResponse([
-			'status' => $this->paymentService->mapPaymentStatus($status),
-			'reason' => $this->paymentService->getPaymentFailureReason($payment),
-		], Http::STATUS_OK);
 	}
 
 	#[NoAdminRequired]
@@ -457,23 +497,27 @@ class PaymentController extends AEnvironmentAwareController
 		}
 
 		if ($returnTo) {
-			$status = $this->paymentService->getPaymentStatus($token);
+			try {
+				$status = $this->paymentService->getPaymentStatus($token);
 
-			if ($status === PaymentStatus::CANCELLED) {
-				$separator = str_contains($returnTo, '?') ? '&' : '?';
-
-				return new RedirectResponse(
-					$returnTo . $separator . 'paymentCancelled=true'
-				);
+				if ($status === PaymentStatus::CANCELLED) {
+					$separator = str_contains($returnTo, '?') ? '&' : '?';
+					return new RedirectResponse(
+						$returnTo . $separator . 'paymentCancelled=true'
+					);
+				}
+			} catch (\Throwable $e) {
+				$this->logger->warning('[DPO Callback] status read failed on return redirect', [
+					'token' => $token,
+					'error' => $e->getMessage(),
+				]);
+				// fall through to the default OK response below
 			}
 		}
 
 		return new DataResponse($responseXml, Http::STATUS_OK, $xmlHeaders);
 	}
 
-	/**
-	 * @throws Exception
-	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[CORS]
@@ -484,18 +528,45 @@ class PaymentController extends AEnvironmentAwareController
 	)]
 	public function queryDaraja(string $reference): DataResponse
 	{
-		$user = $this->userSession->getUser();
-		if (!$user) {
-			return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+		try {
+			$user = $this->userSession->getUser();
+			if (!$user) {
+				return new DataResponse(['success' => false, 'error' => 'Unauthorized'], Http::STATUS_UNAUTHORIZED);
+			}
+
+			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
+			$status = $this->paymentService->queryPayment($reference);
+
+			return new DataResponse([
+				'success' => true,
+				'status' => $this->paymentService->mapPaymentStatus($status),
+				'reason' => $this->paymentService->getPaymentFailureReason($payment),
+			], Http::STATUS_OK);
+
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Daraja query failed', [
+				'reference' => $reference,
+				'code' => $e->getErrorCode()->value,
+				'retryable' => $e->isRetryable(),
+				'statusCode' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Daraja query failed', [
+				'reference' => $reference,
+				'exception' => $e,
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => 'An unexpected error occurred',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
-
-		$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
-		$status = $this->paymentService->queryPayment($reference);
-
-		return new DataResponse([
-			'status' => $this->paymentService->mapPaymentStatus($status),
-			'reason' => $this->paymentService->getPaymentFailureReason($payment),
-		], Http::STATUS_OK);
 	}
 
 	/**
@@ -579,26 +650,26 @@ class PaymentController extends AEnvironmentAwareController
 			}
 
 			if (trim($reference) === '') {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Missing payment reference', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Missing payment reference', retryable: false);
 			}
 
 			if (trim($phone) === '') {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Missing phone number', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Missing phone number', retryable: false);
 			}
 
 			if ($mno === null || trim($mno) === '') {
-				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing mobile provider', retryable: true);
+				throw new PaymentValidationException(PaymentErrorCode::INVALID_MNO, 'Missing mobile provider', retryable: true);
 			}
 
 			if ($country === null || trim($country) === '') {
-				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing mobile provider country', retryable: true);
+				throw new PaymentValidationException(PaymentErrorCode::INVALID_MNO, 'Missing mobile provider country', retryable: true);
 			}
 
 			$payment = $this->paymentService->assertPaymentOwnership($reference, $user->getUID());
 
 			$storedPhone = $payment->getPhoneE164Digits();
 			if ($storedPhone !== null && $storedPhone !== $phone) {
-				throw new PaymentValidationException('PAYMENT_PHONE_MISMATCH', 'Phone number does not match the payment', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::INVALID_PHONE, 'Phone number does not match the payment', retryable: false);
 			}
 
 			$payment = $this->paymentService->chargeMobile(
@@ -618,9 +689,9 @@ class PaymentController extends AEnvironmentAwareController
 
 			$this->logger->warning('Failed to charge mobile payment', [
 				'reference' => $reference,
-				'code' => $e->getErrorCode(),
+				'code' => $e->getErrorCode()->value,
 				'retryable' => $e->isRetryable(),
-				'status' => $e->getHttpStatus(),
+				'statusCode' => $e->getHttpStatus(),
 				'exception' => $e,
 			]);
 
@@ -668,9 +739,9 @@ class PaymentController extends AEnvironmentAwareController
 
 			$this->logger->warning('Failed to fetch mobile options', [
 				'reference' => $reference,
-				'code' => $e->getErrorCode(),
+				'code' => $e->getErrorCode()->value,
 				'retryable' => $e->isRetryable(),
-				'status' => $e->getHttpStatus(),
+				'statusCode' => $e->getHttpStatus(),
 				'exception' => $e,
 			]);
 
@@ -713,10 +784,7 @@ class PaymentController extends AEnvironmentAwareController
 			}
 
 			if (trim($reference) === '') {
-				return new DataResponse([
-					'success' => false,
-					'error' => 'Missing payment reference',
-				], Http::STATUS_BAD_REQUEST);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Missing payment reference', retryable: false);
 			}
 
 			$status = $this->paymentService->invalidatePayment(
@@ -728,22 +796,25 @@ class PaymentController extends AEnvironmentAwareController
 				'success' => true,
 				'status' => $this->paymentService->mapPaymentStatus($status),
 			], Http::STATUS_OK);
-		} catch (\RuntimeException $e) {
 
-			// payment not found / ownership failure
-			return new DataResponse([
-				'success' => false,
-				'error' => $e->getMessage(),
-			], Http::STATUS_BAD_REQUEST);
+		} catch (PaymentException $e) {
+
+			$this->logger->warning('Failed to invalidate payment', [
+				'reference' => $reference,
+				'code' => $e->getErrorCode()->value,
+				'retryable' => $e->isRetryable(),
+				'statusCode' => $e->getHttpStatus(),
+				'exception' => $e,
+			]);
+
+			return $this->paymentErrorResponse($e);
+
 		} catch (\Throwable $e) {
 
-			$this->logger->error(
-				'[PaymentController] Failed to invalidate payment',
-				[
-					'reference' => $reference,
-					'exception' => $e,
-				]
-			);
+			$this->logger->error('[PaymentController] Failed to invalidate payment', [
+				'reference' => $reference,
+				'exception' => $e,
+			]);
 
 			return new DataResponse([
 				'success' => false,
@@ -824,7 +895,7 @@ class PaymentController extends AEnvironmentAwareController
 		return new DataResponse([
 			'success' => false,
 			'error' => [
-				'code' => $e->getErrorCode(),
+				'code' => $e->getErrorCode()->value,
 				'message' => $e->getMessage(),
 				'retryable' => $e->isRetryable(),
 			],

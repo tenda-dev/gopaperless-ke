@@ -13,6 +13,7 @@ use DateTimeImmutable;
 use OCA\Libresign\Db\Payment;
 use OCA\Libresign\Db\PaymentMapper;
 use OCA\Libresign\Enum\PaymentCapability;
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCA\Libresign\Enum\PaymentFlow;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
@@ -81,7 +82,6 @@ class PaymentService
 	 * Must be long enough for a normal user interaction but short
 	 * enough that a stuck STK/push session does not block retries.
 	 *
-	 * Aligned with the frontend polling timeout (90s).
 	 */
 	private const PAYMENT_STALE_FOR_RETRY_SECONDS = 90;
 
@@ -185,11 +185,11 @@ class PaymentService
 		 * CORE VALIDATION
 		 */
 		if (!$userId) {
-			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'userId is required', retryable: false);
+			throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'userId is required', retryable: false);
 		}
 
 		if (!$productCode) {
-			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'productCode is required', retryable: false);
+			throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'productCode is required', retryable: false);
 		}
 
 		$methodEnum = $method;
@@ -197,7 +197,7 @@ class PaymentService
 		if ($methodEnum === null) {
 			// Unreachable: StartPaymentDTO::paymentMethod is non-nullable.
 			// Kept as a defensive invariant.
-			throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Invalid payment method', retryable: false);
+			throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Invalid payment method', retryable: false);
 		}
 
 		$capability = match ($methodEnum) {
@@ -211,7 +211,7 @@ class PaymentService
 		if ($capability === PaymentCapability::MOBILE_MONEY) {
 
 			if (!$phoneNumber) {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Phone number is required', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Phone number is required', retryable: false);
 			}
 
 			$this->validatePhoneNumber($phoneNumber);
@@ -220,12 +220,12 @@ class PaymentService
 			$region = $resolutionDto->region;
 
 			if (!$resolutionDto->valid || !$region) {
-				throw new PaymentValidationException('PAYMENT_INVALID_PHONE', 'Unable to resolve phone number', retryable: true);
+				throw new PaymentValidationException(PaymentErrorCode::INVALID_PHONE, 'Unable to resolve phone number', retryable: true);
 			}
 
 			if (!$this->mnoRoutingRegistry->supportsRegion($region)) {
 				throw new PaymentValidationException(
-					'PAYMENT_UNSUPPORTED_REGION',
+					PaymentErrorCode::UNSUPPORTED_REGION,
 					sprintf(
 						'Unsupported region: %s. Supported regions: %s',
 						$region,
@@ -241,7 +241,7 @@ class PaymentService
 			$countryCtx = $this->countryResolver->resolve($region);
 
 			if (!$countryCtx) {
-				throw new PaymentValidationException('PAYMENT_UNSUPPORTED_REGION', 'Unsupported country', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::UNSUPPORTED_REGION, 'Unsupported country', retryable: false);
 			}
 
 			$detection = $this->mnoDetectionRegistry->resolve(
@@ -289,7 +289,7 @@ class PaymentService
 		if ($capability === PaymentCapability::CARD) {
 
 			if (!$redirectUrl || !filter_var($redirectUrl, FILTER_VALIDATE_URL)) {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'Valid redirect URL required', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'Valid redirect URL required', retryable: false);
 			}
 
 			$route = $this->mnoRoutingRegistry->route(
@@ -347,11 +347,11 @@ class PaymentService
 		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
 
 			if ($signRequestId === null) {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'signRequestId is required', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'signRequestId is required', retryable: false);
 			}
 
 			if ($signUuid === null || $signUuid === '') {
-				throw new PaymentValidationException('PAYMENT_MISSING_FIELD', 'signUuid is required', retryable: false);
+				throw new PaymentValidationException(PaymentErrorCode::MISSING_FIELD, 'signUuid is required', retryable: false);
 			}
 
 			$paidPayment = $this->paymentMapper->findLatestPaidByTransactionId($signRequestId);
@@ -760,14 +760,6 @@ class PaymentService
 
 
 	/**
-	 * Check Payment Status
-	 *
-	 * - Daraja → already handled via callback
-	 * - DPO → requires API verification, must be polled, if handling mobile_direct flow
-	 * @throws PaymentNotFoundException
-	 * @throws \Throwable
-	 */
-	/**
 	 * Get payment status (READ-ONLY)
 	 *
 	 * RULES:
@@ -973,7 +965,9 @@ class PaymentService
 	 * @return PaymentStatus The resulting status (PAID if already completed,
 	 *                       otherwise FAILED).
 	 *
-	 * @throws RuntimeException if the payment does not exist or is not owned
+	 * @throws PaymentNotFoundException if the payment does not exist
+	 *
+	 * @throws PaymentOwnershipException if the payment is not owned
 	 *                          by the user.
 	 */
 	public function invalidatePayment(string $reference, string $userId): PaymentStatus
@@ -1685,7 +1679,7 @@ class PaymentService
 	 * - A successful response does NOT mean payment is complete
 	 * - FE must poll getPaymentStatus() to resolve final state
 	 *
-	 * @throws RuntimeException if:
+	 * @throws PaymentInvariantException if:
 	 * - payment is not DPO
 	 * - payment is not in PENDING state
 	 */
@@ -1754,7 +1748,7 @@ class PaymentService
 			$this->validateOptionsSelection($options, $mno, $country);
 		} else {
 			if (!$mno || !$country) {
-				throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Missing MNO selection', retryable: true);
+				throw new PaymentValidationException(PaymentErrorCode::INVALID_MNO, 'Missing MNO selection', retryable: true);
 			}
 		}
 
@@ -1843,9 +1837,11 @@ class PaymentService
 	 * - Returned options should be treated as the source of truth
 	 * - FE must allow user to select one of the returned providers before calling chargeMobile()
 	 *
-	 * @throws RuntimeException if:
+	 * @throws PaymentInvariantException if:
 	 * - payment is not DPO
 	 * - payment is not in PENDING state
+	 *
+	 * @throws PaymentValidationException
 	 */
 	public function getMobileOptions(string $reference, string $country): array
 	{
@@ -1857,7 +1853,7 @@ class PaymentService
 
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
 			throw new PaymentValidationException(
-				'PAYMENT_ALREADY_RESOLVED',
+				PaymentErrorCode::ALREADY_RESOLVED,
 				'Cannot fetch options for completed payment',
 				retryable: false,
 			);
@@ -1896,7 +1892,7 @@ class PaymentService
 		// Enforce international format strictly
 		if (!str_starts_with($phone, '+')) {
 			throw new PaymentValidationException(
-				'PAYMENT_INVALID_PHONE',
+				PaymentErrorCode::INVALID_PHONE,
 				'Phone number must be in international format',
 				retryable: true,
 			);
@@ -1906,7 +1902,7 @@ class PaymentService
 
 		if (!$resolved->valid) {
             throw new PaymentValidationException(
-					'PAYMENT_INVALID_PHONE',
+					PaymentErrorCode::INVALID_PHONE,
 					'The provided phone number is not valid.',
 					retryable: true,
 			);
@@ -2059,7 +2055,7 @@ class PaymentService
 			}
 		}
 
-		throw new PaymentValidationException('PAYMENT_INVALID_MNO', 'Invalid MNO selection', retryable: true);
+		throw new PaymentValidationException(PaymentErrorCode::INVALID_MNO, 'Invalid MNO selection', retryable: true);
 	}
 
 	/**
@@ -2295,7 +2291,7 @@ class PaymentService
 
 		$diffInSeconds = $now->getTimestamp() - $createdAt->getTimestamp();
 
-		return $diffInSeconds > (self::PAYMENT_EXPIRY_SECONDS); // currently 15 minutes
+		return $diffInSeconds > (self::PAYMENT_EXPIRY_SECONDS); // currently 12 minutes
 	}
 
 	/**

@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\Exceptions;
 
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCP\AppFramework\Http;
 use Throwable;
 
@@ -28,7 +29,7 @@ use Throwable;
 final class PaymentValidationException extends PaymentException
 {
 	public function __construct(
-		string $errorCode,
+		PaymentErrorCode $errorCode,
 		string $message,
 		bool $retryable,
 		?Throwable $previous = null,

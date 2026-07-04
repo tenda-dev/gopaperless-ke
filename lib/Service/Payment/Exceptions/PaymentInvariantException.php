@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\Exceptions;
 
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCP\AppFramework\Http;
 use Throwable;
 
@@ -26,7 +27,7 @@ final class PaymentInvariantException extends PaymentException
 {
 	public function __construct(
 		string $message,
-		string $errorCode = 'PAYMENT_INTERNAL_ERROR',
+		PaymentErrorCode $errorCode = PaymentErrorCode::INTERNAL_ERROR,
 		?Throwable $previous = null,
 	) {
 		parent::__construct($errorCode, $message, false, $previous);

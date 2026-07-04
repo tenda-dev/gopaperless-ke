@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\Exceptions;
 
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCP\AppFramework\Http;
 use Throwable;
 
@@ -21,7 +22,7 @@ final class PaymentOwnershipException extends PaymentException
 {
 	public function __construct(
 		string $message = 'Access denied',
-		string $errorCode = 'PAYMENT_ACCESS_DENIED',
+		PaymentErrorCode $errorCode = PaymentErrorCode::ACCESS_DENIED,
 		?Throwable $previous = null,
 	) {
 		parent::__construct($errorCode, $message, false, $previous);

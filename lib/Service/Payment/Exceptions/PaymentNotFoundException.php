@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\Exceptions;
 
+use OCA\Libresign\Enum\PaymentErrorCode;
 use OCP\AppFramework\Http;
 use Throwable;
 
@@ -21,7 +22,7 @@ final class PaymentNotFoundException extends PaymentException
 {
 	public function __construct(
 		string $message = 'Payment not found',
-		string $errorCode = 'PAYMENT_NOT_FOUND',
+		PaymentErrorCode $errorCode = PaymentErrorCode::NOT_FOUND,
 		?Throwable $previous = null,
 	) {
 		parent::__construct($errorCode, $message, false, $previous);
