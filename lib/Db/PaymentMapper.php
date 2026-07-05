@@ -12,6 +12,7 @@ namespace OCA\Libresign\Db;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
+use OCA\Libresign\Service\Payment\Exceptions\PaymentNotFoundException;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
@@ -774,6 +775,37 @@ class PaymentMapper extends QBMapper
 			);
 
 		return $qb->executeStatement() === 1;
+	}
+
+	/**
+	 * Find a payment by provider reference, fully rehydrated, or throw.
+	 *
+	 * Rehydration (findById after the initial lookup) works around a
+	 * Nextcloud ORM quirk where the first finder can return a partially
+	 * hydrated or unmanaged entity; re-fetching by id guarantees a clean,
+	 * managed entity safe to mutate.
+	 *
+	 * Throws when no payment matches — callers operate on a reference the
+	 * client asserts exists, so absence is an error, not a normal outcome.
+	 * Use findByProviderReference() directly when you want a nullable result.
+	 *
+	 * @throws PaymentNotFoundException
+	 */
+	public function findByProviderReferenceOrFail(string $reference): Payment
+	{
+		$payment = $this->findByProviderReference($reference);
+
+		if (!$payment) {
+			throw new PaymentNotFoundException();
+		}
+
+		$rehydrated = $this->findById($payment->getId());
+
+		if (!$rehydrated) {
+			throw new PaymentNotFoundException();
+		}
+
+		return $rehydrated;
 	}
 
 	private function status(PaymentStatus $status): string

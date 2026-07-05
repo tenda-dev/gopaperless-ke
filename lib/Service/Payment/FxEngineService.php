@@ -289,7 +289,7 @@ class FxEngineService
 		return new FxEngineResultDTO(
 			displayAmount: $kesAmount,
 			displayCurrency: self::BASE_CURRENCY,
-			fxRate: 1.000000,
+			fxRate: '1.000000',
 			fxRateSource: 'identity',
 			fxRateLockedAt: $now,
 		);
