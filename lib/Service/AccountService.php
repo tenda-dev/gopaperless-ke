@@ -26,6 +26,7 @@ use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\FileUploadHelper;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Crl\CrlService;
+use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Settings\Mailer\NewUserMailHelper;
 use OCP\Accounts\IAccountManager;
@@ -50,6 +51,12 @@ use Sabre\DAV\UUIDUtil;
 use Throwable;
 
 class AccountService {
+	/**
+	 * Product code used when granting the free signing-credit signup bonus.
+	 * Mirrors the frontend DEFAULT_SIGN_PRODUCT_CODE ('SIGN_DOCUMENT').
+	 */
+	private const SIGNUP_BONUS_PRODUCT_CODE = 'SIGN_DOCUMENT';
+
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
 	private ?\OCP\Files\File $fileToSign = null;
@@ -87,6 +94,7 @@ class AccountService {
 		private CrlService $crlService,
 		private LoggerInterface $logger,
 		private PhoneNumberService $phoneNumberService,
+		private EntitlementService $entitlementService,
 	) {
 	}
 
@@ -273,6 +281,8 @@ class AccountService {
 			$this->pkcs12Handler->savePfx($newUser->getPrimaryEMailAddress(), $certificate);
 		}
 
+		$this->awardSignupBonus($newUser->getUID());
+
 		return $newUser->getUID();
 	}
 
@@ -323,11 +333,47 @@ class AccountService {
 			}
 		}
 
+		$this->awardSignupBonus($newUser->getUID());
+
 		return [
 			'message' => 'Success',
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
 		];
+	}
+
+	/**
+	 * Grant the free signing-credit signup bonus to a newly created account.
+	 *
+	 * Controlled by two admin settings:
+	 * - free_credits_enabled (bool, default true): whether to award anything
+	 * - free_credits_uses (int, default 2): how many uses to grant
+	 *
+	 * Never throws: a bonus failure must not break account creation.
+	 */
+	private function awardSignupBonus(string $userId): void {
+		if ($userId === '') {
+			return;
+		}
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true)) {
+			return;
+		}
+		$uses = $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2);
+		if ($uses <= 0) {
+			return;
+		}
+		try {
+			$this->entitlementService->create($userId, self::SIGNUP_BONUS_PRODUCT_CODE, $uses);
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'[AccountService] Failed to award signup bonus credits',
+				[
+					'userId' => $userId,
+					'uses' => $uses,
+					'exception' => $e->getMessage(),
+				]
+			);
+		}
 	}
 
 	public function getCertificateEngineName(): string {
@@ -352,7 +398,13 @@ class AccountService {
 		$info['files_list_sorting_mode'] = $this->getUserConfigByKey('files_list_sorting_mode', $user) ?: 'name';
 		$info['files_list_sorting_direction'] = $this->getUserConfigByKey('files_list_sorting_direction', $user) ?: 'asc';
 
-		return array_filter($info);
+		$config = array_filter($info);
+
+		// Appended AFTER array_filter so a `false` value survives (array_filter
+		// would strip it, wrongly falling back to the frontend default).
+		$config['one_time_signing_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true);
+
+		return $config;
 	}
 
 	public function getConfigFilters(?IUser $user = null): array {

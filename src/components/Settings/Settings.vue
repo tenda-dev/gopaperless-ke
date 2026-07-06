@@ -18,12 +18,6 @@
 				<NcIconSvgWrapper class="tune-icon" :path="mdiTune" :size="20" />
 			</template>
 		</NcAppNavigationItem>
-		<NcAppNavigationItem icon="icon-star" :name="t('libresign', 'Rate LibreSign  ❤️')"
-			href="https://apps.nextcloud.com/apps/libresign#comments">
-			<template #icon>
-				<NcIconSvgWrapper class="star-icon" :path="mdiStar" :size="20" />
-			</template>
-		</NcAppNavigationItem>
 	</ul>
 </template>
 
@@ -37,7 +31,6 @@ import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import {
 	mdiAccount,
-	mdiStar,
 	mdiTune,
 } from '@mdi/js'
 

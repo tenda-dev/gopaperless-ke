@@ -30,12 +30,15 @@
 		<Transition name="fade-slide">
 			<div v-if="!hasCredits" class="payment-chooser">
 				<p class="payment-chooser__prompt">
-					Choose how you'd like to purchase signing credits.
+					{{ oneTimeSigningEnabled
+						? "Choose how you'd like to purchase signing credits."
+						: "You're out of signing credits. Purchase a credit pack to sign this document." }}
 				</p>
 
 				<div class="option-cards">
-					<!-- One-time payment -->
+					<!-- One-time payment (admin-toggleable) -->
 					<label
+						v-if="oneTimeSigningEnabled"
 						class="option-card"
 						:class="{ 'option-card--selected': selectedFlow === PaymentFlowType.ONE_TIME }"
 						@mousedown="onCardPress"
@@ -104,7 +107,7 @@
 									<span>Purchase signing credits</span>
 								</div>
 
-								<span class="option-card__badge">
+								<span v-if="oneTimeSigningEnabled" class="option-card__badge">
 									Recommended
 								</span>
 
@@ -150,6 +153,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 
+import { loadState } from '@nextcloud/initial-state'
+
 import {
 	mdiCartOutline,
 	mdiCreditCardOutline,
@@ -168,6 +173,12 @@ import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
 
 const entitlementStore = useEntitlementStore()
 const paymentContext = usePaymentContextStore()
+
+// Admin toggle: when disabled, the "Buy required credits" (one-time) option is
+// hidden so users are guided to signing credit packs instead. Defaults to true.
+const oneTimeSigningEnabled = (
+	loadState('libresign', 'config', {}) as { one_time_signing_enabled?: boolean }
+).one_time_signing_enabled ?? true
 
 const entitlement = entitlementStore.getEntitlement(DEFAULT_PRODUCT_CODE)
 
@@ -191,6 +202,11 @@ function onCardRelease(e: MouseEvent) {
 }
 
 onMounted(async () => {
+	// If one-time signing is disabled, force the credit-pack flow so the hidden
+	// option can never remain selected.
+	if (!oneTimeSigningEnabled && paymentContext.flowType === PaymentFlowType.ONE_TIME) {
+		paymentContext.setFlowType(PaymentFlowType.CREDIT_PACK)
+	}
 	await entitlementStore.initialise(DEFAULT_PRODUCT_CODE)
 })
 </script>

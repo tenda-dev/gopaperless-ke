@@ -25,6 +25,7 @@ use OCA\Libresign\Helper\FileUploadHelper;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\Crl\CrlService;
+use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdDocsService;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
@@ -87,6 +88,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private Pkcs12Handler&MockObject $pkcs12Handler;
 	private FileUploadHelper&MockObject $uploadHelper;
 	private CrlService&MockObject $crlService;
+	private EntitlementService&MockObject $entitlementService;
 
 	public function setUp(): void {
 		parent::setUp();
@@ -122,6 +124,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->timeFactory = $this->createMock(TimeFactory::class);
 		$this->uploadHelper = $this->createMock(FileUploadHelper::class);
 		$this->crlService = $this->createMock(CrlService::class);
+		$this->entitlementService = $this->createMock(EntitlementService::class);
 	}
 
 	private function getService(): AccountService {
@@ -154,7 +157,8 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->clientService,
 			$this->timeFactory,
 			$this->uploadHelper,
-			$this->crlService
+			$this->crlService,
+			$this->entitlementService
 		);
 	}
 
@@ -907,5 +911,80 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			->willReturn($rootFolder);
 
 		$this->getService()->deleteSignatureElement(null, 'session999', 200);
+	}
+
+	public function testAwardSignupBonusCreatesEntitlementWithDefaultUses(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		$this->entitlementService
+			->expects($this->once())
+			->method('create')
+			->with('newuser', 'SIGN_DOCUMENT', 2);
+
+		$method = new \ReflectionMethod(AccountService::class, 'awardSignupBonus');
+		$method->setAccessible(true);
+		$method->invoke($this->getService(), 'newuser');
+	}
+
+	public function testAwardSignupBonusSkippedWhenDisabled(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(false);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$method = new \ReflectionMethod(AccountService::class, 'awardSignupBonus');
+		$method->setAccessible(true);
+		$method->invoke($this->getService(), 'newuser');
+	}
+
+	public function testAwardSignupBonusSkippedWhenUsesNonPositive(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(0);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$method = new \ReflectionMethod(AccountService::class, 'awardSignupBonus');
+		$method->setAccessible(true);
+		$method->invoke($this->getService(), 'newuser');
+	}
+
+	public function testAwardSignupBonusSwallowsEntitlementException(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		$this->entitlementService
+			->method('create')
+			->willThrowException(new \Exception('Entitlement service unavailable'));
+
+		$method = new \ReflectionMethod(AccountService::class, 'awardSignupBonus');
+		$method->setAccessible(true);
+
+		$this->expectNotToPerformAssertions();
+		$method->invoke($this->getService(), 'newuser');
 	}
 }

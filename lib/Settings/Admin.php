@@ -98,6 +98,11 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('crl_external_validation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true));
 		$this->initialState->provideInitialState('ldap_extension_available', function_exists('ldap_connect'));
 
+		//	FREE SIGNING CREDITS (signup bonus) & ONE-TIME SIGNING OPTION
+		$this->initialState->provideInitialState('free_credits_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true));
+		$this->initialState->provideInitialState('free_credits_uses', $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2));
+		$this->initialState->provideInitialState('one_time_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true));
+
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');
@@ -177,8 +182,7 @@ class Admin implements ISettings {
 	/**
 	 * @return 'nextcloud'|'rabbitmq'
 	 */
-	private function getPaymentVerificationDispatcherInitialState(): string
-	{
+	private function getPaymentVerificationDispatcherInitialState(): string {
 		$dispatcher = $this->appConfig->getValueString(
 			Application::APP_ID,
 			'payment_verification_dispatcher',

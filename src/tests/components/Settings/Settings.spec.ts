@@ -198,50 +198,24 @@ describe('Settings', () => {
 		})
 	})
 
-	describe('RULE: Rate LibreSign item always displays', () => {
-		it('shows Rate item for non-admin', () => {
+	describe('RULE: Rate LibreSign item is not displayed', () => {
+		it('does not show Rate item for non-admin', () => {
 			wrapper = createWrapper(false)
 			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
 
-			expect(rateItem).toBeTruthy()
+			expect(findItemByName(items, 'Rate')).toBeUndefined()
 		})
-		it('shows Rate item for admin', () => {
+		it('does not show Rate item for admin', () => {
 			wrapper = createWrapper(true)
 			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
 
-			expect(rateItem).toBeTruthy()
+			expect(findItemByName(items, 'Rate')).toBeUndefined()
 		})
 
-		it('Rate item has star icon', () => {
+		it('does not render a star icon', () => {
 			wrapper = createWrapper()
 			const starIcon = getWrapper().find('.star-icon')
-			expect(starIcon.exists()).toBe(true)
-		})
-
-		it('Rate item links to apps marketplace', () => {
-			wrapper = createWrapper()
-			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
-
-			expect(rateItem.props('href')).toContain('apps.nextcloud.com')
-		})
-
-		it('Rate item URL includes comments section', () => {
-			wrapper = createWrapper()
-			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
-
-			expect(rateItem.props('href')).toContain('comments')
-		})
-
-		it('Rate item displays with heart emoji', () => {
-			wrapper = createWrapper()
-			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
-
-			expect(rateItem.props('name')).toContain('❤️')
+			expect(starIcon.exists()).toBe(false)
 		})
 	})
 
@@ -298,30 +272,30 @@ describe('Settings', () => {
 			expect(adminItem).toBeUndefined()
 		})
 
-		it('shows 2 navigation items for unauthenticated user', () => {
+		it('shows 1 navigation item for unauthenticated user', () => {
 			wrapper = createUnauthenticatedWrapper()
 			const items = getItems()
 
-			// Account + Rate = 2
-			expect(items.length).toBe(2)
+			// Account = 1
+			expect(items.length).toBe(1)
 		})
 	})
 
 	describe('RULE: navigation items count depends on admin status', () => {
-		it('shows 2 items for non-admin', () => {
+		it('shows 1 item for non-admin', () => {
 			wrapper = createWrapper(false)
 			const items = getItems()
 
-			// Account + Rate = 2
-			expect(items.length).toBe(2)
+			// Account = 1
+			expect(items.length).toBe(1)
 		})
 
-		it('shows 3 items for admin', () => {
+		it('shows 2 items for admin', () => {
 			wrapper = createWrapper(true)
 			const items = getItems()
 
-			// Account + Administration + Rate = 3
-			expect(items.length).toBe(3)
+			// Account + Administration = 2
+			expect(items.length).toBe(2)
 		})
 	})
 
@@ -332,15 +306,6 @@ describe('Settings', () => {
 			const accountItem = expectItem(findItemByName(items, 'Account'))
 
 			expect(accountItem.props('name')).toBeTruthy()
-		})
-
-		it('Rate item has all properties', () => {
-			wrapper = createWrapper()
-			const items = getItems()
-			const rateItem = expectItem(findItemByName(items, 'Rate'))
-
-			expect(rateItem.props('name')).toBeTruthy()
-			expect(rateItem.props('href')).toBeTruthy()
 		})
 
 		it('Admin item has all properties when present', () => {
@@ -359,14 +324,12 @@ describe('Settings', () => {
 
 			expect(getWrapper().find('.account-icon').exists()).toBe(true)
 			expect(getWrapper().find('.tune-icon').exists()).toBe(true)
-			expect(getWrapper().find('.star-icon').exists()).toBe(true)
 		})
 
-		it('renders Account and Rate icons for non-admin', () => {
+		it('renders Account icon for non-admin', () => {
 			wrapper = createWrapper(false)
 
 			expect(getWrapper().find('.account-icon').exists()).toBe(true)
-			expect(getWrapper().find('.star-icon').exists()).toBe(true)
 		})
 
 		it('does not render admin icon for non-admin', () => {
@@ -401,12 +364,12 @@ describe('Settings', () => {
 			expect(secondItem.props('name')).toContain('Administration')
 		})
 
-		it('renders Rate last', async () => {
+		it('renders Administration last for admin', () => {
 			wrapper = createWrapper(true)
 			const items = getItems()
 			const lastItem = expectItemAt(items, items.length - 1)
 
-			expect(lastItem.props('name')).toContain('Rate')
+			expect(lastItem.props('name')).toContain('Administration')
 		})
 	})
 
@@ -431,14 +394,14 @@ describe('Settings', () => {
 			wrapper = createWrapper(false)
 			const items = getItems()
 
-			expect(items).toHaveLength(2)
+			expect(items).toHaveLength(1)
 
 			const hasAccount = items.some(i => i.props('name')?.includes('Account'))
 			const hasRate = items.some(i => i.props('name')?.includes('Rate'))
 			const hasAdmin = items.some(i => i.props('name')?.includes('Administration'))
 
 			expect(hasAccount).toBe(true)
-			expect(hasRate).toBe(true)
+			expect(hasRate).toBe(false)
 			expect(hasAdmin).toBe(false)
 		})
 
@@ -446,14 +409,14 @@ describe('Settings', () => {
 			wrapper = createWrapper(true)
 			const items = getItems()
 
-			expect(items).toHaveLength(3)
+			expect(items).toHaveLength(2)
 
 			const hasAccount = items.some(i => i.props('name')?.includes('Account'))
 			const hasRate = items.some(i => i.props('name')?.includes('Rate'))
 			const hasAdmin = items.some(i => i.props('name')?.includes('Administration'))
 
 			expect(hasAccount).toBe(true)
-			expect(hasRate).toBe(true)
+			expect(hasRate).toBe(false)
 			expect(hasAdmin).toBe(true)
 		})
 	})

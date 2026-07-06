@@ -17,9 +17,9 @@
 
 					<NcButton class="new-doc-btn" :wide="true" variant="primary" :disabled="!canRequestSign" @click="goToRequest()">
 						<template #icon>
-							<NcIconSvgWrapper :path="mdiPlus" :size="20" />
+							<NcIconSvgWrapper :path="mdiFileDocumentCheckOutline" :size="20" />
 						</template>
-						<span class="button-text">New Document</span>
+						<span class="button-text">Sign Now</span>
 					</NcButton>
 				</div>
 			<div class="sidebar-navigation">
@@ -28,7 +28,7 @@
 					<NcAppNavigationItem v-if="canRequestSign"
 						id="dashboard"
 						:to="{name: 'Dashboard'}"
-						:name="t('libresign', 'Dashboard')"
+						:name="t('libresign', 'GoPaperless Dashboard')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -49,7 +49,7 @@
 					</NcAppNavigationItem>
 					<NcAppNavigationItem id="fileslist"
 						:to="{ name: 'fileslist' }"
-						:name="t('libresign', 'Documents')"
+						:name="t('libresign', 'GoPaperless Documents')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -129,6 +129,7 @@ import {
 	mdiPlus,
 	mdiCloudUpload,
 	mdiMonitorDashboard,
+	mdiFileDocumentCheckOutline
 } from '@mdi/js'
 
 

@@ -46,6 +46,25 @@ span {
 	gap: 0;
 }
 
+/* GoPaperless header logo (top-left).
+   Core's /core/css/header.scss:52 sets `#header #nextcloud { padding-inline-start: 86px }`,
+   which is the only thing making the logo visible. Override it here with the same
+   two-ID specificity (theme CSS loads after core, and !important guards load order),
+   then size the logo box. 135px is the sweet spot for the wordmark. */
+#header #nextcloud {
+	padding-inline-start: 200px !important;
+}
+
+#header #nextcloud .logo,
+#header #nextcloud .logo-icon {
+	width: 135px !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	background-size: contain !important;
+	background-position: left center !important;
+	background-repeat: no-repeat !important;
+}
+
 .unified-search-modal__filters {
 	display: none !important;
 }

@@ -68,19 +68,43 @@
 					:document="validationEnvelopeDocument"
 					:legal-information="legalInformation"
 					:document-valid-message="documentValidMessage"
-					:is-after-signed="isAfterSigned" />
+					:is-after-signed="isAfterSigned">
+					<template #action>
+						<NcButton v-if="clickedValidate" class="card-action-btn" variant="tertiary" @click="goBack()">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiArrowLeft" />
+							</template>
+							{{ t('libresign', 'Return') }}
+						</NcButton>
+						<NcButton class="card-action-btn" variant="tertiary" @click="goToDestination()">
+							<template #icon>
+								<NcIconSvgWrapper :path="navActionIcon" />
+							</template>
+							{{ navActionLabel }}
+						</NcButton>
+					</template>
+				</EnvelopeValidation>
 				<FileValidation
 					v-else-if="validationFileDocument"
 					:document="validationFileDocument"
 					:legal-information="legalInformation"
 					:document-valid-message="documentValidMessage"
-					:is-after-signed="isAfterSigned" />
-				<NcButton v-if="clickedValidate" class="change" variant="primary" @click="goBack()">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiArrowLeft" />
+					:is-after-signed="isAfterSigned">
+					<template #action>
+						<NcButton v-if="clickedValidate" class="card-action-btn" variant="tertiary" @click="goBack()">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiArrowLeft" />
+							</template>
+							{{ t('libresign', 'Return') }}
+						</NcButton>
+						<NcButton class="card-action-btn" variant="tertiary" @click="goToDestination()">
+							<template #icon>
+								<NcIconSvgWrapper :path="navActionIcon" />
+							</template>
+							{{ navActionLabel }}
+						</NcButton>
 					</template>
-					{{ t('libresign', 'Return') }}
-				</NcButton>
+				</FileValidation>
 			</div>
 		</div>
 	</div>
@@ -94,12 +118,15 @@ import {
 	mdiCancel,
 	mdiCheckCircle,
 	mdiCheckboxMarkedCircle,
+	mdiFolderOutline,
 	mdiHelpCircle,
+	mdiHome,
 	mdiKey,
 	mdiUpload,
 } from '@mdi/js'
 import JSConfetti from 'js-confetti'
 import axios from '@nextcloud/axios'
+import { getCurrentUser } from '@nextcloud/auth'
 import { getCapabilities } from '@nextcloud/capabilities'
 import { formatFileSize } from '@nextcloud/files'
 import { loadState } from '@nextcloud/initial-state'
@@ -507,6 +534,23 @@ async function viewDocument() {
 		filename: document.value.name,
 		nodeId: document.value.nodeId,
 	})
+}
+
+const isLoggedIn = computed(() => getCurrentUser() !== null)
+
+// Logged-in users go to their documents; public (unauthenticated) signers,
+// e.g. after signing via an email link, get a way back to the home/index page.
+const navActionLabel = computed(() => (isLoggedIn.value
+	? t('libresign', 'Go to my documents')
+	: t('libresign', 'Go to home')))
+const navActionIcon = computed(() => (isLoggedIn.value ? mdiFolderOutline : mdiHome))
+
+function goToDestination() {
+	// Full navigation so the app shell (with the left navigation) is restored;
+	// after signing this view often renders standalone with no way back.
+	window.location.href = isLoggedIn.value
+		? generateUrl('/apps/libresign/f/filelist/sign')
+		: generateUrl('/')
 }
 
 function goBack() {
@@ -951,6 +995,10 @@ defineExpose({
 	getIconValidityPath,
 	viewDocument,
 	goBack,
+	isLoggedIn,
+	navActionLabel,
+	navActionIcon,
+	goToDestination,
 	getValidityStatus,
 	getValidityStatusAtSigning,
 	getSignatureValidationMessage,
@@ -1053,6 +1101,21 @@ defineExpose({
 		button {
 			float: inline-end;
 			align-self: flex-end;
+		}
+		// Action button(s) rendered into the validation card header (top-right).
+		// Outlined style: transparent fill, brand-green border + text.
+		.card-action-btn {
+			float: none !important;
+
+			:deep(.button-vue) {
+				background-color: transparent;
+				border: 2px solid #04d56d;
+				color: #04d56d;
+			}
+
+			:deep(.button-vue:hover:not(:disabled)) {
+				background-color: rgba(4, 213, 109, 0.1);
+			}
 		}
 		.infor-container {
 			width: 100%;
