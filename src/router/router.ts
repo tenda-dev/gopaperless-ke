@@ -6,6 +6,7 @@
 import { createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router'
 
 import { loadState } from '@nextcloud/initial-state'
+import { t } from '@nextcloud/l10n'
 import { getRootUrl, generateUrl } from '@nextcloud/router'
 
 import { initialActionCode } from '../helpers/ActionMapping'
@@ -245,6 +246,44 @@ router.beforeEach((to, from, next) => {
 	} else {
 		next()
 	}
+})
+
+/**
+ * Browser tab title per route.
+ *
+ * Nextcloud composes the server-side <title> as `{nav name} - {instance name}`,
+ * and since both are "GoPaperless" that doubles up. We set document.title on the
+ * client instead: JS runs after page load, so this fully overrides the server
+ * title and we own the whole string. Keys are route names with any `External`
+ * suffix stripped. Missing routes fall back to the brand alone.
+ */
+const BRAND = 'GoPaperless'
+const ROUTE_TITLES: Record<string, string> = {
+	Dashboard: t('libresign', 'Dashboard'),
+	requestFiles: t('libresign', 'Request signature'),
+	fileslist: t('libresign', 'Documents'),
+	validation: t('libresign', 'Validate'),
+	ValidationFile: t('libresign', 'Validate'),
+	ValidationFileShortUrl: t('libresign', 'Validate'),
+	SignPDF: t('libresign', 'Sign document'),
+	IdDocsApprove: t('libresign', 'Sign document'),
+	Account: t('libresign', 'Account'),
+	DocsIdDocsValidation: t('libresign', 'Documents validation'),
+	CrlManagement: t('libresign', 'CRL management'),
+	AdminProducts: t('libresign', 'Product management'),
+	CreatePassword: t('libresign', 'Create password'),
+	ResetPassword: t('libresign', 'Reset password'),
+	CreateAccount: t('libresign', 'Create account'),
+	RenewEmail: t('libresign', 'Renew email'),
+	Incomplete: t('libresign', 'Complete your certification'),
+	PaymentReturn: t('libresign', 'Payment'),
+	DefaultPageError: t('libresign', 'Error'),
+}
+
+router.afterEach((to) => {
+	const name = typeof to.name === 'string' ? to.name.replace(/External$/, '') : ''
+	const page = ROUTE_TITLES[name]
+	document.title = page ? `${page} - ${BRAND}` : BRAND
 })
 
 export default router

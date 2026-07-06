@@ -702,9 +702,34 @@ body {
 .terms-row {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 10px;
 	align-items: flex-start;
-	margin-top: 4px;
+	margin-top: 8px;
+	padding: 14px 16px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+
+	// The surrounding panel is dark, but the Nextcloud button/checkbox inherit
+	// the light theme's dark text colours and become invisible.
+	--color-main-text: #ffffff;
+	--color-border-maxcontrast: rgba(255, 255, 255, 0.6);
+	--color-primary-element: #04d56d;
+	--color-primary-element-text: #0a1f16;
+	--color-background-hover: rgba(255, 255, 255, 0.12);
+
+	:deep(.button-vue--vue-tertiary) {
+		color: #04d56d;
+		font-weight: 600;
+		text-decoration: underline;
+	}
+
+	// "I agree to the Terms of Service" label.
+	:deep(.checkbox-radio-switch__label),
+	:deep(.checkbox-content) {
+		color: #ffffff;
+		font-weight: 500;
+	}
 }
 
 .terms-modal-content {

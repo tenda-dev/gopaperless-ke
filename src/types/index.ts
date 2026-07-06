@@ -115,6 +115,9 @@ export type AdminInitialState = {
 	crl_external_validation_enabled: boolean
 	ldap_extension_available: boolean
 	envelope_enabled: boolean
+	free_credits_enabled: boolean
+	free_credits_uses: number
+	one_time_signing_enabled: boolean
 }
 
 export type RuntimeFileSettingsRecord = FileSettings & Partial<SettingsRecord>

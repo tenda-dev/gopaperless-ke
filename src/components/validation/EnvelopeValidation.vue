@@ -6,9 +6,14 @@
 	<div>
 		<!-- Envelope Summary -->
 		<div class="section card-list-context">
-			<div class="header">
-				<NcIconSvgWrapper :path="mdiPackageVariantClosed" :size="30" />
-				<h1>{{ t('libresign', 'Envelope information') }}</h1>
+			<div class="header header--main">
+				<div class="header__title">
+					<NcIconSvgWrapper :path="mdiPackageVariantClosed" :size="30" />
+					<h1>{{ t('libresign', 'Envelope information') }}</h1>
+				</div>
+				<div class="header__action">
+					<slot name="action" />
+				</div>
 			</div>
 			<NcNoteCard v-if="documentValidMessage" type="success">
 				{{ documentValidMessage }}
@@ -334,6 +339,22 @@ defineExpose({
 		h1 {
 			font-size: 1.5rem;
 			margin: 0;
+		}
+
+		// Only the main "Envelope information" header carries the action button.
+		&--main {
+			justify-content: space-between;
+			flex-wrap: wrap;
+		}
+
+		&__title {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		&__action {
+			margin-inline-start: auto;
 		}
 	}
 

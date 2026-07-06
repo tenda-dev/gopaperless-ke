@@ -396,6 +396,12 @@ const signerContextStore = useSignerContextStore()
 const userContextStore = useUserContextStore()
 const paymentContextStore = usePaymentContextStore()
 
+// Admin toggle (defaults to true). When disabled, one-time signing is not
+// offered and users are routed to the signing credit-pack flow instead.
+const oneTimeSigningEnabled = (
+	loadState('libresign', 'config', {}) as { one_time_signing_enabled?: boolean }
+).one_time_signing_enabled ?? true
+
 const loading = ref(true)
 const user = ref<UserInfo>({
 	account: { uid: '', emailAddress: '', displayName: '' },
@@ -493,7 +499,7 @@ const paymentPresentation = computed<PaymentPresentation>(() => {
 	switch (paymentContextStore.flowType) {
 		case PaymentFlowType.CREDIT_PACK:
 			return {
-				modalTitle: 'Purchase signing credits',
+				modalTitle: 'Buy signing credits',
 				summary: {
 					title: `Signing Credits`,
 					subtitle: 'Credits are added to your account for future documents.',
@@ -509,7 +515,7 @@ const paymentPresentation = computed<PaymentPresentation>(() => {
 						requiredQuantity.value === 1
 							? 'Required signing credit'
 							: `${requiredQuantity.value} Required signing credits`,
-					subtitle: 'Credits required to complete this document.',
+					subtitle: 'Credits required to complete this signing.',
 				},
 			}
 	}
@@ -672,7 +678,11 @@ async function signWithClickGated() {
 		signStore.productCode = DEFAULT_SIGN_PRODUCT_CODE
 	}
 
-	paymentContextStore.setFlowType(PaymentFlowType.ONE_TIME)
+	paymentContextStore.setFlowType(
+		oneTimeSigningEnabled
+			? PaymentFlowType.ONE_TIME
+			: PaymentFlowType.CREDIT_PACK,
+	)
 
 	try {
 		const { allowed } = await entitlementStore.check(signStore.productCode)

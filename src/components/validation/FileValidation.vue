@@ -6,8 +6,13 @@
 	<div>
 		<div class="section">
 			<div class="header">
-				<NcIconSvgWrapper :path="mdiInformationSlabCircle" :size="30" />
-				<h1>{{ t('libresign', 'Document information') }}</h1>
+				<div class="header__title">
+					<NcIconSvgWrapper :path="mdiInformationSlabCircle" :size="30" />
+					<h1>{{ t('libresign', 'Document information') }}</h1>
+				</div>
+				<div class="header__action">
+					<slot name="action" />
+				</div>
 			</div>
 			<NcNoteCard v-if="documentValidMessage" type="success">
 				{{ documentValidMessage }}
@@ -54,8 +59,20 @@ defineProps<{
 	.header {
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
 		gap: 12px;
 		margin-bottom: 1.5rem;
+
+		&__title {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		&__action {
+			margin-inline-start: auto;
+		}
 
 		h1 {
 			font-size: 20px;

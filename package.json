@@ -7,7 +7,7 @@
   "scripts": {
     "build": "vite build",
     "postbuild": "npm run copy-assets",
-    "copy-assets": "shx cp custom-assets/gopaperless.js js/ && shx cp custom-assets/gopaperless.css css/",
+    "copy-assets": "shx cp custom-assets/gopaperless.css css/",
     "dev": "vite build --mode development && npm run copy-assets",
     "watch": "npm run copy-assets && vite build --mode development --watch",
     "serve": "vite dev",

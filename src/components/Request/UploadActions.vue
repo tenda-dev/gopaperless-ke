@@ -31,7 +31,7 @@
 				<template #icon>
 					<NcIconSvgWrapper :path="getIcon('pickFile')" :size="20" />
 				</template>
-				Choose from Files
+				GoPaperless Files
 			</NcButton>
 		</div>
 
@@ -103,7 +103,7 @@ const openedMenu = ref(false)
 const actions: { key: UploadAction; label: string; icon: string }[] = [
 	{ key: 'upload', label: 'Upload Document', icon: mdiCloudUpload },
 	{ key: 'uploadUrl', label: 'Upload from URL', icon: mdiLink },
-	{ key: 'pickFile', label: 'Choose from Files', icon: mdiFolder },
+	{ key: 'pickFile', label: 'GoPaperless Files', icon: mdiFolder },
 ]
 
 const iconMap: Record<UploadAction, string> = {

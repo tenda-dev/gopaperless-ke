@@ -9,7 +9,7 @@
 			<div class="page-header">
 
 				<div class="header-content">
-					<h1>Workflow Dashboard</h1>
+					<h1>GoPaperless Dashboard</h1>
 
 					<p>
 						Manage signatures request workflows from one operational workspace.

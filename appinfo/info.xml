@@ -102,7 +102,7 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 	</activity>
 	<navigations>
 		<navigation>
-			<name>LibreSign</name>
+			<name>GoPaperless</name>
 			<route>libresign.page.index</route>
 		</navigation>
 	</navigations>
