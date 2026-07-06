@@ -182,8 +182,7 @@ class Admin implements ISettings {
 	/**
 	 * @return 'nextcloud'|'rabbitmq'
 	 */
-	private function getPaymentVerificationDispatcherInitialState(): string
-	{
+	private function getPaymentVerificationDispatcherInitialState(): string {
 		$dispatcher = $this->appConfig->getValueString(
 			Application::APP_ID,
 			'payment_verification_dispatcher',
