@@ -65,4 +65,37 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	public function testGetPriority():void {
 		$this->assertEquals($this->admin->getPriority(), 100);
 	}
+
+	public function testGetFormProvidesFreeCreditsAndOneTimeSigningInitialState(): void {
+		$provided = [];
+		$this->initialState
+			->method('provideInitialState')
+			->willReturnCallback(function (string $key, mixed $value) use (&$provided): void {
+				$provided[$key] = $value;
+			});
+
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\IEngineHandler::class);
+		$engine->method('getName')->willReturn('JSignPdf');
+		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
+		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
+		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getTemplate')->willReturn('');
+		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
+		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
+		$this->footerService->method('getTemplateVariablesMetadata')->willReturn([]);
+		$this->footerService->method('getTemplate')->willReturn('');
+		$this->footerService->method('isDefaultTemplate')->willReturn(true);
+		$this->docMdpConfigService->method('getConfig')->willReturn([]);
+
+		$this->admin->getForm();
+
+		$this->assertArrayHasKey('free_credits_enabled', $provided);
+		$this->assertArrayHasKey('free_credits_uses', $provided);
+		$this->assertArrayHasKey('one_time_signing_enabled', $provided);
+	}
 }
