@@ -13,7 +13,6 @@ describe('Settings.vue', () => {
 		const wrapper = mount(Settings, {
 			global: {
 				stubs: {
-					SupportProject: { template: '<div class="support-project-stub" />' },
 					CertificateEngine: true,
 					SignatureEngine: true,
 					DownloadBinaries: true,
@@ -38,20 +37,22 @@ describe('Settings.vue', () => {
 					Reminders: true,
 					TSA: true,
 					Confetti: true,
+					FreeCredits: true,
+					OneTimeSigning: true,
 				},
 			},
 		})
 
-		expect(wrapper.find('.support-project-stub').exists()).toBe(true)
 		expect(wrapper.findAllComponents({ name: 'SignatureEngine' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'Reminders' })).toHaveLength(1)
+		expect(wrapper.findAllComponents({ name: 'FreeCredits' })).toHaveLength(1)
+		expect(wrapper.findAllComponents({ name: 'OneTimeSigning' })).toHaveLength(1)
 	})
 
 	it('does not render SigningMode because the template gate is false', () => {
 		const wrapper = mount(Settings, {
 			global: {
 				stubs: {
-					SupportProject: true,
 					CertificateEngine: true,
 					SignatureEngine: true,
 					DownloadBinaries: true,
@@ -76,6 +77,8 @@ describe('Settings.vue', () => {
 					Reminders: true,
 					TSA: true,
 					Confetti: true,
+					FreeCredits: true,
+					OneTimeSigning: true,
 				},
 			},
 		})
