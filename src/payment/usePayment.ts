@@ -42,12 +42,30 @@ const PAYMENT_FAILURE_MESSAGES: Record<string, string> = {
 	generic_failure: 'Payment failed. Please try again.',
 }
 
+const PAYMENT_ERROR_CODE_MESSAGES: Record<string, string> = {
+	MISSING_FIELD:      `Something went wrong starting your payment. Please try again.`,
+	INVALID_PHONE:      `That number doesn't look right. Check it and try again.`,
+	INVALID_MNO:        `Select your mobile network provider and try again.`,
+	UNSUPPORTED_REGION: `Payments aren't supported for this region yet.`,
+	ALREADY_RESOLVED:   `This payment has already been completed.`,
+}
+
 function resolvePaymentErrorMessage(reason?: string | null): string {
 	if (!reason) {
 		return 'Payment failed'
 	}
 
 	return PAYMENT_FAILURE_MESSAGES[reason] ?? 'Payment failed'
+}
+
+function resolvePaymentErrorCode(code?: string | null): string {
+	if (!code) return 'Payment failed. Please try again.'
+	return PAYMENT_ERROR_CODE_MESSAGES[code] ?? 'Payment failed. Please try again.'
+}
+
+function extractPaymentError(err: any): { code?: string; retryable?: boolean } | null {
+	const e = err?.response?.data?.ocs?.data?.error
+	return e && typeof e === 'object' && 'code' in e ? e : null
 }
 
 function buildPaymentRedirectUrl(): string {
@@ -196,6 +214,7 @@ export function usePayment() {
 	const pollingElapsedMs = ref(0)
 	const paymentPurpose = ref<PaymentPurpose | null>(null)
 	const paymentPurposeLocked = ref(false)
+	const lastErrorRetryable = ref<boolean | null>(null)
 
 	const isProcessing = computed(() =>
 		state.value === 'hydrating' ||
@@ -475,6 +494,48 @@ export function usePayment() {
 
 			showRequestError(err, defaultErrMsg)
 
+			throw err
+		}
+	}
+
+	async function retryPayment(
+		reference: string,
+		payload: StartPaymentPayload,
+		onTerminal?: (status: PaymentTerminalStatus) => void,
+	): Promise<PaymentResponse | undefined> {
+		try {
+			state.value = 'initiating'
+			error.value = null
+			lastErrorRetryable.value = null
+
+			const res = await paymentDriver.retryPayment(reference, payload)
+
+			await handleBackendDirectedFlow(res, payload, onTerminal)
+
+			return res
+		} catch (err: any) {
+
+			if (isConnectivityError(err)) {
+				markOffline()
+				throw err
+			}
+
+			if (isRequestTimeout(err)) {
+				throw err
+			}
+
+			const paymentErr = extractPaymentError(err)
+
+			if (paymentErr) {
+				state.value = 'error'
+				error.value = resolvePaymentErrorCode(paymentErr.code)
+				lastErrorRetryable.value = paymentErr.retryable ?? false
+				showError(error.value)
+				throw err
+			}
+			state.value = 'error'
+			error.value = err?.message || 'Payment failed'
+			showRequestError(err, 'Payment failed')
 			throw err
 		}
 	}
@@ -947,5 +1008,6 @@ export function usePayment() {
 		paymentPurpose,
 		lockPaymentPurpose,
 		invalidatePayment,
+		lastErrorRetryable,
 	}
 }

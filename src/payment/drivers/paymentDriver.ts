@@ -9,4 +9,5 @@ export const paymentDriver = {
   fetchMobileOptions: api.fetchMobileOptions,
   queryDarajaPayment: api.queryDarajaPayment,
   resumePayment: api.resumePayment,
+  retryPayment: api.retryPayment,
 }

@@ -10,6 +10,7 @@ import type {
 	SelectedMno,
 	SupportedRegion,
 	VerifyPaymentResponse,
+	StartPaymentPayload,
 } from '../types'
 
 import { paymentScenario } from './scenarios'
@@ -1043,4 +1044,52 @@ export const mockPaymentDriver = {
 				}
 		}
 	},
+
+	/* =====================================================
+	 * RETRY PAYMENT
+	 * ===================================================== */
+
+	async retryPayment(
+		reference: string,
+		_payload: StartPaymentPayload,
+	): Promise<InitiateResponse> {
+
+		console.log(
+			'[mock] retry payment',
+			reference,
+			'scenario:',
+			paymentScenario.current,
+		)
+
+		await randomWait()
+
+		/**
+		 * Reconcile-first: simulate a late callback landing on the
+		 * ORIGINAL reference while the user sat on the retry CTA.
+		 * A PAID result here is legitimate — retrySession() shows
+		 * success and does NOT re-initiate.
+		 */
+		if (paymentScenario.current === 'daraja-success') {
+			return createBaseResponse({
+				reference,               // same ref — the original session paid late
+				provider: 'daraja',
+				flow: 'callback',
+				method: 'mobile',
+				alreadyCharged: true,
+				status: 'SUCCESS',
+				phoneNumber: '+254712345678',
+				mno: 'mpesa',
+				country: 'KE',
+				confidence: 'high',
+				...buildDisplayContext('KE'),
+			})
+		}
+
+		/**
+		 * Reconcile found nothing paid → expire old + start fresh.
+		 * A brand-new reference gives a clean poll cycle (new STK prompt),
+		 * which is exactly the dead-session fix /payment/retry exists for.
+		 */
+		return mockPaymentDriver.startPayment()
+	}
 }

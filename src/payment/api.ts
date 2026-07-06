@@ -59,6 +59,24 @@ export async function startPayment(
 	return res
 }
 
+export async function retryPayment(
+	reference: string,
+	payload: StartPaymentPayload,
+): Promise<PaymentResponse> {
+
+	const { data } = await axios.post(
+		generateOcsUrl(`${BASE}/retry`),
+		{ ...payload, reference },
+		{ timeout: 10000 },
+	)
+	const res = data?.ocs?.data?.result
+
+	if (!res?.reference || !res?.flow)
+		throw new Error('Invalid retry payment response')
+
+	return res
+}
+
 /**
  * =========================================================
  * Step 2: Charge Mobile (DPO INLINE ONLY)

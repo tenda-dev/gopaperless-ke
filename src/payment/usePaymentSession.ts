@@ -204,6 +204,11 @@ export function usePaymentSession({
 			: 'Approve payment on your phone'
 	})
 
+	const retryDisabled = computed(() =>
+		payment.state.value === 'error' &&
+		payment.lastErrorRetryable.value === false
+    )
+
 	//
 	// Watchers
 	//
@@ -895,5 +900,6 @@ export function usePaymentSession({
 		enterRecovery,
 		exitRecovery,
 		restartSession,
+		retryDisabled,
 	}
 }

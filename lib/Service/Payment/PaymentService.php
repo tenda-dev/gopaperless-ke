@@ -327,7 +327,7 @@ class PaymentService
 		// Old row is now terminal → rotate the attempt id so startPayment's
 		// idempotency lookup (findByAttemptId) can't match the row we just
 		// failed. Without this, the re-supplied payload's original attempt id
-		// would return the FAILED payment instead of starting fresh.
+		// might return the FAILED payment instead of starting fresh.
 		return $this->startPayment(
 			$dto->withPaymentAttemptId(Uuid::uuid4()->toString())
 		);
@@ -1346,7 +1346,7 @@ class PaymentService
 			// Domain → API status mapping
 			status: $this->mapPaymentStatus($status),
 
-			provider: $payment->getPaymentProvider(),
+			provider: $payment?->getPaymentProvider(),
 
 			// Safe enum mapping
 			flow: $meta?->flow

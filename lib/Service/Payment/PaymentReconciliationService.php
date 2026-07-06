@@ -258,7 +258,7 @@ class PaymentReconciliationService
 			return $payment->getPaymentStatus();
 		}
 
-		// 6 — still pending: cancel token, then expire (both Lifecycle verbs)
+		// 6 — still pending: cancel token, then expire
 		$this->lifecycle->cancelProviderToken($payment);
 		$this->lifecycle->expirePayment($payment, $failureReason);
 
