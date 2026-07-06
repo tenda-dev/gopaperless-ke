@@ -30,6 +30,10 @@ type ValidationVm = {
 	validationComponent: unknown
 	canValidate: boolean
 	helperTextValidation: string
+	isLoggedIn: boolean
+	navActionLabel: string
+	navActionIcon: string
+	goToDestination: () => void
 	getValidityStatus: (signer: Record<string, any>) => string
 	getValidityStatusAtSigning: (signer: Record<string, any>) => string
 	hasValidationIssues: (signer: Record<string, any>) => boolean
@@ -1149,6 +1153,100 @@ describe('Validation.vue - Business Logic', () => {
 				needIdentificationDocuments: false,
 				identificationDocumentsWaitingApproval: false,
 			}))
+		})
+	})
+
+	describe('post-sign navigation actions', () => {
+		it('shows "Go to my documents" for authenticated users', async () => {
+			const { getCurrentUser } = await import('@nextcloud/auth')
+			vi.mocked(getCurrentUser).mockReturnValue({ uid: 'test-user', displayName: 'Test User', isAdmin: false })
+
+			const testWrapper = shallowMount(Validation, {
+				global: {
+					mocks: {
+						$route: mockRoute,
+						$router: mockRouter,
+					},
+				},
+			}) as unknown as ValidationWrapper
+			await testWrapper.vm.$nextTick()
+
+			expect(testWrapper.vm.isLoggedIn).toBe(true)
+			expect(testWrapper.vm.navActionLabel).toBe('Go to my documents')
+		})
+
+		it('shows "Go to home" for public users', async () => {
+			const { getCurrentUser } = await import('@nextcloud/auth')
+			vi.mocked(getCurrentUser).mockReturnValue(null)
+
+			const testWrapper = shallowMount(Validation, {
+				global: {
+					mocks: {
+						$route: mockRoute,
+						$router: mockRouter,
+					},
+				},
+			}) as unknown as ValidationWrapper
+			await testWrapper.vm.$nextTick()
+
+			expect(testWrapper.vm.isLoggedIn).toBe(false)
+			expect(testWrapper.vm.navActionLabel).toBe('Go to home')
+		})
+
+		it('navigates authenticated users to their documents', async () => {
+			const { getCurrentUser } = await import('@nextcloud/auth')
+			vi.mocked(getCurrentUser).mockReturnValue({ uid: 'test-user', displayName: 'Test User', isAdmin: false })
+
+			const testWrapper = shallowMount(Validation, {
+				global: {
+					mocks: {
+						$route: mockRoute,
+						$router: mockRouter,
+					},
+				},
+			}) as unknown as ValidationWrapper
+
+			const originalHref = window.location.href
+			Object.defineProperty(window, 'location', {
+				writable: true,
+				value: { href: '' },
+			})
+
+			testWrapper.vm.goToDestination()
+			expect(window.location.href).toBe('/apps/libresign/f/filelist/sign')
+
+			Object.defineProperty(window, 'location', {
+				writable: true,
+				value: { href: originalHref },
+			})
+		})
+
+		it('navigates public users to the home page', async () => {
+			const { getCurrentUser } = await import('@nextcloud/auth')
+			vi.mocked(getCurrentUser).mockReturnValue(null)
+
+			const testWrapper = shallowMount(Validation, {
+				global: {
+					mocks: {
+						$route: mockRoute,
+						$router: mockRouter,
+					},
+				},
+			}) as unknown as ValidationWrapper
+
+			const originalHref = window.location.href
+			Object.defineProperty(window, 'location', {
+				writable: true,
+				value: { href: '' },
+			})
+
+			testWrapper.vm.goToDestination()
+			expect(window.location.href).toBe('/')
+
+			Object.defineProperty(window, 'location', {
+				writable: true,
+				value: { href: originalHref },
+			})
 		})
 	})
 })
