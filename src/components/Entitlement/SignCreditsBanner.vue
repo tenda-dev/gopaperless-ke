@@ -31,8 +31,8 @@
 			<div v-if="!hasCredits" class="payment-chooser">
 				<p class="payment-chooser__prompt">
 					{{ oneTimeSigningEnabled
-						? "Choose how you'd like to purchase signing credits."
-						: "You're out of signing credits. Purchase a credit pack to sign this document." }}
+						? "Choose how you'd like to buy signing credits."
+						: "You're out of signing credits. Buy a credit pack to sign this document." }}
 				</p>
 
 				<div class="option-cards">
@@ -104,7 +104,7 @@
 										:size="18"
 									/>
 
-									<span>Purchase signing credits</span>
+									<span>Buy signing credits</span>
 								</div>
 
 								<span v-if="oneTimeSigningEnabled" class="option-card__badge">
@@ -114,7 +114,7 @@
 							</div>
 
 							<div class="option-card__desc">
-								Purchase extra credits and use them across future document signings.
+								Buy extra credits and use them across future document signings.
 							</div>
 
 							<div class="option-card__sparkle">

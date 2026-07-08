@@ -28,7 +28,7 @@
 					<NcAppNavigationItem v-if="canRequestSign"
 						id="dashboard"
 						:to="{name: 'Dashboard'}"
-						:name="t('libresign', 'GoPaperless Dashboard')"
+						:name="t('libresign', 'Dashboard')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -49,7 +49,7 @@
 					</NcAppNavigationItem>
 					<NcAppNavigationItem id="fileslist"
 						:to="{ name: 'fileslist' }"
-						:name="t('libresign', 'GoPaperless Documents')"
+						:name="t('libresign', 'Documents')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">

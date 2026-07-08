@@ -1,0 +1,33 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+// Force the main app to render light regardless of Nextcloud/system dark mode.
+@use 'light-theme' as *;
+
+// 1. Baseline — always light.
+body,
+#body-user,
+#body-public,
+#body-settings {
+	@include force-light-vars;
+}
+
+// 2. Explicit "Dark" theme selected. Nextcloud sets these on <body>; matching
+//    the attribute (specificity 0,1,1) is required to beat its dark variables.
+body[data-theme-dark],
+body[data-themes~="dark"] {
+	@include force-light-vars;
+}
+
+// 3. Default theme + OS in dark mode. There is no attribute to strip here — the
+//    dark values come from this media query, so we override the same variables
+//    inside it (our stylesheet loads later, so equal-specificity rules win).
+@media (prefers-color-scheme: dark) {
+	body,
+	#body-user,
+	#body-public {
+		@include force-light-vars;
+	}
+}
