@@ -14,16 +14,15 @@ body,
 	@include force-light-vars;
 }
 
-// 2. Explicit "Dark" theme selected. Nextcloud sets these on <body>; matching
-//    the attribute (specificity 0,1,1) is required to beat its dark variables.
+// 2. Explicit "Dark" theme. Match the attribute (specificity 0,1,1) to beat
+//    Nextcloud's dark variables.
 body[data-theme-dark],
 body[data-themes~="dark"] {
 	@include force-light-vars;
 }
 
-// 3. Default theme + OS in dark mode. There is no attribute to strip here — the
-//    dark values come from this media query, so we override the same variables
-//    inside it (our stylesheet loads later, so equal-specificity rules win).
+// 3. Default theme + OS dark. No attribute to strip. The dark values come from
+//    the media query, so we re-pin the variables inside it (we load the styles later).
 @media (prefers-color-scheme: dark) {
 	body,
 	#body-user,

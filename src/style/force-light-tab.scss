@@ -3,11 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-// Force-light for the Files sidebar tab. This bundle runs INSIDE the host
-// Files app, so we must not touch <body> (that would hijack the whole host to
-// light). Setting the variables on the tab element pins them for the tab's own
-// subtree only — a custom property declared on the element always wins over an
-// ancestor's value, regardless of the host's dark state.
+// Force-light for the Files sidebar tab. Runs inside the host Files app, so we
+// scope the variables to the tab element (not <body>) to avoid re-theming the
+// whole host. A property on the element wins over the host's dark ancestors.
 @use 'light-theme' as *;
 
 libresign-files-sidebar-tab {

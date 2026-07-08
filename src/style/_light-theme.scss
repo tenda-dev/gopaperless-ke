@@ -3,16 +3,10 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-// Nextcloud themes the UI through CSS custom properties, and our components
-// read those variables everywhere. To force a
-// light appearance we must pin the *variables* themselves — removing dark
-// attributes does nothing when the Default theme goes dark via
-// `@media (prefers-color-scheme: dark)`, which sets no attribute at all.
-//
-// These are the exact light-theme values from Nextcloud's generated theme CSS.
-// Only variables that actually differ between the light and dark palettes are
-// pinned here; unchanged tokens (fonts, radii, sizing, --color-primary, etc.)
-// are intentionally left untouched.
+// Pin Nextcloud's light-theme CSS variables. The Default theme goes dark via
+// `@media (prefers-color-scheme: dark)` without setting any attribute, so
+// stripping dark attributes isn't enough, we override the variables directly.
+// Only tokens that differ between the light/dark palettes are pinned.
 @mixin force-light-vars {
 	// Backgrounds
 	--color-main-background: #ffffff;
