@@ -101,7 +101,7 @@ class SignerSponsorship extends Entity
 			throw new \InvalidArgumentException('signRequestId is required');
 		}
 
-		if ($this->sponsorUserId === '') {
+		if ($this->sponsorUserId === null || $this->sponsorUserId === '') {
 			throw new \InvalidArgumentException('sponsorUserId is required');
 		}
 	}
