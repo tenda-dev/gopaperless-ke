@@ -21,6 +21,7 @@ use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\ResponseDefinitions;
 use OCA\Libresign\Service\FileElementService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Sponsorship\SignerSponsorshipEnricher;
 use OCP\AppFramework\Db\Entity;
 use OCP\Files\File as NodeFile;
 use OCP\Files\IRootFolder;
@@ -51,6 +52,7 @@ class FileListService {
 		private IL10N $l10n,
 		private IUserManager $userManager,
 		private IRootFolder $root,
+		private SignerSponsorshipEnricher $signerSponsorshipEnricher,
 	) {
 	}
 
@@ -150,6 +152,15 @@ class FileListService {
 	): array {
 		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($childSignRequests);
 		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($childSignRequests);
+
+		$sponsorshipMap = $this->signerSponsorshipEnricher
+			->loadSponsorshipMapBySignRequestIds(
+				array_map(
+					static fn(SignRequest $signRequest): int => $signRequest->getId(),
+					$childSignRequests,
+				),
+			);
+
 		$signRequestsByFileId = [];
 		foreach ($childSignRequests as $signRequest) {
 			$signRequestsByFileId[$signRequest->getFileId()][] = $signRequest;
@@ -185,6 +196,7 @@ class FileListService {
 				$visibleElements,
 				null,
 				$meSignRequestId,
+				$sponsorshipMap,
 			);
 		}
 
@@ -206,9 +218,18 @@ class FileListService {
 		array $visibleElements,
 	): array {
 		$formattedFiles = [];
+
+		$sponsorshipMap = $this->signerSponsorshipEnricher
+			->loadSponsorshipMapBySignRequestIds(
+				array_map(
+					static fn(SignRequest $signRequest): int => $signRequest->getId(),
+					$signers,
+				),
+			);
+
 		foreach ($files as $file) {
 			$fileSigners = array_filter($signers, fn ($signer) => $signer->getFileId() === $file->getId());
-			$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user);
+			$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user, null, $sponsorshipMap);
 		}
 		return $formattedFiles;
 	}
@@ -231,6 +252,7 @@ class FileListService {
 		array $visibleElements,
 		?IUser $user,
 		?int $meSignRequestId = null,
+		?array $sponsorshipMap = null,
 	): array {
 		$file = [
 			'id' => $fileEntity->getId(),
@@ -280,6 +302,8 @@ class FileListService {
 			);
 			$file['signers'][] = $signerData;
 		}
+
+		$file['signers'] = $this->signerSponsorshipEnricher->enrich($file['signers'], $sponsorshipMap);
 
 		if ($user instanceof IUser && $meSignRequestId === null) {
 			$this->resolveSignerMeFlags($file['signers'], $user);
@@ -755,6 +779,8 @@ class FileListService {
 		$rawFilesCount = $metadata['filesCount'] ?? null;
 		$filesCount = is_numeric($rawFilesCount) ? (int)$rawFilesCount : count($childFiles);
 		$filesCount = max(0, $filesCount);
+
+		$signers = $this->signerSponsorshipEnricher->enrich($signers);
 
 		/** @var LibresignDetailedFileResponse */
 		$response = [
