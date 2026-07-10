@@ -16,7 +16,7 @@ use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipChangeDTO;
  *
  * Responsibilities:
  * - Compare requested sponsorship state with persisted state.
- * - Identify newly added signers.
+ * - Identify signers with no previous persisted sponsorship state.
  * - Identify sponsorship transitions (self <-> requester).
  * - Produce SponsorshipChangeDTO objects.
  *

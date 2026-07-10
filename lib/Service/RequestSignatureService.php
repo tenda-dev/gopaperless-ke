@@ -28,6 +28,8 @@ use OCA\Libresign\Service\Envelope\EnvelopeService;
 use OCA\Libresign\Service\File\Pdf\PdfMetadataExtractor;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
+use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
+use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\Node;
@@ -67,6 +69,7 @@ class RequestSignatureService {
 		protected EnvelopeFileRelocator $envelopeFileRelocator,
 		protected FileUploadHelper $uploadHelper,
 		protected SignRequestService $signRequestService,
+		protected SponsorshipWorkflowService $sponsorshipWorkflowService,
 	) {
 	}
 
@@ -483,12 +486,17 @@ class RequestSignatureService {
 	}
 
 	/**
-	 * @return SignRequestEntity[]
+	 * @return PersistedSignerSponsorshipDTO[]
 	 *
-	 * @psalm-return list<SignRequestEntity>
+	 * @psalm-return list<PersistedSignerSponsorshipDTO>
 	 */
-	private function associateToSigners(array $data, FileEntity $file): array {
-		$return = [];
+	private function associateToSigners(
+		array $data,
+		FileEntity $file,
+		string $productCode = 'SIGN_DOCUMENT',
+		): array {
+		$persistedSignRequests = [];
+		$persistedSignerSponsorships = [];
 		if (!empty($data['signers'])) {
 			$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
 			$this->deleteIdentifyMethodIfNotExits($normalizedSigners, $file);
@@ -504,7 +512,7 @@ class RequestSignatureService {
 				$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
 
 				foreach ($signer['identifyMethods'] as $identifyMethod) {
-					$return[] = $this->signRequestService->createOrUpdateSignRequest(
+					$persistedSignRequests[] = $this->signRequestService->createOrUpdateSignRequest(
 						identifyMethods: [
 							$identifyMethod['method'] => $identifyMethod['value'],
 						],
@@ -518,8 +526,16 @@ class RequestSignatureService {
 					);
 				}
 			}
+
+			return $this->sponsorshipWorkflowService->persist(
+				file: $file,
+				requesterUserId: $data['userManager']->getUID(),
+				productCode: $productCode,
+				incomingSigners: $data['signers'],
+				persistedSignRequests: $persistedSignRequests,
+			);
 		}
-		return $return;
+		return $persistedSignerSponsorships;
 	}
 
 
@@ -593,6 +609,9 @@ class RequestSignatureService {
 		$this->dispatchCancellationEventIfNeeded($signRequest, $file, $groupedIdentifyMethods);
 
 		try {
+			$this->sponsorshipWorkflowService->releaseSigner(
+				$signRequestId
+			);
 			$this->signRequestMapper->delete($signRequest);
 			$this->identifyMethod->deleteBySignRequestId($signRequestId);
 			$visibleElements = $this->fileElementMapper->getByFileIdAndSignRequestId($fileId, $signRequestId);
@@ -682,6 +701,10 @@ class RequestSignatureService {
 		} else {
 			throw new \Exception($this->l10n->t('Please provide either UUID or File object'));
 		}
+
+		$this->sponsorshipWorkflowService->releaseWorkflow(
+			$fileData->getId()
+		);
 		foreach ($signatures as $signRequest) {
 			$this->identifyMethod->deleteBySignRequestId($signRequest->getId());
 			$this->signRequestMapper->delete($signRequest);

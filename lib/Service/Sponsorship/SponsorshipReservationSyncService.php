@@ -12,17 +12,16 @@ use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
- * Executes sponsorship synchronisation.
+ * Executes the sponsorship synchronization plan.
  *
  * Responsibilities:
- * - Own the transaction boundary for sponsorship synchronisation.
- * - Reserve entitlement capacity.
- * - Release entitlement capacity.
- * - Create requester sponsorships.
- * - Remove requester sponsorships.
+ * - Own the transaction boundary.
+ * - Execute queued sponsorship releases.
+ * - Execute queued sponsorship reservations.
+ * - Keep entitlement reservations and sponsorship records consistent.
  *
- * This service executes the reconciliation plan.
- * It performs no reconciliation or validation.
+ * This service performs persistence only.
+ * It performs no validation, change detection or reconciliation.
  */
 final class SponsorshipReservationSyncService
 {
@@ -31,8 +30,7 @@ final class SponsorshipReservationSyncService
 		private SignerSponsorshipService $sponsorshipService,
 		private IDBConnection $db,
 		private LoggerInterface $logger,
-	) {
-	}
+	) {}
 
 	public function sync(
 		int $fileId,
@@ -48,12 +46,12 @@ final class SponsorshipReservationSyncService
 		$this->db->beginTransaction();
 
 		try {
-			foreach ($plan->getRequiresRelease() as $signer) {
-				$this->releaseReservation($signer);
+			foreach ($plan->getQueuedReleases() as $signer) {
+				$this->releaseRequesterSponsorship($signer);
 			}
 
-			foreach ($plan->getRequiresReservation() as $signer) {
-				$this->createReservation(
+			foreach ($plan->getQueuedReservations() as $signer) {
+				$this->createRequesterSponsorship(
 					$fileId,
 					$requesterUserId,
 					$productCode,
@@ -76,7 +74,43 @@ final class SponsorshipReservationSyncService
 		}
 	}
 
-	private function releaseReservation(
+	public function releaseSigner(int $signRequestId): void
+	{
+		$this->db->beginTransaction();
+
+		try {
+			$this->reservationService
+				->releaseForSignRequest($signRequestId);
+
+			$this->sponsorshipService
+				->deleteBySignRequestId($signRequestId);
+
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
+	public function releaseWorkflow(int $fileId): void
+	{
+		$this->db->beginTransaction();
+
+		try {
+			$this->reservationService
+				->releaseForWorkflow($fileId);
+
+			$this->sponsorshipService
+				->deleteByFileId($fileId);
+
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
+	private function releaseRequesterSponsorship(
 		IncomingSignerDTO $signer,
 	): void {
 		$signRequestId = $this->requireSignRequestId($signer);
@@ -95,7 +129,7 @@ final class SponsorshipReservationSyncService
 		);
 	}
 
-	private function createReservation(
+	private function createRequesterSponsorship(
 		int $fileId,
 		string $requesterUserId,
 		string $productCode,
@@ -111,6 +145,12 @@ final class SponsorshipReservationSyncService
 		 * is accidentally executed twice.
 		 */
 		if ($this->sponsorshipService->isRequesterSponsored($signRequestId)) {
+			$this->logger->debug(
+				'[SPONSORSHIP SYNC] skipped existing sponsorship',
+				[
+					'signRequestId' => $signRequestId,
+				]
+			);
 			return;
 		}
 

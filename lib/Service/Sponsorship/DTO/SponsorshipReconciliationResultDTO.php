@@ -7,38 +7,40 @@ namespace OCA\Libresign\Service\Sponsorship\DTO;
 final class SponsorshipReconciliationResultDTO
 {
 	/**
-	 * @param IncomingSignerDTO[] $requiresReservation
-	 * @param IncomingSignerDTO[] $requiresRelease
+	 * @param IncomingSignerDTO[] $queuedReservations
+	 * @param IncomingSignerDTO[] $queuedReleases
 	 */
 	public function __construct(
-		private array $requiresReservation = [],
-		private array $requiresRelease = [],
+		private array $queuedReservations = [],
+		private array $queuedReleases = [],
 		private bool $hasChanges = false,
 	) {
 	}
 
 	/**
-	 * Signers requiring a new requester sponsorship.
+	 * Signers that require a requester sponsorship
+	 * to be created during synchronisation.
 	 *
 	 * SELF -> REQUESTER
 	 *
 	 * @return IncomingSignerDTO[]
 	 */
-	public function getRequiresReservation(): array
+	public function getQueuedReservations(): array
 	{
-		return $this->requiresReservation;
+		return $this->queuedReservations;
 	}
 
 	/**
-	 * Signers requiring sponsorship release.
+	 * Signers whose requester sponsorship
+	 * should be released during synchronisation.
 	 *
 	 * REQUESTER -> SELF
 	 *
 	 * @return IncomingSignerDTO[]
 	 */
-	public function getRequiresRelease(): array
+	public function getQueuedReleases(): array
 	{
-		return $this->requiresRelease;
+		return $this->queuedReleases;
 	}
 
 	public function hasChanges(): bool
@@ -46,26 +48,35 @@ final class SponsorshipReconciliationResultDTO
 		return $this->hasChanges;
 	}
 
-	public function addRequiresReservation(
+	public function queueReservation(
 		IncomingSignerDTO $signer,
 	): void {
-		$this->requiresReservation[] = $signer;
+		$this->queuedReservations[] = $signer;
 		$this->hasChanges = true;
 	}
 
-	public function addRequiresRelease(
+	public function queueRelease(
 		IncomingSignerDTO $signer,
 	): void {
-		$this->requiresRelease[] = $signer;
+		$this->queuedReleases[] = $signer;
 		$this->hasChanges = true;
 	}
 
 	/**
-	 * Number of new requester-sponsored reservations
-	 * that must exist after synchronisation.
+	 * Number of requester sponsorships
+	 * that must be reserved.
 	 */
-	public function getRequiredReservations(): int
+	public function getQueuedReservationCount(): int
 	{
-		return count($this->requiresReservation);
+		return count($this->queuedReservations);
+	}
+
+	/**
+	 * Number of requester sponsorships
+	 * that must be released.
+	 */
+	public function getQueuedReleaseCount(): int
+	{
+		return count($this->queuedReleases);
 	}
 }

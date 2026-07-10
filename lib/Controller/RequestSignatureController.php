@@ -136,15 +136,31 @@ class RequestSignatureController extends AEnvironmentAwareController {
 				$signatureFlow
 			);
 		} catch (LibresignException $e) {
-			$errorMessage = $e->getMessage();
-			$decoded = json_decode($errorMessage, true);
-			if (json_last_error() === JSON_ERROR_NONE && isset($decoded['errors'])) {
-				$errorMessage = $decoded['errors'][0]['message'] ?? $errorMessage;
+			$payload = [
+				'message' => $e->getMessage(),
+			];
+
+			$decoded = json_decode($e->getMessage(), true);
+
+			if (
+				json_last_error() === JSON_ERROR_NONE
+				&& is_array($decoded)
+			) {
+				$payload['message'] =
+					$decoded['errors'][0]['message']
+					?? $payload['message'];
+
+				$payload['action'] =
+					$decoded['action']
+					?? null;
+
+				$payload['errors'] =
+					$decoded['errors']
+					?? [];
 			}
+
 			return new DataResponse(
-				[
-					'message' => $errorMessage,
-				],
+				$payload,
 				Http::STATUS_UNPROCESSABLE_ENTITY
 			);
 		} catch (\Throwable $th) {
@@ -249,6 +265,34 @@ class RequestSignatureController extends AEnvironmentAwareController {
 
 			$fileData = $this->fileListService->formatFileWithChildren($fileEntity, $childFiles, $user);
 			return new DataResponse($fileData, Http::STATUS_OK);
+		} catch (LibresignException $e) {
+			$payload = [
+				'message' => $e->getMessage(),
+			];
+
+			$decoded = json_decode($e->getMessage(), true);
+
+			if (
+				json_last_error() === JSON_ERROR_NONE
+				&& is_array($decoded)
+			) {
+				$payload['message'] =
+					$decoded['errors'][0]['message']
+					?? $payload['message'];
+
+				$payload['action'] =
+					$decoded['action']
+					?? null;
+
+				$payload['errors'] =
+					$decoded['errors']
+					?? [];
+			}
+
+			return new DataResponse(
+				$payload,
+				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
 		} catch (\Throwable $th) {
 			return $this->handleRequestException($th, Http::STATUS_UNPROCESSABLE_ENTITY);
 		}

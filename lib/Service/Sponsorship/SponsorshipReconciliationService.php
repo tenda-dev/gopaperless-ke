@@ -19,6 +19,7 @@ final class SponsorshipReconciliationService
 	 * - Produce an execution plan for synchronisation.
 	 *
 	 * This service performs no persistence.
+	 * @param SponsorshipChangeDTO[] $changes
 	 */
 	public function reconcile(
 		array $changes,
@@ -34,7 +35,7 @@ final class SponsorshipReconciliationService
 			 * A new sponsorship reservation must be created.
 			 */
 			if ($change->requiresReservation()) {
-				$plan->addRequiresReservation(
+				$plan->queueReservation(
 					$change->signer(),
 				);
 
@@ -47,7 +48,7 @@ final class SponsorshipReconciliationService
 			 * Existing sponsorship should be released.
 			 */
 			if ($change->requiresRelease()) {
-				$plan->addRequiresRelease(
+				$plan->queueRelease(
 					$change->signer(),
 				);
 			}

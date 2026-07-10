@@ -178,27 +178,6 @@ class SignerSponsorshipMapper extends QBMapper
 		return $result;
 	}
 
-
-	public function deleteByFileId(
-		int $fileId,
-	): void {
-
-		$qb = $this->db->getQueryBuilder();
-
-		$qb->delete($this->getTableName(), 's')
-			->where(
-				$qb->expr()->eq(
-					's.file_id',
-					$qb->createNamedParameter(
-						$fileId,
-						Types::INTEGER
-					)
-				)
-			);
-
-		$qb->executeStatement();
-	}
-
 	public function deleteBySignRequestId(
 		int $signRequestId,
 	): void {
@@ -214,6 +193,28 @@ class SignerSponsorshipMapper extends QBMapper
 						Types::INTEGER
 					)
 				)
+			);
+
+		$qb->executeStatement();
+	}
+
+	public function deleteByFileId(int $fileId): void
+	{
+		if ($fileId <= 0) {
+			return;
+		}
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->delete($this->getTableName(), 's')
+			->where(
+				$qb->expr()->eq(
+					's.file_id',
+					$qb->createNamedParameter(
+						$fileId,
+						Types::INTEGER,
+					),
+				),
 			);
 
 		$qb->executeStatement();

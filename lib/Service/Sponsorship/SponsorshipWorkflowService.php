@@ -6,19 +6,15 @@ namespace OCA\Libresign\Service\Sponsorship;
 
 use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
-use OCA\Libresign\Enum\SponsorshipType;
-use OCA\Libresign\Service\IdentifyMethodService;
-use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
-
+use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
 /**
  * Coordinates the sponsorship persistence workflow.
  *
  * Responsibilities:
- * - Build the sponsorship workflow context from the incoming request.
- * - Associate incoming signers with persisted SignRequests.
- * - Detect sponsorship changes.
- * - Produce an execution plan.
- * - Execute the synchronization plan.
+ * - Orchestrate sponsorship persistence.
+ * - Build the sponsorship workflow context.
+ * - Produce a reconciliation plan.
+ * - Execute the synchronisation plan.
  *
  * This service intentionally owns orchestration only.
  *
@@ -27,18 +23,26 @@ use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
 final class SponsorshipWorkflowService
 {
 	public function __construct(
-		private IdentifyMethodService $identifyMethodService,
 		private SponsorshipChangeDetectionService $changeDetectionService,
 		private SponsorshipReconciliationService $reconciliationService,
 		private SponsorshipReservationSyncService $syncService,
-	) {
-	}
+		private SponsorshipContextBuilderService $contextBuilder,
+	) {}
 
 	/**
-	 * Synchronise sponsorships after SignRequests have been persisted.
+	 * Synchronises sponsorship state after SignRequests have been persisted.
 	 *
-	 * @param array $incomingSigners Raw FE signers.
+	 * The workflow:
+	 * - Build the incoming sponsorship context.
+	 * - Detect sponsorship changes.
+	 * - Produce a reconciliation plan.
+	 * - Execute the synchronisation plan.
+	 * - Project the persisted sponsorship state for API consumption.
+	 *
+	 * @param array $incomingSigners Raw FE signer payload.
 	 * @param SignRequestEntity[] $persistedSignRequests
+	 *
+	 * @return PersistedSignerSponsorshipDTO[]
 	 */
 	public function persist(
 		File $file,
@@ -46,147 +50,50 @@ final class SponsorshipWorkflowService
 		string $productCode,
 		array $incomingSigners,
 		array $persistedSignRequests,
-	): void {
-		$incomingSignerDtos = $this->buildIncomingSigners(
-			$incomingSigners,
-			$persistedSignRequests,
-		);
+	): array {
+
+		$incomingSignerDtos = $this->contextBuilder
+			->buildIncomingSigners($incomingSigners);
+
+		$incomingSignerDtos = $this->contextBuilder
+			->associateToSignRequests(
+				signers: $incomingSignerDtos,
+				persistedSignRequests: $persistedSignRequests,
+			);
 
 		$changes = $this->changeDetectionService->detect(
 			$incomingSignerDtos,
 			$persistedSignRequests,
 		);
 
-		$executionPlan = $this->reconciliationService->reconcile(
+		$plan = $this->reconciliationService->reconcile(
 			$changes,
 		);
 
 		$this->syncService->sync(
-			$file->getId(),
-			$requesterUserId,
-			$productCode,
-			$executionPlan,
+			fileId: $file->getId(),
+			requesterUserId: $requesterUserId,
+			productCode: $productCode,
+			plan: $plan,
+		);
+
+		return $this->contextBuilder
+			->buildPersistedSponsoredSigners(
+				$persistedSignRequests,
+			);
+	}
+
+	public function releaseSigner(int $signRequestId): void
+	{
+		$this->syncService->releaseSigner(
+			$signRequestId,
 		);
 	}
 
-	/**
-	 * Builds the sponsorship workflow context from the incoming FE payload.
-	 *
-	 * Each incoming signer is converted into an IncomingSignerDTO and
-	 * associated with its persisted SignRequest.
-	 *
-	 * @param array $incomingSigners
-	 * @param SignRequestEntity[] $persistedSignRequests
-	 *
-	 * @return IncomingSignerDTO[]
-	 */
-	private function buildIncomingSigners(
-		array $incomingSigners,
-		array $persistedSignRequests,
-	): array {
-		$lookup = $this->buildSignRequestLookup(
-			$persistedSignRequests,
-		);
-
-		$dtos = [];
-
-		foreach ($incomingSigners as $signer) {
-			foreach ($signer['identifyMethods'] as $identifyMethod) {
-				$dto = new IncomingSignerDTO(
-					identifierKey: $identifyMethod['method'],
-					identifierValue: $identifyMethod['value'],
-					displayName: $signer['displayName'] ?? '',
-					requestedSponsorshipType: SponsorshipType::tryFrom(
-						$signer['sponsorshipType']
-					) ?? SponsorshipType::SELF,
-				);
-
-				$this->associatePersistedSignRequest(
-					$dto,
-					$lookup,
-				);
-
-				$dtos[] = $dto;
-			}
-		}
-
-		return $dtos;
-	}
-
-	/**
-	 * Builds a lookup table for persisted SignRequests keyed by signer identity.
-	 *
-	 * @param SignRequestEntity[] $persistedSignRequests
-	 *
-	 * @return array<string, SignRequestEntity>
-	 */
-	private function buildSignRequestLookup(
-		array $persistedSignRequests,
-	): array {
-		$lookup = [];
-
-		foreach ($persistedSignRequests as $signRequest) {
-			$identifyMethods =
-				$this->identifyMethodService
-					->getIdentifyMethodsFromSignRequestId(
-						$signRequest->getId(),
-					);
-
-			foreach ($identifyMethods as $methods) {
-				foreach ($methods as $method) {
-					$entity = $method->getEntity();
-
-					$key = $this->buildIdentityKey(
-						$entity->getIdentifierKey(),
-						$entity->getIdentifierValue(),
-					);
-
-					$lookup[$key] = $signRequest;
-				}
-			}
-		}
-
-		return $lookup;
-	}
-
-	/**
-	 * Resolves and associates the persisted SignRequest
-	 * for the supplied incoming signer.
-	 *
-	 * @param array<string, SignRequestEntity> $lookup
-	 *
-	 * @throws \LogicException
-	 *   If no persisted SignRequest matches the incoming signer.
-	 */
-	private function associatePersistedSignRequest(
-		IncomingSignerDTO $signer,
-		array $lookup,
-	): void {
-		$key = $this->buildIdentityKey(
-			$signer->getIdentifierKey(),
-			$signer->getIdentifierValue(),
-		);
-
-		if (!isset($lookup[$key])) {
-			throw new \LogicException(sprintf(
-				'Unable to associate persisted SignRequest for signer "%s".',
-				$signer->getDisplayName(),
-			));
-		}
-
-		$signer->setSignRequestId(
-			$lookup[$key]->getId(),
-		);
-	}
-
-	private function buildIdentityKey(
-		string $identifierKey,
-		string $identifierValue,
-	): string {
-		return sprintf(
-			'%s:%s',
-			$identifierKey,
-			$identifierValue,
+	public function releaseWorkflow(int $fileId): void
+	{
+		$this->syncService->releaseWorkflow(
+			$fileId
 		);
 	}
 }

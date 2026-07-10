@@ -30,6 +30,9 @@ use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SequentialSigningService;
 use OCA\Libresign\Service\SignerElementsService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipContextBuilderService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipValidationService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
@@ -74,6 +77,9 @@ class ValidateHelper {
 		private IUserManager $userManager,
 		private IRootFolder $root,
 		private DocMdpValidator $docMdpValidator,
+		private SponsorshipWorkflowService $sponsorshipWorkflowService,
+		private SponsorshipValidationService $sponsorshipValidationService,
+		private SponsorshipContextBuilderService $sponsorshipContextBuilderService,
 	) {
 	}
 
@@ -581,6 +587,8 @@ class ValidateHelper {
 		foreach ($data['signers'] as $signer) {
 			$this->validateSignerData($signer);
 		}
+
+		$this->validateSponsorshipCoverage($data);
 	}
 
 	private function validateSignersDataStructure(array $data): void {
@@ -611,6 +619,54 @@ class ValidateHelper {
 		foreach ($normalizedMethods as $method) {
 			$this->validateIdentifyMethodForRequest($method['name'], $method['value']);
 		}
+	}
+
+	/**
+	 * Validates requester sponsorship coverage before persisting
+	 * signer changes.
+	 *
+	 * This validation performs no persistence.
+	 *
+	 * @throws LibresignException
+	 */
+	private function validateSponsorshipCoverage(
+		array $data,
+		string $productCode = 'SIGN_DOCUMENT' // temporary until products are configurable
+	): void {
+		/**
+		 * Sponsorship validation only applies when we know
+		 * who the requester is.
+		 */
+		if (
+			empty($data['userManager'])
+			|| !$data['userManager'] instanceof IUser
+		) {
+			return;
+		}
+
+		$persisted = [];
+
+		if (!empty($data['uuid'])) {
+			$persisted = $this->signRequestMapper->getByFileUuid(
+				$data['uuid'],
+			);
+		}
+
+		$incomingSigners = $this->sponsorshipContextBuilderService->buildIncomingSigners(
+			$data['signers']
+		);
+
+		$incomingSigners = $this->sponsorshipContextBuilderService->associateToSignRequests(
+			signers: $incomingSigners,
+			persistedSignRequests: $persisted
+		);
+
+		$this->sponsorshipValidationService->validate(
+			requesterUserId: $data['userManager']->getUID(),
+			productCode: $productCode,
+			incomingSigners: $incomingSigners,
+			persistedSignRequests: $persisted
+		);
 	}
 
 	/**

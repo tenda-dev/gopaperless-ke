@@ -122,6 +122,15 @@ class SignerSponsorshipService
 			);
 	}
 
+	public function getIndexedBySignRequestIds(
+		array $signRequestIds,
+	): array {
+		return $this->signerSponsorshipMapper
+			->findIndexedBySignRequestIds(
+				$signRequestIds,
+			);
+	}
+
 	public function deleteBySignRequestId(
 		int $signRequestId,
 	): void {
@@ -133,6 +142,21 @@ class SignerSponsorshipService
 			'[SignerSponsorshipService] sponsorship deleted',
 			[
 				'signRequestId' => $signRequestId,
+			]
+		);
+	}
+
+	public function deleteByFileId(
+		int $fileId,
+	): void {
+
+		$this->signerSponsorshipMapper
+			->deleteByFileId($fileId);
+
+		$this->logger->info(
+			'[SignerSponsorshipService] sponsorship deleted',
+			[
+				'fileId' => $fileId,
 			]
 		);
 	}

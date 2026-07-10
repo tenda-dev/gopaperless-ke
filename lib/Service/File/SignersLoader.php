@@ -14,7 +14,7 @@ use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Service\IdentifyMethodService;
-use OCA\Libresign\Service\Sponsorship\SignerSponsorshipEnricher;
+use OCA\Libresign\Service\Sponsorship\SponsorshipContextBuilderService;
 use OCA\Libresign\Service\SubjectAlternativeNameService;
 use OCP\Accounts\IAccountManager;
 use OCP\IUser;
@@ -33,7 +33,7 @@ class SignersLoader {
 		private SubjectAlternativeNameService $subjectAlternativeNameService,
 		private IAccountManager $accountManager,
 		private IUserManager $userManager,
-		private SignerSponsorshipEnricher $signerSponsorshipEnricher,
+		private SponsorshipContextBuilderService $sponsorshipContextBuilderService,
 	) {
 	}
 
@@ -46,16 +46,21 @@ class SignersLoader {
 		if ($this->signersLibreSignLoaded || !$file) {
 			return;
 		}
-		$signers = $this->signRequestMapper->getByFileId($file->getId());
-		if (empty($signers)) {
+		$signRequests = $this->signRequestMapper->getByFileId($file->getId());
+
+		$persistedSigners = $this->sponsorshipContextBuilderService
+			->buildPersistedSponsoredSigners($signRequests);
+
+		if (empty($persistedSigners)) {
 			return;
 		}
-		$signRequestIds = array_column(array_map(fn ($s) => ['id' => $s->getId()], $signers), 'id');
+		$signRequestIds = array_column(array_map(fn ($s) => ['id' => $s->getId()], $signRequests), 'id');
 		$identifyMethodsBatch = $this->identifyMethodService
 			->setIsRequest(false)
 			->getIdentifyMethodsFromSignRequestIds($signRequestIds);
 
-		foreach ($signers as $signer) {
+		foreach ($persistedSigners as $persistedSigner) {
+			$signer = $persistedSigner->getSignRequest();
 			$identifyMethods = $identifyMethodsBatch[$signer->getId()] ?? [];
 			if (!empty($fileData->signers)) {
 				$found = array_filter($fileData->signers, function (stdClass $found) use ($identifyMethods) {
@@ -209,19 +214,14 @@ class SignersLoader {
 					}
 				}
 			}
+
+			$fileData->signers[$index]->sponsorship = $persistedSigner->getSponsorship()->toArray();
 		}
 		if ($options->getMe() instanceof IUser) {
 			$this->resolveMeSigner($fileData, $options->getMe());
 		}
 
 		ksort($fileData->signers);
-
-		/**
-		 * Enrich the loaded signer view with optional
-		 * sponsorship-specific properties.
-		 */
-		$fileData->signers = $this->signerSponsorshipEnricher->enrich($fileData->signers);
-
 		$this->signersLibreSignLoaded = true;
 	}
 
