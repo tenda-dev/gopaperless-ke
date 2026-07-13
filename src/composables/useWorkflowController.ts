@@ -64,6 +64,7 @@ import type {
 	LibresignCapabilities,
 	SignatureFlowMode,
 	SignatureFlowValue,
+	Sponsorship,
 } from '../types/index'
 import type { EditableSignerDraft } from '../store/files'
 import { showError, showSuccess, showWarning } from '../services/toast'
@@ -81,6 +82,7 @@ export type IdentifySignerToEdit = {
 	displayName?: string
 	description?: string
 	identifyMethods?: IdentifySignerMethod[]
+	sponsorship?: Sponsorship | null
 }
 
 type SigningOrderDiagramSigner = {
@@ -709,6 +711,7 @@ export function useWorkflowController(
 				method: m.method,
 				value:  m.value ?? '',
 			})),
+			sponsorship: signer?.sponsorship || null
 		}
 
 		const method = getSignerMethod(signer as any)

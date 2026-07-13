@@ -263,8 +263,9 @@ export const useEntitlementStore = defineStore(
 		}
 
 		async function loadSponsorship(
+			productCode: string,
 			signRequestId: number,
-		): Promise<SigningSponsorship> {
+		): Promise<SigningSponsorship | null> {
 			sponsorshipLoading.value[
 				signRequestId
 			] = true
@@ -276,6 +277,7 @@ export const useEntitlementStore = defineStore(
 			try {
 				const sponsorship =
 					await getSigningSponsorship(
+						productCode,
 						signRequestId,
 					)
 
@@ -291,17 +293,11 @@ export const useEntitlementStore = defineStore(
 					err?.message ??
 					'Failed to load signing sponsorship'
 
-				const fallback = {
-					type: 'self',
-					sponsored: false,
-					sponsorUserId: null,
-				} satisfies SigningSponsorship
-
 				sponsorships.value[
 					signRequestId
-				] = fallback
+				] = null
 
-				return fallback
+				return null
 			} finally {
 				sponsorshipLoading.value[
 					signRequestId
@@ -311,9 +307,11 @@ export const useEntitlementStore = defineStore(
 
 
 		async function refreshSponsorship(
+			productCode: string,
 			signRequestId: number,
 		): Promise<void> {
 			await loadSponsorship(
+				productCode,
 				signRequestId,
 			)
 		}

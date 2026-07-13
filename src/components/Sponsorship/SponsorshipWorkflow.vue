@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 
 import CreditPurchaseFlow from '@/components/Payments/CreditPurchaseFlow.vue'
 
@@ -24,7 +24,6 @@ import { useFilesStore } from '@/store/files'
 import { useSponsorshipWorkflowStore } from '@/store/sponsorshipWorkflow'
 
 import type { PaymentPresentation } from '@/payment/types'
-import { showInfo } from '@/services/toast'
 
 const workflowStore = useSponsorshipWorkflowStore()
 const filesStore = useFilesStore()

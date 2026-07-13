@@ -148,7 +148,7 @@ final class SigningCoverageService
 			return new SigningCoverageResolutionDTO(
 				allowed: true,
 				sponsored: false,
-				sponsorUserId: $signerUserId,
+				sponsorUserId: null,
 			);
 		}
 

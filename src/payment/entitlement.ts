@@ -130,12 +130,13 @@ export async function checkEntitlement(
 }
 
 export async function getSigningSponsorship(
+	productCode: string,
 	signRequestId: number,
 ): Promise<SigningSponsorship> {
 
 	const { data } = await axios.get(
 		generateOcsUrl(
-			`${BASE_URL}/sponsorship?signRequestId=${signRequestId}`,
+			`${BASE_URL}/sponsorship?productCode=${encodeURIComponent(productCode)}&signRequestId=${signRequestId}`,
 		),
 		{
 			timeout: 10000,

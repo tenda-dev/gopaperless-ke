@@ -138,7 +138,7 @@ type SignerToEdit = {
 	displayName?: string
 	description?: string
 	identifyMethods?: SignerMethodValue[]
-	sponsorship?: Sponsorship
+	sponsorship?: Sponsorship | null
 }
 
 type FilesStore = ReturnType<typeof useFilesStore>
