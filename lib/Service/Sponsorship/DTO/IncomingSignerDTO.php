@@ -14,8 +14,7 @@ final class IncomingSignerDTO
 		private string $displayName,
 		private SponsorshipType $requestedSponsorshipType,
 		private ?int $signRequestId = null,
-	) {
-	}
+	) {}
 
 	public function getIdentifierKey(): string
 	{
@@ -50,5 +49,22 @@ final class IncomingSignerDTO
 	public function hasPersistedSignRequest(): bool
 	{
 		return $this->signRequestId !== null;
+	}
+
+	public static function fromRequest(
+		array $signer,
+		array $identifyMethod,
+	): self {
+
+		$sponsorship = $signer['sponsorship'] ?? [];
+
+		return new self(
+			identifierKey: $identifyMethod['method'],
+			identifierValue: $identifyMethod['value'],
+			displayName: $signer['displayName'] ?? '',
+			requestedSponsorshipType: SponsorshipType::tryFrom(
+				$sponsorship['type'] ?? SponsorshipType::SELF->value,
+			) ?? SponsorshipType::SELF,
+		);
 	}
 }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Sponsorship;
 
+use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignerSponsorship;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
+use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
@@ -31,6 +33,45 @@ final class SponsorshipContextBuilderService
 		private SignerSponsorshipService $signerSponsorshipService,
 	) {}
 
+	public function buildSignersWithSponsorshipContext(
+		File $file,
+		array $signRequests,
+	): array {
+		return $file->getStatusEnum() === FileStatus::DRAFT
+			? $this->buildDraftSponsoredSigners($signRequests)
+			: $this->buildPersistedSponsoredSigners($signRequests);
+	}
+
+	/**
+	 * Projects persisted draft SignRequests into API response DTOs.
+	 *
+	 * While a file remains in the draft state, sponsorship selections are
+	 * stored directly on the SignRequest. No SignerSponsorship records have
+	 * been created yet, so the SignRequest acts as the temporary source of
+	 * sponsorship truth.
+	 *
+	 * @param SignRequestEntity[] $persistedSignRequests
+	 *
+	 * @return PersistedSignerSponsorshipDTO[]
+	 */
+	public function buildDraftSponsoredSigners(
+		array $persistedSignRequests,
+	): array {
+
+		$dtos = [];
+
+		foreach ($persistedSignRequests as $signRequest) {
+			$dtos[] = new PersistedSignerSponsorshipDTO(
+				signRequest: $signRequest,
+				sponsorship: SponsorshipDTO::fromDraftSignRequest(
+					$signRequest,
+				),
+			);
+		}
+
+		return $dtos;
+	}
+
 	/**
 	 * Projects the incoming FE signer payload into domain DTOs.
 	 *
@@ -52,13 +93,9 @@ final class SponsorshipContextBuilderService
 
 			foreach ($signer['identifyMethods'] as $identifyMethod) {
 
-				$dtos[] = new IncomingSignerDTO(
-					identifierKey: $identifyMethod['method'],
-					identifierValue: $identifyMethod['value'],
-					displayName: $signer['displayName'] ?? '',
-					requestedSponsorshipType: SponsorshipType::tryFrom(
-						$signer['sponsorshipType']
-					) ?? SponsorshipType::SELF,
+				$dtos[] = IncomingSignerDTO::fromRequest(
+					$signer,
+					$identifyMethod,
 				);
 			}
 		}

@@ -11,6 +11,7 @@ namespace OCA\Libresign\Service\SignRequest;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
+use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -39,6 +40,7 @@ class SignRequestService {
 	 * @param int $signingOrder Signing order
 	 * @param int|null $fileStatus File status
 	 * @param int|null $signerStatus Signer status
+	 * @param string|null $sponsorshipType SponsorshipTye
 	 * @return SignRequestEntity
 	 */
 	public function createOrUpdateSignRequest(
@@ -50,6 +52,7 @@ class SignRequestService {
 		int $signingOrder = 0,
 		?int $fileStatus = null,
 		?int $signerStatus = null,
+		?SponsorshipType $sponsorshipType = null
 	): SignRequestEntity {
 		$identifyMethodsInstances = $this->identifyMethodService->getByUserData($identifyMethods);
 		if (empty($identifyMethodsInstances)) {
@@ -62,7 +65,7 @@ class SignRequestService {
 		);
 
 		$displayName = $this->getDisplayNameFromIdentifyMethodIfEmpty($identifyMethodsInstances, $displayName);
-		$this->populateSignRequest($signRequest, $displayName, $signingOrder, $description, $fileId);
+		$this->populateSignRequest($signRequest, $displayName, $signingOrder, $description, $fileId, $sponsorshipType);
 
 		$isNewSignRequest = !$signRequest->getId();
 		$currentStatus = $signRequest->getStatusEnum();
@@ -112,9 +115,14 @@ class SignRequestService {
 		int $signingOrder,
 		string $description,
 		int $fileId,
+		?SponsorshipType $sponsorshipType = null,
 	): void {
 		$signRequest->setFileId($fileId);
 		$signRequest->setSigningOrder($signingOrder);
+
+		if ($sponsorshipType !== null) {
+			$signRequest->setSponsorshipTypeEnum($sponsorshipType);
+		}
 		if (!$signRequest->getUuid()) {
 			$signRequest->setUuid(UUIDUtil::getUUID());
 		}

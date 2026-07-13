@@ -17,6 +17,7 @@ use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Enum\SignatureFlow;
+use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Events\SignRequestCanceledEvent;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Handler\DocMdpHandler;
@@ -495,47 +496,52 @@ class RequestSignatureService {
 		FileEntity $file,
 		string $productCode = 'SIGN_DOCUMENT',
 		): array {
+		if (empty($data['signers'])) {
+			return [];
+        }
+
 		$persistedSignRequests = [];
-		$persistedSignerSponsorships = [];
-		if (!empty($data['signers'])) {
-			$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
-			$this->deleteIdentifyMethodIfNotExits($normalizedSigners, $file);
-			$this->identifyMethod->clearCache();
+		$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
+		$this->deleteIdentifyMethodIfNotExits($normalizedSigners, $file);
+		$this->identifyMethod->clearCache();
 
-			$this->sequentialSigningService->resetOrderCounter();
-			$fileStatus = $data['status'] ?? null;
+		$this->sequentialSigningService->resetOrderCounter();
+		$fileStatus = $data['status'] ?? null;
 
-			foreach ($normalizedSigners as $signer) {
-				$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
-				$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
-				$signerStatus = $signer['status'] ?? null;
-				$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
+		foreach ($normalizedSigners as $signer) {
+			$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
+			$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
+			$signerStatus = $signer['status'] ?? null;
+			$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
 
-				foreach ($signer['identifyMethods'] as $identifyMethod) {
-					$persistedSignRequests[] = $this->signRequestService->createOrUpdateSignRequest(
-						identifyMethods: [
-							$identifyMethod['method'] => $identifyMethod['value'],
-						],
-						displayName: $signer['displayName'] ?? '',
-						description: $signer['description'] ?? '',
-						notify: $shouldNotify,
-						fileId: $file->getId(),
-						signingOrder: $signingOrder,
-						fileStatus: $fileStatus,
-						signerStatus: $signerStatus,
-					);
-				}
+			$sponsorshipType = isset($signer['sponsorship']['type'])
+				? SponsorshipType::tryFrom($signer['sponsorship']['type'])
+				: null;
+
+			foreach ($signer['identifyMethods'] as $identifyMethod) {
+				$persistedSignRequests[] = $this->signRequestService->createOrUpdateSignRequest(
+					identifyMethods: [
+						$identifyMethod['method'] => $identifyMethod['value'],
+					],
+					displayName: $signer['displayName'] ?? '',
+					description: $signer['description'] ?? '',
+					notify: $shouldNotify,
+					fileId: $file->getId(),
+					signingOrder: $signingOrder,
+					fileStatus: $fileStatus,
+					signerStatus: $signerStatus,
+					sponsorshipType: $sponsorshipType
+				);
 			}
-
-			return $this->sponsorshipWorkflowService->persist(
-				file: $file,
-				requesterUserId: $data['userManager']->getUID(),
-				productCode: $productCode,
-				incomingSigners: $data['signers'],
-				persistedSignRequests: $persistedSignRequests,
-			);
 		}
-		return $persistedSignerSponsorships;
+
+		return $this->sponsorshipWorkflowService->persist(
+			file: $file,
+			requesterUserId: $data['userManager']->getUID(),
+			productCode: $productCode,
+			incomingSigners: $normalizedSigners,
+			persistedSignRequests: $persistedSignRequests,
+		);
 	}
 
 

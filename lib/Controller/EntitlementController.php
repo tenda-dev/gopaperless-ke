@@ -11,6 +11,8 @@ namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\Sponsorship\SigningCoverageService;
+use OCA\Libresign\Service\Sponsorship\SigningSettlementService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -31,6 +33,8 @@ class EntitlementController extends AEnvironmentAwareController {
 		EntitlementService $entitlementService,
 		IUserSession $userSession,
 		LoggerInterface $logger,
+		private SigningCoverageService $signingCoverageService,
+		private SigningSettlementService $signingSettlementService,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->entitlementService = $entitlementService;
@@ -45,10 +49,13 @@ class EntitlementController extends AEnvironmentAwareController {
 	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'GET',
-		url: '/api/{apiVersion}/entitlement/check',
+		url: '/api/{apiVersion}/entitlement/sponsorship',
 		requirements: ['apiVersion' => '(v1)']
 	)]
-	public function check(string $productCode): DataResponse {
+	public function sponsorship(
+		string $productCode,
+		int $signRequestId,
+	): DataResponse {
 
 		try {
 			$user = $this->userSession->getUser();
@@ -60,6 +67,59 @@ class EntitlementController extends AEnvironmentAwareController {
 				], Http::STATUS_UNAUTHORIZED);
 			}
 
+			if ($signRequestId <= 0) {
+				throw new \RuntimeException('signRequestId is required');
+			}
+
+			$resolved = $this->signingCoverageService->resolveSigningSponsorship(
+				signRequestId: $signRequestId,
+			);
+
+			return new DataResponse($resolved->toArray(), Http::STATUS_OK);
+
+		} catch (\Throwable $e) {
+
+			$this->logger->error('Entitlement check failed', [
+				'exception' => $e
+			]);
+
+			return new DataResponse([
+				'allowed' => false,
+				'error' => 'Unable to verify entitlement'
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+
+	/**
+	 * Check entitlement for current user
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[ApiRoute(
+		verb: 'GET',
+		url: '/api/{apiVersion}/entitlement/check',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function check(
+		string $productCode,
+		int $signRequestId,
+	): DataResponse {
+
+		try {
+			$user = $this->userSession->getUser();
+
+			if (!$user) {
+				return new DataResponse([
+					'allowed' => false,
+					'error' => 'Unauthorized'
+				], Http::STATUS_UNAUTHORIZED);
+			}
+
+			if ($signRequestId <= 0) {
+				throw new \RuntimeException('signRequestId is required');
+			}
+
 			if ($productCode === '') {
 				return new DataResponse([
 					'allowed' => false,
@@ -67,14 +127,13 @@ class EntitlementController extends AEnvironmentAwareController {
 				], Http::STATUS_BAD_REQUEST);
 			}
 
-			$canUse = $this->entitlementService->canUse(
-				$user->getUID(),
-				$productCode
+			$resolved = $this->signingCoverageService->resolveSigningCoverage(
+				signerUserId: $user->getUID(),
+				signRequestId: $signRequestId,
+				productCode: $productCode
 			);
 
-			return new DataResponse([
-				'allowed' => $canUse
-			], Http::STATUS_OK);
+			return new DataResponse($resolved->toArray(), Http::STATUS_OK);
 
 		} catch (\Throwable $e) {
 
@@ -221,9 +280,7 @@ class EntitlementController extends AEnvironmentAwareController {
 				throw new \RuntimeException('Unauthorized');
 			}
 
-			if ($signUuid === '') {
-				throw new \RuntimeException('signUuid is required');
-			}
+			$userId = $user->getUID();
 
 			if ($productCode === '') {
 				throw new \RuntimeException('productCode is required');
@@ -233,16 +290,15 @@ class EntitlementController extends AEnvironmentAwareController {
 				throw new \RuntimeException('signRequestId is required');
 			}
 
-			$consumed = $this->entitlementService->consumeAfterSign(
-				userId: $userId,
-				signUuid: $signUuid,
+			$entitlement = $this->signingSettlementService->settle(
+				signRequestId: $signRequestId,
+				signerUserId: $userId,
 				productCode: $productCode,
-				signRequestId: $signRequestId
 			);
 
 			return new DataResponse([
 				'success' => true,
-				'consumed' => $consumed
+				'remainingUses' => $entitlement?->getRemainingUses() ?? 0,
 			]);
 
 		} catch (\RuntimeException $e) {

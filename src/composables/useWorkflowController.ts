@@ -823,6 +823,13 @@ export function useWorkflowController(
 			const response = await filesStore.saveOrUpdateSignatureRequest({ status: 1 })
 
 			if ((response as any)?.success === false) {
+				if ((response as any)?.handled) {
+					// Control has been handed over to another workflow
+					// (e.g. purchase signing credits).
+					showConfirmRequest.value = false
+					return
+				}
+
 				showRequestError(
 					(response as any).error ?? new Error((response as any).message),
 					t('libresign', 'Failed to request signatures'),

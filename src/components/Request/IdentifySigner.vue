@@ -31,6 +31,11 @@
 			:helper-text="nameHelperText"
 			@update:modelValue="onNameChange" />
 
+		<NcCheckboxRadioSwitch :model-value="requesterSponsored" type="switch"
+			@update:model-value="onToggleSponsoredSigner">
+			{{ t('libresign', 'Pay for this signer') }}
+		</NcCheckboxRadioSwitch>
+
 		<div v-if="signerSelected && showCustomMessage && !disabled" class="description-wrapper">
 			<NcCheckboxRadioSwitch v-model="enableCustomMessage"
 				type="switch"
@@ -63,7 +68,7 @@
 </template>
 <script setup lang="ts">
 import { t } from '@nextcloud/l10n'
-import { computed, onBeforeMount, ref } from 'vue'
+import { computed, onBeforeMount, ref, type ComputedRef } from 'vue'
 
 import svgAccount from '@mdi/svg/svg/account.svg?raw'
 import svgEmail from '@mdi/svg/svg/email.svg?raw'
@@ -85,7 +90,10 @@ import svgTelegram from '../../../img/logo-telegram-app.svg?raw'
 import { SIGN_REQUEST_STATUS } from '../../constants.js'
 import { useFilesStore } from '../../store/files.js'
 import { getSignRequestStatusText } from '../../utils/getSignRequestStatusText.ts'
-import type { IdentifyAccountRecord } from '../../types'
+import type {
+	IdentifyAccountRecord,
+	Sponsorship
+} from '../../types'
 import { showError } from '../../services/toast'
 
 const iconMap = {
@@ -130,6 +138,7 @@ type SignerToEdit = {
 	displayName?: string
 	description?: string
 	identifyMethods?: SignerMethodValue[]
+	sponsorship?: Sponsorship
 }
 
 type FilesStore = ReturnType<typeof useFilesStore>
@@ -158,6 +167,7 @@ const nameHelperText = ref('')
 const nameHaveError = ref(false)
 const displayName = ref('')
 const description = ref('')
+const requesterSponsored = ref(false)
 const enableCustomMessage = ref(false)
 const identify = ref('')
 const identifyMethod = ref<IdentifyAccountRecord['method'] | undefined>()
@@ -183,6 +193,39 @@ const showCustomMessage = computed(() => {
 	return !!identifyMethod.value
 })
 
+const sponsorship = computed(() => ({
+	type: requesterSponsored.value
+		? 'requester'
+		: 'self',
+} satisfies Sponsorship))
+
+function onToggleSponsoredSigner(
+	enabled: boolean,
+) {
+	requesterSponsored.value = enabled
+}
+
+function buildSigner(): StoredSigner {
+	return {
+		displayName: displayName.value,
+		description: description.value.trim() || undefined,
+
+		sponsorship: sponsorship.value,
+
+		...(identifyMethod.value === 'email'
+			? { email: identify.value }
+			: {}),
+
+		identifyMethods: [
+			{
+				method: identifyMethod.value!,
+				mandatory: 0,
+				value: identify.value,
+			},
+		],
+	}
+}
+
 function resetNameValidation() {
 	nameHelperText.value = ''
 	nameHaveError.value = false
@@ -191,6 +234,7 @@ function resetNameValidation() {
 function resetSelectedSignerState() {
 	displayName.value = ''
 	description.value = ''
+	requesterSponsored.value = false
 	enableCustomMessage.value = false
 	identify.value = ''
 	identifyMethod.value = undefined
@@ -240,18 +284,12 @@ async function saveSigner() {
 	const file = filesStore.getFile()
 	const signers: StoredSigner[] = Array.isArray(file?.signers) ? [...file.signers] : []
 	signers.push({
-		displayName: displayName.value,
-		description: description.value.trim() || undefined,
-		...(identifyMethod.value === 'email' ? { email: identify.value } : {}),
+		...buildSigner(),
+
 		status: SIGN_REQUEST_STATUS.DRAFT,
-		statusText: getSignRequestStatusText(SIGN_REQUEST_STATUS.DRAFT),
-		identifyMethods: [
-			{
-					method: identifyMethod.value,
-				mandatory: 0,
-					value: identify.value,
-			},
-		],
+		statusText: getSignRequestStatusText(
+			SIGN_REQUEST_STATUS.DRAFT,
+		),
 	})
 
 	try {
@@ -302,6 +340,7 @@ onBeforeMount(() => {
 		const method = props.signerToEdit.identifyMethods[0]
 		identifyMethod.value = method.method as IdentifyAccountRecord['method']
 	}
+	requesterSponsored.value = props.signerToEdit?.sponsorship?.type === 'requester'
 })
 
 defineExpose({

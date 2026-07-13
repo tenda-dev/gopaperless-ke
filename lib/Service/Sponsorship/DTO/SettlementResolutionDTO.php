@@ -9,14 +9,14 @@ final class SettlementResolutionDTO
 {
 	public function __construct(
 		public readonly bool $sponsored,
-		public readonly string $payerUserId,
+		public readonly string $sponsorUserId,
 	) {}
 
 	public function toArray(): array
 	{
 		return [
 			'sponsored' => $this->sponsored,
-			'payerUserId' => $this->payerUserId,
+			'sponsorUserId' => $this->sponsorUserId,
 		];
 	}
 }

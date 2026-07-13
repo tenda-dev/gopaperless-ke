@@ -5,8 +5,19 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service\Sponsorship\DTO;
 
 use OCA\Libresign\Db\SignerSponsorship;
+use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Enum\SponsorshipType;
 
+/**
+ * Represents sponsorship state within the sponsorship workflow.
+ *
+ * This DTO is used while creating, editing and persisting sponsorship
+ * relationships for signers. It models the sponsorship configuration of a
+ * workflow rather than the state of an active signing.
+ *
+ * For the signing experience (badges, payer information, etc.), use
+ * SigningSponsorshipDTO instead.
+ */
 final class SponsorshipDTO
 {
 	public function __construct(
@@ -25,13 +36,23 @@ final class SponsorshipDTO
 	}
 
 	public static function requesterSponsored(
-		string $sponsorUserId,
+		?string $sponsorUserId = null,
 	): self {
 		return new self(
 			type: SponsorshipType::REQUESTER,
 			sponsored: true,
 			sponsorUserId: $sponsorUserId,
 		);
+	}
+
+	public static function fromDraftSignRequest(
+		SignRequestEntity $signRequest,
+	): self {
+
+		return match ($signRequest->getSponsorshipTypeEnum()) {
+			SponsorshipType::SELF => self::selfSponsored(),
+			SponsorshipType::REQUESTER => self::requesterSponsored(),
+		};
 	}
 
 	public static function fromEntity(
@@ -41,11 +62,12 @@ final class SponsorshipDTO
 			return self::selfSponsored();
 		}
 
-		return new self(
-			type: $entity->getSponsorshipTypeEnum(),
-			sponsored: $entity->getSponsorshipTypeEnum() !== SponsorshipType::SELF,
-			sponsorUserId: $entity->getSponsorUserId(),
-		);
+		return match ($entity->getSponsorshipTypeEnum()) {
+			SponsorshipType::SELF => self::selfSponsored(),
+			SponsorshipType::REQUESTER => self::requesterSponsored(
+				$entity->getSponsorUserId(),
+			),
+		};
 	}
 
 	public function getType(): SponsorshipType

@@ -7,7 +7,9 @@ namespace OCA\Libresign\Service\Sponsorship;
 use OCA\Libresign\Db\SignerSponsorship;
 use OCA\Libresign\Db\SignerSponsorshipMapper;
 use OCA\Libresign\Enum\SponsorshipType;
+use OCA\Libresign\Service\Sponsorship\DTO\SettlementResolutionDTO;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 /**
  * Records sponsorship relationships between
@@ -175,5 +177,33 @@ class SignerSponsorshipService
 
 		return $sponsorship->getSponsorshipTypeEnum()
 			=== SponsorshipType::REQUESTER;
+	}
+
+	/**
+	 * Resolve who pays for this signing.
+	 *
+	 * Sponsored signings are resolved through persisted
+	 * sponsorship records.
+	 *
+	 * Otherwise the signer pays.
+	 */
+	public function findSignRequestSponsorship(
+		int $signRequestId,
+	): ?SignerSponsorship {
+		$sponsorship = $this->getBySignRequestId($signRequestId);
+
+		if ($sponsorship === null) {
+			return null;
+		}
+
+		if ($sponsorship->getSponsorUserId() === null) {
+			return null;
+		}
+
+		if ($sponsorship->getSponsorshipTypeEnum() !== SponsorshipType::REQUESTER) {
+			return null;
+		}
+
+		return $sponsorship;
 	}
 }

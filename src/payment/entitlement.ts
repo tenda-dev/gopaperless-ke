@@ -1,3 +1,4 @@
+import type { SponsorshipType } from '@/types'
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 
@@ -18,8 +19,25 @@ export interface ConsumeEntitlementPayload {
 	productCode: string
 }
 
+export interface SigningCoverage {
+	allowed: boolean
+	sponsored: boolean
+	sponsorUserId: string | null
+}
+
+export interface SigningSponsorship {
+	type: SponsorshipType
+	sponsored: boolean
+	sponsorUserId: string | null
+}
+
 export interface EntitlementAuthorisation {
 	allowed: boolean
+}
+
+interface ConsumeEntitlementResponse {
+	success: boolean
+	remainingUses: number
 }
 
 /**
@@ -35,7 +53,7 @@ export interface EntitlementAuthorisation {
 
 export async function consumeEntitlement(
 	payload: ConsumeEntitlementPayload,
-): Promise<boolean> {
+): Promise<ConsumeEntitlementResponse> {
 
 	try {
 
@@ -56,10 +74,10 @@ export async function consumeEntitlement(
 				result?.message,
 			)
 
-			return false
+			return result
 		}
 
-		return true
+		return result
 
 	} catch (err) {
 
@@ -68,7 +86,7 @@ export async function consumeEntitlement(
 			err,
 		)
 
-		return false
+		return { success: false, remainingUses: 0 }
 	}
 }
 
@@ -90,18 +108,45 @@ export async function getCurrentEntitlement(
 
 export async function checkEntitlement(
 	productCode: string,
-): Promise<EntitlementAuthorisation> {
+	signRequestId: number,
+): Promise<SigningCoverage> {
 
 	const { data } = await axios.get(
 		generateOcsUrl(
-			`${BASE_URL}/check?productCode=${productCode}`,
+			`${BASE_URL}/check?productCode=${encodeURIComponent(productCode)}&signRequestId=${signRequestId}`,
 		),
 		{
 			timeout: 10000,
 		},
 	)
 
-	return data?.ocs?.data ?? {
-		allowed: false,
-	}
+	return (
+		data?.ocs?.data ?? {
+			allowed: false,
+			sponsored: false,
+			sponsorUserId: null,
+		}
+	)
+}
+
+export async function getSigningSponsorship(
+	signRequestId: number,
+): Promise<SigningSponsorship> {
+
+	const { data } = await axios.get(
+		generateOcsUrl(
+			`${BASE_URL}/sponsorship?signRequestId=${signRequestId}`,
+		),
+		{
+			timeout: 10000,
+		},
+	)
+
+	return (
+		data?.ocs?.data ?? {
+			type: 'self',
+			sponsored: false,
+			sponsorUserId: null,
+		}
+	)
 }

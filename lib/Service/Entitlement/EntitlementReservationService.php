@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Entitlement;
 
+use OCA\Libresign\Db\Entitlement;
 use OCA\Libresign\Db\EntitlementMapper;
 use OCA\Libresign\Db\EntitlementReservation;
 use OCA\Libresign\Db\EntitlementReservationMapper;
@@ -188,27 +189,13 @@ class EntitlementReservationService
 			);
 		}
 
-		$currentReserved =
-			$entitlement->getReservedUses() ?? 0;
-
-		$newReserved = max(
-			0,
-			$currentReserved - $reservation->getQuantity(),
-		);
-
-		$entitlement->setReservedUses(
-			$newReserved,
+		$this->applyReservationRelease(
+			$reservation,
+			$entitlement,
 		);
 
 		$this->entitlementMapper->update(
 			$entitlement,
-		);
-
-		$reservation->setReleasedAt(
-			(new \DateTimeImmutable(
-				'now',
-				new \DateTimeZone('UTC'),
-			))->format(DATE_ATOM),
 		);
 
 		$this->reservationMapper->update(
@@ -256,5 +243,44 @@ class EntitlementReservationService
 		}
 
 		return $total;
+	}
+
+	/**
+	 * Applies the effects of releasing a reservation.
+	 *
+	 * This method mutates the supplied entities but performs no
+	 * persistence. Transaction ownership belongs to the caller.
+	 *
+	 * Used by:
+	 * - releaseForSignRequest()
+	 * - SigningSettlementService
+	 */
+	public function applyReservationRelease(
+		EntitlementReservation $reservation,
+		Entitlement $entitlement,
+	): void {
+
+		if ($reservation->getReleasedAt() !== null) {
+			return;
+		}
+
+		$currentReserved =
+			$entitlement->getReservedUses() ?? 0;
+
+		$newReserved = max(
+			0,
+			$currentReserved - $reservation->getQuantity(),
+		);
+
+		$entitlement->setReservedUses(
+			$newReserved,
+		);
+
+		$reservation->setReleasedAt(
+			(new \DateTimeImmutable(
+				'now',
+				new \DateTimeZone('UTC'),
+			))->format(DATE_ATOM),
+		);
 	}
 }

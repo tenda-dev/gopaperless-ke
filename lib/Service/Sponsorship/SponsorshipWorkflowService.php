@@ -6,6 +6,7 @@ namespace OCA\Libresign\Service\Sponsorship;
 
 use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
+use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
 /**
  * Coordinates the sponsorship persistence workflow.
@@ -52,6 +53,14 @@ final class SponsorshipWorkflowService
 		array $persistedSignRequests,
 	): array {
 
+		// No sponsorship synchronisation is performed for draft files.
+		if ($file->getStatusEnum() === FileStatus::DRAFT) {
+			return $this->contextBuilder
+				->buildDraftSponsoredSigners(
+					$persistedSignRequests,
+				);
+		}
+
 		$incomingSignerDtos = $this->contextBuilder
 			->buildIncomingSigners($incomingSigners);
 
@@ -62,6 +71,7 @@ final class SponsorshipWorkflowService
 			);
 
 		$changes = $this->changeDetectionService->detect(
+			$file,
 			$incomingSignerDtos,
 			$persistedSignRequests,
 		);

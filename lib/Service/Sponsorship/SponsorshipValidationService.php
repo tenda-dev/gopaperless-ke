@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Sponsorship;
 
+use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
+use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
 use OCP\AppFramework\Http;
+use Psr\Log\LoggerInterface;
 
 /**
  * Validates whether a sponsorship update may proceed.
@@ -24,6 +27,7 @@ final class SponsorshipValidationService
 	public function __construct(
 		private SponsorshipChangeDetectionService $changeDetectionService,
 		private SponsorshipCoverageValidatorService $coverageValidatorService,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -40,6 +44,7 @@ final class SponsorshipValidationService
 		string $productCode,
 		array $incomingSigners,
 		array $persistedSignRequests,
+		File $file,
 	): void {
 
 		if (empty($requesterUserId)) {
@@ -50,9 +55,24 @@ final class SponsorshipValidationService
 		}
 
 		$changes = $this->changeDetectionService->detect(
+			$file,
 			$incomingSigners,
 			$persistedSignRequests,
 		);
+
+		$this->logger->warning('[SPONSORSHIP RECONCILIATION] Changes', [
+			'count' => count($changes),
+		]);
+
+
+		foreach ($changes as $change) {
+			$this->logger->warning('[SPONSORSHIP RECONCILIATION] Change', [
+				'id' => $change->signer()->getSignRequestId(),
+				'previous' => $change->previousSponsorshipType()?->value,
+				'requested' => $change->requestedSponsorshipType()->value,
+				'new' => $change->isNewSigner(),
+			]);
+		}
 
 		$result = $this->coverageValidatorService->validate(
 			$productCode,

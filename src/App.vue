@@ -18,6 +18,7 @@
 		</NcAppContent>
 		<RightSidebar />
 	</NcContent>
+	<SponsorshipWorkflow />
 	<Toaster richColors position="top-right" />
 </template>
 
@@ -35,6 +36,7 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 
 import LeftSidebar from './components/LeftSidebar/LeftSidebar.vue'
 import RightSidebar from './components/RightSidebar/RightSidebar.vue'
+import SponsorshipWorkflow from './components/Sponsorship/SponsorshipWorkflow.vue'
 import DefaultPageError from './views/DefaultPageError.vue'
 
 import { initialActionCode, ACTION_CODES } from './helpers/ActionMapping'

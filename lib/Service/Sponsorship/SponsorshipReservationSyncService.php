@@ -12,7 +12,7 @@ use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
- * Executes the sponsorship synchronization plan.
+ * Executes the sponsorship synchronisation plan.
  *
  * Responsibilities:
  * - Own the transaction boundary.

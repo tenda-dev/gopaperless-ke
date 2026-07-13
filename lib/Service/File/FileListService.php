@@ -119,7 +119,8 @@ class FileListService {
 		$signRequests = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
 
 		$persistedSigners = $this->sponsorshipContextBuilderService
-			->buildPersistedSponsoredSigners(
+			->buildSignersWithSponsorshipContext(
+				$file,
 				$signRequests,
 			);
 
@@ -133,7 +134,8 @@ class FileListService {
 		$signRequests = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
 
 		$persistedSigners = $this->sponsorshipContextBuilderService
-			->buildPersistedSponsoredSigners(
+			->buildSignersWithSponsorshipContext(
+				$file,
 				$signRequests,
 			);
 
@@ -194,7 +196,7 @@ class FileListService {
 				}
 			}
 
-			$persistedSigners = $this->sponsorshipContextBuilderService->buildPersistedSponsoredSigners($signers);
+			$persistedSigners = $this->sponsorshipContextBuilderService->buildSignersWithSponsorshipContext($childFile, $signers);
 
 			$formatted[] = $this->formatSingleFileData(
 				$childFile,
@@ -225,24 +227,32 @@ class FileListService {
 	): array {
 		$formattedFiles = [];
 
-		$persistedSigners = $this->sponsorshipContextBuilderService
-			->buildPersistedSponsoredSigners(
+		foreach ($files as $file) {
+			$fileSignRequests = array_filter(
 				$signRequests,
+				static fn(SignRequest $signRequest): bool =>
+				$signRequest->getFileId() === $file->getId(),
 			);
 
-			foreach ($files as $file) {
-				$fileSigners = array_filter(
-					$persistedSigners,
-					static fn(
-						PersistedSignerSponsorshipDTO $signer,
-					): bool =>
-					$signer
-						->getSignRequest()
-						->getFileId() === $file->getId(),
+			$persistedSigners =
+				$this->sponsorshipContextBuilderService
+				->buildSignersWithSponsorshipContext(
+					$file,
+					$fileSignRequests,
 				);
 
-				$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user, null);
-			}
+			$fileSigners = array_filter(
+				$persistedSigners,
+				static fn(
+					PersistedSignerSponsorshipDTO $signer,
+				): bool =>
+				$signer
+					->getSignRequest()
+					->getFileId() === $file->getId(),
+			);
+
+			$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user, null);
+		}
 		return $formattedFiles;
 	}
 
@@ -764,7 +774,8 @@ class FileListService {
 		$signRequestEntities = $this->signRequestMapper->getByFileId($mainEntity->getId());
 
 		$persistedSigners = $this->sponsorshipContextBuilderService
-			->buildPersistedSponsoredSigners(
+			->buildSignersWithSponsorshipContext(
+				$mainEntity,
 				$signRequestEntities,
 			);
 
@@ -1021,16 +1032,28 @@ class FileListService {
 	): array {
 		$fileIds = array_map(fn (File $file) => $file->getId(), $files);
 		$allSignRequests = $allSignRequests ?? ($fileIds ? $this->signRequestMapper->getByMultipleFileId($fileIds) : []);
-		$persistedSigners = $this->sponsorshipContextBuilderService->buildPersistedSponsoredSigners($allSignRequests);
 		$identifyMethods = $identifyMethods ?? $this->signRequestMapper->getIdentifyMethodsFromSigners($allSignRequests);
 
-		$signersByFileId = [];
-		foreach ($persistedSigners as $signer) {
-			$signersByFileId[$signer->getSignRequest()->getFileId()][] = $signer;
+		/**
+		 * Index sign requests by file once to avoid repeatedly
+		 * scanning the full collection while formatting child files.
+		 */
+		$signRequestsByFileId = [];
+
+		foreach ($allSignRequests as $signRequest) {
+			$signRequestsByFileId[$signRequest->getFileId()][] = $signRequest;
 		}
 
-		return array_values(array_map(function (File $file) use ($signersByFileId, $identifyMethods) {
-			$signers = $signersByFileId[$file->getId()] ?? [];
+		return array_values(array_map(function (File $file) use ($signRequestsByFileId, $identifyMethods) {
+
+			$fileSignRequests = $signRequestsByFileId[$file->getId()] ?? [];
+
+			$signers =
+				$this->sponsorshipContextBuilderService
+				->buildSignersWithSponsorshipContext(
+					$file,
+					$fileSignRequests,
+				);
 			$metadata = $file->getMetadata() ?? [];
 			$size = $this->getFileSize($file);
 			$signersFormatted = array_map(function (PersistedSignerSponsorshipDTO $persistedSigner) use ($identifyMethods) {

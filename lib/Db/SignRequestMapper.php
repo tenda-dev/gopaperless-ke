@@ -792,6 +792,33 @@ class SignRequestMapper extends CachedQBMapper {
 		return $this->findEntity($qb);
 	}
 
+	/**
+	 * Returns the sign request with a FOR UPDATE lock or null if it does not exist.
+	 *
+	 * @throws MultipleObjectsReturnedException
+	 * @throws Exception
+	 */
+	public function findByIdForUpdate(int $id): ?SignRequest
+	{
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('*')
+			->from($this->getTableName())
+			->where(
+				$qb->expr()->eq('id', $qb->createNamedParameter($id))
+			)
+			->setMaxResults(1);
+
+		$qb->forUpdate();
+
+		try {
+			/** @var SignRequest */
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException) {
+			return null;
+		}
+	}
+
 	private function getFilesAssociatedFilesWithMeStmt(
 		string $userId,
 		?array $filter = [],

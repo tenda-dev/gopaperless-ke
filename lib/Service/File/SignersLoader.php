@@ -48,8 +48,11 @@ class SignersLoader {
 		}
 		$signRequests = $this->signRequestMapper->getByFileId($file->getId());
 
-		$persistedSigners = $this->sponsorshipContextBuilderService
-			->buildPersistedSponsoredSigners($signRequests);
+		$persistedSigners = [];
+		if ($file !== null) {
+			$persistedSigners = $this->sponsorshipContextBuilderService
+				->buildSignersWithSponsorshipContext($file, $signRequests);
+		}
 
 		if (empty($persistedSigners)) {
 			return;

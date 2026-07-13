@@ -29,6 +29,7 @@
 	<CreditQuantitySelector
 		v-else-if="step === 'quantity'"
 		:pricing="pricing"
+		:min-quantity="minQuantity"
 		@selected="handleQuantitySelected"
 	/>
 
@@ -77,6 +78,7 @@ const props = defineProps<{
 
 	quantity?: number
 	allowQuantitySelection: boolean
+	minQuantity?: number
 
 	presentation: PaymentPresentation
 }>()
