@@ -26,7 +26,7 @@
 				isOrderedNumeric,
 		}">
 			<div class="workflow-sign-order-label">
-				{{ t('libresign', 'Sign in order') }}
+				{{ t('libresign', 'Set the signing order') }}
 			</div>
 
 			<NcCheckboxRadioSwitch :model-value="isOrderedNumeric" type="switch"
