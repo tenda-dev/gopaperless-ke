@@ -57,9 +57,14 @@
 				<NcButton @click="filesStore.disableIdentifySigner()">
 					{{ t('libresign', 'Cancel') }}
 				</NcButton>
-				<NcButton variant="primary"
-					:disabled="!signerSelected"
+				<NcButton
+					variant="primary"
+					:disabled="!signerSelected || loading"
 					@click="saveSigner">
+					<template #icon>
+						<NcLoadingIcon v-if="loading" :size="20" />
+					</template>
+
 					{{ saveButtonText }}
 				</NcButton>
 			</div>
@@ -79,6 +84,7 @@ import svgXmpp from '@mdi/svg/svg/xmpp.svg?raw'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
@@ -163,11 +169,12 @@ const props = withDefaults(defineProps<{
 
 const filesStore = useFilesStore()
 
+const loading = ref(false)
 const nameHelperText = ref('')
 const nameHaveError = ref(false)
 const displayName = ref('')
 const description = ref('')
-const requesterSponsored = ref(false)
+const requesterSponsored = ref(true)
 const enableCustomMessage = ref(false)
 const identify = ref('')
 const identifyMethod = ref<IdentifyAccountRecord['method'] | undefined>()
@@ -234,7 +241,7 @@ function resetNameValidation() {
 function resetSelectedSignerState() {
 	displayName.value = ''
 	description.value = ''
-	requesterSponsored.value = false
+	requesterSponsored.value = true
 	enableCustomMessage.value = false
 	identify.value = ''
 	identifyMethod.value = undefined
@@ -278,9 +285,13 @@ function getSignerToEditIdentify(signerToEdit: SignerToEdit | undefined): string
 }
 
 async function saveSigner() {
+	if (loading.value) {
+		return
+	}
 	if (!identifyMethod.value || !identify.value) {
 		return
 	}
+	loading.value = true
 	const file = filesStore.getFile()
 	const signers: StoredSigner[] = Array.isArray(file?.signers) ? [...file.signers] : []
 	signers.push({
@@ -301,6 +312,8 @@ async function saveSigner() {
 	} catch {
 		showError(t('libresign', 'Failed to save or update signature request'))
 		return
+	} finally {
+		loading.value = false
 	}
 
 	resetSelectedSignerState()
@@ -340,7 +353,9 @@ onBeforeMount(() => {
 		const method = props.signerToEdit.identifyMethods[0]
 		identifyMethod.value = method.method as IdentifyAccountRecord['method']
 	}
-	requesterSponsored.value = props.signerToEdit?.sponsorship?.type === 'requester'
+	requesterSponsored.value = isNewSigner.value
+		? true
+		: props.signerToEdit?.sponsorship?.type === 'requester'
 })
 
 defineExpose({

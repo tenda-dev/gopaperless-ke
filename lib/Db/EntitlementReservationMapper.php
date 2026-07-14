@@ -111,6 +111,52 @@ class EntitlementReservationMapper extends QBMapper
 	}
 
 	/**
+	 * Finds the active reservation for a sign request and acquires
+	 * an exclusive row lock.
+	 *
+	 * This method is intended for transactional mutation paths
+	 * (settlement, release, etc.) where the reservation state is
+	 * subsequently validated and mutated.
+	 *
+	 * Transaction ownership belongs to the caller.
+	 *
+	 * @throws Exception
+	 */
+	public function findActiveBySignRequestIdForUpdate(
+		int $signRequestId,
+	): ?EntitlementReservation {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('r.*')
+			->from($this->getTableName(), 'r')
+			->where(
+				$qb->expr()->eq(
+					'r.sign_request_id',
+					$qb->createNamedParameter(
+						$signRequestId,
+						Types::INTEGER,
+					),
+				),
+			)
+			->andWhere(
+				$qb->expr()->isNull(
+					'r.released_at',
+				),
+			)
+			->setMaxResults(1)
+			->forUpdate();
+
+		try {
+			return $this->findEntity($qb);
+		} catch (
+			DoesNotExistException |
+			MultipleObjectsReturnedException) {
+			return null;
+		}
+	}
+
+	/**
 	 * @return EntitlementReservation[]
 	 * @throws Exception
 	 */
@@ -137,6 +183,11 @@ class EntitlementReservationMapper extends QBMapper
 	}
 
 	/**
+	 *
+	 * Reservations are ordered by entitlement id so callers that
+	 * acquire FOR UPDATE locks do so in a deterministic order,
+	 * preventing deadlocks when multiple workflows release
+	 * reservations concurrently.
 	 * @return EntitlementReservation[]
 	 * @throws Exception
 	 */
@@ -162,7 +213,8 @@ class EntitlementReservationMapper extends QBMapper
 					'r.released_at'
 				)
 			)
-			->orderBy('r.created_at', 'ASC');
+			->orderBy('r.entitlement_id', 'ASC')
+			->addOrderBy('r.created_at', 'ASC');
 
 		return $this->findEntities($qb);
 	}

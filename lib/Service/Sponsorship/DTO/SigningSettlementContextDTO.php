@@ -16,11 +16,14 @@ final class SigningSettlementContextDTO
 		public readonly string $signerUserId,
 		public readonly ?SignRequest $signRequest = null,
 		public readonly ?Product $product = null,
+		/**
+		 * Null for self-sponsored signings.
+		 * Populated for requester-sponsored signings.
+		 */
 		public readonly ?SignerSponsorship $sponsorship = null,
 		public readonly ?Entitlement $entitlement = null,
 		public readonly ?EntitlementReservation $reservation = null,
-	) {
-	}
+	) {}
 
 	public function withSignRequest(SignRequest $signRequest): self
 	{
@@ -47,7 +50,7 @@ final class SigningSettlementContextDTO
 	}
 
 	public function withSponsorship(
-		SignerSponsorship $sponsorship,
+		?SignerSponsorship $sponsorship,
 	): self {
 		return new self(
 			signerUserId: $this->signerUserId,
@@ -60,7 +63,7 @@ final class SigningSettlementContextDTO
 	}
 
 	public function withEntitlement(
-		Entitlement $entitlement,
+		?Entitlement $entitlement,
 	): self {
 		return new self(
 			signerUserId: $this->signerUserId,

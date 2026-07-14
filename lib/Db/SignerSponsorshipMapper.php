@@ -184,15 +184,15 @@ class SignerSponsorshipMapper extends QBMapper
 
 		$qb = $this->db->getQueryBuilder();
 
-		$qb->delete($this->getTableName(), 's')
+		$qb->delete($this->getTableName())
 			->where(
 				$qb->expr()->eq(
-					's.sign_request_id',
+					'sign_request_id',
 					$qb->createNamedParameter(
 						$signRequestId,
-						Types::INTEGER
-					)
-				)
+						Types::INTEGER,
+					),
+				),
 			);
 
 		$qb->executeStatement();
@@ -206,10 +206,10 @@ class SignerSponsorshipMapper extends QBMapper
 
 		$qb = $this->db->getQueryBuilder();
 
-		$qb->delete($this->getTableName(), 's')
+		$qb->delete($this->getTableName())
 			->where(
 				$qb->expr()->eq(
-					's.file_id',
+					'file_id',
 					$qb->createNamedParameter(
 						$fileId,
 						Types::INTEGER,
@@ -217,6 +217,6 @@ class SignerSponsorshipMapper extends QBMapper
 				),
 			);
 
-		$qb->executeStatement();
+			$qb->executeStatement();
 	}
 }

@@ -8,6 +8,8 @@ use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
+use Psr\Log\LoggerInterface;
+
 /**
  * Coordinates the sponsorship persistence workflow.
  *
@@ -28,6 +30,7 @@ final class SponsorshipWorkflowService
 		private SponsorshipReconciliationService $reconciliationService,
 		private SponsorshipReservationSyncService $syncService,
 		private SponsorshipContextBuilderService $contextBuilder,
+		private LoggerInterface $logger,
 	) {}
 
 	/**
@@ -102,8 +105,21 @@ final class SponsorshipWorkflowService
 
 	public function releaseWorkflow(int $fileId): void
 	{
+		$this->logger->info(
+			'[SPONSORSHIP RELEASE] Starting workflow release.',
+			[
+				'fileId' => $fileId,
+			],
+		);
 		$this->syncService->releaseWorkflow(
 			$fileId
+		);
+
+		$this->logger->info(
+			'[SPONSORSHIP RELEASE] Entitlement reservations released.',
+			[
+				'fileId' => $fileId,
+			],
 		);
 	}
 }

@@ -8,7 +8,7 @@
 				{{ t('libresign', 'Signers') }}
 			</div>
 
-			<NcButton v-if="canAddSigner" variant="tertiary" size="small" class="workflow-add-signer-button"
+			<NcButton v-if="canAddSigner" variant="primary" size="small" class="workflow-add-signer-button"
 				@click="$emit('add-signer')">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiPlus" :size="18" />

@@ -697,25 +697,165 @@ class RequestSignatureService {
 		}
 	}
 
-	public function deleteRequestSignature(array $data): void {
+	public function deleteRequestSignature(array $data): void
+	{
+		/**
+		 * Resolve the workflow context before performing any mutations.
+		 *
+		 * If context resolution fails we cannot safely continue because
+		 * we no longer know which workflow should be deleted or which
+		 * sponsorship reservations belong to it.
+		 */
+		$context = $this->prepareDeleteContext($data);
+
+		$fileData = $context['file'];
+		$signatures = $context['signRequests'];
+
+		$this->logger->info(
+			'[WORKFLOW DELETE] Starting workflow deletion.',
+			[
+				'fileId' => $fileData->getId(),
+				'signRequestCount' => count($signatures),
+			],
+		);
+
+		try {
+			foreach ($signatures as $signRequest) {
+				$this->identifyMethod->deleteBySignRequestId(
+					$signRequest->getId(),
+				);
+
+				$this->signRequestMapper->delete(
+					$signRequest,
+				);
+			}
+
+			$this->fileMapper->delete(
+				$fileData,
+			);
+
+			$this->fileElementService->deleteVisibleElements(
+				$fileData->getId(),
+			);
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'[WORKFLOW DELETE] Failed to delete workflow.',
+				[
+					'fileId' => $fileData->getId(),
+					'exception' => $e,
+				],
+			);
+
+			throw $e;
+		} finally {
+			/**
+			 * Sponsorship reservations are released independently of
+			 * teardown outcome, keyed by fileId (not by the File entity),
+			 * so release works even after a partial teardown.
+			 *
+			 * SAFETY: releasing during a partial teardown cannot cause a
+			 * double-spend. SigningCoverageService fail-closes — it will
+			 * not authorise a signing against a released reservation and
+			 * falls back to the signer's own credits or the paywall.
+			 * SigningSettlementValidationService independently rejects an
+			 * already-released reservation. Both gates must hold for this
+			 * to remain safe; see SigningCoverageService::resolveSigningCoverage.
+			 *
+			 * IDEMPOTENT: releaseWorkflow filters already-released
+			 * reservations and re-guards on releasedAt, so repeated
+			 * attempts (e.g. delete retries) release at most once.
+			 *
+			 * KNOWN LIMITATION: if teardown succeeds but this release
+			 * throws, the failure is logged and swallowed and the
+			 * reservation is not returned until a subsequent retry or
+			 * reconciliation. This is a deliberate trade to avoid coupling
+			 * credit release to LibreSign teardown reliability. Pending EntitlementLedger
+			 */
+			try {
+				$this->logger->info(
+					'[WORKFLOW DELETE] Releasing sponsorship reservations.',
+					[
+						'fileId' => $fileData->getId(),
+					],
+				);
+				$this->sponsorshipWorkflowService->releaseWorkflow(
+					$fileData->getId(),
+				);
+
+				$this->logger->info(
+					'[WORKFLOW DELETE] Sponsorship reservations released.',
+					[
+						'fileId' => $fileData->getId(),
+					],
+				);
+			} catch (\Throwable $e) {
+				$this->logger->error(
+					'[WORKFLOW DELETE] Failed to release sponsorship reservations.',
+					[
+						'fileId' => $fileData->getId(),
+						'exception' => $e,
+					],
+				);
+			}
+		}
+	}
+
+
+	/**
+	 * Resolves the workflow context required to delete a signing workflow.
+	 *
+	 * Responsibilities:
+	 * - Resolve the persisted file.
+	 * - Resolve all SignRequests belonging to the workflow.
+	 * - Validate the incoming delete payload.
+	 *
+	 * This method performs no mutations.
+	 * It exists solely to prepare the context required by the deletion
+	 * and sponsorship cleanup phases.
+	 *
+	 * @param array{
+	 *     uuid?: string,
+	 *     file?: array{
+	 *         fileId: int,
+	 *     },
+	 * } $data
+	 *
+	 * @return array{
+	 *     file: FileEntity,
+	 *     signRequests: SignRequestEntity[],
+	 * }
+	 *
+	 * @throws \Exception
+	 */
+	private function prepareDeleteContext(array $data): array
+	{
 		if (!empty($data['uuid'])) {
-			$signatures = $this->signRequestMapper->getByFileUuid($data['uuid']);
-			$fileData = $this->fileMapper->getByUuid($data['uuid']);
+			$file = $this->fileMapper->getByUuid(
+				$data['uuid'],
+			);
+
+			$signRequests = $this->signRequestMapper->getByFileUuid(
+				$data['uuid'],
+			);
 		} elseif (!empty($data['file']['fileId'])) {
-			$fileData = $this->fileMapper->getById($data['file']['fileId']);
-			$signatures = $this->signRequestMapper->getByFileId($fileData->getId());
+			$file = $this->fileMapper->getById(
+				$data['file']['fileId'],
+			);
+
+			$signRequests = $this->signRequestMapper->getByFileId(
+				$file->getId(),
+			);
 		} else {
-			throw new \Exception($this->l10n->t('Please provide either UUID or File object'));
+			throw new \Exception(
+				$this->l10n->t(
+					'Please provide either UUID or File object',
+				),
+			);
 		}
 
-		$this->sponsorshipWorkflowService->releaseWorkflow(
-			$fileData->getId()
-		);
-		foreach ($signatures as $signRequest) {
-			$this->identifyMethod->deleteBySignRequestId($signRequest->getId());
-			$this->signRequestMapper->delete($signRequest);
-		}
-		$this->fileMapper->delete($fileData);
-		$this->fileElementService->deleteVisibleElements($fileData->getId());
+		return [
+			'file' => $file,
+			'signRequests' => $signRequests,
+		];
 	}
 }

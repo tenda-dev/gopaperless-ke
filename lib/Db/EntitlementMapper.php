@@ -49,6 +49,44 @@ class EntitlementMapper extends QBMapper
 	}
 
 	/**
+	 * Find entitlement by ID and acquire a row lock.
+	 *
+	 * Acquires a pessimistic lock for transactional mutation paths such as
+	 * reservation, release and settlement. Read-only callers should continue
+	 * using findById() to avoid unnecessary lock contention.
+	 *
+	 * The caller is responsible for owning the transaction.
+	 *
+	 * @throws Exception
+	 */
+	public function findByIdForUpdate(int $id): ?Entitlement
+	{
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('e.*')
+			->from($this->getTableName(), 'e')
+			->where(
+				$qb->expr()->eq(
+					'e.id',
+					$qb->createNamedParameter(
+						$id,
+						Types::INTEGER,
+					),
+				),
+			)
+			->setMaxResults(1)
+			->forUpdate();
+
+		try {
+			/** @var Entitlement $entity */
+			$entity = $this->findEntity($qb);
+			return $entity;
+		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+			return null;
+		}
+	}
+
+	/**
 	 * Fetch all entitlements for a user + product
 	 *
 	 * Used by service to determine usable entitlements

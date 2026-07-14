@@ -1,146 +1,145 @@
 <template>
-	<div class="sign-credits-banner">
+	<template v-if="isInitialising">
+		<div class="skeleton">
+			<div class="skeleton__header">
+				<div class="skeleton__label" />
+				<div class="skeleton__count" />
+			</div>
 
-		<!-- Header row: label + live credit pill -->
-		<div class="banner-header">
-			<span class="banner-header__label">Signing credits</span>
+			<div class="banner-rule" />
 
-			<span
-				class="banner-header__count"
-				:class="{ 'banner-header__count--empty': !hasCredits }"
-			>
-				{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}
-			</span>
+			<div class="skeleton__hero">
+				<div class="skeleton__icon" />
+				<div class="skeleton__title" />
+				<div class="skeleton__line skeleton__line--long" />
+				<div class="skeleton__line skeleton__line--short" />
+			</div>
 		</div>
+	</template>
+	<template v-else>
+		<div class="sign-credits-banner">
 
-		<div class="banner-rule" />
+			<!-- Header row: label + live credit pill -->
+			<div class="banner-header">
+				<span class="banner-header__label">Signing credits</span>
 
-		<!-- State: sponsored (Focus hero) -->
-		<Transition name="fade-slide">
-			<div v-if="isSponsored" class="hero">
-				<div class="hero__halo">
-					<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="20" />
-				</div>
-
-				<div class="hero__title">
-					Ready to sign
-				</div>
-
-				<div class="hero__desc">
-					Signing this document has already been paid for on your behalf
-				</div>
-
-				<div class="hero__sponsor">
-					<span class="hero__label">
-						Paid for by:
-					</span>
-
-					<span class="hero__email">
-						{{ sponsorUserId }}
-					</span>
-				</div>
-
-				<div class="hero__reassurance">
-					<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="14" />
-					<span>Your credits will not be used</span>
-				</div>
+				<span class="banner-header__count" :class="{ 'banner-header__count--empty': !hasCredits }">
+					{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}
+				</span>
 			</div>
-		</Transition>
 
-		<!-- State: has credits (Focus hero) -->
-		<Transition name="fade-slide">
-			<div v-if="hasCredits && !isSponsored" class="hero">
-				<div class="hero__halo">
-					<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="24" />
+
+			<div class="banner-rule" />
+
+			<!-- State: sponsored (Focus hero) -->
+			<Transition name="fade-slide">
+				<div v-if="isSponsored" class="hero">
+					<div class="hero__halo">
+						<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="20" />
+					</div>
+
+					<div class="hero__title">
+						Ready to sign
+					</div>
+
+					<div class="hero__desc">
+						Signing this document has already been paid for on your behalf
+					</div>
+
+					<div class="hero__sponsor">
+						<span class="hero__label">
+							Paid for by:
+						</span>
+
+						<span class="hero__email">
+							{{ sponsorUserId }}
+						</span>
+					</div>
+
+					<div class="hero__reassurance">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="14" />
+						<span>Your credits will not be used</span>
+					</div>
 				</div>
+			</Transition>
 
-				<div class="hero__title">
-					Ready when you are
+			<!-- State: has credits (Focus hero) -->
+			<Transition name="fade-slide">
+				<div v-if="hasCredits && !isSponsored" class="hero">
+					<div class="hero__halo">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="24" />
+					</div>
+
+					<div class="hero__title">
+						Ready when you are
+					</div>
+
+					<div class="hero__desc">
+						Signing this document will use 1 credit.
+					</div>
 				</div>
+			</Transition>
 
-				<div class="hero__desc">
-					Signing this document will use 1 credit.
-				</div>
-			</div>
-		</Transition>
+			<!-- State: no credits — payment chooser -->
+			<Transition name="fade-slide">
+				<div v-if="!hasCredits && !isSponsored" class="chooser">
+					<p class="chooser__prompt">
+						{{ oneTimeSigningEnabled
+							? "Choose how you'd like to conitinue signing"
+							: "You need signing credits to sign this document" }}
+					</p>
 
-		<!-- State: no credits — payment chooser -->
-		<Transition name="fade-slide">
-			<div v-if="!hasCredits && !isSponsored" class="chooser">
-				<p class="chooser__prompt">
-					{{ oneTimeSigningEnabled
-						? "Choose how you'd like to conitinue signing"
-						: "You need signing credits to sign this document" }}
-				</p>
+					<div class="chooser__options">
+						<!-- One-time (admin-toggleable) -->
+						<label v-if="oneTimeSigningEnabled" class="option"
+							:class="{ 'option--selected': selectedFlow === PaymentFlowType.ONE_TIME }">
+							<input v-model="selectedFlow" class="option__input" type="radio"
+								:value="PaymentFlowType.ONE_TIME">
 
-				<div class="chooser__options">
-					<!-- One-time (admin-toggleable) -->
-					<label
-						v-if="oneTimeSigningEnabled"
-						class="option"
-						:class="{ 'option--selected': selectedFlow === PaymentFlowType.ONE_TIME }"
-					>
-						<input
-							v-model="selectedFlow"
-							class="option__input"
-							type="radio"
-							:value="PaymentFlowType.ONE_TIME"
-						>
-
-						<div class="option__main">
-							<div class="option__title">
-								<span>Buy just what you need</span>
+							<div class="option__main">
+								<div class="option__title">
+									<span>Buy just what you need</span>
+								</div>
+								<div class="option__desc">
+									Enough credits to sign this document.
+								</div>
 							</div>
-							<div class="option__desc">
-								Enough credits to sign this document.
+
+							<span class="option__dot"
+								:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.ONE_TIME }" />
+						</label>
+
+						<!-- Credit pack — preferred -->
+						<label class="option"
+							:class="{ 'option--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }">
+							<input v-model="selectedFlow" class="option__input" type="radio"
+								:value="PaymentFlowType.CREDIT_PACK">
+
+							<div class="option__main">
+								<div class="option__title">
+									<span>Buy signing credits</span>
+									<span v-if="oneTimeSigningEnabled" class="option__tag">
+										· recommended
+									</span>
+								</div>
+								<div class="option__desc">
+									Buy extra credits for future document signings.
+								</div>
 							</div>
-						</div>
 
-						<span
-							class="option__dot"
-							:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.ONE_TIME }"
-						/>
-					</label>
+							<span class="option__dot"
+								:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }" />
+						</label>
+					</div>
 
-					<!-- Credit pack — preferred -->
-					<label
-						class="option"
-						:class="{ 'option--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }"
-					>
-						<input
-							v-model="selectedFlow"
-							class="option__input"
-							type="radio"
-							:value="PaymentFlowType.CREDIT_PACK"
-						>
-
-						<div class="option__main">
-							<div class="option__title">
-								<span>Buy signing credits</span>
-								<span v-if="oneTimeSigningEnabled" class="option__tag">
-									· recommended
-								</span>
-							</div>
-							<div class="option__desc">
-								Buy extra credits for future document signings.
-							</div>
-						</div>
-
-						<span
-							class="option__dot"
-							:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }"
-						/>
-					</label>
+					<div class="chooser__foot">
+						<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="14" />
+						<span>After payment, signing will continue automatically.</span>
+					</div>
 				</div>
-
-				<div class="chooser__foot">
-					<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="14" />
-					<span>After payment, signing will continue automatically.</span>
-				</div>
-			</div>
-		</Transition>
-
-	</div>
+			</Transition>
+		</div>
+	</template>
 </template>
 
 <script setup lang="ts">
@@ -194,12 +193,25 @@ const sponsorUserId = computed(
 	() => sponsorship.value?.sponsorUserId,
 )
 
+const isLoading = entitlementStore.isLoading(
+	DEFAULT_PRODUCT_CODE,
+)
+
+const isSponsorshipLoading =
+	entitlementStore.sponsorshipLoadingState(
+		signerContext.signRequestId,
+	)
+
+const isInitialising = computed(() =>
+	isLoading.value || isSponsorshipLoading.value,
+)
+
 onMounted(async () => {
 	// If one-time signing is disabled, force the credit-pack flow so the hidden
 	// option can never remain selected.
 	if (!oneTimeSigningEnabled &&
 		paymentContext.flowType === PaymentFlowType.ONE_TIME) {
-			paymentContext.setFlowType(PaymentFlowType.CREDIT_PACK)
+		paymentContext.setFlowType(PaymentFlowType.CREDIT_PACK)
 	}
 	await Promise.all([
 		entitlementStore.initialise(
@@ -214,10 +226,10 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-$accent:       #1D9E75;
+$accent: #1D9E75;
 $accent-light: #E1F5EE;
-$accent-mid:   #0F6E56;
-$accent-dark:  #085041;
+$accent-mid: #0F6E56;
+$accent-dark: #085041;
 
 $ease-out: cubic-bezier(.4, 0, .2, 1);
 
@@ -282,7 +294,9 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 		color: $accent-mid;
 		box-shadow: 0 0 0 6px rgba($accent, .06);
 
-		:deep(svg) { display: block }
+		:deep(svg) {
+			display: block
+		}
 	}
 
 	&__title {
@@ -303,18 +317,18 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 		}
 	}
 
-		&__label {
-			font-size: 11px;
-			color: var(--color-text-maxcontrast);
-		}
+	&__label {
+		font-size: 11px;
+		color: var(--color-text-maxcontrast);
+	}
 
-		&__email {
-			margin-top: 2px;
-			font-size: 13px;
-			font-weight: 600;
-			color: $accent-dark;
-			word-break: break-word;
-		}
+	&__email {
+		margin-top: 2px;
+		font-size: 13px;
+		font-weight: 600;
+		color: $accent-dark;
+		word-break: break-word;
+	}
 
 	&__reassurance {
 		display: inline-flex;
@@ -435,6 +449,85 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 			border-color: $accent;
 			border-width: 5px;
 		}
+	}
+}
+
+.skeleton {
+	display: flex;
+	flex-direction: column;
+
+	&__header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	&__label,
+	&__count,
+	&__icon,
+	&__title,
+	&__line {
+		background: var(--color-background-hover);
+		animation: skeleton-pulse 1.4s ease-in-out infinite;
+	}
+
+	&__label {
+		width: 110px;
+		height: 10px;
+		border-radius: 999px;
+	}
+
+	&__count {
+		width: 60px;
+		height: 12px;
+		border-radius: 999px;
+	}
+
+	&__hero {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-top: 18px;
+		gap: 10px;
+	}
+
+	&__icon {
+		width: 42px;
+		height: 42px;
+		border-radius: 16px;
+	}
+
+	&__title {
+		width: 140px;
+		height: 16px;
+		border-radius: 999px;
+	}
+
+	&__line {
+		height: 12px;
+		border-radius: 999px;
+
+		&--long {
+			width: 220px;
+		}
+
+		&--short {
+			width: 160px;
+		}
+	}
+}
+
+@keyframes skeleton-pulse {
+	0% {
+		opacity: .45;
+	}
+
+	50% {
+		opacity: .9;
+	}
+
+	100% {
+		opacity: .45;
 	}
 }
 

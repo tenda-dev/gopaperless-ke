@@ -82,7 +82,7 @@ class SigningSettlementValidationService
 		$signRequestId = $signRequest->getId();
 
 		$reservation = $this->reservationMapper
-			->findActiveBySignRequestId($signRequestId);
+			->findActiveBySignRequestIdForUpdate($signRequestId);
 
 		if ($reservation === null) {
 			$this->fail(
@@ -93,6 +93,11 @@ class SigningSettlementValidationService
 			);
 		}
 
+		// Reservation is locked FOR UPDATE via findActiveBySignRequestIdForUpdate,
+		// then the entitlement. Same reservation-then-entitlement order as
+		// releaseForSignRequest, so settle and release cannot deadlock and a
+		// concurrently-released reservation surfaces as null above. The
+		// releasedAt check below is defensive; under lock it should not fire.
 		if ($reservation->getReleasedAt() !== null) {
 			$this->fail(
 				'Signing settlement validation failed: reservation already released.',
@@ -104,7 +109,7 @@ class SigningSettlementValidationService
 		}
 
 		$entitlement = $this->entitlementMapper
-			->findById($reservation->getEntitlementId());
+			->findByIdForUpdate($reservation->getEntitlementId());
 
 		if ($entitlement === null) {
 			$this->fail(

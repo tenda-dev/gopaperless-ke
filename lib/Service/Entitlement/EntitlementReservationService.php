@@ -9,6 +9,7 @@ use OCA\Libresign\Db\EntitlementMapper;
 use OCA\Libresign\Db\EntitlementReservation;
 use OCA\Libresign\Db\EntitlementReservationMapper;
 use OCP\DB\Exception;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 
@@ -29,6 +30,7 @@ class EntitlementReservationService
 	public function __construct(
 		private EntitlementMapper $entitlementMapper,
 		private EntitlementReservationMapper $reservationMapper,
+		private LoggerInterface $logger,
 	) {}
 
 	/**
@@ -145,11 +147,21 @@ class EntitlementReservationService
 	/**
 	 * Release reserved entitlement capacity.
 	 *
-	 * Used when:
-	 * - workflow cancelled
-	 * - signer removed before signing
-	 * - sponsorship revoked
-	 * - signing completed (consumption occurs separately)
+	 * Used when: workflow cancelled, signer removed before signing,
+	 * sponsorship revoked, or signing completed (consumption is separate).
+	 *
+	 * LOCKING: acquires FOR UPDATE on the reservation, then the
+	 * entitlement ALWAYS in that order. Every path that locks both
+	 * rows MUST use the same reservation-then-entitlement order or
+	 * risk deadlock. The reservation lock is taken via
+	 * findActiveBySignRequestIdForUpdate so the released_at decision
+	 * is made under lock; a concurrently-released reservation returns
+	 * null here and this method naturally short-circuits.
+	 *
+	 * TRANSACTION: does NOT open a transaction. All FOR UPDATE locks
+	 * are inert unless the CALLER has a transaction open. Caller owns
+	 * the transaction so reservation release and sponsorship deletion
+	 * commit atomically.
 	 *
 	 * IMPORTANT:
 	 * This method does not manage database transactions.
@@ -163,7 +175,7 @@ class EntitlementReservationService
 	): void {
 
 		$reservation = $this->reservationMapper
-			->findActiveBySignRequestId(
+			->findActiveBySignRequestIdForUpdate(
 				$signRequestId,
 			);
 
@@ -178,8 +190,16 @@ class EntitlementReservationService
 			return;
 		}
 
+		/**
+		 * Acquire an exclusive lock before mutating the entitlement.
+		 *
+		 * This prevents concurrent settlement and release operations
+		 * from updating the same entitlement simultaneously.
+		 *
+		 * Transaction ownership belongs to the caller.
+		 */
 		$entitlement = $this->entitlementMapper
-			->findById(
+			->findByIdForUpdate(
 				$reservation->getEntitlementId(),
 			);
 
@@ -203,6 +223,22 @@ class EntitlementReservationService
 		);
 	}
 
+	/**
+	 * Release all active reservations for a workflow.
+	 *
+	 * DEADLOCK ORDERING: reservations are iterated in entitlement_id
+	 * order (guaranteed by findActiveByFileId's ORDER BY), so entitlement
+	 * locks are acquired in a deterministic order across concurrent
+	 * workflow releases. Locks accumulate and are held until the caller's
+	 * transaction commits — do not assume they release per iteration.
+	 * Any other multi-entitlement locker must acquire in the same
+	 * entitlement_id order.
+	 *
+	 * TRANSACTION: caller must have an open transaction; this loops
+	 * releaseForSignRequest, which relies on it for FOR UPDATE.
+	 *
+	 * @throws Exception
+	 */
 	public function releaseForWorkflow(
 		int $fileId,
 	): void {
@@ -212,7 +248,24 @@ class EntitlementReservationService
 				$fileId
 			);
 
+		$this->logger->info(
+			'[ENTITLEMENT RELEASE] Active reservations resolved.',
+			[
+				'fileId' => $fileId,
+				'reservationCount' => count($reservations),
+			],
+		);
+
 		foreach ($reservations as $reservation) {
+			$this->logger->info(
+				'[ENTITLEMENT RELEASE] Releasing reservation.',
+				[
+					'reservationId' => $reservation->getId(),
+					'signRequestId' => $reservation->getSignRequestId(),
+					'entitlementId' => $reservation->getEntitlementId(),
+					'quantity' => $reservation->getQuantity(),
+				],
+			);
 			$this->releaseForSignRequest(
 				$reservation->getSignRequestId()
 			);

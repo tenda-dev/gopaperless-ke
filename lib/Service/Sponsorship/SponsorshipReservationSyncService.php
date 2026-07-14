@@ -100,8 +100,29 @@ final class SponsorshipReservationSyncService
 			$this->reservationService
 				->releaseForWorkflow($fileId);
 
+			$this->logger->info(
+				'[SPONSORSHIP RELEASE] Entitlement reservations released.',
+				[
+					'fileId' => $fileId,
+				],
+			);
+
 			$this->sponsorshipService
 				->deleteByFileId($fileId);
+
+			$this->logger->info(
+				'[SPONSORSHIP RELEASE] Sponsorship records deleted.',
+				[
+					'fileId' => $fileId,
+				],
+			);
+
+			$this->logger->info(
+				'[SPONSORSHIP RELEASE] Workflow release completed.',
+				[
+					'fileId' => $fileId,
+				],
+			);
 
 			$this->db->commit();
 		} catch (\Throwable $e) {
