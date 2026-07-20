@@ -4,7 +4,7 @@
  */
 
 // Force the main app to render light regardless of Nextcloud/system dark mode.
-@use 'light-theme' as *;
+@use 'light-theme.scss' as *;
 
 // 1. Baseline — always light.
 body,

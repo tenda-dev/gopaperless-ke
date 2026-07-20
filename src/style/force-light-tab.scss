@@ -6,7 +6,7 @@
 // Force-light for the Files sidebar tab. Runs inside the host Files app, so we
 // scope the variables to the tab element (not <body>) to avoid re-theming the
 // whole host. A property on the element wins over the host's dark ancestors.
-@use 'light-theme' as *;
+@use 'light-theme.scss' as *;
 
 libresign-files-sidebar-tab {
 	@include force-light-vars;
