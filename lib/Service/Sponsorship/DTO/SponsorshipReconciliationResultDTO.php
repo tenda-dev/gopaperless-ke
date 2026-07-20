@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Sponsorship\DTO;
 
-final class SponsorshipReconciliationResultDTO
-{
+final class SponsorshipReconciliationResultDTO {
 	/**
 	 * @param IncomingSignerDTO[] $queuedReservations
 	 * @param IncomingSignerDTO[] $queuedReleases
@@ -25,8 +24,7 @@ final class SponsorshipReconciliationResultDTO
 	 *
 	 * @return IncomingSignerDTO[]
 	 */
-	public function getQueuedReservations(): array
-	{
+	public function getQueuedReservations(): array {
 		return $this->queuedReservations;
 	}
 
@@ -38,13 +36,11 @@ final class SponsorshipReconciliationResultDTO
 	 *
 	 * @return IncomingSignerDTO[]
 	 */
-	public function getQueuedReleases(): array
-	{
+	public function getQueuedReleases(): array {
 		return $this->queuedReleases;
 	}
 
-	public function hasChanges(): bool
-	{
+	public function hasChanges(): bool {
 		return $this->hasChanges;
 	}
 
@@ -66,8 +62,7 @@ final class SponsorshipReconciliationResultDTO
 	 * Number of requester sponsorships
 	 * that must be reserved.
 	 */
-	public function getQueuedReservationCount(): int
-	{
+	public function getQueuedReservationCount(): int {
 		return count($this->queuedReservations);
 	}
 
@@ -75,8 +70,7 @@ final class SponsorshipReconciliationResultDTO
 	 * Number of requester sponsorships
 	 * that must be released.
 	 */
-	public function getQueuedReleaseCount(): int
-	{
+	public function getQueuedReleaseCount(): int {
 		return count($this->queuedReleases);
 	}
 }

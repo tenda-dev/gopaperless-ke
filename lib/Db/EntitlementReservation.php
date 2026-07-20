@@ -39,8 +39,7 @@ use OCP\AppFramework\Db\Entity;
  * @method void setReleasedAt(\DateTimeInterface|string $releasedAt)
  * @method \DateTimeInterface|string getReleasedAt()
  */
-class EntitlementReservation extends Entity
-{
+class EntitlementReservation extends Entity {
 	protected ?int $entitlementId = null;
 
 	protected ?int $fileId = null;
@@ -58,8 +57,7 @@ class EntitlementReservation extends Entity
 	/**
 	 * @throws \Exception
 	 */
-	public function __construct()
-	{
+	public function __construct() {
 		$this->setCreatedAt($this->now());
 
 		// integers
@@ -76,8 +74,7 @@ class EntitlementReservation extends Entity
 		$this->addType('sponsorUserId', 'string');
 	}
 
-	public function validate(): void
-	{
+	public function validate(): void {
 		if ($this->entitlementId === null) {
 			throw new \InvalidArgumentException(
 				'entitlementId is required'
@@ -109,8 +106,7 @@ class EntitlementReservation extends Entity
 		}
 	}
 
-	private function now(): \DateTimeImmutable
-	{
+	private function now(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),

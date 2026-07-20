@@ -637,7 +637,7 @@ class ValidateHelper {
 	private function validateSponsorshipCoverage(
 		File $file,
 		array $data,
-		string $productCode = 'SIGN_DOCUMENT' // temporary until products are configurable
+		string $productCode = 'SIGN_DOCUMENT', // temporary until products are configurable
 	): void {
 		$this->logger->warning('SPONSORSHIP VALIDATION', [
 			'requestedStatus' => $data['status'],
@@ -668,8 +668,8 @@ class ValidateHelper {
 		 * Once signing has begun (PARTIAL_SIGNED onwards) the workflow becomes
 		 * immutable, so sponsorship validation is no longer applicable.
 		 */
-		$shouldValidate =
-			$requestedStatus === FileStatus::ABLE_TO_SIGN
+		$shouldValidate
+			= $requestedStatus === FileStatus::ABLE_TO_SIGN
 			|| $file->getStatusEnum() === FileStatus::ABLE_TO_SIGN;
 
 		if (!$shouldValidate) {
@@ -1086,8 +1086,7 @@ class ValidateHelper {
 		}
 	}
 
-	private function resolveFileForSponsorship(array $data): ?File
-	{
+	private function resolveFileForSponsorship(array $data): ?File {
 		if (!empty($data['uuid'])) {
 			try {
 				return $this->fileMapper->getByUuid($data['uuid']);

@@ -798,8 +798,7 @@ class SignRequestMapper extends CachedQBMapper {
 	 * @throws MultipleObjectsReturnedException
 	 * @throws Exception
 	 */
-	public function findByIdForUpdate(int $id): ?SignRequest
-	{
+	public function findByIdForUpdate(int $id): ?SignRequest {
 		$qb = $this->db->getQueryBuilder();
 
 		$qb->select('*')

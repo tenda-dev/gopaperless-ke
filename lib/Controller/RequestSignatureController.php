@@ -146,16 +146,16 @@ class RequestSignatureController extends AEnvironmentAwareController {
 				json_last_error() === JSON_ERROR_NONE
 				&& is_array($decoded)
 			) {
-				$payload['message'] =
-					$decoded['errors'][0]['message']
+				$payload['message']
+					= $decoded['errors'][0]['message']
 					?? $payload['message'];
 
-				$payload['action'] =
-					$decoded['action']
+				$payload['action']
+					= $decoded['action']
 					?? null;
 
-				$payload['errors'] =
-					$decoded['errors']
+				$payload['errors']
+					= $decoded['errors']
 					?? [];
 			}
 
@@ -276,16 +276,16 @@ class RequestSignatureController extends AEnvironmentAwareController {
 				json_last_error() === JSON_ERROR_NONE
 				&& is_array($decoded)
 			) {
-				$payload['message'] =
-					$decoded['errors'][0]['message']
+				$payload['message']
+					= $decoded['errors'][0]['message']
 					?? $payload['message'];
 
-				$payload['action'] =
-					$decoded['action']
+				$payload['action']
+					= $decoded['action']
 					?? null;
 
-				$payload['errors'] =
-					$decoded['errors']
+				$payload['errors']
+					= $decoded['errors']
 					?? [];
 			}
 
@@ -434,28 +434,28 @@ class RequestSignatureController extends AEnvironmentAwareController {
 
 	/**
 	 * Delete sign request
-		try {
-			$data = [
-				'userManager' => $this->userSession->getUser(),
-				'file' => [
-					'fileId' => $fileId
-				]
-			];
-			$this->validateHelper->validateExistingFile($data);
-			$this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
-			$this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
-		} catch (\Throwable $th) {
-			return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
-		}
-		return new DataResponse(
-			[
-				'message' => $this->l10n->t('Success')
-			],
-			Http::STATUS_OK
-		);
-	}
-
-	/**
+	 * try {
+	 * $data = [
+	 * 'userManager' => $this->userSession->getUser(),
+	 * 'file' => [
+	 * 'fileId' => $fileId
+	 * ]
+	 * ];
+	 * $this->validateHelper->validateExistingFile($data);
+	 * $this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
+	 * $this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
+	 * } catch (\Throwable $th) {
+	 * return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
+	 * }
+	 * return new DataResponse(
+	 * [
+	 * 'message' => $this->l10n->t('Success')
+	 * ],
+	 * Http::STATUS_OK
+	 * );
+	 * }
+	 *
+	 * /**
 	 * Delete sign request
 	 *
 	 * You can only request exclusion as any sign

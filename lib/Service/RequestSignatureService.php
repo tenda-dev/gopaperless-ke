@@ -495,10 +495,10 @@ class RequestSignatureService {
 		array $data,
 		FileEntity $file,
 		string $productCode = 'SIGN_DOCUMENT',
-		): array {
+	): array {
 		if (empty($data['signers'])) {
 			return [];
-        }
+		}
 
 		$persistedSignRequests = [];
 		$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
@@ -697,8 +697,7 @@ class RequestSignatureService {
 		}
 	}
 
-	public function deleteRequestSignature(array $data): void
-	{
+	public function deleteRequestSignature(array $data): void {
 		/**
 		 * Resolve the workflow context before performing any mutations.
 		 *
@@ -827,8 +826,7 @@ class RequestSignatureService {
 	 *
 	 * @throws \Exception
 	 */
-	private function prepareDeleteContext(array $data): array
-	{
+	private function prepareDeleteContext(array $data): array {
 		if (!empty($data['uuid'])) {
 			$file = $this->fileMapper->getByUuid(
 				$data['uuid'],

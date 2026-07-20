@@ -33,8 +33,7 @@ use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipChangeDTO;
  *
  * This service performs no validation or persistence.
  */
-final class SponsorshipChangeDetectionService
-{
+final class SponsorshipChangeDetectionService {
 	public function __construct(
 		private SignerSponsorshipMapper $sponsorshipMapper,
 	) {
@@ -219,8 +218,8 @@ final class SponsorshipChangeDetectionService
 	): array {
 
 		$signRequestIds = array_map(
-			static fn (SignRequestEntity $signRequest): int =>
-				$signRequest->getId(),
+			static fn (SignRequestEntity $signRequest): int
+				=> $signRequest->getId(),
 			$persistedSignRequests,
 		);
 
@@ -230,8 +229,8 @@ final class SponsorshipChangeDetectionService
 		$lookup = [];
 
 		foreach ($sponsorships as $signRequestId => $sponsorship) {
-			$lookup[$signRequestId] =
-				$sponsorship->getSponsorshipTypeEnum();
+			$lookup[$signRequestId]
+				= $sponsorship->getSponsorshipTypeEnum();
 		}
 
 		return $lookup;

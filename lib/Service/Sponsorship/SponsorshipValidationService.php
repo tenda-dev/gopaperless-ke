@@ -6,7 +6,6 @@ namespace OCA\Libresign\Service\Sponsorship;
 
 use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
-use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
 use OCP\AppFramework\Http;
@@ -22,8 +21,7 @@ use Psr\Log\LoggerInterface;
  *
  * This service performs no persistence.
  */
-final class SponsorshipValidationService
-{
+final class SponsorshipValidationService {
 	public function __construct(
 		private SponsorshipChangeDetectionService $changeDetectionService,
 		private SponsorshipCoverageValidatorService $coverageValidatorService,

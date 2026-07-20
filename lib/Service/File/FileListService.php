@@ -230,23 +230,23 @@ class FileListService {
 		foreach ($files as $file) {
 			$fileSignRequests = array_filter(
 				$signRequests,
-				static fn(SignRequest $signRequest): bool =>
-				$signRequest->getFileId() === $file->getId(),
+				static fn (SignRequest $signRequest): bool
+				=> $signRequest->getFileId() === $file->getId(),
 			);
 
-			$persistedSigners =
-				$this->sponsorshipContextBuilderService
-				->buildSignersWithSponsorshipContext(
-					$file,
-					$fileSignRequests,
-				);
+			$persistedSigners
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
 
 			$fileSigners = array_filter(
 				$persistedSigners,
-				static fn(
+				static fn (
 					PersistedSignerSponsorshipDTO $signer,
-				): bool =>
-				$signer
+				): bool
+				=> $signer
 					->getSignRequest()
 					->getFileId() === $file->getId(),
 			);
@@ -302,7 +302,7 @@ class FileListService {
 			$file['files'] = [];
 		} else {
 			$signRequests = array_map(
-				static fn(
+				static fn (
 					PersistedSignerSponsorshipDTO $persistedSigner,
 				): SignRequest => $persistedSigner->getSignRequest(),
 				$persistedSponsorshipSigners,
@@ -1048,12 +1048,12 @@ class FileListService {
 
 			$fileSignRequests = $signRequestsByFileId[$file->getId()] ?? [];
 
-			$signers =
-				$this->sponsorshipContextBuilderService
-				->buildSignersWithSponsorshipContext(
-					$file,
-					$fileSignRequests,
-				);
+			$signers
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
 			$metadata = $file->getMetadata() ?? [];
 			$size = $this->getFileSize($file);
 			$signersFormatted = array_map(function (PersistedSignerSponsorshipDTO $persistedSigner) use ($identifyMethods) {

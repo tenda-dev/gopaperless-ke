@@ -12,11 +12,9 @@ use OCP\DB\Exception;
 use OCP\DB\Types;
 use OCP\IDBConnection;
 
-class EntitlementMapper extends QBMapper
-{
+class EntitlementMapper extends QBMapper {
 
-	public function __construct(IDBConnection $db)
-	{
+	public function __construct(IDBConnection $db) {
 		parent::__construct($db, 'gopaperless_entitlements', Entitlement::class);
 	}
 
@@ -24,8 +22,7 @@ class EntitlementMapper extends QBMapper
 	 * Find entitlement by ID
 	 * @throws Exception
 	 */
-	public function findById(int $id): ?Entitlement
-	{
+	public function findById(int $id): ?Entitlement {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -43,7 +40,7 @@ class EntitlementMapper extends QBMapper
 			/** @var Entitlement $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -59,8 +56,7 @@ class EntitlementMapper extends QBMapper
 	 *
 	 * @throws Exception
 	 */
-	public function findByIdForUpdate(int $id): ?Entitlement
-	{
+	public function findByIdForUpdate(int $id): ?Entitlement {
 		$qb = $this->db->getQueryBuilder();
 
 		$qb->select('e.*')
@@ -81,7 +77,7 @@ class EntitlementMapper extends QBMapper
 			/** @var Entitlement $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -111,8 +107,7 @@ class EntitlementMapper extends QBMapper
 	 * - Helps reduce filtering in PHP
 	 * @throws Exception
 	 */
-	public function findPotentiallyUsable(string $userId, string $productCode): array
-	{
+	public function findPotentiallyUsable(string $userId, string $productCode): array {
 
 		$qb = $this->db->getQueryBuilder();
 

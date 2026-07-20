@@ -8,7 +8,6 @@ use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\SignerSponsorship;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Enum\FileStatus;
-use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Sponsorship\DTO\IncomingSignerDTO;
 use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
@@ -26,12 +25,12 @@ use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipDTO;
  * This service owns context construction only.
  * It performs no validation, reconciliation or persistence.
  */
-final class SponsorshipContextBuilderService
-{
+final class SponsorshipContextBuilderService {
 	public function __construct(
 		private IdentifyMethodService $identifyMethodService,
 		private SignerSponsorshipService $signerSponsorshipService,
-	) {}
+	) {
+	}
 
 	public function buildSignersWithSponsorshipContext(
 		File $file,
@@ -185,11 +184,11 @@ final class SponsorshipContextBuilderService
 
 		foreach ($persistedSignRequests as $signRequest) {
 
-			$identifyMethods =
-				$this->identifyMethodService
-				->getIdentifyMethodsFromSignRequestId(
-					$signRequest->getId(),
-				);
+			$identifyMethods
+				= $this->identifyMethodService
+					->getIdentifyMethodsFromSignRequestId(
+						$signRequest->getId(),
+					);
 
 			foreach ($identifyMethods as $methods) {
 				foreach ($methods as $method) {
@@ -266,7 +265,7 @@ final class SponsorshipContextBuilderService
 	): array {
 
 		$ids = array_map(
-			static fn(SignRequestEntity $sr): int => $sr->getId(),
+			static fn (SignRequestEntity $sr): int => $sr->getId(),
 			$persistedSignRequests,
 		);
 

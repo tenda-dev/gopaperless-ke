@@ -18,16 +18,15 @@ use OCA\Libresign\Enum\SponsorshipType;
  * For the signing experience (badges, payer information, etc.), use
  * SigningSponsorshipDTO instead.
  */
-final class SponsorshipDTO
-{
+final class SponsorshipDTO {
 	public function __construct(
 		private SponsorshipType $type,
 		private bool $sponsored,
 		private ?string $sponsorUserId,
-	) {}
+	) {
+	}
 
-	public static function selfSponsored(): self
-	{
+	public static function selfSponsored(): self {
 		return new self(
 			type: SponsorshipType::SELF,
 			sponsored: false,
@@ -70,23 +69,19 @@ final class SponsorshipDTO
 		};
 	}
 
-	public function getType(): SponsorshipType
-	{
+	public function getType(): SponsorshipType {
 		return $this->type;
 	}
 
-	public function isSponsored(): bool
-	{
+	public function isSponsored(): bool {
 		return $this->sponsored;
 	}
 
-	public function isSelfSponsored(): bool
-	{
+	public function isSelfSponsored(): bool {
 		return $this->type === SponsorshipType::SELF;
 	}
 
-	public function getSponsorUserId(): ?string
-	{
+	public function getSponsorUserId(): ?string {
 		return $this->sponsorUserId;
 	}
 
@@ -117,8 +112,7 @@ final class SponsorshipDTO
 		return $clone;
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'type' => $this->type->value,
 			'sponsored' => $this->sponsored,

@@ -52,7 +52,7 @@ class SignRequestService {
 		int $signingOrder = 0,
 		?int $fileStatus = null,
 		?int $signerStatus = null,
-		?SponsorshipType $sponsorshipType = null
+		?SponsorshipType $sponsorshipType = null,
 	): SignRequestEntity {
 		$identifyMethodsInstances = $this->identifyMethodService->getByUserData($identifyMethods);
 		if (empty($identifyMethodsInstances)) {

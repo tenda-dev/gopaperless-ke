@@ -23,14 +23,14 @@ use Psr\Log\LoggerInterface;
  * This service performs persistence only.
  * It performs no validation, change detection or reconciliation.
  */
-final class SponsorshipReservationSyncService
-{
+final class SponsorshipReservationSyncService {
 	public function __construct(
 		private EntitlementReservationService $reservationService,
 		private SignerSponsorshipService $sponsorshipService,
 		private IDBConnection $db,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	public function sync(
 		int $fileId,
@@ -74,8 +74,7 @@ final class SponsorshipReservationSyncService
 		}
 	}
 
-	public function releaseSigner(int $signRequestId): void
-	{
+	public function releaseSigner(int $signRequestId): void {
 		$this->db->beginTransaction();
 
 		try {
@@ -92,8 +91,7 @@ final class SponsorshipReservationSyncService
 		}
 	}
 
-	public function releaseWorkflow(int $fileId): void
-	{
+	public function releaseWorkflow(int $fileId): void {
 		$this->db->beginTransaction();
 
 		try {

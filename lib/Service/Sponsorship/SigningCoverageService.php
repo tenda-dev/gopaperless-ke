@@ -41,15 +41,15 @@ use Psr\Log\LoggerInterface;
  *
  * This service performs no persistence.
  */
-final class SigningCoverageService
-{
+final class SigningCoverageService {
 	public function __construct(
 		private SignerSponsorshipService $sponsorshipService,
 		private EntitlementService $entitlementService,
 		private EntitlementReservationMapper $entitlementReservationMapper,
 		private EntitlementMapper $entitlementMapper,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 
 	/**

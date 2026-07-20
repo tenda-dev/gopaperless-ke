@@ -6,25 +6,22 @@ namespace OCA\Libresign\Service\Sponsorship\DTO;
 
 use OCA\Libresign\Db\SignRequest;
 
-final class PersistedSignerSponsorshipDTO
-{
+final class PersistedSignerSponsorshipDTO {
 	public function __construct(
 		private SignRequest $signRequest,
 		private SponsorshipDTO $sponsorship,
-	) {}
+	) {
+	}
 
-	public function getSignRequest(): SignRequest
-	{
+	public function getSignRequest(): SignRequest {
 		return $this->signRequest;
 	}
 
-	public function getSponsorship(): SponsorshipDTO
-	{
+	public function getSponsorship(): SponsorshipDTO {
 		return $this->sponsorship;
 	}
 
-	public function getSignRequestId(): int
-	{
+	public function getSignRequestId(): int {
 		return $this->signRequest->getId();
 	}
 
@@ -46,8 +43,7 @@ final class PersistedSignerSponsorshipDTO
 		return $clone;
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'signRequest' => $this->signRequest,
 			'sponsorship' => $this->sponsorship->toArray(),

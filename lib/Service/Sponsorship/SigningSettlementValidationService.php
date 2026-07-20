@@ -23,8 +23,7 @@ use RuntimeException;
  * Every validation step enriches the context with the entities required by
  * the selected settlement path. No state is modified by this service.
  */
-class SigningSettlementValidationService
-{
+class SigningSettlementValidationService {
 	public function __construct(
 		private SignRequestMapper $signRequestMapper,
 		private ProductMapper $productMapper,
@@ -33,7 +32,8 @@ class SigningSettlementValidationService
 		private SignerSponsorshipMapper $signerSponsorshipMapper,
 		private EntitlementService $entitlementService,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Performs validation shared by every settlement flow.

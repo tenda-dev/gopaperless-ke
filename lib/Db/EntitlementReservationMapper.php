@@ -7,12 +7,11 @@ namespace OCA\Libresign\Db;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\QBMapper;
-use OCP\IDBConnection;
-use OCP\DB\Types;
 use OCP\DB\Exception;
+use OCP\DB\Types;
+use OCP\IDBConnection;
 
-class EntitlementReservationMapper extends QBMapper
-{
+class EntitlementReservationMapper extends QBMapper {
 	public function __construct(
 		IDBConnection $db,
 	) {
@@ -71,10 +70,10 @@ class EntitlementReservationMapper extends QBMapper
 		try {
 			return $this->findEntity($qb);
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	public function findActiveBySignRequestId(
@@ -104,10 +103,10 @@ class EntitlementReservationMapper extends QBMapper
 		try {
 			return $this->findEntity($qb);
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	/**
@@ -150,10 +149,10 @@ class EntitlementReservationMapper extends QBMapper
 		try {
 			return $this->findEntity($qb);
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	/**

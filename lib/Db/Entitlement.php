@@ -46,8 +46,7 @@ use OCP\AppFramework\Db\Entity;
  * @method void setType(string $type)
  * @method string getType()
  */
-class Entitlement extends Entity
-{
+class Entitlement extends Entity {
 
 	/**
 	 * CRITICAL:
@@ -77,8 +76,7 @@ class Entitlement extends Entity
 	/**
 	 * @throws \Exception
 	 */
-	public function __construct()
-	{
+	public function __construct() {
 
 		// Ensure createdAt is ALWAYS initialized
 		$this->createdAt = new \DateTimeImmutable(
@@ -107,8 +105,7 @@ class Entitlement extends Entity
 	/**
 	 * Validate entity before insert/update
 	 */
-	public function validate(): void
-	{
+	public function validate(): void {
 
 		if ($this->userId === '') {
 			throw new \InvalidArgumentException('userId is required');
@@ -133,16 +130,14 @@ class Entitlement extends Entity
 	/**
 	 * Check if entitlement is expired
 	 */
-	public function isExpired(): bool
-	{
+	public function isExpired(): bool {
 		return $this->expiresAt !== null && $this->expiresAt < new \DateTime();
 	}
 
 	/**
 	 * Check if entitlement can be used
 	 */
-	public function canUse(): bool
-	{
+	public function canUse(): bool {
 
 		// Expiry check
 		if ($this->isExpired()) {
@@ -163,8 +158,7 @@ class Entitlement extends Entity
 	 * NOTE:
 	 * - Does NOT persist (service must handle update)
 	 */
-	public function consume(int $quantity = 1): void
-	{
+	public function consume(int $quantity = 1): void {
 
 		if ($this->remainingUses === null) {
 			// unlimited → nothing to decrement
@@ -194,13 +188,11 @@ class Entitlement extends Entity
 		$this->setRemainingUses($this->remainingUses - $quantity);
 	}
 
-	public function getRemainingUses(): ?int
-	{
+	public function getRemainingUses(): ?int {
 		return $this->remainingUses;
 	}
 
-	public function getAvailableUses(): ?int
-	{
+	public function getAvailableUses(): ?int {
 		if ($this->remainingUses === null) {
 			return null;
 		}
@@ -215,8 +207,7 @@ class Entitlement extends Entity
 		$this->setType($type->value);
 	}
 
-	public function getEntitlementType(): EntitlementType
-	{
+	public function getEntitlementType(): EntitlementType {
 		return EntitlementType::from($this->getType());
 	}
 }

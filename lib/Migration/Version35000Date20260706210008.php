@@ -19,8 +19,7 @@ use Override;
 /**
  * FIXME Auto-generated migration step: Please modify to your needs!
  */
-class Version35000Date20260706210008 extends SimpleMigrationStep
-{
+class Version35000Date20260706210008 extends SimpleMigrationStep {
 
 	/**
 	 * @param IOutput $output
@@ -29,8 +28,7 @@ class Version35000Date20260706210008 extends SimpleMigrationStep
 	 * @return null|ISchemaWrapper
 	 */
 	#[Override]
-	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper
-	{
+	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		$schema = $schemaClosure();
 
 		if (!$schema->hasTable('gopaperless_signer_sponsorships')) {
