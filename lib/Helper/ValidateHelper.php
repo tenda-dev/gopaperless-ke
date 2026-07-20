@@ -639,6 +639,10 @@ class ValidateHelper {
 		array $data,
 		string $productCode = 'SIGN_DOCUMENT', // temporary until products are configurable
 	): void {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false)) {
+			return;
+		}
+
 		$this->logger->warning('SPONSORSHIP VALIDATION', [
 			'requestedStatus' => $data['status'],
 			'currentStatus' => $file->getStatusEnum()->value,

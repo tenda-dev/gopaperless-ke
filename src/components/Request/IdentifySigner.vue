@@ -356,9 +356,11 @@ onBeforeMount(() => {
 		const method = props.signerToEdit.identifyMethods[0]
 		identifyMethod.value = method.method as IdentifyAccountRecord['method']
 	}
-	requesterSponsored.value = isNewSigner.value
-		? true
-		: props.signerToEdit?.sponsorship?.type === 'requester'
+	requesterSponsored.value = sponsorshipEnabled && (
+		isNewSigner.value
+			? true
+			: props.signerToEdit?.sponsorship?.type === 'requester'
+	)
 })
 
 defineExpose({
