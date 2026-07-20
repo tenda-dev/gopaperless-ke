@@ -59,6 +59,8 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 * LibresignException messages are considered user-friendly and are returned
 	 * as-is. Any other exception is logged and replaced with a generic message
 	 * so that internal details (SQL queries, paths, etc.) are not leaked.
+	 *
+	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>
 	 */
 	private function handleRequestException(\Throwable $th, int $statusCode = Http::STATUS_UNPROCESSABLE_ENTITY): DataResponse {
 		if ($th instanceof LibresignException) {
@@ -387,7 +389,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 *
 	 * @param integer $fileId LibreSign file ID
 	 * @param integer $signRequestId The sign request id
-	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionErrorResponse, array{}>
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse|LibresignActionErrorResponse, array{}>
 	 *
 	 * 200: OK
 	 * 401: Failed
@@ -461,7 +463,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 * You can only request exclusion as any sign
 	 *
 	 * @param integer $fileId LibreSign file ID
-	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionErrorResponse, array{}>
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse|LibresignActionErrorResponse, array{}>
 	 *
 	 * 200: OK
 	 * 401: Failed

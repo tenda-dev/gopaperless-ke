@@ -579,7 +579,7 @@ class FileListService {
 	 * @param PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
-	 * @return array
+	 * @return LibresignSignerDetail
 	 */
 	private function formatSignerDataBasic(
 		PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO,
@@ -805,9 +805,15 @@ class FileListService {
 		if ($user instanceof IUser) {
 			$this->resolveSignerMeFlags($signers, $user);
 			// Refresh signUuid after resolving me flags
-			foreach ($signers as $signerData) {
-				if ($signUuid === null && !empty($signerData['me']) && isset($signerData['sign_uuid'])) {
-					$signUuid = $signerData['sign_uuid'];
+			/** @var list<LibresignSignerDetail> $signers */
+			foreach ($signers as $resolvedSigner) {
+				if (
+					$signUuid === null
+					&& isset($resolvedSigner['me'])
+					&& $resolvedSigner['me']
+					&& isset($resolvedSigner['sign_uuid'])
+				) {
+					$signUuid = $resolvedSigner['sign_uuid'];
 					break;
 				}
 			}

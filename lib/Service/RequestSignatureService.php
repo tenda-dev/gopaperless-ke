@@ -535,13 +535,13 @@ class RequestSignatureService {
 			}
 		}
 
-		return $this->sponsorshipWorkflowService->persist(
+		return array_values($this->sponsorshipWorkflowService->persist(
 			file: $file,
 			requesterUserId: $data['userManager']->getUID(),
 			productCode: $productCode,
 			incomingSigners: $normalizedSigners,
 			persistedSignRequests: $persistedSignRequests,
-		);
+		));
 	}
 
 

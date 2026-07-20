@@ -12,6 +12,9 @@ use OCP\DB\Exception;
 use OCP\DB\Types;
 use OCP\IDBConnection;
 
+/**
+ * @template-extends QBMapper<Entitlement>
+ */
 class EntitlementMapper extends QBMapper {
 
 	public function __construct(IDBConnection $db) {
@@ -174,7 +177,7 @@ class EntitlementMapper extends QBMapper {
 
 
 	/**
-	 * @return Entitlement[]
+	 * @return list<Entitlement>
 	 * @throws Exception
 	 */
 	public function findActiveByUserProductAndType(
@@ -219,7 +222,7 @@ class EntitlementMapper extends QBMapper {
 
 
 	/**
-	 * @return Entitlement[]
+	 * @return list<Entitlement>
 	 * @throws Exception
 	 */
 	public function findActiveByUserProductAndEntitlementType(
