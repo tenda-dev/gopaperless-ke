@@ -1103,4 +1103,37 @@ class ValidateHelper {
 		}
 		return null;
 	}
+
+	/**
+	 * Assert that a sign request is assigned to the given user.
+	 *
+	 * Checks the sign request's identify methods (account/email) against the
+	 * user's id and email address.
+	 */
+	public function validateSignRequestBelongsToUser(int $signRequestId, string $userId): void {
+		$this->signRequestMapper->getById($signRequestId);
+
+		$user = $this->userManager->get($userId);
+		$userEmail = $user?->getEMailAddress() ?? '';
+
+		$matrix = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequestId);
+		foreach ($matrix as $methods) {
+			foreach ($methods as $identifyMethod) {
+				$methodName = $identifyMethod->getEntity()->getIdentifierKey();
+				$value = $identifyMethod->getEntity()->getIdentifierValue();
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_ACCOUNT
+					&& ($value === $userId || $value === $userEmail)) {
+					return;
+				}
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_EMAIL
+					&& $value === $userEmail) {
+					return;
+				}
+			}
+		}
+
+		throw new LibresignException($this->l10n->t('Sign request is not assigned to this user'));
+	}
 }

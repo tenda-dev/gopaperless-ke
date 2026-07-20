@@ -60,7 +60,9 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 * as-is. Any other exception is logged and replaced with a generic message
 	 * so that internal details (SQL queries, paths, etc.) are not leaked.
 	 *
-	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>
+	 * @template T of Http::STATUS_UNAUTHORIZED|Http::STATUS_UNPROCESSABLE_ENTITY
+	 * @psalm-param T $statusCode
+	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>|DataResponse<T, LibresignMessageResponse, array{}>
 	 */
 	private function handleRequestException(\Throwable $th, int $statusCode = Http::STATUS_UNPROCESSABLE_ENTITY): DataResponse {
 		if ($th instanceof LibresignException) {

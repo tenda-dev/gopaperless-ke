@@ -72,6 +72,7 @@
 	</div>
 </template>
 <script setup lang="ts">
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import { computed, onBeforeMount, ref, type ComputedRef } from 'vue'
 
@@ -111,6 +112,8 @@ const iconMap = {
 	svgWhatsapp,
 	svgXmpp,
 }
+
+const sponsorshipEnabled = loadState('libresign', 'sponsorship_enabled', false)
 
 const methodIconMap: Record<string, keyof typeof iconMap> = {
 	account: 'svgAccount',
@@ -174,7 +177,7 @@ const nameHelperText = ref('')
 const nameHaveError = ref(false)
 const displayName = ref('')
 const description = ref('')
-const requesterSponsored = ref(true)
+const requesterSponsored = ref(sponsorshipEnabled)
 const enableCustomMessage = ref(false)
 const identify = ref('')
 const identifyMethod = ref<IdentifyAccountRecord['method'] | undefined>()

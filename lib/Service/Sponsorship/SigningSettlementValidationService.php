@@ -11,6 +11,7 @@ use OCA\Libresign\Db\SignerSponsorshipMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Enum\SponsorshipType;
+use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Sponsorship\DTO\SigningSettlementContextDTO;
 use Psr\Log\LoggerInterface;
@@ -32,6 +33,7 @@ class SigningSettlementValidationService {
 		private SignerSponsorshipMapper $signerSponsorshipMapper,
 		private EntitlementService $entitlementService,
 		private LoggerInterface $logger,
+		private ValidateHelper $validateHelper,
 	) {
 	}
 
@@ -55,6 +57,11 @@ class SigningSettlementValidationService {
 		$context = $this->validateSignRequest(
 			$signRequestId,
 			$context,
+		);
+
+		$this->validateHelper->validateSignRequestBelongsToUser(
+			$signRequestId,
+			$signerUserId,
 		);
 
 		$sponsorship = $this->signerSponsorshipMapper

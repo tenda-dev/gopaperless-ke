@@ -508,13 +508,19 @@ class RequestSignatureService {
 		$this->sequentialSigningService->resetOrderCounter();
 		$fileStatus = $data['status'] ?? null;
 
+		$sponsorshipEnabled = $this->appConfig->getValueBool(
+			Application::APP_ID,
+			'sponsorship_enabled',
+			false,
+		);
+
 		foreach ($normalizedSigners as $signer) {
 			$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
 			$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
 			$signerStatus = $signer['status'] ?? null;
 			$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
 
-			$sponsorshipType = isset($signer['sponsorship']['type'])
+			$sponsorshipType = $sponsorshipEnabled && isset($signer['sponsorship']['type'])
 				? SponsorshipType::tryFrom($signer['sponsorship']['type'])
 				: null;
 
@@ -533,6 +539,10 @@ class RequestSignatureService {
 					sponsorshipType: $sponsorshipType
 				);
 			}
+		}
+
+		if (!$sponsorshipEnabled) {
+			return [];
 		}
 
 		return array_values($this->sponsorshipWorkflowService->persist(
