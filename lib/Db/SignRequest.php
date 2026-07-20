@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Db;
 
 use OCA\Libresign\Enum\SignRequestStatus;
+use OCA\Libresign\Enum\SponsorshipType;
 use OCP\AppFramework\Db\Entity;
 use OCP\DB\Types;
 
@@ -37,6 +38,8 @@ use OCP\DB\Types;
  * @method int getSigningOrder()
  * @method void setStatus(int $status)
  * @method int getStatus()
+ * @method void setSponsorshipType(string $sponsorshipType)
+ * @method string getSponsorshipType()
  */
 class SignRequest extends Entity {
 	protected ?int $fileId = null;
@@ -51,6 +54,15 @@ class SignRequest extends Entity {
 	protected int $signingOrder = 1;
 	protected int $status = 0;
 
+	/**
+	 * Draft sponsorship selection.
+	 *
+	 * While the file is in DRAFT this represents the requested sponsorship.
+	 * Once the workflow is published this is reconciled into persisted
+	 * SignerSponsorship records.
+	 */
+	protected string $sponsorshipType = SponsorshipType::SELF->value;
+
 	public function __construct() {
 		$this->addType('id', Types::INTEGER);
 		$this->addType('fileId', Types::INTEGER);
@@ -64,6 +76,7 @@ class SignRequest extends Entity {
 		$this->addType('docmdpLevel', Types::SMALLINT);
 		$this->addType('signingOrder', Types::INTEGER);
 		$this->addType('status', Types::SMALLINT);
+		$this->addType('sponsorshipType', Types::STRING);
 	}
 
 	public function getStatusEnum(): SignRequestStatus {
@@ -72,5 +85,13 @@ class SignRequest extends Entity {
 
 	public function setStatusEnum(SignRequestStatus $status): void {
 		$this->setStatus($status->value);
+	}
+
+	public function getSponsorshipTypeEnum(): SponsorshipType {
+		return SponsorshipType::from($this->sponsorshipType);
+	}
+
+	public function setSponsorshipTypeEnum(SponsorshipType $type): void {
+		$this->setSponsorshipType($type->value);
 	}
 }

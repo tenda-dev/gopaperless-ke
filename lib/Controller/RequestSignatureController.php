@@ -59,6 +59,10 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 * LibresignException messages are considered user-friendly and are returned
 	 * as-is. Any other exception is logged and replaced with a generic message
 	 * so that internal details (SQL queries, paths, etc.) are not leaked.
+	 *
+	 * @template T of Http::STATUS_UNAUTHORIZED|Http::STATUS_UNPROCESSABLE_ENTITY
+	 * @psalm-param T $statusCode
+	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse, array{}>|DataResponse<T, LibresignMessageResponse, array{}>
 	 */
 	private function handleRequestException(\Throwable $th, int $statusCode = Http::STATUS_UNPROCESSABLE_ENTITY): DataResponse {
 		if ($th instanceof LibresignException) {
@@ -136,15 +140,31 @@ class RequestSignatureController extends AEnvironmentAwareController {
 				$signatureFlow
 			);
 		} catch (LibresignException $e) {
-			$errorMessage = $e->getMessage();
-			$decoded = json_decode($errorMessage, true);
-			if (json_last_error() === JSON_ERROR_NONE && isset($decoded['errors'])) {
-				$errorMessage = $decoded['errors'][0]['message'] ?? $errorMessage;
+			$payload = [
+				'message' => $e->getMessage(),
+			];
+
+			$decoded = json_decode($e->getMessage(), true);
+
+			if (
+				json_last_error() === JSON_ERROR_NONE
+				&& is_array($decoded)
+			) {
+				$payload['message']
+					= $decoded['errors'][0]['message']
+					?? $payload['message'];
+
+				$payload['action']
+					= $decoded['action']
+					?? null;
+
+				$payload['errors']
+					= $decoded['errors']
+					?? [];
 			}
+
 			return new DataResponse(
-				[
-					'message' => $errorMessage,
-				],
+				$payload,
 				Http::STATUS_UNPROCESSABLE_ENTITY
 			);
 		} catch (\Throwable $th) {
@@ -249,6 +269,34 @@ class RequestSignatureController extends AEnvironmentAwareController {
 
 			$fileData = $this->fileListService->formatFileWithChildren($fileEntity, $childFiles, $user);
 			return new DataResponse($fileData, Http::STATUS_OK);
+		} catch (LibresignException $e) {
+			$payload = [
+				'message' => $e->getMessage(),
+			];
+
+			$decoded = json_decode($e->getMessage(), true);
+
+			if (
+				json_last_error() === JSON_ERROR_NONE
+				&& is_array($decoded)
+			) {
+				$payload['message']
+					= $decoded['errors'][0]['message']
+					?? $payload['message'];
+
+				$payload['action']
+					= $decoded['action']
+					?? null;
+
+				$payload['errors']
+					= $decoded['errors']
+					?? [];
+			}
+
+			return new DataResponse(
+				$payload,
+				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
 		} catch (\Throwable $th) {
 			return $this->handleRequestException($th, Http::STATUS_UNPROCESSABLE_ENTITY);
 		}
@@ -343,7 +391,7 @@ class RequestSignatureController extends AEnvironmentAwareController {
 	 *
 	 * @param integer $fileId LibreSign file ID
 	 * @param integer $signRequestId The sign request id
-	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionErrorResponse, array{}>
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse|LibresignActionErrorResponse, array{}>
 	 *
 	 * 200: OK
 	 * 401: Failed
@@ -390,34 +438,34 @@ class RequestSignatureController extends AEnvironmentAwareController {
 
 	/**
 	 * Delete sign request
-		try {
-			$data = [
-				'userManager' => $this->userSession->getUser(),
-				'file' => [
-					'fileId' => $fileId
-				]
-			];
-			$this->validateHelper->validateExistingFile($data);
-			$this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
-			$this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
-		} catch (\Throwable $th) {
-			return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
-		}
-		return new DataResponse(
-			[
-				'message' => $this->l10n->t('Success')
-			],
-			Http::STATUS_OK
-		);
-	}
-
-	/**
+	 * try {
+	 * $data = [
+	 * 'userManager' => $this->userSession->getUser(),
+	 * 'file' => [
+	 * 'fileId' => $fileId
+	 * ]
+	 * ];
+	 * $this->validateHelper->validateExistingFile($data);
+	 * $this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId);
+	 * $this->requestSignatureService->unassociateToUser($fileId, $signRequestId);
+	 * } catch (\Throwable $th) {
+	 * return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED);
+	 * }
+	 * return new DataResponse(
+	 * [
+	 * 'message' => $this->l10n->t('Success')
+	 * ],
+	 * Http::STATUS_OK
+	 * );
+	 * }
+	 *
+	 * /**
 	 * Delete sign request
 	 *
 	 * You can only request exclusion as any sign
 	 *
 	 * @param integer $fileId LibreSign file ID
-	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionErrorResponse, array{}>
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignMessageResponse|LibresignActionErrorResponse, array{}>
 	 *
 	 * 200: OK
 	 * 401: Failed

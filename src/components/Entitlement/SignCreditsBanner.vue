@@ -1,153 +1,145 @@
 <template>
-	<div class="sign-credits-banner">
+	<template v-if="isInitialising">
+		<div class="skeleton">
+			<div class="skeleton__header">
+				<div class="skeleton__label" />
+				<div class="skeleton__count" />
+			</div>
 
-		<!-- Header row: label + live credit pill -->
-		<div class="banner-header">
-			<span class="banner-label">Signing credits</span>
+			<div class="banner-rule" />
 
-			<div class="banner-header__badge">
-				<div class="credit-pill" :class="hasCredits ? 'credit-pill--filled' : 'credit-pill--empty'">
-					<NcIconSvgWrapper :path="mdiLightningBolt" :size="12" />
-					<span>{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}</span>
-				</div>
+			<div class="skeleton__hero">
+				<div class="skeleton__icon" />
+				<div class="skeleton__title" />
+				<div class="skeleton__line skeleton__line--long" />
+				<div class="skeleton__line skeleton__line--short" />
 			</div>
 		</div>
+	</template>
+	<template v-else>
+		<div class="sign-credits-banner">
 
-		<!-- State: has credits -->
-		<Transition name="fade-slide">
-			<div v-if="hasCredits" class="has-credits-card">
-				<div class="has-credits-card__icon">
-					<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="18" />
-				</div>
-				<p class="has-credits-card__text">
-					This document will use
-					<strong>1 of your {{ remainingUses }} signing {{ remainingUses === 1 ? 'credit' : 'credits' }}</strong>.
-				</p>
+			<!-- Header row: label + live credit pill -->
+			<div class="banner-header">
+				<span class="banner-header__label">Signing credits</span>
+
+				<span class="banner-header__count" :class="{ 'banner-header__count--empty': !hasCredits }">
+					{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}
+				</span>
 			</div>
-		</Transition>
 
-		<!-- State: no credits — payment chooser -->
-		<Transition name="fade-slide">
-			<div v-if="!hasCredits" class="payment-chooser">
-				<p class="payment-chooser__prompt">
-					{{ oneTimeSigningEnabled
-						? "Choose how you'd like to buy signing credits."
-						: "You're out of signing credits. Buy a credit pack to sign this document." }}
-				</p>
 
-				<div class="option-cards">
-					<!-- One-time payment (admin-toggleable) -->
-					<label
-						v-if="oneTimeSigningEnabled"
-						class="option-card"
-						:class="{ 'option-card--selected': selectedFlow === PaymentFlowType.ONE_TIME }"
-						@mousedown="onCardPress"
-						@mouseup="onCardRelease"
-						@mouseleave="onCardRelease"
-					>
-						<input
-							v-model="selectedFlow"
-							class="option-card__radio"
-							type="radio"
-							:value="PaymentFlowType.ONE_TIME"
-						>
+			<div class="banner-rule" />
 
-						<div class="option-card__body">
+			<!-- State: sponsored (Focus hero) -->
+			<Transition name="fade-slide">
+				<div v-if="isSponsored" class="hero">
+					<div class="hero__halo">
+						<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="20" />
+					</div>
 
-							<div class="option-card__title-row">
+					<div class="hero__title">
+						Ready to sign
+					</div>
 
-								<div class="option-card__title">
-									<NcIconSvgWrapper
-										:path="mdiCreditCardOutline"
-										:size="18"
-									/>
+					<div class="hero__desc">
+						Signing this document has already been paid for on your behalf
+					</div>
 
-									<span>Buy required credits</span>
-								</div>
+					<div class="hero__sponsor">
+						<span class="hero__label">
+							Paid for by:
+						</span>
 
-							</div>
+						<span class="hero__email">
+							{{ sponsorUserId }}
+						</span>
+					</div>
 
-							<div class="option-card__desc">
-								If you only need to sign this document.
-							</div>
-
-						</div>
-
-						<div
-							class="option-card__dot"
-							:class="{ 'option-card__dot--selected': selectedFlow === PaymentFlowType.ONE_TIME }"
-						/>
-					</label>
-
-					<!-- Credit pack — preferred -->
-					<label
-						class="option-card option-card--preferred"
-						:class="{ 'option-card--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }"
-						@mousedown="onCardPress"
-						@mouseup="onCardRelease"
-						@mouseleave="onCardRelease"
-					>
-						<input
-							v-model="selectedFlow"
-							class="option-card__radio"
-							type="radio"
-							:value="PaymentFlowType.CREDIT_PACK"
-						>
-
-						<div class="option-card__body">
-
-							<div class="option-card__title-row">
-
-								<div class="option-card__title">
-									<NcIconSvgWrapper
-										:path="mdiStar"
-										:size="18"
-									/>
-
-									<span>Buy signing credits</span>
-								</div>
-
-								<span v-if="oneTimeSigningEnabled" class="option-card__badge">
-									Recommended
-								</span>
-
-							</div>
-
-							<div class="option-card__desc">
-								Buy extra credits and use them across future document signings.
-							</div>
-
-							<div class="option-card__sparkle">
-
-								<NcIconSvgWrapper
-									:path="mdiStarCircleOutline"
-									:size="32"
-								/>
-
-							</div>
-
-						</div>
-
-						<div
-							class="option-card__dot"
-							:class="{ 'option-card__dot--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }"
-						/>
-					</label>
-				</div>
-
-				<div class="banner-reassurance">
-					<div>
-						<NcIconSvgWrapper class="banner-reassurance__icon" :path="mdiShieldCheckOutline" :size="16" />
-                    </div>
-
-					<div class="banner-reassurance__content">
-						After payment, signing will continue automatically.
+					<div class="hero__reassurance">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="14" />
+						<span>Your credits will not be used</span>
 					</div>
 				</div>
-			</div>
-		</Transition>
+			</Transition>
 
-	</div>
+			<!-- State: has credits (Focus hero) -->
+			<Transition name="fade-slide">
+				<div v-if="hasCredits && !isSponsored" class="hero">
+					<div class="hero__halo">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="24" />
+					</div>
+
+					<div class="hero__title">
+						Ready when you are
+					</div>
+
+					<div class="hero__desc">
+						Signing this document will use 1 credit.
+					</div>
+				</div>
+			</Transition>
+
+			<!-- State: no credits — payment chooser -->
+			<Transition name="fade-slide">
+				<div v-if="!hasCredits && !isSponsored" class="chooser">
+					<p class="chooser__prompt">
+						{{ oneTimeSigningEnabled
+							? "Choose how you'd like to conitinue signing"
+							: "You need signing credits to sign this document" }}
+					</p>
+
+					<div class="chooser__options">
+						<!-- One-time (admin-toggleable) -->
+						<label v-if="oneTimeSigningEnabled" class="option"
+							:class="{ 'option--selected': selectedFlow === PaymentFlowType.ONE_TIME }">
+							<input v-model="selectedFlow" class="option__input" type="radio"
+								:value="PaymentFlowType.ONE_TIME">
+
+							<div class="option__main">
+								<div class="option__title">
+									<span>Buy just what you need</span>
+								</div>
+								<div class="option__desc">
+									Enough credits to sign this document.
+								</div>
+							</div>
+
+							<span class="option__dot"
+								:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.ONE_TIME }" />
+						</label>
+
+						<!-- Credit pack — preferred -->
+						<label class="option"
+							:class="{ 'option--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }">
+							<input v-model="selectedFlow" class="option__input" type="radio"
+								:value="PaymentFlowType.CREDIT_PACK">
+
+							<div class="option__main">
+								<div class="option__title">
+									<span>Buy signing credits</span>
+									<span v-if="oneTimeSigningEnabled" class="option__tag">
+										· recommended
+									</span>
+								</div>
+								<div class="option__desc">
+									Buy extra credits for future document signings.
+								</div>
+							</div>
+
+							<span class="option__dot"
+								:class="{ 'option__dot--selected': selectedFlow === PaymentFlowType.CREDIT_PACK }" />
+						</label>
+					</div>
+
+					<div class="chooser__foot">
+						<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="14" />
+						<span>After payment, signing will continue automatically.</span>
+					</div>
+				</div>
+			</Transition>
+		</div>
+	</template>
 </template>
 
 <script setup lang="ts">
@@ -156,13 +148,8 @@ import { computed, onMounted } from 'vue'
 import { loadState } from '@nextcloud/initial-state'
 
 import {
-	mdiCartOutline,
-	mdiCreditCardOutline,
-	mdiLightningBolt,
 	mdiCheckCircleOutline,
 	mdiShieldCheckOutline,
-	mdiStarCircleOutline,
-	mdiStar,
 } from '@mdi/js'
 
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -170,11 +157,13 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { useEntitlementStore } from '@/store/entitlement'
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
+import { useSignerContextStore } from '@/store/signerContext'
 
 const entitlementStore = useEntitlementStore()
 const paymentContext = usePaymentContextStore()
+const signerContext = useSignerContextStore()
 
-// Admin toggle: when disabled, the "Buy required credits" (one-time) option is
+// Admin toggle: when disabled, the "Buy just what you need" (one-time) option is
 // hidden so users are guided to signing credit packs instead. Defaults to true.
 const oneTimeSigningEnabled = (
 	loadState('libresign', 'config', {}) as { one_time_signing_enabled?: boolean }
@@ -190,338 +179,265 @@ const selectedFlow = computed({
 	set: value => paymentContext.setFlowType(value),
 })
 
-// Press-scale physics — applied via a transient class on the card element
-function onCardPress(e: MouseEvent) {
-	const card = (e.currentTarget as HTMLElement)
-	card.classList.add('option-card--pressed')
-}
+const sponsorship = computed(() =>
+	entitlementStore.getSponsorship(
+		signerContext.signRequestId,
+	).value,
+)
 
-function onCardRelease(e: MouseEvent) {
-	const card = (e.currentTarget as HTMLElement)
-	card.classList.remove('option-card--pressed')
-}
+const isSponsored = computed(
+	() => sponsorship.value?.sponsored ?? false,
+)
+
+const sponsorUserId = computed(
+	() => sponsorship.value?.sponsorUserId,
+)
+
+const isLoading = entitlementStore.isLoading(
+	DEFAULT_PRODUCT_CODE,
+)
+
+const isSponsorshipLoading =
+	entitlementStore.sponsorshipLoadingState(
+		signerContext.signRequestId,
+	)
+
+const isInitialising = computed(() =>
+	isLoading.value || isSponsorshipLoading.value,
+)
 
 onMounted(async () => {
 	// If one-time signing is disabled, force the credit-pack flow so the hidden
 	// option can never remain selected.
-	if (!oneTimeSigningEnabled && paymentContext.flowType === PaymentFlowType.ONE_TIME) {
+	if (!oneTimeSigningEnabled &&
+		paymentContext.flowType === PaymentFlowType.ONE_TIME) {
 		paymentContext.setFlowType(PaymentFlowType.CREDIT_PACK)
 	}
-	await entitlementStore.initialise(DEFAULT_PRODUCT_CODE)
+	await Promise.all([
+		entitlementStore.initialise(
+			DEFAULT_PRODUCT_CODE,
+		),
+		entitlementStore.loadSponsorship(
+			DEFAULT_PRODUCT_CODE,
+			signerContext.signRequestId,
+		),
+	])
 })
 </script>
 
 <style scoped lang="scss">
-$accent:        #1D9E75;
-$accent-light:  #E1F5EE;
-$accent-mid:    #0F6E56;
-$accent-dark:   #085041;
-$amber-light:   #FAEEDA;
-$amber-dark:    #633806;
+$accent: #1D9E75;
+$accent-light: #E1F5EE;
+$accent-mid: #0F6E56;
+$accent-dark: #085041;
 
-$spring:  cubic-bezier(.34, 1.56, .64, 1);
 $ease-out: cubic-bezier(.4, 0, .2, 1);
 
 .sign-credits-banner {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
-	padding: 14px;
+	padding: 18px;
 	border-radius: 12px;
-	border: 1px solid var(--color-border-dark);
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 }
 
 .banner-header {
 	display: flex;
-	align-items: center;
+	align-items: baseline;
 	justify-content: space-between;
 
-	&__badge {
-		flex: 0 0 auto;
+	&__label {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: .14em;
+		text-transform: uppercase;
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__count {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--color-main-text);
+		font-variant-numeric: tabular-nums;
+
+		&--empty {
+			font-weight: 500;
+			color: var(--color-text-maxcontrast);
+		}
 	}
 }
 
-.banner-label {
-	font-size: 10px;
-	font-weight: 600;
-	letter-spacing: .1em;
-	text-transform: uppercase;
-	color: var(--color-text-maxcontrast);
+.banner-rule {
+	height: 1px;
+	margin-top: 16px;
+	background: var(--color-border);
 }
 
-.credit-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 11px;
-	font-weight: 500;
-	padding: 0 8px;
-	border-radius: 20px;
-	transition: background .3s $ease-out, color .3s $ease-out;
-
-	:deep(svg) {
-		display: block;
-		flex-shrink: 0;
-	}
-
-	&--empty {
-		background: $amber-light;
-		color: $amber-dark;
-	}
-
-	&--filled {
-		background: $accent-light;
-		color: $accent-dark;
-	}
-}
-
-.has-credits-card {
+.hero {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	gap: 10px;
-	padding: 11px 13px;
-	border-radius: 10px;
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border-dark);
+	text-align: center;
+	gap: 8px;
+	margin-top: 14px;
+	padding: 6px 4px 2px;
 
-	&__icon {
+	&__halo {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border-radius: 8px;
+		width: 42px;
+		height: 42px;
+		border-radius: 16px;
 		background: $accent-light;
 		color: $accent-mid;
-		flex-shrink: 0;
+		box-shadow: 0 0 0 6px rgba($accent, .06);
 
-		:deep(svg) { display: block }
+		:deep(svg) {
+			display: block
+		}
 	}
 
-	&__text {
-		font-size: 12px;
-		line-height: 1.45;
+	&__title {
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--color-main-text);
+	}
+
+	&__desc {
+		max-width: 30ch;
+		font-size: 12.5px;
+		line-height: 1.5;
 		color: var(--color-text-lighter);
 
 		strong {
-			font-weight: 500;
+			font-weight: 600;
 			color: $accent-dark;
 		}
 	}
-}
 
-.payment-chooser {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
+	&__label {
+		font-size: 11px;
+		color: var(--color-text-maxcontrast);
+	}
 
-	&__prompt {
-		font-size: 12px;
-		color: var(--color-text-lighter);
-		line-height: 1.4;
+	&__email {
+		margin-top: 2px;
+		font-size: 13px;
+		font-weight: 600;
+		color: $accent-dark;
+		word-break: break-word;
+	}
+
+	&__reassurance {
+		display: inline-flex;
+		flex: 0 0 auto;
+		align-items: center;
+		width: fit-content;
+		max-width: 100%;
+		gap: 0;
+		margin-top: 2px;
+		padding: 2px 12px;
+		border-radius: 20px;
+		font-size: 11.5px;
+		color: var(--color-text-maxcontrast);
+		background: var(--color-background-hover);
+
+		:deep(svg) {
+			display: block;
+			flex-shrink: 0;
+			color: $accent-mid;
+		}
 	}
 }
 
-.option-cards {
+.chooser {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+
+	&__prompt {
+		margin: 14px 0 0;
+		font-size: 12.5px;
+		line-height: 1.5;
+		color: var(--color-text-lighter);
+	}
+
+	&__options {
+		display: flex;
+		flex-direction: column;
+		margin-top: 4px;
+	}
+
+	&__foot {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin-top: 14px;
+		font-size: 11px;
+		color: var(--color-text-maxcontrast);
+
+		:deep(svg) {
+			display: block;
+			flex-shrink: 0;
+			color: $accent-mid;
+			opacity: .8;
+		}
+	}
 }
 
-.option-card {
+.option {
 	position: relative;
 	display: flex;
 	align-items: center;
-	position: relative;
-	gap: 11px;
-	padding: 11px 13px;
-	border-radius: 10px;
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border-dark);
+	gap: 12px;
+	padding: 13px 4px;
 	cursor: pointer;
+	border-top: 1px solid var(--color-border);
 
-	// Smooth entry + hover
-	transition:
-		border-color .2s $ease-out,
-		background  .2s $ease-out,
-		transform   .12s $spring;
-
-	&:hover {
-		border-color: var(--color-border-maxcontrast);
+	&:first-child {
+		border-top: 0;
 	}
 
-	// Press physics
-	&--pressed {
-		transform: scale(0.975);
-	}
-
-	// Selected state
-	&--selected {
-		border-color: $accent;
-		background: rgba($accent-light, .25);
-
-		&:hover {
-			border-color: $accent;
-		}
-	}
-
-	// Preferred card: teal top-edge accent
-	&--preferred {
-		position:relative;
-
-		overflow:hidden;
-
-		background:
-
-			radial-gradient(
-				circle at top left,
-				rgba($accent,.08),
-				transparent 45%
-			),
-
-			linear-gradient(
-				180deg,
-				rgba($accent-light,.65),
-				var(--color-main-background)
-			);
-
-		border-color:rgba($accent,.25);
-
-		box-shadow:
-
-			0 8px 20px rgba($accent,.08),
-
-			inset 0 1px rgba(255,255,255,.7);
-
-	}
-
-	// Hide the native radio — selection driven by classes
-	&__radio {
+	&__input {
 		position: absolute;
 		opacity: 0;
 		pointer-events: none;
 	}
 
-	// Icon capsule
-	&__icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 30px;
-		height: 30px;
-		border-radius: 7px;
-		background: var(--color-background-hover);
-		color: var(--color-text-maxcontrast);
-		flex-shrink: 0;
-		transition:
-			background .2s $ease-out,
-			color      .2s $ease-out,
-			transform  .3s $spring;
-
-		:deep(svg) { display: block }
-
-		&--active {
-			background: $accent-light;
-			color: $accent-mid;
-			transform: scale(1.1);
-		}
-	}
-
-	// Body
-	&__body {
+	&__main {
 		flex: 1;
 		min-width: 0;
-		padding-right: 20px; // clearance for the dot indicator
-	}
-
-	&__title-row {
-		display: flex;
-		align-items: center;
-		justify-content:space-between;
-		gap:12px;
-		margin-bottom:6px;
 	}
 
 	&__title {
-		display:flex;
-		align-items:center;
-		gap:8px;
-
-		font-size:12.5px;
-		font-weight:600;
-		color:var(--color-main-text);
-
-		:deep(svg) {
-			color:$accent;
-			flex-shrink:0;
-		}
-	}
-
-	&__badge {
-		display:inline-flex;
-		align-items:center;
-
-		padding:3px 8px;
-
-		border-radius:999px;
-
-		font-size:10px;
-		font-weight:700;
-
-		letter-spacing:.02em;
-
-		color:$accent-dark;
-
-		background:rgba($accent,.08);
-
-		white-space:nowrap;
-	}
-
-	&__desc {
-		font-size: 12px;
-		color: var(--color-text-maxcontrast);
-		line-height: 1.5;
-		margin-top: 2px;
-		max-width: 90%;
-	}
-
-	// Price row — hidden when no discount data; show by default for now
-	&__price {
 		display: flex;
 		align-items: center;
-		gap: 5px;
-		margin-top: 5px;
+		gap: 7px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-main-text);
 	}
 
-	&__price-was {
-		font-size: 11px;
-		color: var(--color-text-maxcontrast);
-		text-decoration: line-through;
-		opacity: .6;
-	}
-
-	&__price-now {
-		font-size: 12px;
-		font-weight: 500;
+	&__tag {
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: .04em;
+		text-transform: uppercase;
 		color: $accent-mid;
 	}
 
-	&__sparkle {
-		position:absolute;
-		top:55px;
-		right:15px;
-		opacity:.18;
-		color:$accent;
-		pointer-events:none;
+	&__desc {
+		margin-top: 2px;
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--color-text-maxcontrast);
 	}
 
-	// Custom radio dot — border-width transition mimics iOS filled dot
 	&__dot {
-		position: absolute;
-		top: 16px;
-		right: 13px;
-		width: 17px;
-		height: 17px;
+		flex-shrink: 0;
+		width: 18px;
+		height: 18px;
 		border-radius: 50%;
 		border: 1.5px solid var(--color-border-maxcontrast);
 		background: var(--color-main-background);
@@ -536,25 +452,82 @@ $ease-out: cubic-bezier(.4, 0, .2, 1);
 	}
 }
 
-.banner-reassurance {
+.skeleton {
 	display: flex;
-	align-items: center;
-	gap: 8px;
-	font-size: 11px;
-	color: var(--color-text-maxcontrast);
-	line-height: 1.45;
-	padding-top: 2px;
-	opacity: .75;
+	flex-direction: column;
 
-	&__icon {
-		flex-shrink: 0;
-		flex: 0 0 auto;
-		:deep(svg) { display: block }
+	&__header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 	}
 
-	&__content {
-		flex: 1;
-		line-height: 1.45;
+	&__label,
+	&__count,
+	&__icon,
+	&__title,
+	&__line {
+		background: var(--color-background-hover);
+		animation: skeleton-pulse 1.4s ease-in-out infinite;
+	}
+
+	&__label {
+		width: 110px;
+		height: 10px;
+		border-radius: 999px;
+	}
+
+	&__count {
+		width: 60px;
+		height: 12px;
+		border-radius: 999px;
+	}
+
+	&__hero {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		margin-top: 18px;
+		gap: 10px;
+	}
+
+	&__icon {
+		width: 42px;
+		height: 42px;
+		border-radius: 16px;
+	}
+
+	&__title {
+		width: 140px;
+		height: 16px;
+		border-radius: 999px;
+	}
+
+	&__line {
+		height: 12px;
+		border-radius: 999px;
+
+		&--long {
+			width: 220px;
+		}
+
+		&--short {
+			width: 160px;
+		}
+	}
+}
+
+@keyframes skeleton-pulse {
+	0% {
+		opacity: .45;
+	}
+
+	50% {
+		opacity: .9;
+	}
+
+	100% {
+		opacity: .45;
 	}
 }
 

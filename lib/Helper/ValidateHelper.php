@@ -30,6 +30,9 @@ use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SequentialSigningService;
 use OCA\Libresign\Service\SignerElementsService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipContextBuilderService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipValidationService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
@@ -41,6 +44,7 @@ use OCP\IL10N;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\Security\IHasher;
+use Psr\Log\LoggerInterface;
 
 class ValidateHelper {
 	/** @var \OCP\Files\File[] */
@@ -74,6 +78,10 @@ class ValidateHelper {
 		private IUserManager $userManager,
 		private IRootFolder $root,
 		private DocMdpValidator $docMdpValidator,
+		private SponsorshipWorkflowService $sponsorshipWorkflowService,
+		private SponsorshipValidationService $sponsorshipValidationService,
+		private SponsorshipContextBuilderService $sponsorshipContextBuilderService,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -581,6 +589,11 @@ class ValidateHelper {
 		foreach ($data['signers'] as $signer) {
 			$this->validateSignerData($signer);
 		}
+
+		$file = $this->resolveFileForSponsorship($data);
+		if ($file !== null) {
+			$this->validateSponsorshipCoverage($file, $data);
+		}
 	}
 
 	private function validateSignersDataStructure(array $data): void {
@@ -611,6 +624,82 @@ class ValidateHelper {
 		foreach ($normalizedMethods as $method) {
 			$this->validateIdentifyMethodForRequest($method['name'], $method['value']);
 		}
+	}
+
+	/**
+	 * Validates requester sponsorship coverage before persisting
+	 * signer changes.
+	 *
+	 * This validation performs no persistence.
+	 *
+	 * @throws LibresignException
+	 */
+	private function validateSponsorshipCoverage(
+		File $file,
+		array $data,
+		string $productCode = 'SIGN_DOCUMENT', // temporary until products are configurable
+	): void {
+		$this->logger->warning('SPONSORSHIP VALIDATION', [
+			'requestedStatus' => $data['status'],
+			'currentStatus' => $file->getStatusEnum()->value,
+			'signers' => count($data['signers']),
+		]);
+		/**
+		 * Sponsorship validation only applies when we know
+		 * who the requester is.
+		 */
+		if (
+			empty($data['userManager'])
+			|| !$data['userManager'] instanceof IUser
+		) {
+			return;
+		}
+
+		$requestedStatus = FileStatus::tryFrom(
+			$data['status'] ?? FileStatus::DRAFT->value,
+		);
+
+		/**
+		 * Sponsorship validation is required when:
+		 *
+		 * - the requester is publishing a draft workflow, or
+		 * - the workflow is already active and sponsorship edits are being made.
+		 *
+		 * Once signing has begun (PARTIAL_SIGNED onwards) the workflow becomes
+		 * immutable, so sponsorship validation is no longer applicable.
+		 */
+		$shouldValidate
+			= $requestedStatus === FileStatus::ABLE_TO_SIGN
+			|| $file->getStatusEnum() === FileStatus::ABLE_TO_SIGN;
+
+		if (!$shouldValidate) {
+			return;
+		}
+
+		$persisted = [];
+
+		if (!empty($data['uuid'])) {
+			$persisted = $this->signRequestMapper->getByFileUuid(
+				$data['uuid'],
+			);
+		}
+
+		$incomingSigners = $this->sponsorshipContextBuilderService->buildIncomingSigners(
+			$data['signers']
+		);
+
+		$incomingSigners = $this->sponsorshipContextBuilderService->associateToSignRequests(
+			signers: $incomingSigners,
+			persistedSignRequests: $persisted
+		);
+
+		$this->sponsorshipValidationService->validate(
+			file: $file,
+			requesterUserId: $data['userManager']?->getUID(),
+			productCode: $productCode,
+			incomingSigners: $incomingSigners,
+			persistedSignRequests: $persisted
+		);
 	}
 
 	/**
@@ -995,5 +1084,56 @@ class ValidateHelper {
 			$this->docMdpValidator->validatePdfRestrictions($file);
 		} catch (DoesNotExistException) {
 		}
+	}
+
+	private function resolveFileForSponsorship(array $data): ?File {
+		if (!empty($data['uuid'])) {
+			try {
+				return $this->fileMapper->getByUuid($data['uuid']);
+			} catch (\Throwable) {
+				return null;
+			}
+		}
+		if (!empty($data['file']['fileId'])) {
+			try {
+				return $this->fileMapper->getById((int)$data['file']['fileId']);
+			} catch (\Throwable) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Assert that a sign request is assigned to the given user.
+	 *
+	 * Checks the sign request's identify methods (account/email) against the
+	 * user's id and email address.
+	 */
+	public function validateSignRequestBelongsToUser(int $signRequestId, string $userId): void {
+		$this->signRequestMapper->getById($signRequestId);
+
+		$user = $this->userManager->get($userId);
+		$userEmail = $user?->getEMailAddress() ?? '';
+
+		$matrix = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequestId);
+		foreach ($matrix as $methods) {
+			foreach ($methods as $identifyMethod) {
+				$methodName = $identifyMethod->getEntity()->getIdentifierKey();
+				$value = $identifyMethod->getEntity()->getIdentifierValue();
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_ACCOUNT
+					&& ($value === $userId || $value === $userEmail)) {
+					return;
+				}
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_EMAIL
+					&& $value === $userEmail) {
+					return;
+				}
+			}
+		}
+
+		throw new LibresignException($this->l10n->t('Sign request is not assigned to this user'));
 	}
 }

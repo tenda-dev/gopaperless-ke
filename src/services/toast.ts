@@ -91,8 +91,8 @@ export const notifySuccess = ({ message, dismissible, important, rich = true }: 
 export const notifyError = ({ message, dismissible, important, rich = true }: GenericNotifyOptions) =>
 	notify({ message, type: 'error', icon: 'error', dismissible, important, rich })
 
-export const notifyInfo = ({ message, dismissible, important }: GenericNotifyOptions) =>
-	notify({ message, type: 'info', icon: 'info', dismissible, important })
+export const notifyInfo = ({ message, dismissible, important, description, duration }: GenericNotifyOptions) =>
+	notify({ message, type: 'info', icon: 'info', dismissible, important, description, duration })
 
 export const showError = (message: string, dismissible = false, important = true) => {
 	notifyError({ message, dismissible, important })
@@ -106,6 +106,6 @@ export const showWarning = (message: string, dismissible = true, important = tru
 	notify({ message, type: 'info', icon: 'warning', dismissible, important, rich: true })
 }
 
-export const showInfo = (message: string, dismissible = true, important = false) => {
-	notifyInfo({ message, dismissible, important })
+export const showInfo = (message: string, dismissible = true, important = false, description?: string, duration?: number) => {
+	notifyInfo({ message, dismissible, important, description, duration })
 }

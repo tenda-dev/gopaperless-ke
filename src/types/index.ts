@@ -94,6 +94,7 @@ export type SigningModeState = 'sync' | 'async'
 export type WorkerTypeState = 'local' | 'external'
 export type SignatureEngineId = 'JSignPdf' | 'PhpNative'
 export type CertificateEngineId = 'openssl' | 'cfssl' | 'none'
+export type SponsorshipType = 'self' | 'requester'
 
 export type AdminDocMdpLevelOption = {
 	value: number
@@ -132,6 +133,12 @@ export type EditableFileSettingsDraft = Partial<RuntimeFileSettingsRecord> & {
 export type VisibleElementDraft = Partial<Omit<VisibleElementRecord, 'coordinates'>> & {
 	id?: number | string
 	coordinates?: Partial<VisibleElementRecord['coordinates']>
+}
+
+export type Sponsorship = {
+	type: SponsorshipType
+	sponsorUserId?: string
+	sponsored?: boolean
 }
 
 export type LibresignCapabilities = ApiComponents['schemas']['PublicCapabilities']

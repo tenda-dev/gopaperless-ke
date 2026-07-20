@@ -31,6 +31,11 @@
 			:helper-text="nameHelperText"
 			@update:modelValue="onNameChange" />
 
+		<NcCheckboxRadioSwitch :model-value="requesterSponsored" type="switch"
+			@update:model-value="onToggleSponsoredSigner">
+			{{ t('libresign', 'Pay for this signer') }}
+		</NcCheckboxRadioSwitch>
+
 		<div v-if="signerSelected && showCustomMessage && !disabled" class="description-wrapper">
 			<NcCheckboxRadioSwitch v-model="enableCustomMessage"
 				type="switch"
@@ -52,9 +57,14 @@
 				<NcButton @click="filesStore.disableIdentifySigner()">
 					{{ t('libresign', 'Cancel') }}
 				</NcButton>
-				<NcButton variant="primary"
-					:disabled="!signerSelected"
+				<NcButton
+					variant="primary"
+					:disabled="!signerSelected || loading"
 					@click="saveSigner">
+					<template #icon>
+						<NcLoadingIcon v-if="loading" :size="20" />
+					</template>
+
 					{{ saveButtonText }}
 				</NcButton>
 			</div>
@@ -62,8 +72,9 @@
 	</div>
 </template>
 <script setup lang="ts">
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
-import { computed, onBeforeMount, ref } from 'vue'
+import { computed, onBeforeMount, ref, type ComputedRef } from 'vue'
 
 import svgAccount from '@mdi/svg/svg/account.svg?raw'
 import svgEmail from '@mdi/svg/svg/email.svg?raw'
@@ -74,6 +85,7 @@ import svgXmpp from '@mdi/svg/svg/xmpp.svg?raw'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
@@ -85,7 +97,10 @@ import svgTelegram from '../../../img/logo-telegram-app.svg?raw'
 import { SIGN_REQUEST_STATUS } from '../../constants.js'
 import { useFilesStore } from '../../store/files.js'
 import { getSignRequestStatusText } from '../../utils/getSignRequestStatusText.ts'
-import type { IdentifyAccountRecord } from '../../types'
+import type {
+	IdentifyAccountRecord,
+	Sponsorship
+} from '../../types'
 import { showError } from '../../services/toast'
 
 const iconMap = {
@@ -97,6 +112,8 @@ const iconMap = {
 	svgWhatsapp,
 	svgXmpp,
 }
+
+const sponsorshipEnabled = loadState('libresign', 'sponsorship_enabled', false)
 
 const methodIconMap: Record<string, keyof typeof iconMap> = {
 	account: 'svgAccount',
@@ -130,6 +147,7 @@ type SignerToEdit = {
 	displayName?: string
 	description?: string
 	identifyMethods?: SignerMethodValue[]
+	sponsorship?: Sponsorship | null
 }
 
 type FilesStore = ReturnType<typeof useFilesStore>
@@ -154,10 +172,12 @@ const props = withDefaults(defineProps<{
 
 const filesStore = useFilesStore()
 
+const loading = ref(false)
 const nameHelperText = ref('')
 const nameHaveError = ref(false)
 const displayName = ref('')
 const description = ref('')
+const requesterSponsored = ref(sponsorshipEnabled)
 const enableCustomMessage = ref(false)
 const identify = ref('')
 const identifyMethod = ref<IdentifyAccountRecord['method'] | undefined>()
@@ -183,6 +203,39 @@ const showCustomMessage = computed(() => {
 	return !!identifyMethod.value
 })
 
+const sponsorship = computed(() => ({
+	type: requesterSponsored.value
+		? 'requester'
+		: 'self',
+} satisfies Sponsorship))
+
+function onToggleSponsoredSigner(
+	enabled: boolean,
+) {
+	requesterSponsored.value = enabled
+}
+
+function buildSigner(): StoredSigner {
+	return {
+		displayName: displayName.value,
+		description: description.value.trim() || undefined,
+
+		sponsorship: sponsorship.value,
+
+		...(identifyMethod.value === 'email'
+			? { email: identify.value }
+			: {}),
+
+		identifyMethods: [
+			{
+				method: identifyMethod.value!,
+				mandatory: 0,
+				value: identify.value,
+			},
+		],
+	}
+}
+
 function resetNameValidation() {
 	nameHelperText.value = ''
 	nameHaveError.value = false
@@ -191,6 +244,7 @@ function resetNameValidation() {
 function resetSelectedSignerState() {
 	displayName.value = ''
 	description.value = ''
+	requesterSponsored.value = true
 	enableCustomMessage.value = false
 	identify.value = ''
 	identifyMethod.value = undefined
@@ -234,24 +288,22 @@ function getSignerToEditIdentify(signerToEdit: SignerToEdit | undefined): string
 }
 
 async function saveSigner() {
+	if (loading.value) {
+		return
+	}
 	if (!identifyMethod.value || !identify.value) {
 		return
 	}
+	loading.value = true
 	const file = filesStore.getFile()
 	const signers: StoredSigner[] = Array.isArray(file?.signers) ? [...file.signers] : []
 	signers.push({
-		displayName: displayName.value,
-		description: description.value.trim() || undefined,
-		...(identifyMethod.value === 'email' ? { email: identify.value } : {}),
+		...buildSigner(),
+
 		status: SIGN_REQUEST_STATUS.DRAFT,
-		statusText: getSignRequestStatusText(SIGN_REQUEST_STATUS.DRAFT),
-		identifyMethods: [
-			{
-					method: identifyMethod.value,
-				mandatory: 0,
-					value: identify.value,
-			},
-		],
+		statusText: getSignRequestStatusText(
+			SIGN_REQUEST_STATUS.DRAFT,
+		),
 	})
 
 	try {
@@ -263,6 +315,8 @@ async function saveSigner() {
 	} catch {
 		showError(t('libresign', 'Failed to save or update signature request'))
 		return
+	} finally {
+		loading.value = false
 	}
 
 	resetSelectedSignerState()
@@ -302,6 +356,9 @@ onBeforeMount(() => {
 		const method = props.signerToEdit.identifyMethods[0]
 		identifyMethod.value = method.method as IdentifyAccountRecord['method']
 	}
+	requesterSponsored.value = isNewSigner.value
+		? true
+		: props.signerToEdit?.sponsorship?.type === 'requester'
 })
 
 defineExpose({

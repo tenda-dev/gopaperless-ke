@@ -7,6 +7,8 @@ import {
 	type ConsumeEntitlementPayload,
 	type AvailableCredits,
 	checkEntitlement,
+	type SigningSponsorship,
+	getSigningSponsorship,
 } from '@/payment/entitlement'
 
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
@@ -33,6 +35,18 @@ export const useEntitlementStore = defineStore(
 			new Set<string>(),
 		)
 
+		const sponsorships = ref<
+			Record<number, SigningSponsorship | null>
+		>({})
+
+		const sponsorshipLoading = ref<
+			Record<number, boolean>
+		>({})
+
+		const sponsorshipErrors = ref<
+			Record<number, string | null>
+		>({})
+
 		/**
 		 * Protects against duplicate
 		 * concurrent initialisation calls.
@@ -54,7 +68,7 @@ export const useEntitlementStore = defineStore(
 
 			const existingPromise =
 				loadingPromises.value[
-					productCode
+				productCode
 				]
 
 			if (existingPromise) {
@@ -124,7 +138,7 @@ export const useEntitlementStore = defineStore(
 		): void {
 			const entitlement =
 				entitlements.value[
-					productCode
+				productCode
 				]
 
 			if (!entitlement) {
@@ -146,22 +160,19 @@ export const useEntitlementStore = defineStore(
 				DEFAULT_PRODUCT_CODE
 
 			try {
-				const success =
-					await consumeEntitlement(
-						payload,
-					)
+				const result = await consumeEntitlement(payload)
 
-				if (!success) {
+				if (!result.success) {
 					return false
 				}
 
-				decrementLocally(
-					productCode,
-				)
+				const entitlement = entitlements.value[productCode]
 
-				void refresh(
-					productCode,
-				)
+				if (entitlement) {
+					entitlement.remainingUses = result.remainingUses
+				}
+
+				void refresh(productCode)
 
 				return true
 			} catch (err) {
@@ -183,7 +194,7 @@ export const useEntitlementStore = defineStore(
 		) {
 			return computed(() =>
 				entitlements.value[
-					productCode
+				productCode
 				] ?? null,
 			)
 		}
@@ -215,7 +226,7 @@ export const useEntitlementStore = defineStore(
 		) {
 			return computed(() =>
 				loading.value[
-					productCode
+				productCode
 				] ?? false,
 			)
 		}
@@ -225,17 +236,19 @@ export const useEntitlementStore = defineStore(
 		) {
 			return computed(() =>
 				errors.value[
-					productCode
+				productCode
 				] ?? null,
 			)
 		}
 
 		async function check(
+			signRequestId: number,
 			productCode = DEFAULT_PRODUCT_CODE,
 		) {
 			try {
 				return await checkEntitlement(
 					productCode,
+					signRequestId
 				)
 			} catch (err) {
 				console.error(
@@ -247,6 +260,115 @@ export const useEntitlementStore = defineStore(
 					allowed: false,
 				}
 			}
+		}
+
+		async function loadSponsorship(
+			productCode: string,
+			signRequestId: number,
+		): Promise<SigningSponsorship | null> {
+			sponsorshipLoading.value[
+				signRequestId
+			] = true
+
+			sponsorshipErrors.value[
+				signRequestId
+			] = null
+
+			try {
+				const sponsorship =
+					await getSigningSponsorship(
+						productCode,
+						signRequestId,
+					)
+
+				sponsorships.value[
+					signRequestId
+				] = sponsorship
+
+				return sponsorship
+			} catch (err: any) {
+				sponsorshipErrors.value[
+					signRequestId
+				] =
+					err?.message ??
+					'Failed to load signing sponsorship'
+
+				sponsorships.value[
+					signRequestId
+				] = null
+
+				return null
+			} finally {
+				sponsorshipLoading.value[
+					signRequestId
+				] = false
+			}
+		}
+
+
+		async function refreshSponsorship(
+			productCode: string,
+			signRequestId: number,
+		): Promise<void> {
+			await loadSponsorship(
+				productCode,
+				signRequestId,
+			)
+		}
+
+		function getSponsorship(
+			signRequestId: number,
+		) {
+			return computed(
+				() =>
+					sponsorships.value[
+					signRequestId
+					] ?? null,
+			)
+		}
+
+		function isSponsored(
+			signRequestId: number,
+		) {
+			return computed(
+				() =>
+					sponsorships.value[
+						signRequestId
+					]?.sponsored ?? false,
+			)
+		}
+
+		function sponsorUserId(
+			signRequestId: number,
+		) {
+			return computed(
+				() =>
+					sponsorships.value[
+						signRequestId
+					]?.sponsorUserId ?? null,
+			)
+		}
+
+		function sponsorshipLoadingState(
+			signRequestId: number,
+		) {
+			return computed(
+				() =>
+					sponsorshipLoading.value[
+					signRequestId
+					] ?? false,
+			)
+		}
+
+		function sponsorshipError(
+			signRequestId: number,
+		) {
+			return computed(
+				() =>
+					sponsorshipErrors.value[
+					signRequestId
+					] ?? null,
+			)
 		}
 
 		return {
@@ -261,6 +383,15 @@ export const useEntitlementStore = defineStore(
 			getEntitlement,
 			getRemainingUses,
 			hasEntitlement,
+			loadSponsorship,
+			refreshSponsorship,
+
+			getSponsorship,
+			isSponsored,
+			sponsorUserId,
+
+			sponsorshipLoadingState,
+			sponsorshipError,
 
 			isLoading,
 			getError,
