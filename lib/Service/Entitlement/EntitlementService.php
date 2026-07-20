@@ -336,25 +336,9 @@ class EntitlementService {
 		string $productCode,
 	): array {
 
-		try {
-			$product = $this->productService->getDefaultByCode($productCode);
-			$productCode = $product->getCode();
-		} catch (\RuntimeException $e) {
-			$this->logger->warning(
-				'No default product configured for entitlement lookup; returning zero credits.',
-				[
-					'productCode' => $productCode,
-					'exception' => $e->getMessage(),
-				],
-			);
-			return [
-				'productCode' => $productCode,
-				'remainingUses' => 0,
-				'reservedUses' => 0,
-				'activeEntitlements' => 0,
-				'canUse' => false,
-			];
-		}
+		$product = $this->productService->getDefaultByCode($productCode);
+
+		$productCode = $product->getCode();
 
 		$entitlements = $this->entitlementMapper
 			->findByUserAndProduct($userId, $productCode);
