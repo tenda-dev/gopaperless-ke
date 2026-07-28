@@ -11,16 +11,21 @@ namespace OCA\Libresign\Service\Payment;
 
 use OCA\Libresign\Db\Payment;
 use OCA\Libresign\Db\PaymentMapper;
+use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\ExtendedAccount\ExtendedAccountService;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
 /**
  * Atomically finalise a successful payment.
  *
- * The whole operation (status update + entitlement grant) runs inside
- * a single database transaction so it can never partially succeed.
+ * The whole operation (status update + access grant) runs inside a
+ * single database transaction so it can never partially succeed. The
+ * grant itself is purpose-dependent: certificate purchases extend the
+ * account's certificate window; everything else grants a use-based
+ * entitlement.
  */
 class PaymentFinalizerService {
 	public function __construct(
@@ -29,6 +34,7 @@ class PaymentFinalizerService {
 		private IDBConnection $db,
 		private LoggerInterface $logger,
 		private PaymentDateTimeHelper $dateTimeHelper,
+		private ExtendedAccountService $extendedAccountService,
 	) {
 	}
 
@@ -69,16 +75,26 @@ class PaymentFinalizerService {
 			$this->paymentMapper->update($payment);
 
 			/**
-			 * Grant entitlement from successful payment.
+			 * Grant access from the successful payment.
 			 *
-			 * Current business model grants entitlement for both direct
-			 * signer payments and requester credit purchases.
+			 * Branch on purpose: a certificate purchase extends the
+			 * account's time-bound certificate window and grants NO
+			 * use-based entitlement; signer payments and credit
+			 * purchases grant a use-based entitlement as before.
 			 */
-			$this->entitlementService->create(
-				$payment->getUserId(),
-				$payment->getProductCode(),
-				$payment->getProductUses()
-			);
+			match ($payment->getPaymentPurpose()) {
+				PaymentPurpose::CERTIFICATE_PURCHASE
+				=> $this->extendedAccountService->renewCertificate(
+					$payment->getUserId(),
+				),
+
+				default
+				=> $this->entitlementService->create(
+					$payment->getUserId(),
+					$payment->getProductCode(),
+					$payment->getProductUses(),
+				),
+			};
 
 			$this->db->commit();
 

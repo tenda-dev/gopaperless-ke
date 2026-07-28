@@ -839,4 +839,72 @@ class SignRequestMapper extends CachedQBMapper {
 	public function getTextOfSignerStatus(int $status): string {
 		return SignRequestStatus::from($status)->getLabel($this->l10n);
 	}
+
+	/**
+	 * Returns whether the account has successfully signed at least one document.
+	 *
+	 * Used during ExtendedAccount migration to distinguish legacy signing users
+	 * from newly-created accounts.
+	 */
+	public function hasSignedDocuments(
+		string $userId,
+		?string $email = null,
+	): bool {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$identityConditions = [
+			$qb->expr()->andX(
+				$qb->expr()->eq(
+					'im.identifier_key',
+					$qb->createNamedParameter(
+						IdentifyMethodService::IDENTIFY_ACCOUNT,
+					),
+				),
+				$qb->expr()->eq(
+					'im.identifier_value',
+					$qb->createNamedParameter($userId),
+				),
+			),
+		];
+
+		if ($email !== null && $email !== '') {
+			$identityConditions[] = $qb->expr()->andX(
+				$qb->expr()->eq(
+					'im.identifier_key',
+					$qb->createNamedParameter(
+						IdentifyMethodService::IDENTIFY_EMAIL,
+					),
+				),
+				$qb->expr()->eq(
+					'im.identifier_value',
+					$qb->createNamedParameter($email),
+				),
+			);
+		}
+
+		$qb->select('sr.id')
+			->from($this->getTableName(), 'sr')
+			->innerJoin(
+				'sr',
+				'libresign_identify_method',
+				'im',
+				'im.sign_request_id = sr.id',
+			)
+			->where(
+				$qb->expr()->orX(...$identityConditions),
+			)
+			->andWhere(
+				$qb->expr()->isNotNull('sr.signed'),
+			)
+			->setMaxResults(1);
+
+		$result = $qb->executeQuery();
+
+		$exists = $result->fetchOne() !== false;
+
+		$result->closeCursor();
+
+		return $exists;
+	}
 }

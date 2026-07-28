@@ -31,7 +31,20 @@
 			:helper-text="nameHelperText"
 			@update:modelValue="onNameChange" />
 
-		<NcCheckboxRadioSwitch :model-value="requesterSponsored" type="switch"
+		<NcNoteCard v-if="isRequester" type="info">
+			<template #icon>
+				<NcIconSvgWrapper :size="20" :svg="svgAccount" />
+			</template>
+
+			{{
+				t(
+					'libresign',
+					'Your signing credit will automatically be reserved when you request this document.',
+				)
+			}}
+		</NcNoteCard>
+
+		<NcCheckboxRadioSwitch v-else :model-value="requesterSponsored" type="switch"
 			@update:model-value="onToggleSponsoredSigner">
 			{{ t('libresign', 'Pay for this signer') }}
 		</NcCheckboxRadioSwitch>
@@ -102,6 +115,8 @@ import type {
 } from '../../types'
 import { showError } from '../../services/toast'
 
+import { useUserContextStore } from '@/store/userContext'
+
 const iconMap = {
 	svgAccount,
 	svgEmail,
@@ -168,6 +183,7 @@ const props = withDefaults(defineProps<{
 })
 
 const filesStore = useFilesStore()
+const userContextStore = useUserContextStore()
 
 const loading = ref(false)
 const nameHelperText = ref('')
@@ -200,11 +216,24 @@ const showCustomMessage = computed(() => {
 	return !!identifyMethod.value
 })
 
-const sponsorship = computed(() => ({
-	type: requesterSponsored.value
-		? 'requester'
-		: 'self',
-} satisfies Sponsorship))
+const isRequester = computed(() => {
+	return identifyMethod.value === 'account'
+		&& identify.value === userContextStore.uid
+})
+
+const sponsorship = computed(() => {
+	if (isRequester.value) {
+		return {
+			type: 'requester',
+		} satisfies Sponsorship
+	}
+
+	return {
+		type: requesterSponsored.value
+			? 'requester'
+			: 'self',
+	} satisfies Sponsorship
+})
 
 function onToggleSponsoredSigner(
 	enabled: boolean,
@@ -265,13 +294,32 @@ function applySelectedSigner(nextSigner: IdentifyAccountRecord | null) {
 		return
 	}
 
-	displayName.value = nextSigner?.displayName ?? ''
-	identify.value = nextSigner?.identify ?? ''
-	identifyMethod.value = nextSigner?.method
-	acceptsEmailNotifications.value = nextSigner?.acceptsEmailNotifications
+	displayName.value = nextSigner.displayName ?? ''
+	identify.value = nextSigner.identify ?? ''
+	identifyMethod.value = nextSigner.method
+	acceptsEmailNotifications.value =
+		nextSigner.acceptsEmailNotifications
+
+	/**
+	 * The requester always sponsors themselves.
+	 *
+	 * This is a presentation rule only—the backend still remains the
+	 * source of truth—but keeping the local state aligned avoids stale
+	 * toggle values if the user previously selected another signer.
+	 */
+	if (
+		nextSigner.method === 'account'
+		&& nextSigner.identify === userContextStore.uid
+	) {
+		requesterSponsored.value = true
+	}
+
 	resetNameValidation()
 
-	if (nextSigner?.method === 'account' && nextSigner?.acceptsEmailNotifications === false) {
+	if (
+		nextSigner.method === 'account'
+		&& nextSigner.acceptsEmailNotifications === false
+	) {
 		enableCustomMessage.value = false
 		description.value = ''
 	}
@@ -341,7 +389,16 @@ function handlePhoneNotFound(phone: string) {
 	emit('phone-not-found', phone)
 }
 
-onBeforeMount(() => {
+onBeforeMount(async () => {
+	/**
+	 * Ensure the authenticated user context is available.
+	 *
+	 * initialise() is idempotent, so this is effectively a no-op
+	 * once another part of the application has already hydrated
+	 * the store.
+	 */
+	await userContextStore.initialise()
+
 	if (!props.signerToEdit) {
 		return
 	}

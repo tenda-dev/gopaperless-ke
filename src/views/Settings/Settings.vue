@@ -32,6 +32,8 @@
 		<Confetti />
 		<FreeCredits />
 		<OneTimeSigning />
+		<CertificateAccess />
+		<FilesListColumns />
 		<SmsOtpConfig />
 		<WebhookOtpConfig />
 		<DarajaConfig />
@@ -42,6 +44,7 @@
 
 <script setup lang="ts">
 import AllowedGroups from './AllowedGroups.vue'
+import CertificateAccess from './CertificateAccess.vue'
 import CertificateEngine from './CertificateEngine.vue'
 import ConfigureCheck from './ConfigureCheck.vue'
 import CollectMetadata from './CollectMetadata.vue'
@@ -51,6 +54,7 @@ import DefaultUserFolder from './DefaultUserFolder.vue'
 import DocMDP from './DocMDP.vue'
 import DownloadBinaries from './DownloadBinaries.vue'
 import Envelope from './Envelope.vue'
+import FilesListColumns from './FilesListColumns.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
 import OneTimeSigning from './OneTimeSigning.vue'

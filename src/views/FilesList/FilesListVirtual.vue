@@ -429,6 +429,12 @@ const caption = computed(() => t('libresign', 'List of files. Column headers wit
 	}		.files-list__row-column-custom {
 			width: calc(var(--row-height) * 2);
 		}
+
+		// Open-document column — a compact kebab menu (NcActions).
+		.files-list__row-open {
+			width: var(--clickable-area);
+			justify-content: center;
+		}
 	}
 
 }
@@ -441,14 +447,94 @@ const caption = computed(() => t('libresign', 'List of files. Column headers wit
 }
 
 @media screen and (max-width: 768px) {
-	.files-list__row-status,
-	.files-list__row-signers {
-		width: calc(var(--row-height) * 0.8) !important;
+	// Mobile columns: checkbox, name, status, actions (the open button).
+	// Hidden: file preview, the per-row actions menu, signers, created_at.
+	// Header th and row td share these classes.
+	.files-list :deep(.files-list__row-icon),
+	.files-list :deep(.files-list__row-actions),
+	.files-list :deep(.files-list__row-signers),
+	.files-list :deep(.files-list__row-mtime),
+	.files-list :deep(.files-list__row-created_at) {
+		display: none !important;
 	}
 
-	:deep(.files-list__row-status),
-	:deep(.files-list__row-signers) {
-		width: calc(var(--row-height) * 0.8) !important;
+	// Let the table exceed the viewport and scroll horizontally (like
+	// Product Management) instead of crushing the columns.
+	.files-list {
+		overflow-x: auto;
+	}
+
+	.files-list :deep(.files-list__table),
+	.files-list :deep(.files-list__thead),
+	.files-list :deep(.files-list__tbody),
+	.files-list :deep(.files-list__tfoot),
+	.files-list :deep(tr) {
+		min-width: max-content;
+	}
+
+	// Columns keep their width instead of shrinking to fit.
+	.files-list :deep(td),
+	.files-list :deep(th) {
+		flex-shrink: 0;
+	}
+
+	// Rows grow to fit a multiline name.
+	.files-list :deep(.files-list__row),
+	.files-list :deep(.files-list__row-head) {
+		height: auto;
+		min-height: var(--row-height);
+		align-items: stretch;
+	}
+
+	// Document name: up to 3 lines within a bounded width.
+	.files-list :deep(.files-list__row-name) {
+		flex: 0 0 190px;
+		width: 190px;
+		max-width: 190px;
+		overflow: hidden;
+		padding-block: 8px;
+	}
+
+	.files-list :deep(.files-list__row-name-link) {
+		align-items: flex-start;
+		height: auto;
+	}
+
+	// Clamp the whole name to 3 lines with a trailing ellipsis.
+	.files-list :deep(.files-list__row-name-text) {
+		display: -webkit-box !important;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		white-space: normal;
+		overflow: hidden;
+		overflow-wrap: break-word;
+		line-height: 1.3;
+	}
+
+	// Force the basename + extension spans to flow inline as a single run.
+	// The base rule makes the text container inline-flex, which otherwise
+	// turns the extension into its own vertical column ("p/d/f").
+	.files-list :deep(.files-list__row-name-text span) {
+		display: inline;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+	}
+
+	// Keep the remaining cells vertically centered in the taller row.
+	.files-list :deep(.files-list__row-checkbox),
+	.files-list :deep(.files-list__row-status),
+	.files-list :deep(.files-list__row-open) {
+		align-self: center;
+	}
+
+	.files-list :deep(.files-list__row-status) {
+		width: calc(var(--row-height) * 1.6) !important;
+	}
+
+	.files-list :deep(.files-list__row-open) {
+		width: auto !important;
 	}
 }
 

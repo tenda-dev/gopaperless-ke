@@ -21,19 +21,44 @@
 
 			<!-- Header row: label + live credit pill -->
 			<div class="banner-header">
-				<span class="banner-header__label">Signing credits</span>
+				<span class="banner-header__label">Certified Signatures</span>
 
 				<span class="banner-header__count" :class="{ 'banner-header__count--empty': !hasCredits }">
-					{{ remainingUses }} {{ remainingUses === 1 ? 'credit' : 'credits' }}
+					{{ remainingUses }} available
 				</span>
 			</div>
 
 
 			<div class="banner-rule" />
 
+			<Transition name="fade-slide">
+                <div v-if="isSelfReserved" class="hero">
+
+					<div class="hero__halo">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="24" />
+					</div>
+
+					<div class="hero__title">
+						Ready to sign
+					</div>
+
+					<div class="hero__desc">
+						One of your certified signatures has already been reserved for this document.
+					</div>
+
+					<div class="hero__reassurance">
+						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="14" />
+
+						<span>
+							No further payment is required.
+						</span>
+					</div>
+				</div>
+			</Transition>
+
 			<!-- State: sponsored (Focus hero) -->
 			<Transition name="fade-slide">
-				<div v-if="isSponsored" class="hero">
+				<div v-if="isRequesterSponsored" class="hero">
 					<div class="hero__halo">
 						<NcIconSvgWrapper :path="mdiShieldCheckOutline" :size="20" />
 					</div>
@@ -43,7 +68,7 @@
 					</div>
 
 					<div class="hero__desc">
-						Signing this document has already been paid for on your behalf
+						A certified signature has already been reserved on your behalf.
 					</div>
 
 					<div class="hero__sponsor">
@@ -58,14 +83,14 @@
 
 					<div class="hero__reassurance">
 						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="14" />
-						<span>Your credits will not be used</span>
+						<span>Your available certified signatures won't be affected.</span>
 					</div>
 				</div>
 			</Transition>
 
 			<!-- State: has credits (Focus hero) -->
 			<Transition name="fade-slide">
-				<div v-if="hasCredits && !isSponsored" class="hero">
+				<div v-if="hasCredits && !hasSigningReservation" class="hero">
 					<div class="hero__halo">
 						<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="24" />
 					</div>
@@ -75,18 +100,18 @@
 					</div>
 
 					<div class="hero__desc">
-						Signing this document will use 1 credit.
+						Signing this document will use one certified signature.
 					</div>
 				</div>
 			</Transition>
 
 			<!-- State: no credits — payment chooser -->
 			<Transition name="fade-slide">
-				<div v-if="!hasCredits && !isSponsored" class="chooser">
+				<div v-if="!hasCredits && !hasSigningReservation" class="chooser">
 					<p class="chooser__prompt">
 						{{ oneTimeSigningEnabled
-							? "Choose how you'd like to conitinue signing"
-							: "You need signing credits to sign this document" }}
+							? "Choose how you'd like to continue signing."
+							: "You need a certified signature to sign this document." }}
 					</p>
 
 					<div class="chooser__options">
@@ -98,10 +123,10 @@
 
 							<div class="option__main">
 								<div class="option__title">
-									<span>Buy just what you need</span>
+									<span>Buy one certified signature</span>
 								</div>
 								<div class="option__desc">
-									Enough credits to sign this document.
+									Buy a certified signature for this signing only.
 								</div>
 							</div>
 
@@ -117,13 +142,13 @@
 
 							<div class="option__main">
 								<div class="option__title">
-									<span>Buy signing credits</span>
+									<span>Buy certified signatures</span>
 									<span v-if="oneTimeSigningEnabled" class="option__tag">
 										· recommended
 									</span>
 								</div>
 								<div class="option__desc">
-									Buy extra credits for future document signings.
+									Buy additional certified signatures for future document signings.
 								</div>
 							</div>
 
@@ -158,10 +183,12 @@ import { useEntitlementStore } from '@/store/entitlement'
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
 import { useSignerContextStore } from '@/store/signerContext'
+import { useUserContextStore } from '@/store/userContext'
 
 const entitlementStore = useEntitlementStore()
 const paymentContext = usePaymentContextStore()
 const signerContext = useSignerContextStore()
+const userContextStore = useUserContextStore()
 
 // Admin toggle: when disabled, the "Buy just what you need" (one-time) option is
 // hidden so users are guided to signing credit packs instead. Defaults to true.
@@ -185,12 +212,22 @@ const sponsorship = computed(() =>
 	).value,
 )
 
-const isSponsored = computed(
+const hasSigningReservation = computed(
 	() => sponsorship.value?.sponsored ?? false,
 )
 
 const sponsorUserId = computed(
 	() => sponsorship.value?.sponsorUserId,
+)
+
+const isSelfReserved = computed(() =>
+	hasSigningReservation.value
+	&& sponsorUserId.value === userContextStore.uid,
+)
+
+const isRequesterSponsored = computed(() =>
+	hasSigningReservation.value
+	&& sponsorUserId.value !== userContextStore.uid,
 )
 
 const isLoading = entitlementStore.isLoading(
@@ -214,6 +251,7 @@ onMounted(async () => {
 		paymentContext.setFlowType(PaymentFlowType.CREDIT_PACK)
 	}
 	await Promise.all([
+		userContextStore.initialise(),
 		entitlementStore.initialise(
 			DEFAULT_PRODUCT_CODE,
 		),

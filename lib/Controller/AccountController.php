@@ -352,6 +352,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 					'emailAddress' => $user->getEMailAddress() ?? '',
 					'displayName' => $user->getDisplayName()
 				],
+				'extended' => $this->accountService->getExtendedAccount($user->getUID(), $user->getEMailAddress()),
 				'settings' => $this->accountService->getSettings($this->userSession->getUser())
 			],
 			Http::STATUS_OK

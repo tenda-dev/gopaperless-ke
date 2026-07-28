@@ -26,6 +26,27 @@ span {
     font-family: 'Space Grotesk', sans-serif !important;
 }
 
+/**
+ * Hide Nextcloud's global unified search.
+ * GoPaperless does not expose cross-app search
+ * (files etc.).
+ */
+.unified-search-menu {
+	display: none !important;
+}
+
+/**
+ * Hide the Nextcloud Assistant entry since AI features
+ * are not part of the product experience.
+ */
+#assistant {
+	display: none !important;
+}
+
+.header-end > #assistant {
+	display: none !important;
+}
+
 #header .header-start nav.app-menu {
 	display: none !important;
 }

@@ -3,9 +3,9 @@
 
 		<!-- Header -->
 		<div class="credits-modal__header">
-			<h2 class="credits-modal__title">Choose your credit pack</h2>
+			<h2 class="credits-modal__title">Choose how many certified signatures you'd like to buy</h2>
 			<p class="credits-modal__subtitle">
-				Select the number of signing credits you'd like to purchase.
+				Slide to choose an amount. Popular bundles snap into place.
 			</p>
 		</div>
 
@@ -23,41 +23,109 @@
 			</button>
 		</div>
 
+		<!-- Floor exceeds cap: unsatisfiable minimum, surfaced rather than silently capped -->
+		<div v-else-if="hasFloorConflict" class="credits-modal__error">
+			<p>
+				You need to buy at least {{ props.minQuantity }} certified signatures, but you can buy at most {{ maxV }}
+			</p>
+		</div>
+
 		<!-- Content -->
 		<template v-else>
 
-			<div
-				class="credits-modal__tray"
-				role="radiogroup"
-				aria-label="Number of credits"
-			>
-				<button
-					v-for="option in quantityOptions"
-					:key="option"
-					type="button"
-					class="quantity-pill"
-					:class="{
-						'quantity-pill--active': quantity === option,
-					}"
-					:disabled="option < minQuantity"
-					:title="
-						option < minQuantity
-							? `Minimum purchase is ${minQuantity} credits`
-							: undefined
-					"
-					role="radio"
-					:aria-checked="quantity === option"
-					@click="selectQuantity(option)"
-				>
-					{{ option }}
-				</button>
+			<!-- Live value readout -->
+			<div class="credits-modal__count">
+				<span class="credits-modal__count-value">{{ quantity }}</span>
+				<span class="credits-modal__count-unit">
+					certified {{ quantity === 1 ? 'signature' : 'signatures' }}
+				</span>
 			</div>
 
+			<div class="credits-modal__mode">
+				<span
+					class="credits-modal__mode-pill"
+					:class="isSnapped
+						? 'credits-modal__mode-pill--pack'
+						: 'credits-modal__mode-pill--custom'"
+				>
+					{{ isSnapped ? 'Popular pack' : 'Custom amount' }}
+				</span>
+			</div>
+
+			<!-- Slider -->
+			<div class="credits-modal__slider">
+				<div
+					ref="trackRef"
+					class="slider-track"
+					@pointerdown="onPointerDown"
+				>
+					<!-- Dead zone below the minimum -->
+					<div
+						class="slider-track__dead"
+						:style="{ width: deadPct * 100 + '%' }"
+					/>
+
+					<!-- Active fill -->
+					<div
+						class="slider-track__fill"
+						:class="{ 'slider-track__fill--snap': !dragging }"
+						:style="{
+							left: fillLeft + '%',
+							width: fillWidth + '%',
+						}"
+					/>
+
+					<!-- Preset anchors -->
+					<template
+						v-for="snap in activeSnaps"
+						:key="snap"
+					>
+						<span
+							class="slider-track__tick"
+							:class="{ 'slider-track__tick--on': snap === quantity }"
+							:style="{ left: pct(snap) * 100 + '%' }"
+							@pointerdown.stop
+							@click.stop="selectSnap(snap)"
+						/>
+						<span
+							class="slider-track__label"
+							:class="{ 'slider-track__label--on': snap === quantity }"
+							:style="{ left: pct(snap) * 100 + '%' }"
+							@pointerdown.stop
+							@click.stop="selectSnap(snap)"
+						>
+							{{ snap }}
+						</span>
+					</template>
+
+					<!-- Thumb -->
+					<div
+						class="slider-track__thumb"
+						:class="{ 'slider-track__thumb--snap': !dragging }"
+						:style="{ left: thumbPct * 100 + '%' }"
+						tabindex="0"
+						role="slider"
+						:aria-valuemin="minV"
+						:aria-valuemax="maxV"
+						:aria-valuenow="quantity"
+						:aria-valuetext="ariaValueText"
+						aria-label="Choose the number of certified signatures to buy"
+						@keydown="onKeydown"
+					/>
+				</div>
+			</div>
+
+			<!-- Price -->
 			<div class="credits-modal__price">
-				<Transition name="price-swap" mode="out-in">
+				<Transition
+					:name="animatePrice ? 'price-swap' : ''"
+					mode="out-in"
+				>
 					<div :key="quantity" class="credits-modal__price-inner">
 						<span class="credits-modal__price-amount">{{ formattedTotal }}</span>
-						<span class="credits-modal__price-meta">for {{ quantity }} credits</span>
+						<span class="credits-modal__price-meta">
+							Includes {{ quantity }} certified signature{{ quantity === 1 ? '' : 's' }}
+						</span>
 					</div>
 				</Transition>
 			</div>
@@ -76,7 +144,7 @@
 			</button>
 
 			<p class="credits-modal__hint">
-				Credits are added immediately after payment and remain available until used.
+				Certified signatures let you use your personal digital certificate to sign documents.
 			</p>
 
 		</template>
@@ -85,16 +153,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import type { ProductPricing } from '@/composables/useProductPricing'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
-import { mdiArrowRight } from '@mdi/js';
+import { mdiArrowRight } from '@mdi/js'
+import { useCreditSlider } from '@/composables/useCreditSlider'
 
 const props = withDefaults(defineProps<{
 	pricing: ProductPricing
+
+	/** Hard floor. 0 / undefined ⇒ no floor. */
 	minQuantity?: number
+
+	/** Sellable ceiling. */
+	maxQuantity?: number
+
+	/** Preferred packs to snap to (e.g. product-config driven). */
+	snapPoints?: readonly number[]
+
+	/** Optional starting value; clamped into the valid range. */
+	initialQuantity?: number
 }>(), {
 	minQuantity: 0,
+	maxQuantity: 100,
 })
 
 const emit = defineEmits<{
@@ -110,63 +191,123 @@ const {
 	reload,
 } = props.pricing
 
-const QUANTITY_OPTIONS = [
-	5,
-	10,
-	15,
-	20,
-	50,
-	70,
-	100,
-	150,
-	200,
-	250,
-	300,
-	350,
-] as const
+const {
+	quantity,
+	dragging,
+	animatePrice,
+	minV,
+	maxV,
+	activeSnaps,
+	hasFloorConflict,
+	deadPct,
+	thumbPct,
+	fillLeft,
+	fillWidth,
+	isSnapped,
+	ariaValueText,
+	pct,
+	beginDrag,
+	dragTo,
+	endDrag,
+	cancelDrag,
+	stepBy,
+	toMin,
+	toMax,
+	selectSnap,
+	jumpToNextSnap,
+	jumpToPrevSnap,
+} = useCreditSlider({
+	minQuantity: () => props.minQuantity,
+	maxQuantity: () => props.maxQuantity,
+	snapPoints: () => props.snapPoints,
+	initialQuantity: () => props.initialQuantity,
+})
 
-function resolveInitialQuantity(minQuantity: number): number {
-	return (
-		QUANTITY_OPTIONS.find(
-			option => option >= minQuantity,
-		) ?? QUANTITY_OPTIONS.at(-1)!
-	)
-}
+// --- pricing (unchanged) ----------------------------------------------------
 
-const quantityOptions = QUANTITY_OPTIONS
+const totalAmount = computed(() => unitPrice.value * quantity.value)
 
-const quantity = ref(
-	resolveInitialQuantity(props.minQuantity),
+const formattedTotal = computed(() =>
+	new Intl.NumberFormat('en-KE', {
+		style: 'currency',
+		currency: currency.value ?? 'KES',
+	}).format(totalAmount.value / 100),
 )
 
-function selectQuantity(value: number) {
-	if (value < props.minQuantity) {
+// --- pointer → position -----------------------------------------------------
+
+const trackRef = ref<HTMLElement | null>(null)
+
+function pointerPct(event: PointerEvent): number {
+	const el = trackRef.value
+	if (!el) {
+		return 0
+	}
+	const rect = el.getBoundingClientRect()
+	return (event.clientX - rect.left) / rect.width
+}
+
+function onPointerDown(event: PointerEvent) {
+	beginDrag(pointerPct(event))
+	window.addEventListener('pointermove', onPointerMove)
+	window.addEventListener('pointerup', onPointerUp)
+}
+
+function onPointerMove(event: PointerEvent) {
+	event.preventDefault()
+	dragTo(pointerPct(event))
+}
+
+function onPointerUp(event: PointerEvent) {
+	endDrag(pointerPct(event))
+	detachPointer()
+}
+
+function detachPointer() {
+	window.removeEventListener('pointermove', onPointerMove)
+	window.removeEventListener('pointerup', onPointerUp)
+}
+
+onBeforeUnmount(() => {
+	cancelDrag()
+	detachPointer()
+})
+
+// --- keyboard ---------------------------------------------------------------
+
+function onKeydown(event: KeyboardEvent) {
+	switch (event.key) {
+	case 'ArrowRight':
+	case 'ArrowUp':
+		stepBy(1)
+		break
+	case 'ArrowLeft':
+	case 'ArrowDown':
+		stepBy(-1)
+		break
+	case 'PageUp':
+		jumpToNextSnap()
+		break
+	case 'PageDown':
+		jumpToPrevSnap()
+		break
+	case 'Home':
+		toMin()
+		break
+	case 'End':
+		toMax()
+		break
+	default:
 		return
 	}
 
-	quantity.value = value
+	event.preventDefault()
 }
 
-const totalAmount = computed(() =>
-	unitPrice.value * quantity.value,
-)
-
-const formattedTotal = computed(() => {
-	return new Intl.NumberFormat('en-KE', {
-		style: 'currency',
-		currency: currency.value ?? 'KES',
-	}).format(totalAmount.value / 100)
-})
+// --- continue ---------------------------------------------------------------
 
 function handleContinue() {
-	emit('selected', {
-		quantity: quantity.value,
-	})
-
-	handleClose()
-}
-
-function handleClose() {
+	emit('selected', { quantity: quantity.value })
 	emit('close')
 }
 </script>
@@ -175,7 +316,7 @@ function handleClose() {
 .credits-modal {
 	display: flex;
 	flex-direction: column;
-	gap: 22px;
+	gap: 20px;
 	padding: 20px 10px;
 
 	&__header {
@@ -210,6 +351,7 @@ function handleClose() {
 		min-height: 180px;
 
 		font-size: 14px;
+		text-align: center;
 		color: #64748b;
 
 		button {
@@ -222,14 +364,53 @@ function handleClose() {
 		}
 	}
 
-		&__tray {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 10px;
-			padding: 10px;
-			background: #f3f4f6;
-			border-radius: 13px;
+	&__count {
+		display: flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: 8px;
+	}
+
+	&__count-value {
+		font-size: 40px;
+		font-weight: 600;
+		line-height: 1;
+		letter-spacing: -0.02em;
+		color: #111827;
+		font-variant-numeric: tabular-nums;
+	}
+
+	&__count-unit {
+		font-size: 14px;
+		color: #9ca3af;
+	}
+
+	&__mode {
+		display: flex;
+		justify-content: center;
+		margin-top: -8px;
+	}
+
+	&__mode-pill {
+		font-size: 11px;
+		font-weight: 600;
+		padding: 3px 10px;
+		border-radius: 999px;
+
+		&--pack {
+			background: #dcfce7;
+			color: #047a45;
 		}
+
+		&--custom {
+			background: #f1f5f9;
+			color: #94a3b8;
+		}
+	}
+
+	&__slider {
+		padding: 22px 8px 34px;
+	}
 
 	&__price {
 		display: flex;
@@ -308,62 +489,94 @@ function handleClose() {
 	}
 }
 
-.quantity-pill {
-	flex: 1 1 calc(20% - 6px);
-	min-width: 58px;
-
-	height: 42px;
-
-	border: none;
-	border-radius: 10px;
-
-	background: transparent;
-
-	font-size: 14px;
-	font-weight: 600;
-
-	color: #374151;
-
+.slider-track {
+	position: relative;
+	height: 6px;
+	border-radius: 999px;
+	background: #eef2f6;
+	border: 0.5px solid #e2e8f0;
 	cursor: pointer;
+	touch-action: none;
 
-	transition:
-		background-color 180ms ease,
-		box-shadow 180ms ease,
-		transform 180ms ease,
-		color 180ms ease,
-		opacity 180ms ease;
-
-	&:hover:not(.quantity-pill--active):not(:disabled) {
-		background: rgba(255,255,255,.65);
-		color: #111827;
+	&__dead {
+		position: absolute;
+		top: 0;
+		left: 0;
+		height: 100%;
+		border-radius: 999px 0 0 999px;
+		background: #dbe1e8;
 	}
 
-	&:active:not(:disabled) {
-		transform: scale(.97);
+	&__fill {
+		position: absolute;
+		top: 0;
+		height: 100%;
+		border-radius: 999px;
+		background: #04d56d;
+
+		&--snap {
+			transition:
+				left 190ms cubic-bezier(0.22, 1, 0.36, 1),
+				width 190ms cubic-bezier(0.22, 1, 0.36, 1);
+		}
 	}
 
-	&--active {
-		background: white;
-		color: #111827;
+	&__tick {
+		position: absolute;
+		top: 50%;
+		width: 2px;
+		height: 9px;
+		transform: translate(-50%, -50%);
+		background: #cbd5e1;
+		border-radius: 2px;
+		cursor: pointer;
 
-		transform: translateY(-1px);
-
-		box-shadow:
-			0 4px 12px rgba(0,0,0,.08);
+		&--on {
+			background: #04d56d;
+			height: 12px;
+		}
 	}
 
-	&:disabled {
-		cursor: not-allowed;
-		opacity: .35;
+	&__label {
+		position: absolute;
+		top: 15px;
+		transform: translateX(-50%);
+		font-size: 11px;
+		white-space: nowrap;
 		color: #9ca3af;
-		filter: grayscale(.25);
-		background: transparent;
-		transform: none;
-		box-shadow: none;
+		cursor: pointer;
+		user-select: none;
+
+		&--on {
+			color: #111827;
+			font-weight: 600;
+		}
 	}
 
-	&:disabled:hover {
-		background: transparent;
+	&__thumb {
+		position: absolute;
+		top: 50%;
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		background: #fff;
+		border: 2px solid #04d56d;
+		transform: translate(-50%, -50%);
+		cursor: grab;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+
+		&:active {
+			cursor: grabbing;
+		}
+
+		&:focus-visible {
+			outline: none;
+			box-shadow: 0 0 0 4px rgba(4, 213, 109, 0.28);
+		}
+
+		&--snap {
+			transition: left 190ms cubic-bezier(0.22, 1, 0.36, 1);
+		}
 	}
 }
 
@@ -384,23 +597,9 @@ function handleClose() {
 	transform: translateY(-6px);
 }
 
-@media (max-width: 600px) {
-	.quantity-pill {
-		flex: 1 1 calc(25% - 6px);
-	}
-}
-
 @media (max-width: 420px) {
-	.quantity-pill {
-		flex: 1 1 calc(33.333% - 6px);
-		font-size: 13px;
-		height: 40px;
-	}
-}
-
-@media (max-width: 340px) {
-	.quantity-pill {
-		flex: 1 1 calc(50% - 6px);
+	.slider-track__label {
+		font-size: 10px;
 	}
 }
 </style>

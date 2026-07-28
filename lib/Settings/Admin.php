@@ -103,6 +103,14 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('free_credits_uses', $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2));
 		$this->initialState->provideInitialState('one_time_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true));
 
+		//	PERSONAL DIGITAL CERTIFICATE GATE
+		//	Gate kill-switch defaults to false = inert (nobody paywalled).
+		$this->initialState->provideInitialState('certificate_gate_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'certificate_gate_enabled', false));
+		$this->initialState->provideInitialState('certificate_validity_days', $this->appConfig->getValueInt(Application::APP_ID, 'certificate_validity_days', 365));
+
+		//	FILES LIST COLUMNS
+		$this->initialState->provideInitialState('files_list_show_signers', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true));
+
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');

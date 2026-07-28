@@ -18,6 +18,7 @@ export type PaymentReason =
 export type PaymentPurpose =
 	| 'sign_request'
 	| 'credit_purchase'
+	| 'certificate_purchase'
 
 export type PaymentConfidence = 'high' | 'ambiguous' | 'unknown'
 

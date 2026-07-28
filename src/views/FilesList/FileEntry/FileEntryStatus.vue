@@ -48,6 +48,8 @@ function statusToVariant(status: number) {
 	padding: 4px 10px;
 	border-radius: var(--chip-radius);
 	line-height: 1.3;
+	font-size: 12px;
+	font-weight: 500;
 	text-align: center;
 	white-space: nowrap;
 	vertical-align: middle;
