@@ -14,6 +14,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\FileTypeMapper;
 use OCA\Libresign\Db\IdDocs;
 use OCA\Libresign\Db\IdDocsMapper;
+use OCA\Libresign\Db\IdentifyMethod;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Db\UserElementMapper;
@@ -28,6 +29,9 @@ use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SequentialSigningService;
 use OCA\Libresign\Service\SignerElementsService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipContextBuilderService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipValidationService;
+use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
@@ -40,6 +44,7 @@ use OCP\IUserManager;
 use OCP\Security\IHasher;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 
 final class ValidateHelperTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private IL10N&MockObject $l10n;
@@ -60,6 +65,10 @@ final class ValidateHelperTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private IUserManager&MockObject $userManager;
 	private IRootFolder&MockObject $root;
 	private DocMdpValidator&MockObject $docMdpValidator;
+	private SponsorshipWorkflowService&MockObject $sponsorshipWorkflowService;
+	private SponsorshipValidationService&MockObject $sponsorshipValidationService;
+	private SponsorshipContextBuilderService&MockObject $sponsorshipContextBuilderService;
+	private LoggerInterface&MockObject $logger;
 
 	public function setUp(): void {
 		$this->l10n = $this->createMock(IL10N::class);
@@ -83,6 +92,10 @@ final class ValidateHelperTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->userManager = $this->createMock(IUserManager::class);
 		$this->root = $this->createMock(IRootFolder::class);
 		$this->docMdpValidator = $this->createMock(DocMdpValidator::class);
+		$this->sponsorshipWorkflowService = $this->createMock(SponsorshipWorkflowService::class);
+		$this->sponsorshipValidationService = $this->createMock(SponsorshipValidationService::class);
+		$this->sponsorshipContextBuilderService = $this->createMock(SponsorshipContextBuilderService::class);
+		$this->logger = $this->createMock(LoggerInterface::class);
 	}
 
 	private function getValidateHelper(): ValidateHelper {
@@ -105,6 +118,10 @@ final class ValidateHelperTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->userManager,
 			$this->root,
 			$this->docMdpValidator,
+			$this->sponsorshipWorkflowService,
+			$this->sponsorshipValidationService,
+			$this->sponsorshipContextBuilderService,
+			$this->logger,
 		);
 		return $validateHelper;
 	}
@@ -1440,5 +1457,76 @@ final class ValidateHelperTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		if (!$shouldThrow) {
 			$this->assertTrue(true);
 		}
+	}
+
+	public function testValidateSignRequestBelongsToUserThrowsWhenNotAssigned(): void {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('signer');
+		$user->method('getEMailAddress')->willReturn('signer@example.com');
+
+		$this->signRequestMapper
+			->expects($this->once())
+			->method('getById')
+			->with(1)
+			->willReturn(new \OCA\Libresign\Db\SignRequest());
+
+		$this->userManager
+			->method('get')
+			->with('signer')
+			->willReturn($user);
+
+		$identifyMethod = $this->createMock(IIdentifyMethod::class);
+		$entity = new IdentifyMethod();
+		$entity->setIdentifierKey(IdentifyMethodService::IDENTIFY_ACCOUNT);
+		$entity->setIdentifierValue('other@example.com');
+		$identifyMethod->method('getEntity')->willReturn($entity);
+
+		$this->identifyMethodService
+			->method('getIdentifyMethodsFromSignRequestId')
+			->with(1)
+			->willReturn([
+				IdentifyMethodService::IDENTIFY_ACCOUNT => [$identifyMethod],
+			]);
+
+		$validateHelper = $this->getValidateHelper();
+
+		$this->expectException(LibresignException::class);
+		$this->expectExceptionMessage('Sign request is not assigned to this user');
+
+		$validateHelper->validateSignRequestBelongsToUser(1, 'signer');
+	}
+
+	public function testValidateSignRequestBelongsToUserSucceedsForAssignedAccount(): void {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('signer');
+		$user->method('getEMailAddress')->willReturn('signer@example.com');
+
+		$this->signRequestMapper
+			->method('getById')
+			->with(1)
+			->willReturn(new \OCA\Libresign\Db\SignRequest());
+
+		$this->userManager
+			->method('get')
+			->with('signer')
+			->willReturn($user);
+
+		$identifyMethod = $this->createMock(IIdentifyMethod::class);
+		$entity = new IdentifyMethod();
+		$entity->setIdentifierKey(IdentifyMethodService::IDENTIFY_ACCOUNT);
+		$entity->setIdentifierValue('signer');
+		$identifyMethod->method('getEntity')->willReturn($entity);
+
+		$this->identifyMethodService
+			->method('getIdentifyMethodsFromSignRequestId')
+			->with(1)
+			->willReturn([
+				IdentifyMethodService::IDENTIFY_ACCOUNT => [$identifyMethod],
+			]);
+
+		$validateHelper = $this->getValidateHelper();
+
+		$validateHelper->validateSignRequestBelongsToUser(1, 'signer');
+		$this->assertTrue(true);
 	}
 }

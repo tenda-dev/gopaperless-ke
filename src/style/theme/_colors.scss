@@ -1,0 +1,24 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+:root {
+	/* Core palette. */
+	--tenda-ebony: #0f172a; /* Foundation: text, backgrounds, anchoring */
+	--tenda-green: #04d56d; /* Primary actions, success, accents */
+	--tenda-white: #ffffff; /* Cards, modals, surfaces */
+
+	/* Supporting / semantic (never competes with the core signals.) */
+	--tenda-blue: #2005d6;  /* Stability: dashboards, enterprise, info */
+	--tenda-amber: #f59e0b; /* Attention: highlights, non-critical alerts */
+	--tenda-red: #d62206;   /* Critical: errors, warnings, irreversible actions */
+
+	/* Slate neutral scale. */
+	--tenda-slate-800: #1e293b; /* Secondary text on dark surfaces */
+	--tenda-slate-600: #475569; /* Body text, icons */
+	--tenda-slate-400: #94a3b8; /* Placeholder text, disabled states */
+	--tenda-slate-200: #e2e8f0; /* Borders, dividers */
+	--tenda-slate-100: #f1f5f9; /* Subtle fills */
+	--tenda-slate-50: #f8fafc;  /* Page background, light mode */
+}

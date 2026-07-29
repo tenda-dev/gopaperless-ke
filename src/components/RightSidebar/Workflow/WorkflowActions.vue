@@ -60,6 +60,22 @@
 			</NcButton>
 
 			<NcButton
+				v-if="showRequestSignaturesAction"
+				variant="secondary"
+				size="small"
+				wide
+				class="workflow-secondary-action-button"
+				@click="handleRequestSignatures">
+				<template #icon>
+					<NcIconSvgWrapper
+						:path="mdiSend"
+						:size="20" />
+				</template>
+
+				{{ t('libresign', 'Request signatures') }}
+			</NcButton>
+
+			<NcButton
 				v-if="secondaryActionLabel"
 				variant="secondary"
 				size="small"
@@ -90,7 +106,7 @@ import {
 	mdiSignatureFreehand,
 } from '@mdi/js'
 
-import { FILE_STATUS } from '../../../constants'
+import { FILE_STATUS, SIGN_REQUEST_STATUS } from '../../../constants'
 import { isSignerSigned } from '../../../composables/useWorkflowState'
 import type {
 	WorkflowState,
@@ -144,6 +160,16 @@ const canCurrentUserSignNow = computed(() => {
 	return myPendingSigners.some(signer => (signer.signingOrder || 1) === minOrder)
 })
 
+/**
+ * A requester can also add themselves as one of the signers. In that case the
+ * workflow state short-circuits `primaryAction` to `sign-document` (because
+ * `canSign` becomes true), which hides the ability to send the signature
+ * requests to the remaining signers.
+ *
+ * `showRequestButton` already encodes the legacy "requests can be sent" guard
+ * (draft signers present, document ready, user can save, no disabled methods),
+ * so we use it as the signal that requesting is still a valid action.
+ */
 const primaryAction = computed<WorkflowPrimaryAction>(() => {
 	const derived = props.workflow.primaryAction
 	if (derived === 'sign-document' || derived === 'completed') {
@@ -154,6 +180,37 @@ const primaryAction = computed<WorkflowPrimaryAction>(() => {
 	}
 	return derived
 })
+
+/**
+ * True when the current user is themselves one of the signers.
+ *
+ * When the requester adds themselves as a signer the primary action becomes
+ * `sign-document` ("Proceed to sign"), which would otherwise hide the ability
+ * to dispatch the requests to everyone else.
+ */
+const isCurrentUserSigner = computed(() =>
+	(props.workflow.signers || []).some(signer => signer.me),
+)
+
+const hasOtherDraftSigners = computed(() =>
+	(props.workflow.signers || []).some(
+		signer => !signer.me && signer.status === SIGN_REQUEST_STATUS.DRAFT,
+	),
+)
+
+/**
+ * Show a dedicated secondary "Request signatures" button when the current user
+ * is a signer (so the primary is signing, not requesting) yet there are still
+ * other signers awaiting their request. Hidden once the primary action already
+ * is `request-signatures`, to avoid two buttons with the same intent.
+ */
+const showRequestSignaturesAction = computed(() =>
+	isCurrentUserSigner.value
+	&& primaryAction.value !== 'request-signatures'
+	&& Boolean(props.workflow.showRequestButton)
+	&& props.workflow.isReady
+	&& hasOtherDraftSigners.value,
+)
 
 const isBlocked = computed(() => {
 	return (
@@ -382,6 +439,10 @@ function handlePrimaryAction() {
 		emit('view-progress')
 		break
 	}
+}
+
+function handleRequestSignatures() {
+	emit('request-signatures')
 }
 
 function handleSecondaryAction() {

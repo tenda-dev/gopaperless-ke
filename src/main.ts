@@ -9,6 +9,8 @@ import { translate as t, translatePlural as n } from '@nextcloud/l10n'
 import 'vue-sonner/style.css'
 import './style/global.scss'
 import './style/custom.scss'
+// Imported last so it wins the cascade over server-side theme CSS.
+import './style/force-light.scss'
 
 import App from './App.vue'
 import router from './router/router'
