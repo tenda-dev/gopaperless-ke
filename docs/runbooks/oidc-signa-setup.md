@@ -1,3 +1,15 @@
+---
+title: "Adding Signa (SecurySign / Keycloak) as a login provider"
+type: runbook
+status: active
+domain: ops
+layer: runbooks
+owner: engineering
+date: 2026-07-29
+commit: "05f7f3566"
+related: ["docs/runbooks/nextcloud-signa-oidc-dashboard-setup.md", "docs/runbooks/sandbox-testing.md"]
+---
+
 <!--
  - SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
  - SPDX-License-Identifier: AGPL-3.0-or-later

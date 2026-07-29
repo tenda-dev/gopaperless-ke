@@ -1,3 +1,15 @@
+---
+title: "Enabling "Log in with Signa" on the Nextcloud dashboard"
+type: runbook
+status: active
+domain: ops
+layer: runbooks
+owner: engineering
+date: 2026-07-29
+commit: "05f7f3566"
+related: ["docs/runbooks/oidc-signa-setup.md", "docs/runbooks/sandbox-testing.md"]
+---
+
 <!--
  - SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
  - SPDX-License-Identifier: AGPL-3.0-or-later
@@ -20,7 +32,7 @@ trusts whichever Nextcloud user is already signed in. So everything below is
 Nextcloud **instance configuration**, done through the admin dashboard (or the
 `occ` command line). The accompanying code change in this repo is a separate,
 one-time account-safety net (see [Step 0](#step-0--pre-flight-run-the-account-safety-check-once)
-and `docs/oidc-signa-setup.md`).
+and `oidc-signa-setup.md`).
 
 ---
 
@@ -194,8 +206,8 @@ Google accounts or their sessions. Those login doors were never modified.
 
 ## Related docs in this repo
 
-- `docs/oidc-signa-setup.md` — the "why" behind the email-matching rule and the
+- `oidc-signa-setup.md` — the "why" behind the email-matching rule and the
   account-safety reasoning.
-- `docs/sandbox-testing.md` — a full walk-through of the local sandbox where
+- `sandbox-testing.md` — a full walk-through of the local sandbox where
   this exact flow was tested end-to-end against the real Signa realm (including
   the redirect-URI 400 and what it means).

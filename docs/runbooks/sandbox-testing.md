@@ -1,3 +1,15 @@
+---
+title: "Local sandbox: testing Signa SSO + LibreSign operations"
+type: runbook
+status: active
+domain: ops
+layer: runbooks
+owner: engineering
+date: 2026-07-29
+commit: "05f7f3566"
+related: ["docs/runbooks/nextcloud-signa-oidc-dashboard-setup.md", "docs/runbooks/oidc-signa-setup.md"]
+---
+
 <!--
  - SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
  - SPDX-License-Identifier: AGPL-3.0-or-later
@@ -107,7 +119,7 @@ worked cleanly and confirmed `user_oidc` declares
 `min-version="29" max-version="35"`, so 34 is fully supported).
 
 Registered a provider pointed at the real Signa realm, mapping accounts by
-email (matching the recommendation in `docs/oidc-signa-setup.md`):
+email (matching the recommendation in `oidc-signa-setup.md`):
 
 ```bash
 docker compose exec -u www-data nextcloud bash -c \
