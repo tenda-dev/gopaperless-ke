@@ -11,6 +11,8 @@ namespace OCA\Libresign\Tests\Unit\Service;
 use OC\AppFramework\Utility\TimeFactory;
 use OC\Http\Client\ClientService;
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\ExtendedAccount;
+use OCA\Libresign\Db\ExtendedAccountMapper;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\FileTypeMapper;
 use OCA\Libresign\Db\IdentifyMethodMapper;
@@ -19,6 +21,7 @@ use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Db\UserElement;
 use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\CRLReason;
+use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Handler\CertificateEngine\CertificateEngineFactory;
 use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\FileUploadHelper;
@@ -26,10 +29,12 @@ use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\Crl\CrlService;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\ExtendedAccount\ExtendedAccountService;
 use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdDocsService;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
@@ -46,6 +51,7 @@ use OCP\Files\IMimeTypeDetector;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IAppConfig;
+use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -53,6 +59,7 @@ use OCP\IUser;
 use OCP\IUserManager;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 
 /**
  * @internal
@@ -88,7 +95,12 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private Pkcs12Handler&MockObject $pkcs12Handler;
 	private FileUploadHelper&MockObject $uploadHelper;
 	private CrlService&MockObject $crlService;
+	private IConfig&MockObject $config;
+	private LoggerInterface&MockObject $logger;
+	private PhoneNumberService $phoneNumberService;
 	private EntitlementService&MockObject $entitlementService;
+	private ExtendedAccountMapper&MockObject $extendedAccountMapper;
+	private ExtendedAccountService $extendedAccountService;
 
 	public function setUp(): void {
 		parent::setUp();
@@ -124,7 +136,18 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->timeFactory = $this->createMock(TimeFactory::class);
 		$this->uploadHelper = $this->createMock(FileUploadHelper::class);
 		$this->crlService = $this->createMock(CrlService::class);
+		$this->config = $this->createMock(IConfig::class);
+		$this->logger = $this->createMock(LoggerInterface::class);
+		$this->phoneNumberService = new PhoneNumberService($this->logger);
 		$this->entitlementService = $this->createMock(EntitlementService::class);
+		$this->extendedAccountMapper = $this->createMock(ExtendedAccountMapper::class);
+		// ExtendedAccountService is final; drive it through mocked mappers.
+		$this->extendedAccountService = new ExtendedAccountService(
+			$this->extendedAccountMapper,
+			$this->signRequestMapper,
+			$this->logger,
+			$this->appConfig,
+		);
 	}
 
 	private function getService(): AccountService {
@@ -140,6 +163,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->signFile,
 			$this->requestSignatureService,
 			$this->certificateEngineFactory,
+			$this->config,
 			$this->appConfig,
 			$this->userConfig,
 			$this->mountProviderCollection,
@@ -158,7 +182,10 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->timeFactory,
 			$this->uploadHelper,
 			$this->crlService,
-			$this->entitlementService
+			$this->logger,
+			$this->phoneNumberService,
+			$this->entitlementService,
+			$this->extendedAccountService
 		);
 	}
 
@@ -236,7 +263,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->assertNull($actual);
 	}
 
-	public function testCreateToSignWithErrorInSendingEmail():void {
+	public function testCreateToSignSucceedsWhenInvitationEmailFails():void {
 		$signRequest = $this->createMock(\OCA\Libresign\Db\SignRequest::class);
 		$signRequest
 			->method('__call')
@@ -252,13 +279,125 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->userManager->method('createUser')->willReturn($userToSign);
 		$this->identifyMethodService->method('getIdentifyMethodsFromSignRequestId')->willReturn([]);
 		$this->appConfig->method('getValueString')->willReturn('yes');
+		$this->extendedAccountMapper->method('insert')->willReturnArgument(0);
 		$template = $this->createMock(\OCP\Mail\IEMailTemplate::class);
 		$this->newUserMail->method('generateTemplate')->willReturn($template);
 		$this->newUserMail->method('sendMail')->willReturnCallback(function ():void {
 			throw new \Exception('Error Processing Request', 1);
 		});
-		$this->expectExceptionMessage('Unable to send the invitation');
-		$this->getService()->createToSign('uuid', 'username', 'passwordOfUser', 'passwordToSign');
+		// Invitation failures are logged, not fatal to account creation.
+		$this->logger->expects($this->atLeastOnce())
+			->method('error')
+			->with('[AccountService] Failed to send invitation');
+		$uid = $this->getService()->createToSign('uuid', 'username', 'passwordOfUser', null);
+		$this->assertSame('username', $uid);
+	}
+
+	public function testCreateToSignCreatesExtendedAccount(): void {
+		$signRequest = $this->createMock(\OCA\Libresign\Db\SignRequest::class);
+		$signRequest
+			->method('__call')
+			->willReturnCallback(fn (string $method)
+				=> match ($method) {
+					'getDisplayName' => 'John Doe',
+					'getId' => 1,
+				}
+			);
+		$this->signRequestMapper->method('getByUuid')->willReturn($signRequest);
+		$userToSign = $this->createMock(\OCP\IUser::class);
+		$userToSign->method('getUID')->willReturn('new-signer');
+		$this->userManager->method('createUser')->willReturn($userToSign);
+		$this->identifyMethodService->method('getIdentifyMethodsFromSignRequestId')->willReturn([]);
+
+		$this->extendedAccountMapper->method('findByUserId')->willReturn(null);
+		$this->extendedAccountMapper->expects($this->once())
+			->method('insert')
+			->with($this->callback(
+				static fn (ExtendedAccount $account): bool => $account->getUserId() === 'new-signer'
+			))
+			->willReturnArgument(0);
+
+		$uid = $this->getService()->createToSign('uuid', 'signer@example.com', 'passwordOfUser', null);
+
+		$this->assertSame('new-signer', $uid);
+	}
+
+	public function testCreateOnlyCreatesExtendedAccount(): void {
+		$this->userManager->method('get')->willReturn(null);
+		$newUser = $this->createMock(\OCP\IUser::class);
+		$newUser->method('getUID')->willReturn('new-account');
+		$newUser->method('getSystemEMailAddress')->willReturn('new@example.com');
+		$this->userManager->method('createUser')->willReturn($newUser);
+
+		$this->extendedAccountMapper->method('findByUserId')->willReturn(null);
+		$this->extendedAccountMapper->expects($this->once())
+			->method('insert')
+			->with($this->callback(
+				static fn (ExtendedAccount $account): bool => $account->getUserId() === 'new-account'
+			))
+			->willReturnArgument(0);
+
+		$result = $this->getService()->createOnly('New@Example.com ', 'passwordOfUser');
+
+		$this->assertSame('Success', $result['message']);
+		$this->assertSame('new@example.com', $result['email']);
+		$this->assertSame('new-account', $result['uid']);
+	}
+
+	public function testCreateOnlyRejectsInvalidEmail(): void {
+		$this->extendedAccountMapper->expects($this->never())->method('insert');
+		$this->userManager->expects($this->never())->method('createUser');
+
+		$this->expectException(LibresignException::class);
+		$this->expectExceptionMessage('Invalid email address');
+		$this->getService()->createOnly('not-an-email', 'passwordOfUser');
+	}
+
+	public function testCreateOnlyRejectsExistingAccount(): void {
+		$this->userManager->method('get')
+			->willReturn($this->createMock(\OCP\IUser::class));
+		$this->extendedAccountMapper->expects($this->never())->method('insert');
+		$this->userManager->expects($this->never())->method('createUser');
+
+		$this->expectException(LibresignException::class);
+		$this->expectExceptionMessage('Account with the email already exists');
+		$this->getService()->createOnly('taken@example.com', 'passwordOfUser');
+	}
+
+	public function testGetExtendedAccountReturnsGateAwareState(): void {
+		$validUntil = new \DateTimeImmutable('+30 days', new \DateTimeZone('UTC'));
+
+		$account = new ExtendedAccount();
+		$account->setUserId('account-user');
+		$account->setValidUntil($validUntil->format(DATE_ATOM));
+
+		$this->extendedAccountMapper->method('findByUserId')
+			->with('account-user')
+			->willReturn($account);
+		// Gate disabled (default): nobody is paywalled.
+		$this->appConfig->method('getValueBool')->willReturn(false);
+
+		$result = $this->getService()->getExtendedAccount('account-user', 'account@example.com');
+
+		$this->assertFalse($result['paidCertificate']);
+		$this->assertNull($result['certPaidAt']);
+		$this->assertSame($validUntil->format(DATE_ATOM), $result['validUntil']);
+		$this->assertTrue($result['isCertificateValid']);
+		$this->assertNotNull($result['createdAt']);
+	}
+
+	public function testGetExtendedAccountAppliesRealStateWhenGateEnabled(): void {
+		$account = new ExtendedAccount();
+		$account->setUserId('gated-user');
+
+		$this->extendedAccountMapper->method('findByUserId')->willReturn($account);
+		$this->appConfig->method('getValueBool')->willReturn(true);
+
+		$result = $this->getService()->getExtendedAccount('gated-user', null);
+
+		$this->assertFalse($result['paidCertificate']);
+		$this->assertNull($result['validUntil']);
+		$this->assertFalse($result['isCertificateValid']);
 	}
 
 	public function testGetPdfByUuidWithSuccessAndSignedFile():void {
@@ -561,7 +700,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 						'password' => ''
 					];
 				},
-				'Password is mandatory'
+				'Password is required'
 			],
 			'fileNotFound' => [
 				function ($self):array {
@@ -583,6 +722,10 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 							=> match ($method) {
 								'getNodeId' => 999,
 								'getUserId' => 'username',
+								'getId' => 171,
+								'getUuid' => 'uuid',
+								'getParentFileId' => null,
+								'getNodeType' => null,
 							}
 						);
 					$self->fileMapper
