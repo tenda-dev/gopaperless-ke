@@ -38,12 +38,17 @@
 				{{ column.title }}
 			</span>
 		</th>
+
+		<!-- Open document action -->
+		<th class="files-list__column files-list__row-open" scope="col">
+			<span>Action</span>
+		</th>
 	</tr>
 </template>
 
 <script setup lang="ts">
 import { t } from '@nextcloud/l10n'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 
@@ -53,6 +58,7 @@ import logger from '../../logger.js'
 import { useFilesStore } from '../../store/files.js'
 import { useFilesSortingStore } from '../../store/filesSorting.js'
 import { useSelectionStore } from '../../store/selection.js'
+import { useUserConfigStore } from '../../store/userconfig.js'
 
 defineOptions({
 	name: 'FilesListTableHeader',
@@ -71,18 +77,24 @@ type Column = {
 const filesStore = useFilesStore()
 const filesSortingStore = useFilesSortingStore()
 const selectionStore = useSelectionStore()
+const userConfigStore = useUserConfigStore()
 
-const columns = ref<Column[]>([
+// Admin toggle (default true) controls whether the Signers column shows.
+const showSigners = computed(() => userConfigStore.files_list_show_signers !== false)
+
+const columns = computed<Column[]>(() => [
 	{
 		title: t('libresign', 'Status'),
 		id: 'status',
 		sort: true,
 	},
-	{
-		title: t('libresign', 'Signers'),
-		id: 'signers',
-		sort: true,
-	},
+	...(showSigners.value
+		? [{
+			title: t('libresign', 'Signers'),
+			id: 'signers',
+			sort: true,
+		}]
+		: []),
 	{
 		title: t('libresign', 'Created at'),
 		id: 'created_at',

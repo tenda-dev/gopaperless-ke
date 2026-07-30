@@ -151,6 +151,12 @@ const routes: RouteRecordRaw[] = [
 	{
 		path: '/f/filelist/sign',
 		name: 'fileslist',
+		component: () => import('../views/FilesListNext/FilesListNext.vue'),
+	},
+	{
+		// Previous Files list, kept available at a legacy route.
+		path: '/f/filelist/legacy',
+		name: 'fileslistLegacy',
 		component: () => import('../views/FilesList/FilesList.vue'),
 	},
 	{
