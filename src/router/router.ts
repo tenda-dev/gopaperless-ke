@@ -151,7 +151,14 @@ const routes: RouteRecordRaw[] = [
 	{
 		path: '/f/filelist/sign',
 		name: 'fileslist',
-		component: () => import('../views/FilesListNext/FilesListNext.vue'),
+		// FilesListNext is opt-in via the files_list_next_enabled app config
+		// flag (default false). Legacy FilesList remains the default.
+		component: () => {
+			const config = loadState('libresign', 'config', {}) as { files_list_next_enabled?: boolean }
+			return config.files_list_next_enabled === true
+				? import('../views/FilesListNext/FilesListNext.vue')
+				: import('../views/FilesList/FilesList.vue')
+		},
 	},
 	{
 		// Previous Files list, kept available at a legacy route.

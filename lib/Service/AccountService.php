@@ -435,6 +435,8 @@ class AccountService {
 		// would strip it, wrongly falling back to the frontend default).
 		$config['one_time_signing_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true);
 		$config['files_list_show_signers'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true);
+		$config['files_list_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false);
+		$config['visible_elements_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false);
 
 		return $config;
 	}
