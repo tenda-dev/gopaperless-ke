@@ -421,10 +421,7 @@ function dropSignerAtView(signer: SignerSummaryRecord | SignerDetailRecord | nul
 		placement: { docIndex, pageIndex, x, y, width: boxWidth, height: boxHeight },
 	})
 
-	const placed = el.addObjectToPage(object, pageIndex, docIndex)
-	if (!placed) {
-		return null
-	}
+	el.addObjectToPage(object, pageIndex, docIndex)
 	el.selectPage?.(docIndex, pageIndex)
 	return object.id
 }

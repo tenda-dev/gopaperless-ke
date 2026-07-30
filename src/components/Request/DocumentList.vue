@@ -44,7 +44,7 @@ const fileList = computed(() => {
 const count = computed(() => fileList.value.length)
 
 onMounted(() => {
-	console.log(`xxxx documentList files`, filesStore.files);
+	// Intentionally empty; keep hook for future initialization if needed.
 })
 
 /* ===================== */

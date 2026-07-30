@@ -320,8 +320,6 @@ const _filesStore = defineStore('files', () => {
 		ordered.value = []
 		paginationNextUrl.value = ''
 		loadedAll.value = false
-
-		console.log(`xxxxxxx files`, files.value)
 	}
 
 	/** @param {number | null | undefined} fileId */
