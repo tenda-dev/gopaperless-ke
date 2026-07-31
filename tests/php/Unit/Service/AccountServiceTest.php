@@ -484,8 +484,8 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			->with(123)
 			->willThrowException(new NotFoundException('Invalid node'));
 
-		$this->expectException(DoesNotExistException::class);
-		$this->expectExceptionMessage('Not found');
+		$this->expectException(NotFoundException::class);
+		$this->expectExceptionMessage('Invalid node');
 
 		$this->getService()->getPdfByUuid('uuid');
 	}
