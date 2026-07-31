@@ -20,6 +20,7 @@
 		<SignatureFlow />
 		<SigningMode v-if="false" />
 		<AllowedGroups />
+		<SignatureProfileSettings />
 		<LegalInformation />
 		<IdentificationDocuments />
 		<CollectMetadata />
@@ -67,6 +68,7 @@ import RootCertificateOpenSsl from './RootCertificateOpenSsl.vue'
 import SignatureEngine from './SignatureEngine.vue'
 import SignatureFlow from './SignatureFlow.vue'
 import SignatureHashAlgorithm from './SignatureHashAlgorithm.vue'
+import SignatureProfileSettings from './SignatureProfile/SignatureProfileSettings.vue'
 import SignatureStamp from './SignatureStamp.vue'
 import SigningMode from './SigningMode.vue'
 import SupportProject from './SupportProject.vue'

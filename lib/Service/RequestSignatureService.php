@@ -28,6 +28,7 @@ use OCA\Libresign\Service\Envelope\EnvelopeFileRelocator;
 use OCA\Libresign\Service\Envelope\EnvelopeService;
 use OCA\Libresign\Service\File\Pdf\PdfMetadataExtractor;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
 use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
 use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
@@ -71,6 +72,7 @@ class RequestSignatureService {
 		protected FileUploadHelper $uploadHelper,
 		protected SignRequestService $signRequestService,
 		protected SponsorshipWorkflowService $sponsorshipWorkflowService,
+		protected SignatureProfileService $signatureProfileService,
 	) {
 	}
 
@@ -363,6 +365,15 @@ class RequestSignatureService {
 			$name = $node->getName();
 		}
 		$file->setName($this->removeExtensionFromName($name, $metadata));
+		// Resolve the appearance profile once, from the requester (document owner),
+		// and patch it into the file metadata. Workers will read this and will never perform
+		// group lookups. The customer appearance is applied by default.
+		$requesterId = $file->getUserId();
+		if ($requesterId) {
+			$metadata['appearance_profile'] = $this->signatureProfileService
+				->resolveForRequester($requesterId, true)
+				->toArray();
+		}
 		$file->setMetadata($metadata);
 		if (!empty($data['callback'])) {
 			$file->setCallback($data['callback']);

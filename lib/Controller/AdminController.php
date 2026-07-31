@@ -26,6 +26,7 @@ use OCA\Libresign\Service\Install\ConfigureCheckService;
 use OCA\Libresign\Service\Install\InstallService;
 use OCA\Libresign\Service\ReminderService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
 use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Settings\Admin;
 use OCP\AppFramework\Http;
@@ -974,6 +975,45 @@ class AdminController extends AEnvironmentAwareController {
 		try {
 			$normalizedGroups = array_values(array_map(static fn (mixed $group): string => (string)$group, $groups));
 			$this->appConfig->setValueArray(Application::APP_ID, 'groups_request_sign', $normalizedGroups);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Settings saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist the per-group signature appearance profiles
+	 *
+	 * The map is keyed by Nextcloud group id. Each entry controls which visual
+	 * elements are rendered for documents owned by that customer group. Missing
+	 * flags default to `true` (default-on), matching the resolved default profile.
+	 *
+	 * @param array<string, array{footer?: bool, qr?: bool, stamp?: bool|array<string, mixed>, auditInfo?: bool}> $profiles Appearance profile map keyed by group id. `stamp` may be a boolean or an object of stamp overrides.
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Settings saved
+	 * 500: Internal server error
+	 */
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/appearance-profiles/config', requirements: ['apiVersion' => '(v1)'])]
+	public function setAppearanceProfilesConfig(array $profiles = []): DataResponse {
+		try {
+			$normalised = [];
+			foreach ($profiles as $groupId => $flags) {
+				$groupId = (string)$groupId;
+				if ($groupId === '' || !is_array($flags)) {
+					continue;
+				}
+				// Normalise through the value object so the stored shape (including
+				// the nested stamp object and default-on flags) has a single source
+				// of truth shared with the resolver.
+				$normalised[$groupId] = SignatureProfile::fromArray($flags)->toArray();
+			}
+			$this->appConfig->setValueArray(Application::APP_ID, 'appearance_profiles', $normalised);
 
 			return new DataResponse([
 				'message' => $this->l10n->t('Settings saved'),

@@ -42,6 +42,7 @@ use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Envelope\EnvelopeStatusDeterminer;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\IToken;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
 use OCA\Libresign\Service\SignRequest\StatusService;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -125,6 +126,7 @@ class SignFileService {
 		private SubjectAlternativeNameService $subjectAlternativeNameService,
 		private SignRequestService $signRequestService,
 		private EntitlementService $entitlementService,
+		private SignatureTextService $signatureTextService,
 		IDBConnection $db,
 	) {
 		$this->db = $db;
@@ -1170,8 +1172,15 @@ class SignFileService {
 			->setPassword($this->password);
 
 		if ($this->engine::class === Pkcs12Handler::class) {
+			$profile = $this->getSignatureProfile();
+			$renderStamp = $profile->shouldRenderStamp();
+			// Apply the per-customer stamp appearance overrides (render mode,
+			// template, font sizes) for this document; null resets to global.
+			// Suppress the visible stamp entirely when the profile disables it,
+			// before setVisibleElements() reaches the engine.
+			$this->signatureTextService->setStampOverride($renderStamp ? $profile->getStamp() : null);
 			$this->engine
-				->setVisibleElements($this->getVisibleElements())
+				->setVisibleElements($renderStamp ? $this->getVisibleElements() : [])
 				->setSignatureParams($this->getSignatureParams());
 		}
 
@@ -1356,6 +1365,21 @@ class SignFileService {
 		}
 	}
 
+	/**
+	 * The appearance profile resolved at request creation and stored in the file
+	 * metadata. Read-only here: the worker never performs group lookups. Absent
+	 * or partial metadata resolves to the all-on default, keeping existing
+	 * documents unchanged.
+	 */
+	private function getSignatureProfile(): SignatureProfile {
+		$metadata = $this->libreSignFile?->getMetadata() ?? [];
+		$stored = $metadata['appearance_profile'] ?? null;
+		if (!is_array($stored)) {
+			return SignatureProfile::default();
+		}
+		return SignatureProfile::fromArray($stored);
+	}
+
 	protected function getPdfToSign(File $originalFile): File {
 		$file = $this->getSignedFile();
 		if ($file instanceof File) {
@@ -1367,8 +1391,15 @@ class SignFileService {
 		if ($this->pdfSignatureDetectionService->hasSignatures($originalContent)) {
 			return $this->createSignedFile($originalFile, $originalContent);
 		}
+		$profile = $this->getSignatureProfile();
+		if (!$profile->shouldRenderFooter()) {
+			// Footer disabled for this document's appearance profile: skip it.
+			return $this->createSignedFile($originalFile, $originalContent);
+		}
 		$metadata = $this->footerHandler->getMetadata($originalFile, $this->libreSignFile);
 		$footer = $this->footerHandler
+			->setRenderQrCode($profile->shouldRenderQrCode())
+			->setRenderAuditInfo($profile->shouldRenderAuditInfo())
 			->setTemplateVar('uuid', $this->libreSignFile->getUuid())
 			->setTemplateVar('signers', array_map(fn (SignRequestEntity $signer) => [
 				'displayName' => $signer->getDisplayName(),

@@ -15,6 +15,7 @@ use ImagickDraw;
 use ImagickPixel;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
 use OCA\Libresign\Vendor\Endroid\QrCode\Color\Color;
 use OCA\Libresign\Vendor\Endroid\QrCode\Encoding\Encoding;
 use OCA\Libresign\Vendor\Endroid\QrCode\ErrorCorrectionLevel;
@@ -42,6 +43,8 @@ class SignatureTextService {
 	public const DEFAULT_SIGNATURE_WIDTH = 350;
 	public const DEFAULT_SIGNATURE_HEIGHT = 100;
 	private const QRCODE_SIZE = 100;
+	/** Per-document stamp overrides; null means "follow the global config". */
+	private ?SignatureStamp $stampOverride = null;
 	public function __construct(
 		private IAppConfig $appConfig,
 		private IL10N $l10n,
@@ -195,6 +198,10 @@ class SignatureTextService {
 	}
 
 	public function getTemplate(): string {
+		$override = $this->stampOverride?->getTextTemplate();
+		if ($override !== null) {
+			return $override;
+		}
 		if ($this->appConfig->hasKey(Application::APP_ID, 'signature_text_template')) {
 			return $this->appConfig->getValueString(Application::APP_ID, 'signature_text_template');
 		}
@@ -528,6 +535,10 @@ class SignatureTextService {
 	}
 
 	public function getTemplateFontSize(): float {
+		$override = $this->stampOverride?->getTemplateFontSize();
+		if ($override !== null) {
+			return $override;
+		}
 		$collectMetadata = $this->appConfig->getValueBool(Application::APP_ID, 'collect_metadata', false);
 		if ($collectMetadata) {
 			return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE - 1);
@@ -544,10 +555,27 @@ class SignatureTextService {
 	}
 
 	public function getSignatureFontSize(): float {
+		$override = $this->stampOverride?->getSignatureFontSize();
+		if ($override !== null) {
+			return $override;
+		}
 		return $this->appConfig->getValueFloat(Application::APP_ID, 'signature_font_size', self::SIGNATURE_DEFAULT_FONT_SIZE);
 	}
 
+	/**
+	 * Apply per-document stamp overrides for the duration of one signing run.
+	 * Passing null restores the global configuration.
+	 */
+	public function setStampOverride(?SignatureStamp $stampOverride): self {
+		$this->stampOverride = $stampOverride;
+		return $this;
+	}
+
 	public function getRenderMode(): string {
+		$override = $this->stampOverride?->getRenderMode();
+		if ($override !== null) {
+			return $override;
+		}
 		return $this->appConfig->getValueString(Application::APP_ID, 'signature_render_mode', SignerElementsService::RENDER_MODE_DEFAULT);
 	}
 
