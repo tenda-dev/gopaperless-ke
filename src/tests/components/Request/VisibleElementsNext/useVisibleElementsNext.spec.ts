@@ -14,7 +14,7 @@ const filesStoreMock = {
 		id: 1,
 		name: 'test.pdf',
 		status: 0,
-		signers: [],
+		signers: [] as Array<{ signRequestId: number; displayName: string }>,
 		visibleElements: [],
 	})),
 	saveOrUpdateSignatureRequest: vi.fn(),
