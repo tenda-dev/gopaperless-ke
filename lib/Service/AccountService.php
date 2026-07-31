@@ -27,6 +27,7 @@ use OCA\Libresign\Helper\FileUploadHelper;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Crl\CrlService;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\ExtendedAccount\ExtendedAccountService;
 use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Settings\Mailer\NewUserMailHelper;
 use OCP\Accounts\IAccountManager;
@@ -95,6 +96,7 @@ class AccountService {
 		private LoggerInterface $logger,
 		private PhoneNumberService $phoneNumberService,
 		private EntitlementService $entitlementService,
+		private ExtendedAccountService $extendedAccountService,
 	) {
 	}
 
@@ -251,6 +253,10 @@ class AccountService {
 			// when the object itself is updated. No explicit updateUser call is usually needed.
 		}
 
+		$this->extendedAccountService->create(
+			$newUser->getUID(),
+		);
+
 		$this->updateIdentifyMethodToAccount($signRequest->getId(), $email, $newUser->getUID());
 
 		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
@@ -318,6 +324,10 @@ class AccountService {
 			$this->setPhoneNumber($newUser, $resolved->e164);
 		}
 
+		$this->extendedAccountService->create(
+			$newUser->getUID(),
+		);
+
 		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
 			try {
 				$emailTemplate = $this->newUserMail->generateTemplate($newUser, false);
@@ -339,6 +349,27 @@ class AccountService {
 			'message' => 'Success',
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
+		];
+	}
+
+	public function getExtendedAccount(
+		string $userId,
+		?string $email,
+	): array {
+
+		$extended = $this->extendedAccountService->getOrCreate(
+			$userId,
+			$email
+		);
+
+		return [
+			'createdAt' => $extended->getCreatedAtImmutable()->format(DATE_ATOM),
+			'paidCertificate' => $extended->getPaidCertificate(),
+			'certPaidAt' => $extended->getCertPaidAtImmutable()?->format(DATE_ATOM),
+			'validUntil' => $extended->getValidUntilImmutable()?->format(DATE_ATOM),
+			// Gate-aware: applies the admin kill-switch on top of DB state.
+			// This boolean is the FE's single source of truth for gating.
+			'isCertificateValid' => $this->extendedAccountService->isCertificateValidForAccount($extended),
 		];
 	}
 
@@ -403,6 +434,9 @@ class AccountService {
 		// Appended AFTER array_filter so a `false` value survives (array_filter
 		// would strip it, wrongly falling back to the frontend default).
 		$config['one_time_signing_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true);
+		$config['files_list_show_signers'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true);
+		$config['files_list_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false);
+		$config['visible_elements_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false);
 
 		return $config;
 	}

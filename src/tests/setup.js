@@ -103,6 +103,15 @@ axios.get = vi.fn().mockResolvedValue({
 				settings: {
 					phoneNumber: '',
 				},
+				// Default test user is grandfathered/valid so `certRequired`
+				// stays false and existing component tests don't trip the gate.
+				extended: {
+					createdAt: '2026-01-01T00:00:00+00:00',
+					paidCertificate: false,
+					certPaidAt: null,
+					validUntil: null,
+					isCertificateValid: true,
+				},
 			},
 		},
 	},

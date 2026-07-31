@@ -62,6 +62,16 @@ vi.mock('@nextcloud/router', () => ({
 	getRootUrl: vi.fn(() => ''),
 }))
 
+// Stub the two files-list views so the feature-flag gating can be asserted
+// without pulling in the real (heavy) components.
+vi.mock('../../views/FilesListNext/FilesListNext.vue', () => ({
+	default: { name: 'FilesListNext' },
+}))
+
+vi.mock('../../views/FilesList/FilesList.vue', () => ({
+	default: { name: 'FilesList' },
+}))
+
 vi.mock('../../helpers/isExternal.js', () => ({
 	isExternal: vi.fn(() => false),
 }))
@@ -273,6 +283,58 @@ describe('router business rules', () => {
 				const props = (validationRoute as RouteRecordNormalized).props
 				// Vue Router normalizes `props: true` to `{default: true}` internally
 				expect(typeof props === 'object' && props !== null && props.default === true).toBe(true)
+		})
+	})
+
+	describe('files list feature flag', () => {
+		type ComponentModule = { default: { name: string } }
+
+		const loadFilesListComponent = async (): Promise<ComponentModule> => {
+			const route = getRoutes().find((r: RouteRecordNormalized) => r.name === 'fileslist')
+			expect(route).toBeDefined()
+			expect(route?.path).toBe('/f/filelist/sign')
+			const loader = route?.components?.default as () => Promise<ComponentModule>
+			return loader()
+		}
+
+		it('keeps the legacy files list at an explicit fallback route', () => {
+			const route = getRoutes().find((r: RouteRecordNormalized) => r.name === 'fileslistLegacy')
+			expect(route).toBeDefined()
+			expect(route?.path).toBe('/f/filelist/legacy')
+		})
+
+		it('loads the legacy FilesList by default (flag missing)', async () => {
+			loadState.mockImplementation((_app, _key, defaultValue) => defaultValue)
+
+			const module = await loadFilesListComponent()
+
+			expect(module.default.name).toBe('FilesList')
+		})
+
+		it('loads the legacy FilesList when the flag is false', async () => {
+			loadState.mockImplementation((_app, key, defaultValue) => {
+				if (key === 'config') {
+					return { files_list_next_enabled: false }
+				}
+				return defaultValue
+			})
+
+			const module = await loadFilesListComponent()
+
+			expect(module.default.name).toBe('FilesList')
+		})
+
+		it('loads FilesListNext when the flag is enabled', async () => {
+			loadState.mockImplementation((_app, key, defaultValue) => {
+				if (key === 'config') {
+					return { files_list_next_enabled: true }
+				}
+				return defaultValue
+			})
+
+			const module = await loadFilesListComponent()
+
+			expect(module.default.name).toBe('FilesListNext')
 		})
 	})
 

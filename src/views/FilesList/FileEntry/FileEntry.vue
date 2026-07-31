@@ -36,7 +36,8 @@
 		</td>
 
 		<!-- Signers Count -->
-		<td class="files-list__row-signers"
+		<td v-if="showSigners"
+			class="files-list__row-signers"
 			@click="openDetailsIfAvailable">
 			<FileEntrySigners :signers-count="source.signersCount || 0"
 				:signers="source.signers || []" />
@@ -47,6 +48,16 @@
 			class="files-list__row-mtime"
 			@click="openDetailsIfAvailable">
 			<NcDateTime v-if="source.created_at" :timestamp="mtime" :ignore-seconds="true" />
+		</td>
+
+		<!-- Open document -->
+		<td class="files-list__row-open">
+			<button type="button"
+				class="files-list__open-btn"
+				:aria-label="t('libresign', 'Open document')"
+				@click.stop="handleOpenDocument">
+				<span class="files-list__open-btn-label">{{ t('libresign', 'Open') }}</span>
+			</button>
 		</td>
 	</tr>
 </template>
@@ -67,6 +78,7 @@ import FileEntryStatus from './FileEntryStatus.vue'
 import { useFileEntry, type FileEntrySource } from '../../../composables/useFileEntry.js'
 import { useActionsMenuStore } from '../../../store/actionsmenu.js'
 import { useFilesStore } from '../../../store/files.js'
+import { useUserConfigStore } from '../../../store/userconfig.js'
 import { showInfo, showSuccess } from '../../../services/toast'
 import { openDocument } from '../../../utils/viewer.js'
 import { generateUrl } from '@nextcloud/router'
@@ -91,10 +103,14 @@ const props = defineProps<{
 
 const actionsMenuStore = useActionsMenuStore()
 const filesStore = useFilesStore()
+const userConfigStore = useUserConfigStore()
 const { mtime, openedMenu, mtimeOpacity, fileExtension, onRightClick, openDetailsIfAvailable } = useFileEntry(props, {
 	actionsMenuStore,
 	filesStore,
 })
+
+// Admin toggle (default true) controls whether the Signers column shows.
+const showSigners = computed(() => userConfigStore.files_list_show_signers !== false)
 
 const file = computed(() => filesStore.files[props.source.id])
 const actions = ref<FileEntryActionsRef | null>(null)
@@ -146,6 +162,8 @@ function handleOpenDocument() {
 defineExpose({
 	actionsMenuStore,
 	filesStore,
+	showSigners,
+	handleOpenDocument,
 	mtime,
 	openedMenu,
 	mtimeOpacity,

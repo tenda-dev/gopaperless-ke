@@ -102,6 +102,13 @@ class PaymentLifecycleService {
 					$productCode,
 				)
 				: null,
+
+			// Certificate purchases do not support session resume yet.
+			// Recovery/round-trip for this purpose is deferred together
+			// with the purpose-aware PaymentReturn rework; returning null
+			// keeps this exhaustive match total and safe.
+			PaymentPurpose::CERTIFICATE_PURCHASE
+			=> null,
 		};
 
 		if (!$payment) {

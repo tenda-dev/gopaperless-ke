@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { generateUrl, generateOcsUrl } from '@nextcloud/router'
 import { useFilesStore } from '@/store/files'
 import { useSidebarStore } from '@/store/sidebar'
@@ -43,11 +43,14 @@ const fileList = computed(() => {
 
 const count = computed(() => fileList.value.length)
 
+onMounted(() => {
+	// Intentionally empty; keep hook for future initialization if needed.
+})
+
 /* ===================== */
 /* ACTIONS */
 /* ===================== */
 function handleSelect(id?: number | string) {
-  console.log('select', id)
   if (typeof id !== 'number') return
   filesStore.selectFile(id)
   sidebarStore.activeRequestSignatureTab()

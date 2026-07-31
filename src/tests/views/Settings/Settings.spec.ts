@@ -39,6 +39,8 @@ describe('Settings.vue', () => {
 					Confetti: true,
 					FreeCredits: true,
 					OneTimeSigning: true,
+					FilesListNext: true,
+					VisibleElementsNext: true,
 				},
 			},
 		})
@@ -47,6 +49,8 @@ describe('Settings.vue', () => {
 		expect(wrapper.findAllComponents({ name: 'Reminders' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'FreeCredits' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'OneTimeSigning' })).toHaveLength(1)
+		expect(wrapper.findAllComponents({ name: 'FilesListNext' })).toHaveLength(1)
+		expect(wrapper.findAllComponents({ name: 'VisibleElementsNext' })).toHaveLength(1)
 	})
 
 	it('does not render SigningMode because the template gate is false', () => {
@@ -79,6 +83,8 @@ describe('Settings.vue', () => {
 					Confetti: true,
 					FreeCredits: true,
 					OneTimeSigning: true,
+					FilesListNext: true,
+					VisibleElementsNext: true,
 				},
 			},
 		})

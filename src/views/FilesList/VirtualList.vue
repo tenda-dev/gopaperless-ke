@@ -161,6 +161,8 @@ defineExpose({
 	}
 
 	&__table {
+		padding: 0 20px;
+
 		&--hidden {
 			display: none;
 		}
