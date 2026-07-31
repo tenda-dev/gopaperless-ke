@@ -26,10 +26,21 @@ use Override;
  * does not fit into 64 characters.
  */
 class Version35000Date20260730090000 extends SimpleMigrationStep {
-	public function __construct(
-		private IDBConnection $connection,
-		private IdNumberEncryptionService $idNumberEncryption,
-	) {
+	private ?IDBConnection $connection = null;
+	private ?IdNumberEncryptionService $idNumberEncryption = null;
+
+	private function connection(): IDBConnection {
+		if ($this->connection === null) {
+			$this->connection = \OC::$server->get(IDBConnection::class);
+		}
+		return $this->connection;
+	}
+
+	private function idNumberEncryption(): IdNumberEncryptionService {
+		if ($this->idNumberEncryption === null) {
+			$this->idNumberEncryption = \OC::$server->get(IdNumberEncryptionService::class);
+		}
+		return $this->idNumberEncryption;
 	}
 
 	/**
@@ -73,7 +84,7 @@ class Version35000Date20260730090000 extends SimpleMigrationStep {
 			return;
 		}
 
-		$select = $this->connection->getQueryBuilder();
+		$select = $this->connection()->getQueryBuilder();
 		$select->select('id', 'id_number')
 			->from('gopaperless_extended_accounts')
 			->where($select->expr()->isNotNull('id_number'))
@@ -91,16 +102,16 @@ class Version35000Date20260730090000 extends SimpleMigrationStep {
 		while ($row = $result->fetch()) {
 			$idNumber = (string)$row['id_number'];
 
-			if ($this->idNumberEncryption->isEncrypted($idNumber)) {
+			if ($this->idNumberEncryption()->isEncrypted($idNumber)) {
 				continue;
 			}
 
-			$update = $this->connection->getQueryBuilder();
+			$update = $this->connection()->getQueryBuilder();
 			$update->update('gopaperless_extended_accounts')
 				->set(
 					'id_number',
 					$update->createNamedParameter(
-						$this->idNumberEncryption->encrypt($idNumber),
+						$this->idNumberEncryption()->encrypt($idNumber),
 					),
 				)
 				->where(
