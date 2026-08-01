@@ -32,7 +32,7 @@ use OCP\L10N\IFactory;
 class FooterHandler {
 	private QrCode $qrCode;
 	private const MIN_QRCODE_SIZE = 100;
-	/** Per-document appearance overrides; null will follow the global app config setting. */
+	// Per-document appearance overrides; null will follow the global app config setting.
 	private ?bool $renderQrCode = null;
 	private ?bool $renderAuditInfo = null;
 	private const POINT_TO_MILIMETER = 0.3527777778;

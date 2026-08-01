@@ -1174,10 +1174,12 @@ class SignFileService {
 		if ($this->engine::class === Pkcs12Handler::class) {
 			$profile = $this->getSignatureProfile();
 			$renderStamp = $profile->shouldRenderStamp();
-			// Apply the per-customer stamp appearance overrides (render mode,
-			// template, font sizes) for this document; null resets to global.
-			// Suppress the visible stamp entirely when the profile disables it,
-			// before setVisibleElements() reaches the engine.
+			/**
+			 * Apply the per-customer stamp appearance overrides (render mode,
+			 * template, font sizes) for this document; null resets to global.
+			 * Suppress the visible stamp entirely when the profile disables it,
+			 * before setVisibleElements() reaches the engine.
+			 */
 			$this->signatureTextService->setStampOverride($renderStamp ? $profile->getStamp() : null);
 			$this->engine
 				->setVisibleElements($renderStamp ? $this->getVisibleElements() : [])

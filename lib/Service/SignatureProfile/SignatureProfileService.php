@@ -37,6 +37,34 @@ class SignatureProfileService {
 	}
 
 	/**
+	 * Reconcile the stored profile map against existing Nextcloud groups.
+	 *
+	 * Entries whose group has been deleted are orphaned (no member can ever
+	 * match them) and are pruned. The pruned map is persisted only when it
+	 * changed, and the ids that were removed are returned so the admin can be
+	 * informed.
+	 *
+	 * @return array{profiles: array<string, mixed>, removed: list<string>}
+	 */
+	public function reconcileConfiguredGroups(): array {
+		$configured = $this->appConfig->getValueArray(Application::APP_ID, self::CONFIG_KEY, []);
+		$profiles = [];
+		$removed = [];
+		foreach ($configured as $groupId => $profile) {
+			$groupId = (string)$groupId;
+			if ($this->groupManager->groupExists($groupId)) {
+				$profiles[$groupId] = $profile;
+			} else {
+				$removed[] = $groupId;
+			}
+		}
+		if ($removed !== []) {
+			$this->appConfig->setValueArray(Application::APP_ID, self::CONFIG_KEY, $profiles);
+		}
+		return ['profiles' => $profiles, 'removed' => $removed];
+	}
+
+	/**
 	 * Entry point used by the request workflow. When the customer appearance is
 	 * not requested, the default profile is used; otherwise the requester's
 	 * group profile is resolved.

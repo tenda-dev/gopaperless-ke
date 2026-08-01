@@ -7,6 +7,14 @@
 	<NcSettingsSection
 		:name="t('libresign', 'Signature appearance')"
 		:description="t('libresign', 'Configure customer-specific signature appearance profiles per group. Hide or show the footer, validation QR code, signature stamp or audit information for a customer group.')">
+		<NcNoteCard v-if="removedGroups.length" type="warning">
+			{{ n('libresign',
+				'%n group was deleted and its appearance profile was removed:',
+				'%n groups were deleted and their appearance profiles were removed:',
+				removedGroups.length) }}
+			<strong>{{ removedGroups.join(', ') }}</strong>
+		</NcNoteCard>
+
 		<button
 			type="button"
 			class="gp-appearance-launch"
@@ -27,10 +35,11 @@
 
 <script setup lang="ts">
 import { loadState } from '@nextcloud/initial-state'
-import { t } from '@nextcloud/l10n'
+import { t, n } from '@nextcloud/l10n'
 import { mdiTuneVariant } from '@mdi/js'
 import { ref } from 'vue'
 
+import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 
 import SignatureProfileModal from './SignatureProfileModal.vue'
@@ -43,6 +52,10 @@ defineOptions({
 const open = ref(false)
 const profiles = ref<Record<string, RawProfile>>(
 	loadState<Record<string, RawProfile>>('libresign', 'appearance_profiles', {}),
+)
+// Groups deleted from Nextcloud whose profiles were pruned on load (server-side).
+const removedGroups = ref<string[]>(
+	loadState<string[]>('libresign', 'appearance_profiles_removed', []),
 )
 </script>
 

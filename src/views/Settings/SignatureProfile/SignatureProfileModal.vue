@@ -68,81 +68,81 @@
 					<div class="gp-appearance__pane gp-appearance__pane--preview">
 						<div class="gp-appearance__preview">
 							<div class="gp-appearance__preview-head">
-						<span class="gp-appearance__label">{{ t('libresign', 'Preview') }}</span>
-						<div class="gp-appearance__seg" role="tablist">
-							<button
-								type="button"
-								class="gp-appearance__seg-btn"
-								:class="{ 'gp-appearance__seg-btn--active': previewMode === 'document' }"
-								@click="previewMode = 'document'">
-								{{ t('libresign', 'Document') }}
-							</button>
-							<button
-								type="button"
-								class="gp-appearance__seg-btn"
-								:class="{ 'gp-appearance__seg-btn--active': previewMode === 'stamp' }"
-								@click="previewMode = 'stamp'">
-								{{ t('libresign', 'Signature stamp') }}
-							</button>
-						</div>
-					</div>
+								<span class="gp-appearance__label">{{ t('libresign', 'Preview') }}</span>
+								<div class="gp-appearance__seg" role="tablist">
+									<button
+										type="button"
+										class="gp-appearance__seg-btn"
+										:class="{ 'gp-appearance__seg-btn--active': previewMode === 'document' }"
+										@click="previewMode = 'document'">
+										{{ t('libresign', 'Document') }}
+									</button>
+									<button
+										type="button"
+										class="gp-appearance__seg-btn"
+										:class="{ 'gp-appearance__seg-btn--active': previewMode === 'stamp' }"
+										@click="previewMode = 'stamp'">
+										{{ t('libresign', 'Signature stamp') }}
+									</button>
+								</div>
+							</div>
 
-					<SignatureProfilePreview
-						v-if="previewMode === 'document'"
-						:footer="draft.footer"
-						:qr="draft.footer && draft.qr"
-						:stamp="draft.stamp.enabled"
-						:audit-info="draft.footer && draft.auditInfo"
-						:render-mode="effectiveStampRenderMode" />
-					<SignatureStampPreview
-						v-else
-						:enabled="draft.stamp.enabled"
-						:render-mode="effectiveStampRenderMode"
-						:width="effectiveStampWidth"
-						:height="effectiveStampHeight"
-						:signature-font-size="effectiveStampSignatureFont"
-						:template-font-size="effectiveStampTemplateFont"
-							:template-text="effectiveStampTemplateText"
-							:is-override="stampTemplateIsOverride" />
+							<SignatureProfilePreview
+								v-if="previewMode === 'document'"
+								:footer="draft.footer"
+								:qr="draft.footer && draft.qr"
+								:stamp="draft.stamp.enabled"
+								:audit-info="draft.footer && draft.auditInfo"
+								:render-mode="effectiveStampRenderMode" />
+							<SignatureStampPreview
+								v-else
+								:enabled="draft.stamp.enabled"
+								:render-mode="effectiveStampRenderMode"
+								:width="effectiveStampWidth"
+								:height="effectiveStampHeight"
+								:signature-font-size="effectiveStampSignatureFont"
+								:template-font-size="effectiveStampTemplateFont"
+								:template-text="effectiveStampTemplateText"
+								:is-override="stampTemplateIsOverride" />
 						</div>
 					</div>
 
 					<div class="gp-appearance__pane gp-appearance__pane--controls">
 						<div class="gp-appearance__options-head">
-					<span class="gp-appearance__options-title">{{ t('libresign', 'Rendering options') }}</span>
-					<button
-						type="button"
-						class="gp-appearance__reset"
-						:disabled="isDraftDefault"
-						@click="resetToDefault">
-						{{ t('libresign', 'Reset to default') }}
-					</button>
-				</div>
+							<span class="gp-appearance__options-title">{{ t('libresign', 'Rendering options') }}</span>
+							<button
+								type="button"
+								class="gp-appearance__reset"
+								:disabled="isDraftDefault"
+								@click="resetToDefault">
+								{{ t('libresign', 'Reset to default') }}
+							</button>
+						</div>
 
-				<div class="gp-appearance__rows">
-					<SignatureProfileRow
-						v-model="draft.footer"
-						:title="t('libresign', 'Footer')"
-						:description="t('libresign', 'Validation footer band at the bottom of each page')" />
-					<SignatureProfileRow
-						v-model="draft.qr"
-						indented
-						:title="t('libresign', 'QR code')"
-						:description="t('libresign', 'Validation QR inside the footer')" />
-					<SignatureProfileRow
-						v-model="draft.stamp.enabled"
-						:title="t('libresign', 'Signature stamp')"
-						:description="t('libresign', 'Visible signature image placed on the page')" />
-					<SignatureStampConfig
-						v-if="draft.stamp.enabled"
-						:model-value="draft.stamp"
-						:globals="stampGlobals"
-						@update:model-value="draft.stamp = $event" />
-					<SignatureProfileRow
-						v-model="draft.auditInfo"
-						:title="t('libresign', 'Audit info')"
-						:description="t('libresign', 'Audit and validation details block')" />
-				</div>
+						<div class="gp-appearance__rows">
+							<SignatureProfileRow
+								v-model="draft.footer"
+								:title="t('libresign', 'Footer')"
+								:description="t('libresign', 'Validation footer band at the bottom of each page')" />
+							<SignatureProfileRow
+								v-model="draft.qr"
+								indented
+								:title="t('libresign', 'QR code')"
+								:description="t('libresign', 'Validation QR inside the footer')" />
+							<SignatureProfileRow
+								v-model="draft.stamp.enabled"
+								:title="t('libresign', 'Signature stamp')"
+								:description="t('libresign', 'Visible signature image placed on the page')" />
+							<SignatureStampConfig
+								v-if="draft.stamp.enabled"
+								:model-value="draft.stamp"
+								:globals="stampGlobals"
+								@update:model-value="draft.stamp = $event" />
+							<SignatureProfileRow
+								v-model="draft.auditInfo"
+								:title="t('libresign', 'Audit info')"
+								:description="t('libresign', 'Audit and validation details block')" />
+						</div>
 
 						<p class="gp-appearance__meta">
 							{{ n('libresign', '%n group has a custom profile', '%n groups have a custom profile', customProfileCount) }}
@@ -198,7 +198,7 @@ export type Profile = {
 	auditInfo: boolean
 }
 
-/** Shape as stored in appConfig; */
+// Shape as stored in appConfig; stamp may be a legacy boolean or the object.
 export type RawProfile = {
 	footer?: boolean
 	qr?: boolean
@@ -224,7 +224,7 @@ const emit = defineEmits<{
 	(event: 'update:profiles', value: Record<string, Profile>): void
 }>()
 
-/** Global stamp settings used as the inheritance baseline / input placeholders. */
+// Global stamp settings used as the inheritance baseline / input placeholders.
 const stampGlobals: StampGlobals = {
 	renderMode: loadState<string>('libresign', 'signature_render_mode', 'GRAPHIC_AND_DESCRIPTION'),
 	textTemplate: loadState<string>('libresign', 'signature_text_template', ''),
@@ -240,7 +240,7 @@ const BOOL_LABELS = {
 	auditInfo: t('libresign', 'Audit info'),
 } as const
 
-/** Default stamp: enabled, all overrides empty (inherit global). */
+// Default stamp: enabled, all overrides empty (inherit global).
 function defaultStamp(): StampDraft {
 	return {
 		enabled: true,
@@ -253,7 +253,7 @@ function defaultStamp(): StampDraft {
 	}
 }
 
-/** Default profile: everything rendered (default-on). */
+// Default profile: everything rendered (default-on).
 function defaultProfile(): Profile {
 	return { footer: true, qr: true, stamp: defaultStamp(), auditInfo: true }
 }
@@ -275,7 +275,7 @@ function normalizeStamp(raw: boolean | Record<string, unknown> | undefined): Sta
 	}
 }
 
-/** Fill any missing flag with the default, mirroring the backend value object. */
+// Fill any missing flag with the default, mirroring the backend value object.
 function normalize(raw: RawProfile | undefined): Profile {
 	const base = defaultProfile()
 	if (!raw) {
@@ -322,9 +322,9 @@ const selectedGroup = ref<GroupRow | null>(null)
 const saving = ref(false)
 const note = ref<{ type: 'success' | 'error', message: string } | null>(null)
 
-/** Local, editable copy of the whole appearance_profiles map. */
+// Local, editable copy of the whole appearance_profiles map.
 const working = reactive<Record<string, Profile>>({})
-/** The draft flags for the currently selected group. */
+// The draft flags for the currently selected group.
 const draft = reactive<Profile>(defaultProfile())
 
 function syncWorkingFromProps() {
@@ -334,7 +334,7 @@ function syncWorkingFromProps() {
 	})
 }
 
-/** The persisted baseline for the selected group (custom profile or default). */
+// The persisted baseline for the selected group (custom profile or default).
 const savedProfile = computed<Profile>(() => {
 	if (!selectedGroup.value) {
 		return defaultProfile()
@@ -352,10 +352,10 @@ const customProfileCount = computed(() => Object.keys(working).length)
 const isDraftDefault = computed(() =>
 	draft.footer && draft.qr && draft.auditInfo && stampIsDefault(draft.stamp))
 
-/** Preview mode: overall document vs. the signature stamp itself. */
+// Preview mode: overall document vs. the signature stamp itself.
 const previewMode = ref<'document' | 'stamp'>('document')
 
-/** Effective stamp values for the preview: the override, else the global. */
+// Effective stamp values for the preview: the override, else the global.
 const stampParsedGlobal = loadState<string>('libresign', 'signature_text_parsed', '')
 const effectiveStampRenderMode = computed(() =>
 	draft.stamp.renderMode || stampGlobals.renderMode)
@@ -375,7 +375,7 @@ const dirty = computed(() => !profilesEqual(draft, savedProfile.value))
 
 /**
  * Save is allowed when there is an actual change, or when this group has
- * never been persisted yet (no entry under appearance_profiles) — the first
+ * never been persisted yet (no entry under appearance_profiles). The first
  * save is what creates the entry, even if it matches the default profile.
  */
 const canSave = computed(() =>

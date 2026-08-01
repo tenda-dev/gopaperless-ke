@@ -43,7 +43,7 @@ class SignatureTextService {
 	public const DEFAULT_SIGNATURE_WIDTH = 350;
 	public const DEFAULT_SIGNATURE_HEIGHT = 100;
 	private const QRCODE_SIZE = 100;
-	/** Per-document stamp overrides; null means "follow the global config". */
+	// Per-document stamp overrides; null means "follow the global config".
 	private ?SignatureStamp $stampOverride = null;
 	public function __construct(
 		private IAppConfig $appConfig,

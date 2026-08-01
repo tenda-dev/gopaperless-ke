@@ -40,6 +40,7 @@ use OCP\Files\SimpleFS\InMemoryFile;
 use OCP\IAppConfig;
 use OCP\IEventSource;
 use OCP\IEventSourceFactory;
+use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
@@ -86,6 +87,7 @@ class AdminController extends AEnvironmentAwareController {
 		private DocMdpConfigService $docMdpConfigService,
 		private IdentifyMethodService $identifyMethodService,
 		private FileMapper $fileMapper,
+		private IGroupManager $groupManager,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -1005,12 +1007,16 @@ class AdminController extends AEnvironmentAwareController {
 			$normalised = [];
 			foreach ($profiles as $groupId => $flags) {
 				$groupId = (string)$groupId;
-				if ($groupId === '' || !is_array($flags)) {
+				// Skip empty ids, malformed entries, and groups that no longer
+				// exist so a deleted group is never (re)persisted into the map.
+				if ($groupId === '' || !is_array($flags) || !$this->groupManager->groupExists($groupId)) {
 					continue;
 				}
-				// Normalise through the value object so the stored shape (including
-				// the nested stamp object and default-on flags) has a single source
-				// of truth shared with the resolver.
+				/**
+				 * Normalise through the value object so the stored shape (including
+				 * the nested stamp object and default-on flags) has a single source
+				 * of truth shared with the resolver.
+				 */
 				$normalised[$groupId] = SignatureProfile::fromArray($flags)->toArray();
 			}
 			$this->appConfig->setValueArray(Application::APP_ID, 'appearance_profiles', $normalised);

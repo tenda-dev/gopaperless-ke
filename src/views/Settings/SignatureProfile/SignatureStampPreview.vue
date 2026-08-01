@@ -75,7 +75,7 @@ const props = withDefaults(defineProps<{
 	isOverride: false,
 })
 
-/** Available horizontal room inside the preview pane for the stamp box. */
+// Available horizontal room inside the preview pane for the stamp box.
 const MAX_WIDTH = 340
 
 const isDarkTheme = useIsDarkTheme()

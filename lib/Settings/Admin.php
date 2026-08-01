@@ -16,6 +16,7 @@ use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
@@ -41,6 +42,7 @@ class Admin implements ISettings {
 		private SignatureBackgroundService $signatureBackgroundService,
 		private FooterService $footerService,
 		private DocMdpConfigService $docMdpConfigService,
+		private SignatureProfileService $signatureProfileService,
 	) {
 	}
 	#[\Override]
@@ -92,7 +94,11 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('worker_type', $this->getWorkerTypeInitialState());
 		$this->initialState->provideInitialState('identification_documents', $this->appConfig->getValueBool(Application::APP_ID, 'identification_documents', false));
 		$this->initialState->provideInitialState('approval_group', $this->appConfig->getValueArray(Application::APP_ID, 'approval_group', ['admin']));
-		$this->initialState->provideInitialState('appearance_profiles', $this->appConfig->getValueArray(Application::APP_ID, 'appearance_profiles', []));
+		// Prune profiles whose Nextcloud group has been deleted, then expose the
+		// clean map plus the ids that were removed so the admin can be informed.
+		$reconciledProfiles = $this->signatureProfileService->reconcileConfiguredGroups();
+		$this->initialState->provideInitialState('appearance_profiles', $reconciledProfiles['profiles']);
+		$this->initialState->provideInitialState('appearance_profiles_removed', $reconciledProfiles['removed']);
 		$this->initialState->provideInitialState('envelope_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'envelope_enabled', true));
 		$this->initialState->provideInitialState('parallel_workers', $this->appConfig->getValueString(Application::APP_ID, 'parallel_workers', '4'));
 		$this->initialState->provideInitialState('show_confetti_after_signing', $this->appConfig->getValueBool(Application::APP_ID, 'show_confetti_after_signing', true));
