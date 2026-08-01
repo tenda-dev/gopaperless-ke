@@ -359,15 +359,21 @@ const previewMode = ref<'document' | 'stamp'>('document')
 const stampParsedGlobal = loadState<string>('libresign', 'signature_text_parsed', '')
 const effectiveStampRenderMode = computed(() =>
 	draft.stamp.renderMode || stampGlobals.renderMode)
+
 const effectiveStampWidth = computed(() =>
 	Number(draft.stamp.width || stampGlobals.width))
+
 const effectiveStampHeight = computed(() =>
 	Number(draft.stamp.height || stampGlobals.height))
+
 const effectiveStampSignatureFont = computed(() =>
 	Number(draft.stamp.signatureFontSize || stampGlobals.signatureFontSize))
+
 const effectiveStampTemplateFont = computed(() =>
 	Number(draft.stamp.templateFontSize || stampGlobals.templateFontSize))
+
 const stampTemplateIsOverride = computed(() => !!draft.stamp.textTemplate)
+
 const effectiveStampTemplateText = computed(() =>
 	stampTemplateIsOverride.value ? draft.stamp.textTemplate : stampParsedGlobal)
 

@@ -13,8 +13,8 @@ namespace OCA\Libresign\Service\SignatureProfile\ValueObject;
  *
  * `enabled` toggles whether the visible stamp is rendered at all. The remaining
  * fields are overrides for the global stamp settings: a `null` value means
- * "inherit the global setting", so a default stamp keeps the current behaviour
- * byte-for-byte. Only fields a customer explicitly pins hold a non-null value.
+ * "inherit the global setting", so a default stamp keeps the current behaviour.
+ * Only fields a customer explicitly pins hold a non-null value.
  */
 class SignatureStamp {
 	public function __construct(
