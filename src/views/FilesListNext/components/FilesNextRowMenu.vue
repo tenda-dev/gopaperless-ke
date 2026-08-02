@@ -135,7 +135,10 @@ function onSheetTouchEnd() {
 	}
 }
 
-/* Dismiss (desktop): outside-click, Esc, scroll, resize */
+/* Dismiss:
+ * - Desktop: outside-click, scroll, resize, Escape
+ * - Mobile: swipe, scrim, cancel, Escape
+ */
 function onDocMouseDown(e: MouseEvent) {
 	if (props.open && !props.mobile && menuEl.value && !menuEl.value.contains(e.target as Node)) {
 		emit('close')
@@ -151,10 +154,13 @@ function onScrollCapture() {
 		emit('close')
 	}
 }
+
 function onResize() {
-	if (props.open) {
-		emit('close')
+	if (props.mobile || !props.open) {
+		return
 	}
+
+	emit('close')
 }
 
 onMounted(() => {
