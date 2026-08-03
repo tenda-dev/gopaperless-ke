@@ -144,7 +144,7 @@
 			</button>
 
 			<p class="credits-modal__hint">
-				Certified signatures let you use your personal digital certificate to sign documents.
+				A certified signature lets you use your personal digital certificate to sign documents.
 			</p>
 
 		</template>

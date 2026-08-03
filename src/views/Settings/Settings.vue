@@ -33,6 +33,7 @@
 		<Confetti />
 		<FreeCredits />
 		<OneTimeSigning />
+		<SponsorshipSettings />
 		<ProductPricing />
 		<CertificateAccess />
 		<FilesListColumns />
@@ -66,6 +67,7 @@ import VisibleElementsNext from './VisibleElementsNext.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
+import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'

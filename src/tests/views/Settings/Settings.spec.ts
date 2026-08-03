@@ -39,6 +39,7 @@ describe('Settings.vue', () => {
 					Confetti: true,
 					FreeCredits: true,
 					OneTimeSigning: true,
+					SponsorshipSettings: true,
 					FilesListNext: true,
 					VisibleElementsNext: true,
 				},
@@ -46,6 +47,7 @@ describe('Settings.vue', () => {
 		})
 
 		expect(wrapper.findAllComponents({ name: 'SignatureEngine' })).toHaveLength(1)
+		expect(wrapper.findAllComponents({ name: 'SponsorshipSettings' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'Reminders' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'FreeCredits' })).toHaveLength(1)
 		expect(wrapper.findAllComponents({ name: 'OneTimeSigning' })).toHaveLength(1)
@@ -83,6 +85,7 @@ describe('Settings.vue', () => {
 					Confetti: true,
 					FreeCredits: true,
 					OneTimeSigning: true,
+					SponsorshipSettings: true,
 					FilesListNext: true,
 					VisibleElementsNext: true,
 				},

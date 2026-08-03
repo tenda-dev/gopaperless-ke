@@ -12,9 +12,9 @@
 import { computed, reactive } from 'vue'
 
 import {
+	mdiClipboardEditOutline,
 	mdiDownloadOutline,
-	mdiEyeOutline,
-	mdiFolderOutline,
+	mdiFileDocumentOutline,
 	mdiPencilOutline,
 	mdiSignature,
 	mdiTextBoxCheck,
@@ -57,9 +57,9 @@ export function useFilesNextMenu(opts: Options) {
 
 		// View — opens the right sidebar (document action centre); matches the pill.
 		// Consolidates the former "Details" / "Request signature" items (same action).
-		items.push({ id: 'view', label: t('libresign', 'View'), icon: mdiEyeOutline, run: () => actions.openDetails(row) })
+		items.push({ id: 'view', label: t('libresign', 'Manage'), icon: mdiClipboardEditOutline, run: () => actions.openDetails(row) })
 		if (row.nodeType !== 'envelope' && !filesStore.isOriginalFileDeleted(raw)) {
-			items.push({ id: 'open', label: t('libresign', 'Open'), icon: mdiFolderOutline, run: () => actions.openFile(row) })
+			items.push({ id: 'open', label: t('libresign', 'Open'), icon: mdiFileDocumentOutline, run: () => actions.openFile(row) })
 		}
 		items.push({ id: 'download', label: t('libresign', 'Download'), icon: mdiDownloadOutline, run: () => actions.downloadRow(row) })
 		items.push({ id: 'rename', label: t('libresign', 'Rename'), icon: mdiPencilOutline, run: () => actions.renameRow(row) })

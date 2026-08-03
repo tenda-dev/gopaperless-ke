@@ -632,8 +632,8 @@ describe('IdentifySigner rules', () => {
 		async function mountWithSponsorshipFlag(enabled: boolean) {
 			vi.doMock('@nextcloud/initial-state', () => ({
 				loadState: vi.fn((app: string, key: string, defaultValue: unknown) => {
-					if (app === 'libresign' && key === 'sponsorship_enabled') {
-						return enabled
+					if (app === 'libresign' && key === 'config') {
+						return { sponsorship_enabled: enabled }
 					}
 					return defaultValue
 				}),
