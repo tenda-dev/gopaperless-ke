@@ -45,6 +45,7 @@ use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 use UnexpectedValueException;
 
 /**
@@ -90,6 +91,7 @@ class AdminController extends AEnvironmentAwareController {
 		private FileMapper $fileMapper,
 		private IGroupManager $groupManager,
 		private IUserSession $userSession,
+		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -1033,8 +1035,9 @@ class AdminController extends AEnvironmentAwareController {
 				'message' => $this->l10n->t('Settings saved'),
 			]);
 		} catch (\Exception $e) {
+			$this->logger->error('Failed to save appearance profiles', ['exception' => $e]);
 			return new DataResponse([
-				'error' => $e->getMessage(),
+				'error' => $this->l10n->t('Could not save appearance profiles'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
