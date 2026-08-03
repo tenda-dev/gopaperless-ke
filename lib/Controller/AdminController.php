@@ -44,6 +44,7 @@ use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
+use OCP\IUserSession;
 use UnexpectedValueException;
 
 /**
@@ -88,6 +89,7 @@ class AdminController extends AEnvironmentAwareController {
 		private IdentifyMethodService $identifyMethodService,
 		private FileMapper $fileMapper,
 		private IGroupManager $groupManager,
+		private IUserSession $userSession,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -1008,6 +1010,7 @@ class AdminController extends AEnvironmentAwareController {
 		if (!$this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false)) {
 			throw new LibresignException($this->l10n->t('Appearance profiles feature is disabled'), Http::STATUS_FORBIDDEN);
 		}
+		$this->assertAdminUser();
 		try {
 			$normalised = [];
 			foreach ($profiles as $groupId => $flags) {
@@ -1033,6 +1036,12 @@ class AdminController extends AEnvironmentAwareController {
 			return new DataResponse([
 				'error' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function assertAdminUser(): void {
+		if (!$this->groupManager->isAdmin($this->userSession->getUser()?->getUID() ?? '')) {
+			throw new LibresignException($this->l10n->t('Unauthorized'), Http::STATUS_FORBIDDEN);
 		}
 	}
 
