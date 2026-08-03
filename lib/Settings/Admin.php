@@ -99,6 +99,7 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('show_confetti_after_signing', $this->appConfig->getValueBool(Application::APP_ID, 'show_confetti_after_signing', true));
 		$this->initialState->provideInitialState('crl_external_validation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true));
 		$this->initialState->provideInitialState('ldap_extension_available', function_exists('ldap_connect'));
+		$this->initialState->provideInitialState('appearance_profiles_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false));
 
 		//	SIGNATURE APPEARANCE PROFILES
 		// Prune profiles whose Nextcloud group has been deleted, then expose the
