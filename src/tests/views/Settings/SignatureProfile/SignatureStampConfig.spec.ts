@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type DOMWrapper } from '@vue/test-utils'
 
 import SignatureStampConfig from '../../../../views/Settings/SignatureProfile/SignatureStampConfig.vue'
 
@@ -46,19 +46,25 @@ describe('SignatureStampConfig.vue', () => {
 		},
 	})
 
+	const findInputByValue = (inputs: DOMWrapper<Element>[], value: string) => {
+		return inputs.find((input) => (input.element as HTMLInputElement).value === value)
+	}
+
 	it('selects inherit global render mode by default', async () => {
 		const wrapper = createWrapper()
 		const inputs = wrapper.findAll('input[name="stamp-render-mode"]')
-		const inheritInput = inputs.find((input) => input.element.value === '')
+		const inheritInput = findInputByValue(inputs, '')
 
 		expect(inheritInput).toBeDefined()
-		expect(inheritInput!.element.checked).toBe(true)
+		expect((inheritInput!.element as HTMLInputElement).checked).toBe(true)
 	})
 
 	it('emits an override render mode when a concrete mode is selected', async () => {
 		const wrapper = createWrapper()
-		const overrideInput = wrapper.findAll('input[name="stamp-render-mode"]')
-			.find((input) => input.element.value === 'DESCRIPTION_ONLY')
+		const overrideInput = findInputByValue(
+			wrapper.findAll('input[name="stamp-render-mode"]'),
+			'DESCRIPTION_ONLY',
+		)
 
 		await overrideInput!.trigger('change')
 
@@ -89,8 +95,10 @@ describe('SignatureStampConfig.vue', () => {
 			},
 		})
 
-		const inheritInput = wrapper.findAll('input[name="stamp-render-mode"]')
-			.find((input) => input.element.value === '')
+		const inheritInput = findInputByValue(
+			wrapper.findAll('input[name="stamp-render-mode"]'),
+			'',
+		)
 
 		await inheritInput!.trigger('change')
 
@@ -107,13 +115,16 @@ describe('SignatureStampConfig.vue', () => {
 		])
 	})
 
-	it('toggles the enabled flag through the emitted model update', async () => {
+	it('emits a model update when the text template changes', async () => {
 		const wrapper = createWrapper()
+		const textarea = wrapper.find('textarea')
 
-		wrapper.vm.update('enabled', false)
-		await wrapper.vm.$nextTick()
+		await textarea.setValue('Custom template')
 
 		expect(wrapper.emitted('update:modelValue')).toHaveLength(1)
-		expect(wrapper.emitted('update:modelValue')![0][0]).toMatchObject({ enabled: false })
+		expect(wrapper.emitted('update:modelValue')![0][0]).toMatchObject({
+			enabled: true,
+			textTemplate: 'Custom template',
+		})
 	})
 })
