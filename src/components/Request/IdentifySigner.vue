@@ -128,7 +128,11 @@ const iconMap = {
 	svgXmpp,
 }
 
-const sponsorshipEnabled = loadState('libresign', 'sponsorship_enabled', false)
+const sponsorshipEnabled = (
+	loadState('libresign', 'config', {}) as {
+		sponsorship_enabled?: boolean
+	}
+).sponsorship_enabled ?? false
 
 const methodIconMap: Record<string, keyof typeof iconMap> = {
 	account: 'svgAccount',
