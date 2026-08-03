@@ -43,7 +43,7 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 
 import SignatureProfileModal from './SignatureProfileModal.vue'
-import type { RawProfile } from './SignatureProfileModal.vue'
+import type { RawProfile } from './composables/useSignatureProfileForm'
 
 defineOptions({
 	name: 'SignatureProfileSettings',
