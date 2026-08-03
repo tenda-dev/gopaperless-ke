@@ -7,7 +7,7 @@
 # * curl: used if phpunit and composer are not installed to fetch them from the web
 # * tar: for building the archive
 
-app_name=$(notdir $(CURDIR))
+app_name=libresign
 project_directory=$(CURDIR)/../$(app_name)
 build_tools_directory=$(CURDIR)/build/tools
 appstore_build_directory=$(CURDIR)/build/artifacts
@@ -71,6 +71,8 @@ stylelint:
 .PHONY: clean
 clean:
 	rm -rf js/
+	rm -rf css/
+	rm -rf dist/
 	rm -rf $(appstore_build_directory)
 
 clean-dev:
@@ -98,11 +100,25 @@ update-workflows:
 updateocp:
 	php -r 'if (shell_exec("diff -qr ../../lib/public/ vendor/nextcloud/ocp/OCP/")) {\exec("rm -rf vendor/nextcloud/ocp/OCP/");\exec("cp -r ../../lib/public vendor/nextcloud/ocp/OCP/");}'
 
+# Production build: clean, install only production deps, build frontend, package
+.PHONY: production-build
+production-build: clean
+	composer install --no-dev --prefer-dist --optimize-autoloader
+	npm ci
+	npm run build
+	$(MAKE) appstore verify-appstore-package
+
 # Builds the source package for the app store, ignores php and js tests
 .PHONY: appstore
 appstore:
 	rm -rf $(appstore_build_directory)
 	mkdir -p $(appstore_sign_dir)/$(app_name)
+	# Ensure frontend assets exist before packaging
+	@test -d js || (echo "Error: js/ directory missing. Run 'npm run build' first." && exit 1)
+	@test -d css || (echo "Error: css/ directory missing. Run 'npm run build' first." && exit 1)
+	@test -d dist || (echo "Error: dist/ directory missing. Run 'npm run build' first." && exit 1)
+	@test -f dist/pdf.worker.min-*.mjs || (echo "Error: pdf.worker.min-*.mjs missing in dist/. Run 'npm run build' first." && exit 1)
+
 	cp -r \
 		appinfo \
 		composer \
@@ -110,9 +126,7 @@ appstore:
 		dist \
 		img \
 		js \
-		css \
 		fonts \
-		dist \
 		l10n \
 		lib \
 		templates \
@@ -127,6 +141,9 @@ appstore:
 	rm -rf $(appstore_sign_dir)/$(app_name)/3rdparty/vendor
 	rm -rf $(appstore_sign_dir)/$(app_name)/3rdparty/vendor-bin
 	rm -rf $(appstore_sign_dir)/$(app_name)/3rdparty/scoper.inc.php
+	# Never ship dev-only stubs or tooling
+	rm -rf $(appstore_sign_dir)/$(app_name)/vendor/nextcloud/ocp
+	rm -rf $(appstore_sign_dir)/$(app_name)/vendor-bin
 	mkdir -p $(appstore_sign_dir)/$(app_name)/tests/php/fixtures
 	cp tests/php/fixtures/pdfs/small_valid.pdf $(appstore_sign_dir)/$(app_name)/tests/php/fixtures
 
