@@ -198,14 +198,11 @@ class SignatureTextService {
 	}
 
 	public function getTemplate(): string {
-		$override = $this->stampOverride?->getTextTemplate();
-		if ($override !== null) {
-			return $override;
-		}
-		if ($this->appConfig->hasKey(Application::APP_ID, 'signature_text_template')) {
-			return $this->appConfig->getValueString(Application::APP_ID, 'signature_text_template');
-		}
-		return $this->getDefaultTemplate();
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getTextTemplate(),
+			'signature_text_template',
+			$this->getDefaultTemplate(),
+		);
 	}
 
 	public function getAvailableVariables(): array {
@@ -535,15 +532,15 @@ class SignatureTextService {
 	}
 
 	public function getTemplateFontSize(): float {
-		$override = $this->stampOverride?->getTemplateFontSize();
-		if ($override !== null) {
-			return $override;
-		}
 		$collectMetadata = $this->appConfig->getValueBool(Application::APP_ID, 'collect_metadata', false);
-		if ($collectMetadata) {
-			return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE - 1);
-		}
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE);
+		$default = $collectMetadata
+			? self::TEMPLATE_DEFAULT_FONT_SIZE - 1
+			: self::TEMPLATE_DEFAULT_FONT_SIZE;
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getTemplateFontSize(),
+			'template_font_size',
+			$default,
+		);
 	}
 
 	public function getDefaultTemplateFontSize(): float {
@@ -555,11 +552,11 @@ class SignatureTextService {
 	}
 
 	public function getSignatureFontSize(): float {
-		$override = $this->stampOverride?->getSignatureFontSize();
-		if ($override !== null) {
-			return $override;
-		}
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'signature_font_size', self::SIGNATURE_DEFAULT_FONT_SIZE);
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getSignatureFontSize(),
+			'signature_font_size',
+			self::SIGNATURE_DEFAULT_FONT_SIZE,
+		);
 	}
 
 	/**
@@ -572,11 +569,21 @@ class SignatureTextService {
 	}
 
 	public function getRenderMode(): string {
-		$override = $this->stampOverride?->getRenderMode();
-		if ($override !== null) {
-			return $override;
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getRenderMode(),
+			'signature_render_mode',
+			SignerElementsService::RENDER_MODE_DEFAULT,
+		);
+	}
+
+	private function getStampOverrideOrConfig(?callable $override, string $configKey, mixed $default): mixed {
+		if ($this->stampOverride !== null && $override !== null) {
+			$value = $override($this->stampOverride);
+			if ($value !== null) {
+				return $value;
+			}
 		}
-		return $this->appConfig->getValueString(Application::APP_ID, 'signature_render_mode', SignerElementsService::RENDER_MODE_DEFAULT);
+		return $this->appConfig->getValueString(Application::APP_ID, $configKey, (string)$default);
 	}
 
 	public function hasQrCodeInTemplate(): bool {
