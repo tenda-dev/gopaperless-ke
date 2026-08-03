@@ -32,6 +32,9 @@ use OCP\L10N\IFactory;
 class FooterHandler {
 	private QrCode $qrCode;
 	private const MIN_QRCODE_SIZE = 100;
+	// Per-document appearance overrides; null will follow the global app config setting.
+	private ?bool $renderQrCode = null;
+	private ?bool $renderAuditInfo = null;
 	private const POINT_TO_MILIMETER = 0.3527777778;
 
 	public function __construct(
@@ -112,6 +115,23 @@ class FooterHandler {
 		return $this;
 	}
 
+	/**
+	 * Per-document override for rendering the validation QR code. When set to
+	 * false, the QR is suppressed even if globally enabled.
+	 */
+	public function setRenderQrCode(bool $value): self {
+		$this->renderQrCode = $value;
+		return $this;
+	}
+
+	/**
+	 * Per-document override for rendering the audit / validation details block.
+	 */
+	public function setRenderAuditInfo(bool $value): self {
+		$this->renderAuditInfo = $value;
+		return $this;
+	}
+
 	private function prepareTemplateVars(): array {
 		if (!$this->templateVars->getSignedBy()) {
 			$this->templateVars->setSignedBy(
@@ -146,16 +166,23 @@ class FooterHandler {
 			}
 		}
 
-		if (!$this->templateVars->getValidateIn()) {
-			$validateIn = $this->appConfig->getValueString(Application::APP_ID, 'footer_validate_in', 'Validate in %s.');
-			if ($validateIn === 'Validate in %s.') {
-				$this->templateVars->setValidateIn($this->l10n->t('Validate in %s.', ['%s']));
-			} else {
-				$this->templateVars->setValidateIn($validateIn);
+		if ($this->renderAuditInfo ?? true) {
+			if (!$this->templateVars->getValidateIn()) {
+				$validateIn = $this->appConfig->getValueString(Application::APP_ID, 'footer_validate_in', 'Validate in %s.');
+				if ($validateIn === 'Validate in %s.') {
+					$this->templateVars->setValidateIn($this->l10n->t('Validate in %s.', ['%s']));
+				} else {
+					$this->templateVars->setValidateIn($validateIn);
+				}
 			}
+		} else {
+			// Audit info disabled for this document: suppress the validation block.
+			$this->templateVars->setValidateIn('');
 		}
 
-		if ($this->appConfig->getValueBool(Application::APP_ID, 'write_qrcode_on_footer', true) && $this->templateVars->getValidationSite()) {
+		$writeQrCode = ($this->renderQrCode ?? true)
+			&& $this->appConfig->getValueBool(Application::APP_ID, 'write_qrcode_on_footer', true);
+		if ($writeQrCode && $this->templateVars->getValidationSite()) {
 			$this->templateVars->setQrcode($this->getQrCodeImageBase64($this->templateVars->getValidationSite()));
 		}
 

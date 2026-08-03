@@ -92,8 +92,7 @@ class TokenService {
 	}
 
 
-	private function getCurrentUserPhoneNumber(): ?string
-	{
+	private function getCurrentUserPhoneNumber(): ?string {
 		$user = null;
 
 		try {

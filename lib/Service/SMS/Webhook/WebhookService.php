@@ -10,19 +10,18 @@ use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
-final class WebhookService
-{
-	private const DEFAULT_WEBHOOK_URL =
-	'https://gopaperless.astralyngroup.com/webhooks/gopaperless/email-tokens';
+final class WebhookService {
+	private const DEFAULT_WEBHOOK_URL
+		= 'https://gopaperless.astralyngroup.com/webhooks/gopaperless/email-tokens';
 
-	private const CONFIG_KEY_WEBHOOK_URL =
-	'webhook_otp_url';
+	private const CONFIG_KEY_WEBHOOK_URL
+		= 'webhook_otp_url';
 
-	private const CONFIG_KEY_WEBHOOK_SECRET =
-	'webhook_otp_shared_secret';
+	private const CONFIG_KEY_WEBHOOK_SECRET
+		= 'webhook_otp_shared_secret';
 
-	private const CONFIG_KEY_WEBHOOK_ENABLED =
-	'webhook_otp_enabled';
+	private const CONFIG_KEY_WEBHOOK_ENABLED
+		= 'webhook_otp_enabled';
 
 	private const REQUEST_TIMEOUT_SECONDS = 10;
 
@@ -30,7 +29,8 @@ final class WebhookService
 		private IAppConfig $appConfig,
 		private IClientService $httpClientService,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Sends signing OTP details to an external webhook.
@@ -145,8 +145,8 @@ final class WebhookService
 	): bool {
 
 		if (
-			$statusCode < 200 ||
-			$statusCode >= 300
+			$statusCode < 200
+			|| $statusCode >= 300
 		) {
 
 			$this->logger->warning(
@@ -207,8 +207,7 @@ final class WebhookService
 	}
 
 
-	private function getWebhookUrl(): string
-	{
+	private function getWebhookUrl(): string {
 		$url = trim(
 			$this->appConfig->getValueString(
 				Application::APP_ID,
@@ -222,8 +221,7 @@ final class WebhookService
 			: self::DEFAULT_WEBHOOK_URL;
 	}
 
-	private function getWebhookSecret(): ?string
-	{
+	private function getWebhookSecret(): ?string {
 		$secret = trim(
 			$this->appConfig->getValueString(
 				Application::APP_ID,
@@ -237,8 +235,7 @@ final class WebhookService
 			: null;
 	}
 
-	private function isWebhookOtpEnabled(): bool
-	{
+	private function isWebhookOtpEnabled(): bool {
 		$enabled = $this->appConfig->getValueString(
 			Application::APP_ID,
 			self::CONFIG_KEY_WEBHOOK_ENABLED,

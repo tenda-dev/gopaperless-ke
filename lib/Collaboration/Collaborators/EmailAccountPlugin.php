@@ -16,7 +16,6 @@ use OCP\IAppConfig;
 use OCP\IGroupManager;
 use OCP\IUserManager;
 use OCP\IUserSession;
-use OCP\Share\IShare;
 use Psr\Log\LoggerInterface;
 
 /**

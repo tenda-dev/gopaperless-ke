@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
@@ -53,37 +54,37 @@ class DashboardController extends AEnvironmentAwareController {
 	)]
 	public function getDashboardDetails(
 		?int $documentsPage = 1,
-		?int $documentsLength = 5
-		): DataResponse {
-			try {
-				$user = $this->userSession->getUser();
+		?int $documentsLength = 5,
+	): DataResponse {
+		try {
+			$user = $this->userSession->getUser();
 
-				if (!$user) {
-					return new DataResponse([
-						'error' => 'Unauthorized'
-					], Http::STATUS_UNAUTHORIZED);
-				}
-
-				$dashboardDetails = $this->dashboardService->getDashboardDetails(
-					$user,
-					$documentsPage,
-					$documentsLength
-				);
-
+			if (!$user) {
 				return new DataResponse([
-					'dashboardDetails' => $dashboardDetails->toArray(),
-				], Http::STATUS_OK);
-
-			} catch (\Throwable $e) {
-				$this->logger->error('Failed to get dashboard details: ' . $e->getMessage(), [
-					'exception' => $e
-				]);
-
-				return new DataResponse([
-					'success' => false,
-					'error' => $e->getMessage(),
-					'trace' => $e->getTrace(),
-				], Http::STATUS_INTERNAL_SERVER_ERROR);
+					'error' => 'Unauthorized'
+				], Http::STATUS_UNAUTHORIZED);
 			}
+
+			$dashboardDetails = $this->dashboardService->getDashboardDetails(
+				$user,
+				$documentsPage,
+				$documentsLength
+			);
+
+			return new DataResponse([
+				'dashboardDetails' => $dashboardDetails->toArray(),
+			], Http::STATUS_OK);
+
+		} catch (\Throwable $e) {
+			$this->logger->error('Failed to get dashboard details: ' . $e->getMessage(), [
+				'exception' => $e
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+				'trace' => $e->getTrace(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
 	}
 }

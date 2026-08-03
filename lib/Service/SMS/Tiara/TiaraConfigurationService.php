@@ -9,14 +9,14 @@ use OCA\Libresign\Service\SMS\Tiara\DTO\TiaraConfigDTO;
 use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
-final class TiaraConfigurationService
-{
+final class TiaraConfigurationService {
 	private const DEFAULT_API_URL = 'https://api.tiaraconnect.io/api/messaging/sendsms';
 
 	public function __construct(
 		private IAppConfig $appConfig,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Retrieves and validates Tiara configuration.
@@ -28,8 +28,7 @@ final class TiaraConfigurationService
 	 *
 	 * Returns null when mandatory configuration is missing.
 	 */
-	public function get(): ?TiaraConfigDTO
-	{
+	public function get(): ?TiaraConfigDTO {
 		$apiKey = trim(
 			$this->appConfig->getValueString(
 				Application::APP_ID,
@@ -55,9 +54,9 @@ final class TiaraConfigurationService
 		);
 
 		if (
-			$apiKey === '' ||
-			$senderId === '' ||
-			$apiUrl === ''
+			$apiKey === ''
+			|| $senderId === ''
+			|| $apiUrl === ''
 		) {
 
 			$this->logger->error(

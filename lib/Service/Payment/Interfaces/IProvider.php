@@ -11,8 +11,7 @@ namespace OCA\Libresign\Service\Payment\Interfaces;
 
 use OCA\Libresign\Enum\PaymentProvider;
 
-interface IProvider
-{
+interface IProvider {
 	/**
 	 * Unique provider identifier
 	 *

@@ -9,15 +9,14 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\BackgroundJob;
 
-use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Db\PaymentMapper;
+use OCA\Libresign\Service\Payment\PaymentService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJob;
 use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
 
-class VerifyPayments extends TimedJob
-{
+class VerifyPayments extends TimedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private PaymentMapper $paymentMapper,
@@ -35,8 +34,7 @@ class VerifyPayments extends TimedJob
 	 * @inheritDoc
 	 */
 	#[\Override]
-	public function run($argument): void
-	{
+	public function run($argument): void {
 		$this->logger->info('[VerifyPayments] job started');
 
 		// small batch → controlled load

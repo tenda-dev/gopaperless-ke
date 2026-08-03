@@ -25,10 +25,9 @@ use RuntimeException;
  * atomically for affected countries to avoid stale MNO mappings causing
  * ChargeTokenMobile failures.
  */
-final class DpoMobileOptionsService
-{
-	private const MOBILE_OPTIONS_CACHE_UPDATED_AT =
-	'dpo_mobile_options_cache_updated_at';
+final class DpoMobileOptionsService {
+	private const MOBILE_OPTIONS_CACHE_UPDATED_AT
+		= 'dpo_mobile_options_cache_updated_at';
 
 	private const CACHE_TTL_HOURS = 12;
 
@@ -37,7 +36,8 @@ final class DpoMobileOptionsService
 		private DpoMobileOptionMapper $mapper,
 		private LoggerInterface $logger,
 		private IAppConfig $appConfig,
-	) {}
+	) {
+	}
 
 	/**
 	 * Get mobile payment options for a transaction.
@@ -49,8 +49,7 @@ final class DpoMobileOptionsService
 	 * 4. Update cache metadata
 	 * 5. Return normalized options
 	 */
-	public function getOptions(string $providerReference, string $country): array
-	{
+	public function getOptions(string $providerReference, string $country): array {
 
 		$options = [];
 
@@ -80,8 +79,8 @@ final class DpoMobileOptionsService
 				'count' => count($fetched),
 				'countries' => array_values(array_unique(
 					array_map(
-						static fn(array $option): string =>
-						strtolower($option['country']),
+						static fn (array $option): string
+						=> strtolower($option['country']),
 						$fetched,
 					),
 				)),
@@ -148,13 +147,11 @@ final class DpoMobileOptionsService
 	// Helpers
 	// -----------------------------
 
-	private function normaliseProvider(?string $provider): string
-	{
-		return strtolower(trim((string) $provider));
+	private function normaliseProvider(?string $provider): string {
+		return strtolower(trim((string)$provider));
 	}
 
-	private function now(): string
-	{
+	private function now(): string {
 		return (new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
@@ -164,8 +161,7 @@ final class DpoMobileOptionsService
 	/**
 	 * Convert entities → API-safe array
 	 */
-	private function toArray(array $entities): array
-	{
+	private function toArray(array $entities): array {
 		return array_map(
 			static function (DpoMobileOption $option): array {
 				return [
@@ -183,8 +179,7 @@ final class DpoMobileOptionsService
 	}
 
 
-	private function isCacheExpired(): bool
-	{
+	private function isCacheExpired(): bool {
 		$lastUpdated = $this->appConfig->getValueString(
 			Application::APP_ID,
 			self::MOBILE_OPTIONS_CACHE_UPDATED_AT,

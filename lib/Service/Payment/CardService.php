@@ -11,16 +11,16 @@ namespace OCA\Libresign\Service\Payment;
 
 use OCA\Libresign\Service\Payment\DTO\CardPaymentPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
-use Psr\Log\LoggerInterface;
 
-final class CardService
-{
+final class CardService {
 	public function __construct(
 		private DpoProvider $dpo,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Initiate card payment (redirect flow)
@@ -30,7 +30,7 @@ final class CardService
 	 * - Always redirect-based
 	 */
 	public function initiateCard(
-		CardPaymentPayloadDTO $payload
+		CardPaymentPayloadDTO $payload,
 	): CardPaymentResultDTO {
 
 		try {

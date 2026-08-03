@@ -2502,6 +2502,9 @@
                             "sign_request_uuid": {
                                 "type": "string"
                             },
+                            "sign_uuid": {
+                                "type": "string"
+                            },
                             "hash_algorithm": {
                                 "type": "string"
                             },
@@ -3282,6 +3285,7 @@
                     {
                         "name": "uuid",
                         "in": "path",
+                        "description": "Sign request uuid to allow account creation",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -3351,6 +3355,161 @@
                                                 },
                                                 "data": {
                                                     "$ref": "#/components/schemas/ActionMessageResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/libresign/api/{apiVersion}/account/create-only": {
+            "post": {
+                "operationId": "account-create",
+                "summary": "Create a standalone GoPaperless account.",
+                "description": "This endpoint is intended for onboarding, testing and future self-registration flows. It creates a Nextcloud account, optionally stores a validated phone number, and sends the standard new-user notification email when enabled.\nUnlike createToSign(), this endpoint does not create signing certificates, modify signing requests, or automatically authenticate the newly created user.",
+                "tags": [
+                    "account"
+                ],
+                "security": [
+                    {},
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "email",
+                                    "password"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "description": "Email address for the new account."
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "description": "Password for the new account."
+                                    },
+                                    "phoneNumber": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Optional phone number in E.164 format."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "apiVersion",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "v1"
+                            ],
+                            "default": "v1"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Account created successfully.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message",
+                                                        "email",
+                                                        "uid"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "email": {
+                                                            "type": "string"
+                                                        },
+                                                        "uid": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed or account creation could not be completed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -5490,12 +5649,19 @@
                                         "description": "Settings to define how and where the file should be stored"
                                     },
                                     "files": {
-                                        "type": "array",
                                         "default": [],
                                         "description": "Multiple files to create an envelope (optional, use either file or files)",
-                                        "items": {
-                                            "$ref": "#/components/schemas/NewFile"
-                                        }
+                                        "oneOf": [
+                                            {
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/components/schemas/NewFile"
+                                                }
+                                            }
+                                        ]
                                     }
                                 }
                             }
@@ -7533,7 +7699,6 @@
                     "payment"
                 ],
                 "security": [
-                    {},
                     {
                         "basic_auth": []
                     }
@@ -7583,7 +7748,6 @@
                     "payment"
                 ],
                 "security": [
-                    {},
                     {
                         "basic_auth": []
                     }
@@ -8125,7 +8289,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/ActionErrorResponse"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/MessageResponse"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/ActionErrorResponse"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -8140,7 +8311,7 @@
         "/ocs/v2.php/apps/libresign/api/{apiVersion}/sign/file_id/{fileId}": {
             "delete": {
                 "operationId": "request_signature-delete-all-request-signature-using-file-id",
-                "summary": "Delete sign request try { $data = [ 'userManager' => $this->userSession->getUser(), 'file' => [ 'fileId' => $fileId ] ]; $this->validateHelper->validateExistingFile($data); $this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId); $this->requestSignatureService->unassociateToUser($fileId, $signRequestId); } catch (\\Throwable $th) { return new DataResponse( [ 'message' => $th->getMessage(), ], Http::STATUS_UNAUTHORIZED ); } return new DataResponse( [ 'message' => $this->l10n->t('Success') ], Http::STATUS_OK ); }",
+                "summary": "Delete sign request try { $data = [ 'userManager' => $this->userSession->getUser(), 'file' => [ 'fileId' => $fileId ] ]; $this->validateHelper->validateExistingFile($data); $this->validateHelper->validateIsSignerOfFile($signRequestId, $fileId); $this->requestSignatureService->unassociateToUser($fileId, $signRequestId); } catch (\\Throwable $th) { return $this->handleRequestException($th, Http::STATUS_UNAUTHORIZED); } return new DataResponse( [ 'message' => $this->l10n->t('Success') ], Http::STATUS_OK ); }",
                 "description": "/** Delete sign request\nYou can only request exclusion as any sign",
                 "tags": [
                     "signing"
@@ -8269,7 +8440,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/ActionErrorResponse"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/MessageResponse"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/ActionErrorResponse"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -8281,7 +8459,7 @@
                 }
             },
             "post": {
-                "operationId": "sign_file-sign-using-file-id",
+                "operationId": "sign_file-sign-by-file-id",
                 "summary": "Sign a file using file Id",
                 "tags": [
                     "signing"
@@ -8437,7 +8615,7 @@
         },
         "/ocs/v2.php/apps/libresign/api/{apiVersion}/sign/uuid/{uuid}": {
             "post": {
-                "operationId": "sign_file-sign-using-uuid",
+                "operationId": "sign_file-sign-by-signer-uuid",
                 "summary": "Sign a file using file UUID",
                 "tags": [
                     "signing"
@@ -8683,7 +8861,7 @@
         },
         "/ocs/v2.php/apps/libresign/api/{apiVersion}/sign/uuid/{uuid}/code": {
             "post": {
-                "operationId": "sign_file-get-code-using-uuid",
+                "operationId": "sign_file-request-code-by-signer-uuid",
                 "summary": "Get code to sign the document using UUID",
                 "tags": [
                     "signing"
@@ -8827,7 +9005,7 @@
         },
         "/ocs/v2.php/apps/libresign/api/{apiVersion}/sign/file_id/{fileId}/code": {
             "post": {
-                "operationId": "sign_file-get-code-using-file-id",
+                "operationId": "sign_file-request-code-by-file-id",
                 "summary": "Get code to sign the document using FileID",
                 "tags": [
                     "signing"
@@ -12293,6 +12471,214 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/appearance-profiles/config": {
+            "post": {
+                "operationId": "admin-set-appearance-profiles-config",
+                "summary": "Persist the per-group signature appearance profiles",
+                "description": "The map is keyed by Nextcloud group id. Each entry controls which visual elements are rendered for documents owned by that customer group. Missing flags default to `true` (default-on), matching the resolved default profile.\nThis endpoint requires admin access",
+                "tags": [
+                    "admin"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "profiles": {
+                                        "type": "object",
+                                        "default": {},
+                                        "description": "Appearance profile map keyed by group id. `stamp` may be a boolean or an object of stamp overrides.",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "properties": {
+                                                "footer": {
+                                                    "type": "boolean"
+                                                },
+                                                "qr": {
+                                                    "type": "boolean"
+                                                },
+                                                "stamp": {
+                                                    "oneOf": [
+                                                        {
+                                                            "type": "boolean"
+                                                        },
+                                                        {
+                                                            "type": "object",
+                                                            "additionalProperties": {
+                                                                "type": "object"
+                                                            }
+                                                        }
+                                                    ]
+                                                },
+                                                "auditInfo": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "apiVersion",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "v1"
+                            ],
+                            "default": "v1"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Settings saved",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/MessageResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/signature-flow/config": {
             "post": {
                 "operationId": "admin-set-signature-flow-config",
@@ -12683,6 +13069,419 @@
                     },
                     "500": {
                         "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/daraja-config": {
+            "post": {
+                "operationId": "admin-set-daraja-config",
+                "summary": "Persist Daraja payment configuration",
+                "description": "This endpoint requires admin access",
+                "tags": [
+                    "admin"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "baseUrl": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Daraja base URL"
+                                    },
+                                    "consumerKey": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Daraja consumer key"
+                                    },
+                                    "consumerSecret": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Daraja consumer secret"
+                                    },
+                                    "passKey": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Daraja pass key"
+                                    },
+                                    "shortCode": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "Daraja shortcode"
+                                    },
+                                    "callbackBaseUrl": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "GoPaperless callback base URL"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "apiVersion",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "v1"
+                            ],
+                            "default": "v1"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration saved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/MessageResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/dpo-config": {
+            "post": {
+                "operationId": "admin-set-dpo-config",
+                "summary": "Persist DPO payment configuration",
+                "description": "This endpoint requires admin access",
+                "tags": [
+                    "admin"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "endpoint": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "DPO API endpoint"
+                                    },
+                                    "companyToken": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "DPO company token"
+                                    },
+                                    "serviceId": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "DPO service ID"
+                                    },
+                                    "paymentUrl": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "DPO payment URL"
+                                    },
+                                    "callbackBaseUrl": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "GoPaperless callback base URL"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "apiVersion",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "v1"
+                            ],
+                            "default": "v1"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration saved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/MessageResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/ErrorResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/libresign/api/{apiVersion}/admin/fx-config": {
+            "post": {
+                "operationId": "admin-set-fx-config",
+                "summary": "Persist FX provider API credentials.",
+                "description": "This endpoint requires admin access",
+                "tags": [
+                    "admin"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "exchangeRateApiKey": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "ExchangeRate-API key"
+                                    },
+                                    "openExchangeAppId": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "description": "OpenExchangeRates app ID"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "apiVersion",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "v1"
+                            ],
+                            "default": "v1"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration saved successfully",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/MessageResponse"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
                         "content": {
                             "application/json": {
                                 "schema": {

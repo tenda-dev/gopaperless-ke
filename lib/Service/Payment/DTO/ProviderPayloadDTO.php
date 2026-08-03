@@ -9,18 +9,17 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\DTO;
 
-final class ProviderPayloadDTO
-{
+final class ProviderPayloadDTO {
 	public function __construct(
 		public readonly ?array $initiation = null,
 		public readonly ?array $charge = null,
 		public readonly ?array $callback = null,
 		public readonly ?array $query = null,
 		public readonly ?array $verification = null,
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'initiation' => $this->initiation,
 			'charge' => $this->charge,
@@ -30,8 +29,7 @@ final class ProviderPayloadDTO
 		];
 	}
 
-	public static function fromArray(array $data): self
-	{
+	public static function fromArray(array $data): self {
 		return new self(
 			initiation: is_array($data['initiation'] ?? null)
 				? $data['initiation']
@@ -71,36 +69,31 @@ final class ProviderPayloadDTO
 		);
 	}
 
-	public function withInitiation(array $payload): self
-	{
+	public function withInitiation(array $payload): self {
 		return $this->with(
 			initiation: $payload
 		);
 	}
 
-	public function withCharge(array $payload): self
-	{
+	public function withCharge(array $payload): self {
 		return $this->with(
 			charge: $payload
 		);
 	}
 
-	public function withCallback(array $payload): self
-	{
+	public function withCallback(array $payload): self {
 		return $this->with(
 			callback: $payload
 		);
 	}
 
-	public function withQuery(array $payload): self
-	{
+	public function withQuery(array $payload): self {
 		return $this->with(
 			query: $payload
 		);
 	}
 
-	public function withVerification(array $payload): self
-	{
+	public function withVerification(array $payload): self {
 		return $this->with(
 			verification: $payload
 		);

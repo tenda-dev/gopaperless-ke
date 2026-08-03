@@ -15,7 +15,6 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 use Override;
 
-
 // Entitlement Ledger Migration
 
 /**

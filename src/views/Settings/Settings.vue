@@ -20,6 +20,7 @@
 		<SignatureFlow />
 		<SigningMode v-if="false" />
 		<AllowedGroups />
+		<SignatureProfileSettings v-if="appearanceProfilesEnabled" />
 		<LegalInformation />
 		<IdentificationDocuments />
 		<CollectMetadata />
@@ -46,6 +47,8 @@
 </template>
 
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
+import { loadState } from '@nextcloud/initial-state'
 import AllowedGroups from './AllowedGroups.vue'
 import CertificateAccess from './CertificateAccess.vue'
 import CertificateEngine from './CertificateEngine.vue'
@@ -83,6 +86,10 @@ import DarajaConfig from "@/views/Settings/DarajaConfig.vue";
 import DpoPaymentConfig from "@/views/Settings/DpoPaymentConfig.vue";
 import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerificationDispatcherConfig.vue";
 import WebhookOtpConfig from './WebhookOtpConfig.vue'
+
+const appearanceProfilesEnabled = loadState('libresign', 'appearance_profiles_enabled', false)
+const SignatureProfileSettings = defineAsyncComponent(() => import('./SignatureProfile/SignatureProfileSettings.vue'))
+
 defineOptions({
 	name: 'Settings',
 })

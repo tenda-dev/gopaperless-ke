@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Dashboard\ValueObject;
 
-
 use OCA\Libresign\Db\SignRequest;
 
 final class DashboardParticipantContext {
@@ -21,5 +20,6 @@ final class DashboardParticipantContext {
 		public readonly bool $isBlockedBySequence,
 		public readonly ?int $signingOrder,
 		public readonly ?string $displayName,
-	) {}
+	) {
+	}
 }

@@ -15,6 +15,7 @@ use ImagickDraw;
 use ImagickPixel;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
 use OCA\Libresign\Vendor\Endroid\QrCode\Color\Color;
 use OCA\Libresign\Vendor\Endroid\QrCode\Encoding\Encoding;
 use OCA\Libresign\Vendor\Endroid\QrCode\ErrorCorrectionLevel;
@@ -42,6 +43,8 @@ class SignatureTextService {
 	public const DEFAULT_SIGNATURE_WIDTH = 350;
 	public const DEFAULT_SIGNATURE_HEIGHT = 100;
 	private const QRCODE_SIZE = 100;
+	// Per-document stamp overrides; null means "follow the global config".
+	private ?SignatureStamp $stampOverride = null;
 	public function __construct(
 		private IAppConfig $appConfig,
 		private IL10N $l10n,
@@ -195,10 +198,11 @@ class SignatureTextService {
 	}
 
 	public function getTemplate(): string {
-		if ($this->appConfig->hasKey(Application::APP_ID, 'signature_text_template')) {
-			return $this->appConfig->getValueString(Application::APP_ID, 'signature_text_template');
-		}
-		return $this->getDefaultTemplate();
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getTextTemplate(),
+			'signature_text_template',
+			$this->getDefaultTemplate(),
+		);
 	}
 
 	public function getAvailableVariables(): array {
@@ -529,10 +533,14 @@ class SignatureTextService {
 
 	public function getTemplateFontSize(): float {
 		$collectMetadata = $this->appConfig->getValueBool(Application::APP_ID, 'collect_metadata', false);
-		if ($collectMetadata) {
-			return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE - 1);
-		}
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE);
+		$default = $collectMetadata
+			? self::TEMPLATE_DEFAULT_FONT_SIZE - 1
+			: self::TEMPLATE_DEFAULT_FONT_SIZE;
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getTemplateFontSize(),
+			'template_font_size',
+			$default,
+		);
 	}
 
 	public function getDefaultTemplateFontSize(): float {
@@ -544,11 +552,38 @@ class SignatureTextService {
 	}
 
 	public function getSignatureFontSize(): float {
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'signature_font_size', self::SIGNATURE_DEFAULT_FONT_SIZE);
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getSignatureFontSize(),
+			'signature_font_size',
+			self::SIGNATURE_DEFAULT_FONT_SIZE,
+		);
+	}
+
+	/**
+	 * Apply per-document stamp overrides for the duration of one signing run.
+	 * Passing null restores the global configuration.
+	 */
+	public function setStampOverride(?SignatureStamp $stampOverride): self {
+		$this->stampOverride = $stampOverride;
+		return $this;
 	}
 
 	public function getRenderMode(): string {
-		return $this->appConfig->getValueString(Application::APP_ID, 'signature_render_mode', SignerElementsService::RENDER_MODE_DEFAULT);
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getRenderMode(),
+			'signature_render_mode',
+			SignerElementsService::RENDER_MODE_DEFAULT,
+		);
+	}
+
+	private function getStampOverrideOrConfig(?callable $override, string $configKey, mixed $default): mixed {
+		if ($this->stampOverride !== null && $override !== null) {
+			$value = $override($this->stampOverride);
+			if ($value !== null) {
+				return $value;
+			}
+		}
+		return $this->appConfig->getValueString(Application::APP_ID, $configKey, (string)$default);
 	}
 
 	public function hasQrCodeInTemplate(): bool {

@@ -13,8 +13,7 @@ use OCA\Libresign\Enum\PaymentFlow;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\ProviderExecutionState;
 
-final class CardPaymentResultDTO
-{
+final class CardPaymentResultDTO {
 	public function __construct(
 		public readonly ProviderExecutionState $providerExecutionState,
 		public readonly string $providerReference,
@@ -23,12 +22,12 @@ final class CardPaymentResultDTO
 		public readonly PaymentFlow $flow,
 		public readonly ?string $message = null,
 		public readonly array $meta = [],
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
-            'state' => $this->providerExecutionState,
+			'state' => $this->providerExecutionState,
 			'providerReference' => $this->providerReference,
 			'redirectUrl' => $this->redirectUrl,
 			'provider' => $this->provider,

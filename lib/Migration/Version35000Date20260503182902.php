@@ -17,8 +17,7 @@ use OCP\Migration\SimpleMigrationStep;
 /**
  * FIXME Auto-generated migration step: Please modify to your needs!
  */
-class Version35000Date20260503182902 extends SimpleMigrationStep
-{
+class Version35000Date20260503182902 extends SimpleMigrationStep {
 
 	/**
 	 * @param IOutput $output
@@ -26,8 +25,7 @@ class Version35000Date20260503182902 extends SimpleMigrationStep
 	 * @param array $options
 	 * @return null|ISchemaWrapper
 	 */
-	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper
-	{
+	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
 		$schema = $schemaClosure();
 
 		if (!$schema->hasTable('gopaperless_dpo_mobile_options')) {

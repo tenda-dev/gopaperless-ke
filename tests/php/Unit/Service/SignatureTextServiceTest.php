@@ -12,6 +12,7 @@ namespace OCA\Libresign\Tests\Unit\Service;
 use Imagick;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
 use OCA\Libresign\Service\SignatureTextService;
 use OCP\IAppConfig;
 use OCP\IDateTimeZone;
@@ -287,5 +288,49 @@ final class SignatureTextServiceTest extends \OCA\Libresign\Tests\Unit\TestCase 
 
 		$this->assertEquals(SignatureTextService::DEFAULT_SIGNATURE_WIDTH, $class->getFullSignatureWidth());
 		$this->assertEquals(SignatureTextService::DEFAULT_SIGNATURE_HEIGHT, $class->getFullSignatureHeight());
+	}
+
+	public function testStampOverrideAppliesToTemplateAndFontSizesAndRenderMode(): void {
+		$this->appConfig->setValueString(Application::APP_ID, 'signature_text_template', 'Global template');
+		$this->appConfig->setValueFloat(Application::APP_ID, 'template_font_size', 8.0);
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_font_size', 16.0);
+		$this->appConfig->setValueString(Application::APP_ID, 'signature_render_mode', 'GRAPHIC_AND_DESCRIPTION');
+
+		$override = new SignatureStamp(
+			enabled: true,
+			renderMode: 'DESCRIPTION_ONLY',
+			textTemplate: 'Override template',
+			signatureFontSize: 22.0,
+			templateFontSize: 11.0,
+		);
+
+		$class = $this->getClass()->setStampOverride($override);
+
+		$this->assertSame('Override template', $class->getTemplate());
+		$this->assertSame(11.0, $class->getTemplateFontSize());
+		$this->assertSame(22.0, $class->getSignatureFontSize());
+		$this->assertSame('DESCRIPTION_ONLY', $class->getRenderMode());
+	}
+
+	public function testDisabledStampOverrideClearsOverrideAndUsesConfig(): void {
+		$this->appConfig->setValueString(Application::APP_ID, 'signature_text_template', 'Global template');
+		$this->appConfig->setValueString(Application::APP_ID, 'signature_render_mode', 'GRAPHIC_ONLY');
+		$this->appConfig->setValueFloat(Application::APP_ID, 'template_font_size', 7.0);
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_font_size', 15.0);
+
+		$class = $this->getClass();
+		$class->setStampOverride(new SignatureStamp(
+			enabled: true,
+			renderMode: 'DESCRIPTION_ONLY',
+			textTemplate: 'Override template',
+			signatureFontSize: 99.0,
+			templateFontSize: 99.0,
+		));
+		$class->setStampOverride(null);
+
+		$this->assertSame('Global template', $class->getTemplate());
+		$this->assertSame('GRAPHIC_ONLY', $class->getRenderMode());
+		$this->assertSame(7.0, $class->getTemplateFontSize());
+		$this->assertSame(15.0, $class->getSignatureFontSize());
 	}
 }

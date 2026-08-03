@@ -9,8 +9,8 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\Dispatchers;
 
-use OCA\Libresign\Service\Payment\Interfaces\IVerificationDispatcher;
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Service\Payment\Interfaces\IVerificationDispatcher;
 use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
@@ -27,8 +27,7 @@ use Psr\Log\LoggerInterface;
  * 2. Environment configuration fallback
  * 3. Safe default (Nextcloud)
  */
-class VerificationDispatcherFactory implements IVerificationDispatcher
-{
+class VerificationDispatcherFactory implements IVerificationDispatcher {
 	private const CONFIG_KEY = 'payment_verification_dispatcher';
 
 	private const RABBITMQ = 'rabbitmq';
@@ -40,10 +39,10 @@ class VerificationDispatcherFactory implements IVerificationDispatcher
 		private RabbitMqVerificationDispatcher $rabbitMqDispatcher,
 		private NextcloudVerificationDispatcher $nextcloudDispatcher,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
-	public function dispatchVerification(int $paymentId): void
-	{
+	public function dispatchVerification(int $paymentId): void {
 		$dispatcher = $this->resolveDispatcher();
 
 		$this->logger->info(
@@ -57,8 +56,7 @@ class VerificationDispatcherFactory implements IVerificationDispatcher
 		$dispatcher->dispatchVerification($paymentId);
 	}
 
-	private function resolveDispatcher(): IVerificationDispatcher
-	{
+	private function resolveDispatcher(): IVerificationDispatcher {
 		$driver = $this->appConfig->getValueString(
 			Application::APP_ID,
 			self::CONFIG_KEY,

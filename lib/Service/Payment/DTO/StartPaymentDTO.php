@@ -18,32 +18,21 @@ class StartPaymentDTO {
 		public string $userEmail,
 		// Optional for non-signing payments (credits/wallet/etc)
 		public ?string $signUuid,
-
 		// Optional for non-signing payments
 		public ?int $signRequestId,
-
 		// Defines business intent of payment
 		public PaymentPurpose $purpose,
-
 		// Only necessary for card payments
 		public ?string $redirectUrl,
-
 		public string $userId,
-
 		// provider hint
 		public ?PaymentProvider $provider,
-
 		public string $productCode,
-
 		// 'card' | 'mobile'
 		public PaymentMethod $paymentMethod,
-
 		public int $quantity = 1,
-
 		public ?string $callbackUrl = null,
-
 		public ?string $paymentAttemptId = null,
-
 		public ?string $phoneNumber = null,
 	) {
 	}

@@ -29,6 +29,7 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 	<version>14.0.0-dev.4</version>
 
 	<licence>agpl</licence>
+	<author>LibreCode coop and contributors</author>
 	<types>
 		<dav/>
 	</types>
