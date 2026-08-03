@@ -996,13 +996,18 @@ class AdminController extends AEnvironmentAwareController {
 	 * flags default to `true` (default-on), matching the resolved default profile.
 	 *
 	 * @param array<string, array{footer?: bool, qr?: bool, stamp?: bool|array<string, mixed>, auditInfo?: bool}> $profiles Appearance profile map keyed by group id. `stamp` may be a boolean or an object of stamp overrides.
-	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_FORBIDDEN, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
 	 *
 	 * 200: Settings saved
+	 * 400: Bad request
+	 * 403: Forbidden
 	 * 500: Internal server error
 	 */
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/appearance-profiles/config', requirements: ['apiVersion' => '(v1)'])]
 	public function setAppearanceProfilesConfig(array $profiles = []): DataResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false)) {
+			throw new LibresignException($this->l10n->t('Appearance profiles feature is disabled'), Http::STATUS_FORBIDDEN);
+		}
 		try {
 			$normalised = [];
 			foreach ($profiles as $groupId => $flags) {
