@@ -312,6 +312,63 @@ final class FooterHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->assertSame($defaultTemplate, $template);
 	}
 
+	public function testSetRenderQrCodeFalseSuppressesQrCode(): void {
+		$this->appConfig->setValueBool(Application::APP_ID, 'add_footer', true);
+		$this->appConfig->setValueBool(Application::APP_ID, 'write_qrcode_on_footer', true);
+		$this->appConfig->setValueString(Application::APP_ID, 'validation_site', 'http://test.coop');
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_template', <<<'HTML'
+			<div style="font-size:8px;" dir="{{ direction }}">
+			qrcodeSize:{{ qrcodeSize }}<br />
+			signedBy:{{ signedBy|raw }}<br />
+			validateIn:{{ validateIn|raw }}<br />
+			qrcode:{{ qrcode }}
+			</div>
+			HTML);
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_signed_by', 'Signed by test.');
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_validate_in', 'Validate in %s.');
+
+		$dimensions = [['w' => 595, 'h' => 100]];
+		$this->l10n = $this->l10nFactory->get(Application::APP_ID, 'en');
+
+		$pdf = $this->getClass()
+			->setTemplateVar('uuid', 'test-uuid')
+			->setRenderQrCode(false)
+			->getFooter($dimensions);
+
+		$this->assertNotEmpty($pdf);
+		$actual = $this->extractPdfContent($pdf, ['signedBy', 'validateIn', 'qrcode'], 'ltr');
+		$this->assertSame('Signed by test.', $actual['signedBy']);
+		$this->assertSame('Validate in %s.', $actual['validateIn']);
+		$this->assertSame('', $actual['qrcode']);
+	}
+
+	public function testSetRenderAuditInfoFalseSuppressesAuditBlock(): void {
+		$this->appConfig->setValueBool(Application::APP_ID, 'add_footer', true);
+		$this->appConfig->setValueBool(Application::APP_ID, 'write_qrcode_on_footer', false);
+		$this->appConfig->setValueString(Application::APP_ID, 'validation_site', 'http://test.coop');
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_template', <<<'HTML'
+			<div style="font-size:8px;" dir="{{ direction }}">
+			signedBy:{{ signedBy|raw }}<br />
+			validateIn:{{ validateIn|raw }}<br />
+			</div>
+			HTML);
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_signed_by', 'Signed by test.');
+		$this->appConfig->setValueString(Application::APP_ID, 'footer_validate_in', 'Validate in %s.');
+
+		$dimensions = [['w' => 595, 'h' => 100]];
+		$this->l10n = $this->l10nFactory->get(Application::APP_ID, 'en');
+
+		$pdf = $this->getClass()
+			->setTemplateVar('uuid', 'test-uuid')
+			->setRenderAuditInfo(false)
+			->getFooter($dimensions);
+
+		$this->assertNotEmpty($pdf);
+		$actual = $this->extractPdfContent($pdf, ['signedBy', 'validateIn'], 'ltr');
+		$this->assertSame('Signed by test.', $actual['signedBy']);
+		$this->assertSame('', $actual['validateIn']);
+	}
+
 	public function testGetTemplateVariablesMetadata(): void {
 		$this->l10n = $this->l10nFactory->get(Application::APP_ID, 'en');
 		$metadata = $this->getClass()->getTemplateVariablesMetadata();
