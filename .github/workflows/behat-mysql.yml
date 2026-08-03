@@ -8,6 +8,9 @@ on: pull_request
 permissions:
   contents: read
 
+env:
+  APP_NAME: libresign
+
 concurrency:
   group: behat-mysql-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -84,6 +87,7 @@ jobs:
 
     steps:
       - name: Set app env
+        if: ${{ env.APP_NAME == '' }}
         run: |
           # Split and keep last
           echo "APP_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
