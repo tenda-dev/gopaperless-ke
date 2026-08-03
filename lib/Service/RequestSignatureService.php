@@ -371,7 +371,7 @@ class RequestSignatureService {
 		 * perform group lookups. The customer appearance is applied by default.
 		 */
 		$requesterId = $file->getUserId();
-		if ($requesterId) {
+		if ($requesterId && $this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false)) {
 			$metadata['appearance_profile'] = $this->signatureProfileService
 				->resolveForRequester($requesterId, true)
 				->toArray();
