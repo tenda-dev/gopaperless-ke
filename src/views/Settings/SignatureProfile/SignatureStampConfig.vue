@@ -69,7 +69,7 @@ export type StampGlobals = {
 	height: number
 }
 
-function update(key: keyof StampDraft, value: string) {
+function update(key: keyof StampDraft, value: string | boolean) {
 	emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 </script>
