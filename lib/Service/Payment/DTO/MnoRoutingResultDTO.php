@@ -15,8 +15,7 @@ use OCA\Libresign\Enum\PaymentFlowMode;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\ResolutionConfidence;
 
-final class MnoRoutingResultDTO
-{
+final class MnoRoutingResultDTO {
 	public function __construct(
 		public readonly PaymentCapability $capability,
 		public readonly PaymentProvider $preferredProvider,
@@ -38,14 +37,12 @@ final class MnoRoutingResultDTO
 	/**
 	 * Domain Validation (STRICT)
 	 */
-	private function validate(): void
-	{
+	private function validate(): void {
 		$this->validateAmounts();
 		$this->validateCurrencyConsistency();
 	}
 
-	private function validateAmounts(): void
-	{
+	private function validateAmounts(): void {
 		if ($this->minAmount !== null && $this->maxAmount !== null) {
 			if ($this->minAmount > $this->maxAmount) {
 				throw new InvalidArgumentException(
@@ -63,8 +60,7 @@ final class MnoRoutingResultDTO
 		}
 	}
 
-	private function validateCurrencyConsistency(): void
-	{
+	private function validateCurrencyConsistency(): void {
 		/**
 		 * If limits are defined → currency must exist
 		 */
@@ -82,24 +78,20 @@ final class MnoRoutingResultDTO
 	 * Domain Helpers
 	 */
 
-	public function isHighConfidence(): bool
-	{
+	public function isHighConfidence(): bool {
 		return $this->confidence->isHigh();
 	}
 
-	public function isAmbiguous(): bool
-	{
+	public function isAmbiguous(): bool {
 		return $this->confidence->isAmbiguous();
 	}
 
-	public function requiresUserSelection(): bool
-	{
+	public function requiresUserSelection(): bool {
 		return $this->confidence->requiresUserSelection()
 			|| $this->mnoKey === null;
 	}
 
-	public function supportsAutoCharge(): bool
-	{
+	public function supportsAutoCharge(): bool {
 		return $this->mode === PaymentFlowMode::STK_PUSH
 			&& $this->confidence->isHigh()
 			&& $this->mnoKey !== null;
@@ -108,8 +100,7 @@ final class MnoRoutingResultDTO
 	/**
 	 * Validate amount against constraints
 	 */
-	public function validateAmount(float $amount): void
-	{
+	public function validateAmount(float $amount): void {
 		if ($this->minAmount !== null && $amount < $this->minAmount) {
 			throw new InvalidArgumentException('Amount below minimum allowed');
 		}
@@ -126,30 +117,28 @@ final class MnoRoutingResultDTO
 	/**
 	 * Serialization (API safe)
 	 */
-	public function toArray(): array
-{
-	return [
-		'capability'        => $this->capability->value,
-		'preferredProvider' => $this->preferredProvider->value,
-		'mnoKey'            => $this->mnoKey,
-		'mode'              => $this->mode->value,
-		'currency'          => $this->currency,
-		'altCurrency'       => $this->altCurrency,
-		'minAmount'         => $this->minAmount,
-		'maxAmount'         => $this->maxAmount,
-		'supportsDecimals'  => $this->supportsDecimals,
-		'confidence'        => $this->confidence->value,
-		'notes'             => $this->notes,
-		'country'			=> $this->country,
-		'region'			=> $this->region,
-	];
-}
+	public function toArray(): array {
+		return [
+			'capability' => $this->capability->value,
+			'preferredProvider' => $this->preferredProvider->value,
+			'mnoKey' => $this->mnoKey,
+			'mode' => $this->mode->value,
+			'currency' => $this->currency,
+			'altCurrency' => $this->altCurrency,
+			'minAmount' => $this->minAmount,
+			'maxAmount' => $this->maxAmount,
+			'supportsDecimals' => $this->supportsDecimals,
+			'confidence' => $this->confidence->value,
+			'notes' => $this->notes,
+			'country' => $this->country,
+			'region' => $this->region,
+		];
+	}
 
 	/**
 	 * Debug-safe snapshot
 	 */
-	public function withPreferredProvider(PaymentProvider $preferredProvider): self
-	{
+	public function withPreferredProvider(PaymentProvider $preferredProvider): self {
 		return new self(
 			capability: $this->capability,
 			preferredProvider: $preferredProvider,
@@ -167,8 +156,7 @@ final class MnoRoutingResultDTO
 		);
 	}
 
-	public function __toString(): string
-	{
+	public function __toString(): string {
 		return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
 	}
 }

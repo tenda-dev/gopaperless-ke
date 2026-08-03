@@ -17,14 +17,14 @@ use OCA\Libresign\Service\Dashboard\ValueObject\DashboardWorkflowContext;
 
 use OCP\IL10N;
 
-final class DashboardWorkflowMapper
-{
+final class DashboardWorkflowMapper {
 
 
 	public function __construct(
 		private readonly DashboardWorkflowResolver $workflowResolver,
 		private IL10N $l10n,
-	) {}
+	) {
+	}
 
 	public function map(
 		DashboardWorkflowContext $context,
@@ -70,7 +70,7 @@ final class DashboardWorkflowMapper
 			updatedAt: null,
 
 			signers: array_map(
-				fn($signRequest) => new DashboardSignerDTO(
+				fn ($signRequest) => new DashboardSignerDTO(
 					displayName: $signRequest->getDisplayName(),
 
 					status: $signRequest
@@ -99,7 +99,7 @@ final class DashboardWorkflowMapper
 		array $contexts,
 	): array {
 		return array_map(
-			fn(DashboardWorkflowContext $context) => $this->map($context),
+			fn (DashboardWorkflowContext $context) => $this->map($context),
 			$contexts
 		);
 	}

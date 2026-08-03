@@ -8,14 +8,13 @@ use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Libresign\Service\SMS\Tiara\TiaraProvider;
 use OCP\IAppConfig;
-use Psr\Log\LoggerInterface;
 use OCP\IL10N;
+use Psr\Log\LoggerInterface;
 use Throwable;
 
-final class SMSService
-{
-	private const CONFIG_KEY_SMS_OTP_ENABLED =
-    'sms_otp_enabled';
+final class SMSService {
+	private const CONFIG_KEY_SMS_OTP_ENABLED
+		= 'sms_otp_enabled';
 
 	public function __construct(
 		private PhoneNumberService $phoneNumberService,
@@ -23,7 +22,8 @@ final class SMSService
 		private LoggerInterface $logger,
 		private IL10N $l10n,
 		private IAppConfig $appConfig,
-	) {}
+	) {
+	}
 
 	/**
 	 * Sends an OTP required for document signing.
@@ -39,7 +39,7 @@ final class SMSService
 
 		if (!$this->isSmsOtpEnabled()) {
 			return false;
-        }
+		}
 
 		return $this->send(
 			phone: $phone,
@@ -82,8 +82,8 @@ final class SMSService
 			$this->logger->error(
 				'[SMS] Failed to send SMS',
 				[
-					'phone' =>
-					$resolvedPhone?->masked
+					'phone'
+					=> $resolvedPhone?->masked
 						?? 'unknown',
 					'error' => $e->getMessage(),
 					'exception' => $e,
@@ -95,8 +95,7 @@ final class SMSService
 		}
 	}
 
-	private function isSmsOtpEnabled(): bool
-	{
+	private function isSmsOtpEnabled(): bool {
 		$enabled = $this->appConfig->getValueString(
 			Application::APP_ID,
 			self::CONFIG_KEY_SMS_OTP_ENABLED,

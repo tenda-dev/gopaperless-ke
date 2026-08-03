@@ -31,8 +31,7 @@ namespace OCA\Libresign\Enum;
  * - transport
  * - orchestration flow
  */
-enum MobileMoneyStatus: string
-{
+enum MobileMoneyStatus: string {
 	/**
 	 * Payment session created successfully.
 	 *
@@ -116,43 +115,35 @@ enum MobileMoneyStatus: string
 	 * Lifecycle helpers
 	 */
 
-	public function isInitiated(): bool
-	{
+	public function isInitiated(): bool {
 		return $this === self::INITIATED;
 	}
 
-	public function isCharged(): bool
-	{
+	public function isCharged(): bool {
 		return $this === self::CHARGED;
 	}
 
-	public function requiresSelection(): bool
-	{
+	public function requiresSelection(): bool {
 		return $this === self::REQUIRES_SELECTION;
 	}
 
-	public function isReconciling(): bool
-	{
+	public function isReconciling(): bool {
 		return $this === self::RECONCILING;
 	}
 
-	public function isSuccess(): bool
-	{
+	public function isSuccess(): bool {
 		return $this === self::SUCCESS;
 	}
 
-	public function isFailed(): bool
-	{
+	public function isFailed(): bool {
 		return $this === self::FAILED;
 	}
 
-	public function isExpired(): bool
-	{
+	public function isExpired(): bool {
 		return $this === self::EXPIRED;
 	}
 
-	public function isCancelled(): bool
-	{
+	public function isCancelled(): bool {
 		return $this === self::CANCELLED;
 	}
 
@@ -165,8 +156,7 @@ enum MobileMoneyStatus: string
 	 * - retry orchestration
 	 * - resume semantics
 	 */
-	public function hasExecutionStarted(): bool
-	{
+	public function hasExecutionStarted(): bool {
 		return match ($this) {
 			self::CHARGED,
 			self::RECONCILING,
@@ -182,8 +172,7 @@ enum MobileMoneyStatus: string
 	/**
 	 * Whether reconciliation may still continue.
 	 */
-	public function isTerminal(): bool
-	{
+	public function isTerminal(): bool {
 		return match ($this) {
 			self::SUCCESS,
 			self::FAILED,

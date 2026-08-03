@@ -24,8 +24,7 @@ namespace OCA\Libresign\Service\Payment\Interfaces;
  * This interface does NOT perform verification.
  * It only delegates work to the appropriate execution mechanism.
  */
-interface IVerificationDispatcher
-{
+interface IVerificationDispatcher {
 	/**
 	 * Dispatch payment verification.
 	 *
@@ -35,6 +34,6 @@ interface IVerificationDispatcher
 	 * - Use another queue system in future
 	 */
 	public function dispatchVerification(
-		int $paymentId
+		int $paymentId,
 	): void;
 }

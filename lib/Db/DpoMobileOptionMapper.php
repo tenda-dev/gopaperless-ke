@@ -13,10 +13,8 @@ use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
-class DpoMobileOptionMapper extends QBMapper
-{
-	public function __construct(IDBConnection $db)
-	{
+class DpoMobileOptionMapper extends QBMapper {
+	public function __construct(IDBConnection $db) {
 		parent::__construct($db, 'gopaperless_dpo_mobile_options', DpoMobileOption::class);
 	}
 
@@ -25,8 +23,7 @@ class DpoMobileOptionMapper extends QBMapper
 	 *
 	 * @return DpoMobileOption[]
 	 */
-	public function findByCountry(string $country): array
-	{
+	public function findByCountry(string $country): array {
 		$qb = $this->db->getQueryBuilder();
 
 		$qb->select('o.*')
@@ -54,16 +51,15 @@ class DpoMobileOptionMapper extends QBMapper
 	 *
 	 * @param DpoMobileOption[] $options
 	 */
-	public function replaceSnapshot(array $options): void
-	{
+	public function replaceSnapshot(array $options): void {
 		if ($options === []) {
 			return;
 		}
 
 		$countries = array_unique(
 			array_map(
-				static fn(DpoMobileOption $option): string =>
-				strtolower($option->getCountry()),
+				static fn (DpoMobileOption $option): string
+				=> strtolower($option->getCountry()),
 				$options,
 			)
 		);
@@ -93,8 +89,7 @@ class DpoMobileOptionMapper extends QBMapper
 	 *
 	 * @param string[] $countries
 	 */
-	public function deleteByCountries(array $countries): void
-	{
+	public function deleteByCountries(array $countries): void {
 		if ($countries === []) {
 			return;
 		}

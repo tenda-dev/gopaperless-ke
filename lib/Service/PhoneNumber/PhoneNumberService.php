@@ -10,8 +10,7 @@ use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\Service\PhoneNumber\DTO\PhoneNumberDTO;
 use Psr\Log\LoggerInterface;
 
-final class PhoneNumberService
-{
+final class PhoneNumberService {
 
 	private PhoneNumberUtil $phoneUtil;
 
@@ -41,8 +40,7 @@ final class PhoneNumberService
 	 * This method never throws. Invalid or unparsable input
 	 * results in an invalid PhoneNumberDTO.
 	 */
-	public function resolve(string $rawPhone): PhoneNumberDTO
-	{
+	public function resolve(string $rawPhone): PhoneNumberDTO {
 		try {
 			$rawPhone = trim($rawPhone);
 
@@ -60,8 +58,8 @@ final class PhoneNumberService
 			$defaultRegion = null;
 
 			if (
-				str_starts_with($rawPhone, '07') ||
-				str_starts_with($rawPhone, '01')
+				str_starts_with($rawPhone, '07')
+				|| str_starts_with($rawPhone, '01')
 			) {
 				$defaultRegion = 'KE';
 			}
@@ -89,9 +87,9 @@ final class PhoneNumberService
 				PhoneNumberFormat::E164
 			);
 
-			$nationalNumber = (string) $parsed->getNationalNumber();
+			$nationalNumber = (string)$parsed->getNationalNumber();
 
-			$countryCallingCode = (string) $parsed->getCountryCode();
+			$countryCallingCode = (string)$parsed->getCountryCode();
 
 			return new PhoneNumberDTO(
 				valid: true,
@@ -124,8 +122,7 @@ final class PhoneNumberService
 	 * Used whenever a phone number cannot be parsed or fails
 	 * validation checks.
 	 */
-	private function invalid(): PhoneNumberDTO
-	{
+	private function invalid(): PhoneNumberDTO {
 		return new PhoneNumberDTO(
 			valid: false,
 			e164: null,
@@ -147,8 +144,7 @@ final class PhoneNumberService
 	 *
 	 * Returns null when no number is available.
 	 */
-	private function mask(?string $e164): ?string
-	{
+	private function mask(?string $e164): ?string {
 		if ($e164 === null) {
 			return null;
 		}

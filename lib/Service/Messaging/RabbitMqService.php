@@ -10,21 +10,20 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service\Messaging;
 
 use OCA\Libresign\Config\RabbitMqConfig;
-use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
-class RabbitMqService
-{
+class RabbitMqService {
 	public function __construct(
 		private RabbitMqConfig $config,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
-	private function createConnection(): AMQPStreamConnection
-	{
+	private function createConnection(): AMQPStreamConnection {
 		return new AMQPStreamConnection(
 			$this->config->getHost(),
 			$this->config->getPort(),
@@ -36,8 +35,7 @@ class RabbitMqService
 	/**
 	 * Creates exchange + queue topology if it does not exist.
 	 */
-	private function setupTopology(AMQPChannel $channel): void
-	{
+	private function setupTopology(AMQPChannel $channel): void {
 		$channel->exchange_declare(
 			$this->config->getExchangeName(),
 			'direct',
@@ -64,8 +62,7 @@ class RabbitMqService
 	/**
 	 * Queue a payment for verification.
 	 */
-	public function publishPaymentVerification(int $paymentId): void
-	{
+	public function publishPaymentVerification(int $paymentId): void {
 		$connection = $this->createConnection();
 
 		try {
@@ -112,8 +109,7 @@ class RabbitMqService
 	 *
 	 * The provided handler receives the paymentId.
 	 */
-	public function consumePayments(callable $handler): void
-	{
+	public function consumePayments(callable $handler): void {
 		$connection = $this->createConnection();
 
 		$channel = $connection->channel();
@@ -152,7 +148,7 @@ class RabbitMqService
 						JSON_THROW_ON_ERROR
 					);
 
-					$paymentId = (int) ($payload['paymentId'] ?? 0);
+					$paymentId = (int)($payload['paymentId'] ?? 0);
 
 					$this->logger->info(
 						'[RabbitMQ] Received payment verification message',
@@ -181,14 +177,14 @@ class RabbitMqService
 						]
 					);
 
-				/*
-				 * Requeue the message.
-				 *
-				 * Later we can evolve this into:
-				 * - dead letter queues
-				 * - delayed retries
-				 * - max retry counts
-				 */
+					/*
+					 * Requeue the message.
+					 *
+					 * Later we can evolve this into:
+					 * - dead letter queues
+					 * - delayed retries
+					 * - max retry counts
+					 */
 					$message->nack(
 						false,
 						true

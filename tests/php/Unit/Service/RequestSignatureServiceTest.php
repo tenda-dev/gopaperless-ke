@@ -844,8 +844,8 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 
 		$this->appConfig
 			->method('getValueBool')
-			->willReturnCallback(fn (string $app, string $key, bool $default): bool =>
-				$app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? true : $default
+			->willReturnCallback(fn (string $app, string $key, bool $default): bool
+				=> $app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? true : $default
 			);
 
 		$profile = new \OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile(
@@ -908,8 +908,8 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 
 		$this->appConfig
 			->method('getValueBool')
-			->willReturnCallback(fn (string $app, string $key, bool $default): bool =>
-				$app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? false : $default
+			->willReturnCallback(fn (string $app, string $key, bool $default): bool
+				=> $app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? false : $default
 			);
 
 		$this->signatureProfileService

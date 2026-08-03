@@ -18,18 +18,17 @@ use OCA\Libresign\Service\IdentifyMethod\Email;
 use OCP\IAppConfig;
 use OCP\Share\IShare;
 
-class ShareTypeResolver
-{
+class ShareTypeResolver {
 	private const PHONE_METHODS = ['whatsapp', 'sms', 'telegram', 'signal', 'email'];
 
 	public function __construct(
 		private Email $identifyEmailMethod,
 		private Account $identifyAccountMethod,
 		private IAppConfig $appConfig,
-	) {}
+	) {
+	}
 
-	public function resolve(string $method = ''): array
-	{
+	public function resolve(string $method = ''): array {
 		$normalizedMethod = strtolower(trim($method));
 
 		$isAllMethods = $normalizedMethod === '' || $normalizedMethod === 'all';

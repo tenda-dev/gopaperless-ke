@@ -15,16 +15,14 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class TestRabbitMq extends Command
-{
+class TestRabbitMq extends Command {
 	public function __construct(
 		private RabbitMqService $rabbitMqService,
 	) {
 		parent::__construct();
 	}
 
-	protected function configure(): void
-	{
+	protected function configure(): void {
 		$this
 			->setName('libresign:rabbit:test')
 			->addArgument(
@@ -35,7 +33,7 @@ class TestRabbitMq extends Command
 
 	protected function execute(
 		InputInterface $input,
-		OutputInterface $output
+		OutputInterface $output,
 	): int {
 
 		$paymentId = (int)$input->getArgument('paymentId');

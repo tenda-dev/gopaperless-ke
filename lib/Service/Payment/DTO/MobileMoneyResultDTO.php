@@ -13,13 +13,13 @@ use OCA\Libresign\Enum\PaymentFlow;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\ProviderExecutionState;
 
-final class MobileMoneyResultDTO
-{
+final class MobileMoneyResultDTO {
 	public function __construct(
 		public readonly ProviderExecutionState $providerExecutionState,
 		public readonly string $providerReference,
 		public readonly PaymentFlow $flow,
-		public readonly ?PaymentProvider $provider, // executing provider (source of truth)
+		public readonly ?PaymentProvider $provider,
+		// executing provider (source of truth)
 		public readonly ?string $message = null,
 		/**
 		 * Structured extension point
@@ -30,67 +30,61 @@ final class MobileMoneyResultDTO
 		 * Optional normalised error code
 		 */
 		public readonly ?string $errorCode = null,
-	) {}
+	) {
+	}
 
 	/**
 	 * Domain helpers
 	 */
-	public function isInitiated(): bool
-	{
+	public function isInitiated(): bool {
 		return $this->providerExecutionState->isInitiated();
 	}
 
-	public function isExecuting(): bool
-	{
+	public function isExecuting(): bool {
 		return $this->providerExecutionState->isExecuting();
 	}
 
-	public function requiresSelection(): bool
-	{
+	public function requiresSelection(): bool {
 		return $this->providerExecutionState->requiresSelection();
 	}
 
-	public function isReconciling(): bool
-	{
+	public function isReconciling(): bool {
 		return $this->providerExecutionState->isReconciling();
 	}
 
-	public function isFailed(): bool
-	{
+	public function isFailed(): bool {
 		return $this->providerExecutionState->isFailed();
 	}
 
-	public function isSuccess(): bool
-	{
+	public function isSuccess(): bool {
 		return $this->providerExecutionState->isSuccess();
 	}
 
 	/**
 	 * Serialization
 	 */
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
-			'providerExecutionState' =>
-			$this->providerExecutionState->value,
+			'providerExecutionState'
+			=> $this->providerExecutionState->value,
 
-			'providerReference' =>
-			$this->providerReference,
+			'providerReference'
+			=> $this->providerReference,
 
-			'flow' =>
-			$this->flow->value,
+			'flow'
+			=> $this->flow->value,
 
-			'provider' =>
-			$this->provider?->value,
+			'provider'
+			=> $this->provider?->value,
 
-			'message' =>
-			$this->message,
+			'message'
+			=> $this->message,
 
-			'meta' =>
-			$this->meta,
+			'meta'
+			=> $this->meta,
 
-			'errorCode' =>
-			$this->errorCode,
+			'errorCode'
+			=> $this->errorCode,
 		];
 	}
 
@@ -114,8 +108,7 @@ final class MobileMoneyResultDTO
 		);
 	}
 
-	public function __toString(): string
-	{
+	public function __toString(): string {
 		return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
 	}
 }

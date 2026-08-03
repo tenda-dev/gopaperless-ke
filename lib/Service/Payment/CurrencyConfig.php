@@ -9,8 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
-final class CurrencyConfig
-{
+final class CurrencyConfig {
 	public const SUPPORTED_CURRENCIES = [
 		'KES' => ['decimals' => 2, 'countries' => ['KE']],
 		'TZS' => ['decimals' => 0, 'countries' => ['TZ']],
@@ -24,8 +23,7 @@ final class CurrencyConfig
 		'USD' => ['decimals' => 2, 'countries' => ['ZW']],
 	];
 
-	public static function decimals(string $currency): int
-	{
+	public static function decimals(string $currency): int {
 		return self::SUPPORTED_CURRENCIES[$currency]['decimals'] ?? 2;
 	}
 }

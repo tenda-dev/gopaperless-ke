@@ -36,9 +36,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
-use OCP\IConfig;
 use OCP\User\Events\UserDeletedEvent;
-use OCP\Util;
 
 /**
  * @codeCoverageIgnore

@@ -50,14 +50,14 @@ use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\PdfSignatureDetectionService;
 use OCA\Libresign\Service\PfxProvider;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
+use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Service\SigningCoordinatorService;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
 use OCA\Libresign\Service\SignRequest\StatusService;
-use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
-use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
-use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SubjectAlternativeNameService;
 use OCA\Libresign\Service\TsaValidationService;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -2915,8 +2915,8 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 		$this->signatureTextService->expects($this->once())
 			->method('setStampOverride')
-			->with($this->callback(fn (SignatureStamp $stamp): bool =>
-				$stamp->isEnabled()
+			->with($this->callback(fn (SignatureStamp $stamp): bool
+				=> $stamp->isEnabled()
 				&& $stamp->getRenderMode() === 'DESCRIPTION_ONLY'
 				&& $stamp->getTextTemplate() === 'Custom template'
 				&& $stamp->getSignatureFontSize() === 18.0

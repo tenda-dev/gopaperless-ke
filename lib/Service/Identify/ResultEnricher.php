@@ -41,7 +41,7 @@ class ResultEnricher {
 		$user = $this->userSession->getUser();
 
 		if ($user === null) {
-           return $return;
+			return $return;
 		}
 
 		$searchLower = strtolower($search);
@@ -52,7 +52,7 @@ class ResultEnricher {
 
 		$filtered = array_filter(
 			$return,
-			fn(array $item): bool => ($item['method'] ?? null) === 'account'
+			fn (array $item): bool => ($item['method'] ?? null) === 'account'
 				&& (
 					($item['identify'] ?? null) === $user->getUID()
 					|| ($item['identify'] ?? null) === $user->getEMailAddress()
@@ -87,7 +87,7 @@ class ResultEnricher {
 		$user = $this->userSession->getUser();
 
 		if ($user === null) {
-           return $return;
+			return $return;
 		}
 
 		if (empty($user->getEMailAddress())) {
@@ -102,7 +102,7 @@ class ResultEnricher {
 
 		$filtered = array_filter(
 			$return,
-			fn(array $item): bool => (
+			fn (array $item): bool => (
 				($item['method'] ?? null) === 'email'
 				&& ($item['identify'] ?? null) === $user->getEMailAddress()
 			)

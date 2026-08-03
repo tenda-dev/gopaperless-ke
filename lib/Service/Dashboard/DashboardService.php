@@ -23,8 +23,7 @@ use OCA\Libresign\Service\Payment\AmountResolver;
 use OCP\DB\Exception;
 use OCP\IUser;
 
-final class DashboardService
-{
+final class DashboardService {
 
 	public function __construct(
 		private readonly SignRequestMapper $signRequestMapper,
@@ -33,7 +32,8 @@ final class DashboardService
 		private readonly DashboardWorkflowContextFactory $workflowContextFactory,
 		private readonly DashboardWorkflowMapper $workflowMapper,
 		private readonly AmountResolver $amountResolver,
-	) {}
+	) {
+	}
 
 	/**
 	 * @throws Exception
@@ -96,7 +96,7 @@ final class DashboardService
 		return array_values(
 			array_filter(
 				$workflowItems,
-				fn($item) => $item->isOwner
+				fn ($item) => $item->isOwner
 			)
 		);
 	}
@@ -111,7 +111,7 @@ final class DashboardService
 		return array_values(
 			array_filter(
 				$workflowItems,
-				fn($item) => !$item->isOwner
+				fn ($item) => !$item->isOwner
 			)
 		);
 	}
@@ -131,11 +131,11 @@ final class DashboardService
 		return array_map(
 			function (Payment $payment): DashboardPaymentDTO {
 
-				$displayAmountMinor =
-					$payment->getDisplayAmount();
+				$displayAmountMinor
+					= $payment->getDisplayAmount();
 
-				$displayCurrency =
-					$payment->getDisplayCurrency();
+				$displayCurrency
+					= $payment->getDisplayCurrency();
 
 				$displayAmount = null;
 				$displayAmountFormatted = null;
@@ -158,8 +158,8 @@ final class DashboardService
 							$displayCurrency
 						);
 
-					$displayAmountFormatted =
-						$this->amountResolver->format(
+					$displayAmountFormatted
+						= $this->amountResolver->format(
 							$displayAmountMinor,
 							$displayCurrency
 						);
@@ -233,8 +233,8 @@ final class DashboardService
 
 		return [
 			'SIGN_DOCUMENT' => [
-				'remainingUses' =>
-				$entitlement?->getRemainingUses() ?? 0,
+				'remainingUses'
+				=> $entitlement?->getRemainingUses() ?? 0,
 			],
 		];
 	}

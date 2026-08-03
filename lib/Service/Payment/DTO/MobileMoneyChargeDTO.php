@@ -11,19 +11,15 @@ namespace OCA\Libresign\Service\Payment\DTO;
 
 use InvalidArgumentException;
 
-final class MobileMoneyChargeDTO
-{
+final class MobileMoneyChargeDTO {
 	public function __construct(
 		// Provider reference (DPO TransactionToken)
 		public readonly string $providerReference,
-
 		// Normalized phone (E.164 digits, no +)
 		public readonly string $phone,
-
 		// REQUIRED for DPO execution
 		public readonly string $mno,
 		public readonly string $country,
-
 		// Amount context (important for audit + future providers)
 		public readonly float $amount,
 		public readonly string $currency,
@@ -31,8 +27,7 @@ final class MobileMoneyChargeDTO
 		$this->validate();
 	}
 
-	private function validate(): void
-	{
+	private function validate(): void {
 		if ($this->providerReference === '') {
 			throw new InvalidArgumentException('reference is required');
 		}

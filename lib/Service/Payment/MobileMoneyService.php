@@ -18,19 +18,19 @@ use OCA\Libresign\Service\Payment\DTO\MobileMoneyPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyResultDTO;
 use OCA\Libresign\Service\Payment\DTO\SelectionDTO;
 use OCA\Libresign\Service\Payment\DTO\SuggestedMnoDTO;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
-use Psr\Log\LoggerInterface;
 
-final class MobileMoneyService
-{
+final class MobileMoneyService {
 	public function __construct(
 		private DarajaProvider $daraja,
 		private DpoProvider $dpo,
 		private LoggerInterface $logger,
 		private DpoMobileOptionsService $dpoMobileOptionsService,
 		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
-	) {}
+	) {
+	}
 
 	/**
 	 * Initiate mobile payment flow
@@ -41,7 +41,7 @@ final class MobileMoneyService
 	 */
 	public function initiate(
 		MnoRoutingResultDTO $route,
-		MobileMoneyPayloadDTO $payload
+		MobileMoneyPayloadDTO $payload,
 	): MobileMoneyResultDTO {
 
 		$route->validateAmount($payload->amount);
@@ -65,9 +65,9 @@ final class MobileMoneyService
 					return $this->fail(PaymentProvider::DARAJA, null, $e);
 				}
 
-			/**
-			 * DPO FLOW (token only, NO charge)
-			 */
+				/**
+				 * DPO FLOW (token only, NO charge)
+				 */
 			case PaymentProvider::DPO:
 
 				try {
@@ -127,7 +127,7 @@ final class MobileMoneyService
 
 	public function getMobileOptions(
 		string $providerReference,
-		string $country
+		string $country,
 	): array {
 		return $this->dpoMobileOptionsService->getOptions(
 			$providerReference,
@@ -143,7 +143,7 @@ final class MobileMoneyService
 	 * - DPO → Might require explicit user selection
 	 */
 	public function charge(
-		MobileMoneyChargeDTO $dto
+		MobileMoneyChargeDTO $dto,
 	): MobileMoneyResultDTO {
 
 		/**
@@ -165,21 +165,19 @@ final class MobileMoneyService
 		 * Execute via provider (NO routing logic here)
 		 */
 		return $this->safeExecute(
-			fn() => $this->dpo->charge($dto),
+			fn () => $this->dpo->charge($dto),
 			PaymentProvider::DPO,
 			$dto->providerReference
 		);
 	}
 
 
-	public function testDpo(): array
-	{
+	public function testDpo(): array {
 		return $this->dpo->test();
 	}
 
 
-	public function testDaraja(): array
-	{
+	public function testDaraja(): array {
 		return $this->daraja->test();
 	}
 
@@ -189,7 +187,7 @@ final class MobileMoneyService
 	private function safeExecute(
 		callable $fn,
 		PaymentProvider $provider,
-		string $reference
+		string $reference,
 	): MobileMoneyResultDTO {
 
 		try {
@@ -205,7 +203,7 @@ final class MobileMoneyService
 	private function fail(
 		PaymentProvider $provider,
 		?string $reference,
-		Throwable $e
+		Throwable $e,
 	): MobileMoneyResultDTO {
 
 		$this->logger->error('[MobileMoney] failure', [
@@ -235,8 +233,7 @@ final class MobileMoneyService
 	/**
 	 * normalise error messages (safe for FE)
 	 */
-	private function mapErrorMessage(Throwable $e): string
-	{
+	private function mapErrorMessage(Throwable $e): string {
 		$message = strtolower($e->getMessage());
 
 		return match (true) {
@@ -250,8 +247,7 @@ final class MobileMoneyService
 	/**
 	 * Machine-readable error codes
 	 */
-	private function mapErrorCode(Throwable $e): string
-	{
+	private function mapErrorCode(Throwable $e): string {
 		$message = strtolower($e->getMessage());
 
 		return match (true) {

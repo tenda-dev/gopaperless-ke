@@ -56,6 +56,7 @@ use OCP\Files\NotPermittedException;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IDateTimeZone;
+use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\ITempManager;
 use OCP\IURLGenerator;
@@ -66,7 +67,6 @@ use OCP\Security\ISecureRandom;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Sabre\DAV\UUIDUtil;
-use OCP\IDBConnection;
 
 class SignFileService {
 	private ?SignRequestEntity $signRequest = null;

@@ -10,17 +10,17 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service\Payment;
 
 use OCA\Libresign\Enum\PaymentProvider;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
-use Psr\Log\LoggerInterface;
 
-final class VerificationService
-{
+final class VerificationService {
 	public function __construct(
 		private DpoProvider $dpo,
 		private DarajaProvider $daraja,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Verify payment status by provider
@@ -32,7 +32,7 @@ final class VerificationService
 	 */
 	public function verifyStatus(
 		PaymentProvider $provider,
-		string $providerReference
+		string $providerReference,
 	): string {
 
 		try {
@@ -42,15 +42,15 @@ final class VerificationService
 				/**
 				 * DPO → supports direct verification via API
 				 */
-				PaymentProvider::DPO =>
-				$this->dpo->verifyStatus($providerReference),
+				PaymentProvider::DPO
+				=> $this->dpo->verifyStatus($providerReference),
 
 				/**
 				 * Daraja → async (callback-driven)
 				 * DB is source of truth → fallback remains PENDING
 				 */
-				PaymentProvider::DARAJA =>
-				$this->daraja->verifyStatus($providerReference),
+				PaymentProvider::DARAJA
+				=> $this->daraja->verifyStatus($providerReference),
 
 				default => throw new RuntimeException(
 					sprintf('Unsupported provider: %s', $provider->value)
@@ -70,17 +70,16 @@ final class VerificationService
 	}
 
 
-	public function query(PaymentProvider $provider, string $reference): array
-	{
+	public function query(PaymentProvider $provider, string $reference): array {
 		try {
 
 			return match ($provider) {
 
-				$this->daraja->getName() =>
-				$this->daraja->query($reference),
+				$this->daraja->getName()
+				=> $this->daraja->query($reference),
 
-				$this->dpo->getName() =>
-				throw new RuntimeException('DPO does not support query fallback'),
+				$this->dpo->getName()
+				=> throw new RuntimeException('DPO does not support query fallback'),
 
 				default => throw new RuntimeException(
 					"Unsupported provider: {$provider->value}"
