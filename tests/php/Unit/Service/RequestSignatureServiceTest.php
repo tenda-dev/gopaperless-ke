@@ -32,6 +32,7 @@ use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SequentialSigningService;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
 use OCA\Libresign\Service\SignRequest\StatusCacheService;
 use OCA\Libresign\Service\SignRequest\StatusService;
@@ -77,6 +78,7 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 	private EnvelopeFileRelocator&MockObject $envelopeFileRelocator;
 	private FileUploadHelper&MockObject $uploadHelper;
 	private SignRequestService&MockObject $signRequestService;
+	private SignatureProfileService&MockObject $signatureProfileService;
 
 	public function setUp(): void {
 		parent::setUp();
@@ -111,6 +113,7 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 		$this->envelopeFileRelocator = $this->createMock(EnvelopeFileRelocator::class);
 		$this->uploadHelper = $this->createMock(FileUploadHelper::class);
 		$this->signRequestService = $this->createMock(SignRequestService::class);
+		$this->signatureProfileService = $this->createMock(SignatureProfileService::class);
 	}
 
 	private function getService(array $methods = []): RequestSignatureService|MockObject {
@@ -142,6 +145,7 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 					$this->envelopeFileRelocator,
 					$this->uploadHelper,
 					$this->signRequestService,
+					$this->signatureProfileService,
 				])
 				->onlyMethods($methods)
 				->getMock();
@@ -173,6 +177,7 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 			$this->envelopeFileRelocator,
 			$this->uploadHelper,
 			$this->signRequestService,
+			$this->signatureProfileService,
 		);
 	}
 
@@ -832,5 +837,121 @@ final class RequestSignatureServiceTest extends \OCA\Libresign\Tests\Unit\TestCa
 
 		$this->assertSame($envelope, $result['envelope']);
 		$this->assertCount(2, $result['files']);
+	}
+
+	public function testSaveWritesAppearanceProfileIntoMetadataWhenFeatureEnabled(): void {
+		$this->user->method('getUID')->willReturn('owner1');
+
+		$this->appConfig
+			->method('getValueBool')
+			->willReturnCallback(fn (string $app, string $key, bool $default): bool =>
+				$app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? true : $default
+			);
+
+		$profile = new \OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile(
+			footer: false,
+			qr: true,
+			stamp: new \OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp(
+				enabled: true,
+				renderMode: 'DESCRIPTION_ONLY',
+			),
+			auditInfo: true,
+		);
+
+		$this->signatureProfileService
+			->expects($this->once())
+			->method('resolveForRequester')
+			->with('owner1', true)
+			->willReturn($profile);
+
+		$node = $this->createMock(\OCP\Files\Node::class);
+		$node->method('getId')->willReturn(99);
+		$node->method('getExtension')->willReturn('pdf');
+		$node->method('getName')->willReturn('test.pdf');
+
+		$this->fileService
+			->method('getNodeFromData')
+			->willReturn($node);
+
+		$this->fileMapper
+			->method('getByNodeId')
+			->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException(''));
+
+		$this->pdfMetadataExtractor
+			->method('setFile')
+			->willReturnSelf();
+		$this->pdfMetadataExtractor
+			->method('getPageDimensions')
+			->willReturn(['isValid' => true]);
+		$this->pdfMetadataExtractor
+			->method('getPdfVersion')
+			->willReturn('1.7');
+
+		$this->fileStatusService
+			->method('updateFileStatusIfUpgrade')
+			->willReturnCallback(fn (\OCA\Libresign\Db\File $file): \OCA\Libresign\Db\File => $file);
+
+		$file = $this->getService()->save([
+			'name' => 'test',
+			'userManager' => $this->user,
+			'status' => \OCA\Libresign\Enum\FileStatus::DRAFT->value,
+			'file' => ['nodeId' => 99],
+			'settings' => [],
+			'signers' => [],
+		]);
+
+		$this->assertSame($profile->toArray(), $file->getMetadata()['appearance_profile']);
+	}
+
+	public function testSaveSkipsAppearanceProfileWhenFeatureDisabled(): void {
+		$this->user->method('getUID')->willReturn('owner1');
+
+		$this->appConfig
+			->method('getValueBool')
+			->willReturnCallback(fn (string $app, string $key, bool $default): bool =>
+				$app === Application::APP_ID && $key === 'appearance_profiles_enabled' ? false : $default
+			);
+
+		$this->signatureProfileService
+			->expects($this->never())
+			->method('resolveForRequester');
+
+		$node = $this->createMock(\OCP\Files\Node::class);
+		$node->method('getId')->willReturn(99);
+		$node->method('getExtension')->willReturn('pdf');
+		$node->method('getName')->willReturn('test.pdf');
+
+		$this->fileService
+			->method('getNodeFromData')
+			->willReturn($node);
+
+		$this->fileMapper
+			->method('getByNodeId')
+			->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException(''));
+
+		$this->pdfMetadataExtractor
+			->method('setFile')
+			->willReturnSelf();
+		$this->pdfMetadataExtractor
+			->method('getPageDimensions')
+			->willReturn(['isValid' => true]);
+		$this->pdfMetadataExtractor
+			->method('getPdfVersion')
+			->willReturn('1.7');
+
+		$this->fileStatusService
+			->method('updateFileStatusIfUpgrade')
+			->willReturnCallback(fn (\OCA\Libresign\Db\File $file): \OCA\Libresign\Db\File => $file);
+
+		$file = $this->getService()->save([
+			'name' => 'test',
+			'userManager' => $this->user,
+			'status' => \OCA\Libresign\Enum\FileStatus::DRAFT->value,
+			'file' => ['nodeId' => 99],
+			'settings' => [],
+			'signers' => [],
+		]);
+
+		$this->assertArrayNotHasKey('appearance_profile', $file->getMetadata());
 	}
 }
