@@ -11,6 +11,7 @@ namespace OCA\Libresign\Tests\Api\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Tests\Api\ApiTestCase;
 use OCP\IAppConfig;
+use OCP\IGroupManager;
 use OCP\Server;
 
 /**
@@ -271,5 +272,131 @@ final class AdminControllerTest extends ApiTestCase {
 		$appConfig = Server::get(IAppConfig::class);
 		$this->assertSame('fx-api-key', $appConfig->getValueString(Application::APP_ID, 'fx_exchangerate_api_key'));
 		$this->assertSame('open-exchange-id', $appConfig->getValueString(Application::APP_ID, 'fx_openexchange_app_id'));
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSetAppearanceProfilesConfigSuccess(): void {
+		$appConfig = Server::get(IAppConfig::class);
+		$appConfig->setValueBool(Application::APP_ID, 'appearance_profiles_enabled', true);
+
+		Server::get(IGroupManager::class)->createGroup('customers');
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/appearance-profiles/config')
+			->withMethod('POST')
+			->withRequestBody([
+				'profiles' => [
+					'customers' => [
+						'footer' => false,
+						'qr' => true,
+						'stamp' => [
+							'enabled' => true,
+							'renderMode' => 'DESCRIPTION_ONLY',
+						],
+						'auditInfo' => true,
+					],
+				],
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$stored = $appConfig->getValueArray(Application::APP_ID, 'appearance_profiles');
+		$this->assertArrayHasKey('customers', $stored);
+		$this->assertFalse($stored['customers']['footer']);
+		$this->assertSame('DESCRIPTION_ONLY', $stored['customers']['stamp']['renderMode']);
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSetAppearanceProfilesConfigRejectsNonAdmin(): void {
+		$appConfig = Server::get(IAppConfig::class);
+		$appConfig->setValueBool(Application::APP_ID, 'appearance_profiles_enabled', true);
+
+		$this->createAccount('usertest', 'password', 'testGroup');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('usertest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/appearance-profiles/config')
+			->withMethod('POST')
+			->withRequestBody([
+				'profiles' => ['testGroup' => ['footer' => false]],
+			])
+			->assertResponseCode(403);
+
+		$this->assertRequest();
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSetAppearanceProfilesConfigRejectsWhenFeatureDisabled(): void {
+		$appConfig = Server::get(IAppConfig::class);
+		$appConfig->setValueBool(Application::APP_ID, 'appearance_profiles_enabled', false);
+
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/appearance-profiles/config')
+			->withMethod('POST')
+			->withRequestBody([
+				'profiles' => ['admin' => ['footer' => false]],
+			])
+			->assertResponseCode(403);
+
+		$this->assertRequest();
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSetAppearanceProfilesConfigSkipsMalformedAndDeletedGroups(): void {
+		$appConfig = Server::get(IAppConfig::class);
+		$appConfig->setValueBool(Application::APP_ID, 'appearance_profiles_enabled', true);
+
+		Server::get(IGroupManager::class)->createGroup('valid-group');
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/appearance-profiles/config')
+			->withMethod('POST')
+			->withRequestBody([
+				'profiles' => [
+					'' => ['footer' => false],
+					'deleted-group' => ['footer' => false],
+					'valid-group' => ['footer' => false],
+					'not-an-array' => 'invalid',
+				],
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$stored = $appConfig->getValueArray(Application::APP_ID, 'appearance_profiles');
+		$this->assertSame(['valid-group'], array_keys($stored));
+		$this->assertFalse($stored['valid-group']['footer']);
 	}
 }
