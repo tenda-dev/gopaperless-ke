@@ -1,0 +1,22 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+:root {
+	--tenda-font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+	/* Approved weights. */
+	--tenda-weight-regular: 400;  /* Body copy */
+	--tenda-weight-medium: 500;   /* Subheads, UI labels */
+	--tenda-weight-semibold: 600; /* Section headers */
+	--tenda-weight-bold: 700;     /* Major headlines */
+
+	/* Type scale. */
+	--tenda-size-h1: 64px;   /* Bold — section titles */
+	--tenda-size-h2: 40px;   /* SemiBold — subsections */
+	--tenda-size-h3: 24px;   /* Medium — supporting headers */
+	--tenda-size-body: 18px; /* Regular — long-form content */
+
+	--tenda-line-height: 1.5;
+}

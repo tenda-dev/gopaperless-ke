@@ -40,8 +40,7 @@ use OCP\AppFramework\Db\Entity;
  * @method void setValidUntil(?\DateTimeInterface|string $date)
  * @method ?\DateTimeInterface|string getValidUntil()
  */
-class ExtendedAccount extends Entity
-{
+class ExtendedAccount extends Entity {
 
 	protected DateTimeInterface|string $createdAt = '';
 
@@ -58,8 +57,7 @@ class ExtendedAccount extends Entity
 	/**
 	 * @throws \Exception
 	 */
-	public function __construct()
-	{
+	public function __construct() {
 		$this->setCreatedAt($this->nowImmutable());
 
 		$this->addType('createdAt', 'datetime');
@@ -70,31 +68,26 @@ class ExtendedAccount extends Entity
 		$this->addType('validUntil', 'datetime');
 	}
 
-	private function nowImmutable(): \DateTimeImmutable
-	{
+	private function nowImmutable(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
 		);
 	}
 
-	private function now(): string
-	{
+	private function now(): string {
 		return $this->nowImmutable()->format(DATE_ATOM);
 	}
 
-	public function getCreatedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getCreatedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->createdAt);
 	}
 
-	public function getCertPaidAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getCertPaidAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->certPaidAt);
 	}
 
-	public function getValidUntilImmutable(): ?\DateTimeImmutable
-	{
+	public function getValidUntilImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->validUntil);
 	}
 
@@ -102,8 +95,7 @@ class ExtendedAccount extends Entity
 	 * Whether certificate payment is currently required before
 	 * certificate-dependent functionality may be used.
 	 */
-	public function isCertificateRequired(): bool
-	{
+	public function isCertificateRequired(): bool {
 		return !$this->isCertificateValid();
 	}
 
@@ -114,8 +106,7 @@ class ExtendedAccount extends Entity
 	 * - certificate access has been granted; and
 	 * - no business expiry exists, or the expiry is in the future.
 	 */
-	public function isCertificateValid(): bool
-	{
+	public function isCertificateValid(): bool {
 		if (!$this->paidCertificate) {
 			return false;
 		}

@@ -236,8 +236,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import { mdiSend } from '@mdi/js'
 
@@ -254,7 +255,6 @@ import EnvelopeFilesList  from '../EnvelopeFilesList.vue'
 import IdentifySigner     from '../../Request/IdentifySigner.vue'
 import SigningOrderDiagram from '../../SigningOrder/SigningOrderDiagram.vue'
 import SigningProgress     from '../../RequestSigningProgress.vue'
-import VisibleElements    from '../../Request/VisibleElementsNext/VisibleElementsNext.vue'
 import WorkflowSignatureSetup from './WorkflowSignatureSetup.vue'
 
 // ── New workflow UI components ───────────────────────────────────────────────
@@ -343,6 +343,19 @@ const {
  * store accesses required in the template.
  * ─────────────────────────────────────────────────────────────────────────── */
 const filesStore = useFilesStore()
+
+/* ── Signature positions editor (feature-flagged) ────────────────────────────
+ *
+ * VisibleElementsNext is opt-in via the visible_elements_next_enabled app
+ * config flag (default false). The legacy editor remains the default.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const visibleElementsNextEnabled = (
+	loadState('libresign', 'config', {}) as { visible_elements_next_enabled?: boolean }
+).visible_elements_next_enabled === true
+
+const VisibleElements = visibleElementsNextEnabled
+	? defineAsyncComponent(() => import('../../Request/VisibleElementsNext/VisibleElementsNext.vue'))
+	: defineAsyncComponent(() => import('../../Request/VisibleElements.vue'))
 
 /* ── Derived template helpers ─────────────────────────────────────────────── */
 

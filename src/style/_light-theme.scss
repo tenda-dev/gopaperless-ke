@@ -1,0 +1,83 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+// Pin Nextcloud's light-theme CSS variables. The Default theme goes dark via
+// `@media (prefers-color-scheme: dark)` without setting any attribute, so
+// stripping dark attributes isn't enough, we override the variables directly.
+// Only tokens that differ between the light/dark palettes are pinned.
+@mixin force-light-vars {
+	// Backgrounds
+	--color-main-background: #ffffff;
+	--color-main-background-rgb: 255, 255, 255;
+	--color-main-background-blur: rgba(var(--color-main-background-rgb), .8);
+	--color-background-hover: #f5f5f5;
+	--color-background-dark: #ededed;
+	--color-background-darker: #dbdbdb;
+	--color-placeholder-light: #e6e6e6;
+	--color-placeholder-dark: #cccccc;
+
+	// Text
+	--color-main-text: #222222;
+	--color-text-maxcontrast: #6b6b6b;
+	--color-text-maxcontrast-default: #6b6b6b;
+	--color-text-maxcontrast-background-blur: #595959;
+	--color-text-error: #bf0000;
+	--color-text-success: #066e03;
+
+	// Borders
+	--color-border: #ededed;
+	--color-border-dark: #dbdbdb;
+
+	// Semantic elements
+	--color-element-error: #c90000;
+	--color-element-info: #0077c7;
+	--color-element-success: #099f05;
+	--color-element-warning: #bf7900;
+
+	--color-error: #ffe7e7;
+	--color-error-hover: #ffc3c3;
+	--color-error-text: #8a0000;
+	--color-error-rgb: 255, 231, 231;
+	--color-warning: #ffeec5;
+	--color-warning-hover: #ffe4a1;
+	--color-warning-text: #664700;
+	--color-warning-rgb: 255, 238, 197;
+	--color-success: #d8f3da;
+	--color-success-hover: #bdebc0;
+	--color-success-text: #005416;
+	--color-success-rgb: 216, 243, 218;
+	--color-info: #d5f1fa;
+	--color-info-hover: #b5e6f6;
+	--color-info-text: #0066ac;
+	--color-info-rgb: 213, 241, 250;
+
+	--color-favorite: #a37200;
+	--color-mark: #fff0c7;
+	--color-background-selection: rgb(from var(--color-primary-element) r g b / 0.2);
+
+	// Loading / shadow
+	--color-loading-light: #cccccc;
+	--color-loading-dark: #444444;
+	--color-box-shadow-rgb: 77, 77, 77;
+	--color-box-shadow: rgba(var(--color-box-shadow-rgb), 0.5);
+
+	// Assistant accents
+	--color-background-assistant: #f6f5ff;
+	--color-border-assistant: linear-gradient(125deg, #7398fe 50%, #6104a4 125%);
+	--color-element-assistant: linear-gradient(214deg, #a569d3 12%, #00679e 39%, #422083 86%);
+	--color-element-assistant-icon: linear-gradient(214deg, #9669d3 15%, #00679e 40%, #492083 80%);
+
+	// Primary (dark brightens these; keep the light variants)
+	--color-primary-hover: #36dd8a;
+	--color-primary-element: #04994f;
+	--color-primary-element-hover: #05bc61;
+	--color-primary-light: #e5f4ed;
+	--color-primary-light-hover: #d9e7e1;
+	--color-primary-light-text: #01552b;
+
+	// Invert filters — the key ones for icons/logos.
+	--background-invert-if-dark: no;
+	--background-invert-if-bright: invert(100%);
+}

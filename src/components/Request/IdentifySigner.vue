@@ -31,7 +31,7 @@
 			:helper-text="nameHelperText"
 			@update:modelValue="onNameChange" />
 
-		<NcNoteCard v-if="isRequester" type="info">
+		<NcNoteCard v-if="sponsorshipEnabled && isRequester" type="info">
 			<template #icon>
 				<NcIconSvgWrapper :size="20" :svg="svgAccount" />
 			</template>
@@ -44,7 +44,7 @@
 			}}
 		</NcNoteCard>
 
-		<NcCheckboxRadioSwitch v-else :model-value="requesterSponsored" type="switch"
+		<NcCheckboxRadioSwitch v-else-if="sponsorshipEnabled" :model-value="requesterSponsored" type="switch"
 			@update:model-value="onToggleSponsoredSigner">
 			{{ t('libresign', 'Pay for this signer') }}
 		</NcCheckboxRadioSwitch>
@@ -85,6 +85,7 @@
 	</div>
 </template>
 <script setup lang="ts">
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import { computed, onBeforeMount, ref, type ComputedRef } from 'vue'
 
@@ -126,6 +127,8 @@ const iconMap = {
 	svgWhatsapp,
 	svgXmpp,
 }
+
+const sponsorshipEnabled = loadState('libresign', 'sponsorship_enabled', false)
 
 const methodIconMap: Record<string, keyof typeof iconMap> = {
 	account: 'svgAccount',
@@ -190,7 +193,7 @@ const nameHelperText = ref('')
 const nameHaveError = ref(false)
 const displayName = ref('')
 const description = ref('')
-const requesterSponsored = ref(true)
+const requesterSponsored = ref(sponsorshipEnabled)
 const enableCustomMessage = ref(false)
 const identify = ref('')
 const identifyMethod = ref<IdentifyAccountRecord['method'] | undefined>()
@@ -222,6 +225,12 @@ const isRequester = computed(() => {
 })
 
 const sponsorship = computed(() => {
+	if (!sponsorshipEnabled) {
+		return {
+			type: 'self',
+		} satisfies Sponsorship
+	}
+
 	if (isRequester.value) {
 		return {
 			type: 'requester',
@@ -270,7 +279,7 @@ function resetNameValidation() {
 function resetSelectedSignerState() {
 	displayName.value = ''
 	description.value = ''
-	requesterSponsored.value = true
+	requesterSponsored.value = sponsorshipEnabled
 	enableCustomMessage.value = false
 	identify.value = ''
 	identifyMethod.value = undefined
@@ -301,14 +310,16 @@ function applySelectedSigner(nextSigner: IdentifyAccountRecord | null) {
 		nextSigner.acceptsEmailNotifications
 
 	/**
-	 * The requester always sponsors themselves.
+	 * The requester always sponsors themselves — but only when the
+	 * sponsorship feature is enabled.
 	 *
 	 * This is a presentation rule only—the backend still remains the
 	 * source of truth—but keeping the local state aligned avoids stale
 	 * toggle values if the user previously selected another signer.
 	 */
 	if (
-		nextSigner.method === 'account'
+		sponsorshipEnabled
+		&& nextSigner.method === 'account'
 		&& nextSigner.identify === userContextStore.uid
 	) {
 		requesterSponsored.value = true
@@ -410,9 +421,11 @@ onBeforeMount(async () => {
 		const method = props.signerToEdit.identifyMethods[0]
 		identifyMethod.value = method.method as IdentifyAccountRecord['method']
 	}
-	requesterSponsored.value = isNewSigner.value
-		? true
-		: props.signerToEdit?.sponsorship?.type === 'requester'
+	requesterSponsored.value = sponsorshipEnabled && (
+		isNewSigner.value
+			? true
+			: props.signerToEdit?.sponsorship?.type === 'requester'
+	)
 })
 
 defineExpose({

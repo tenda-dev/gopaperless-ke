@@ -40,7 +40,7 @@ class SignRequestService {
 	 * @param int $signingOrder Signing order
 	 * @param int|null $fileStatus File status
 	 * @param int|null $signerStatus Signer status
-	 * @param string|null $sponsorshipType SponsorshipTye
+	 * @param SponsorshipType|null $sponsorshipType Sponsorship type
 	 * @return SignRequestEntity
 	 */
 	public function createOrUpdateSignRequest(
@@ -52,7 +52,7 @@ class SignRequestService {
 		int $signingOrder = 0,
 		?int $fileStatus = null,
 		?int $signerStatus = null,
-		?SponsorshipType $sponsorshipType = null
+		?SponsorshipType $sponsorshipType = null,
 	): SignRequestEntity {
 		$identifyMethodsInstances = $this->identifyMethodService->getByUserData($identifyMethods);
 		if (empty($identifyMethodsInstances)) {

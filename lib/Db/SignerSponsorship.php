@@ -33,8 +33,7 @@ use OCP\DB\Types;
  * @method void setUpdatedAt(\DateTimeInterface|string $updatedAt)
  * @method \DateTimeInterface|string getUpdatedAt()
  */
-class SignerSponsorship extends Entity
-{
+class SignerSponsorship extends Entity {
 
 	protected ?int $fileId = null;
 
@@ -47,8 +46,7 @@ class SignerSponsorship extends Entity
 	protected ?\DateTimeInterface $createdAt = null;
 	protected ?\DateTimeInterface $updatedAt = null;
 
-	public function __construct()
-	{
+	public function __construct() {
 		/**
 		 * Ensure createdAt is tracked by Entity
 		 * so ORM persists it during insert.
@@ -70,29 +68,25 @@ class SignerSponsorship extends Entity
 		$this->addType('updatedAt', Types::DATETIME);
 	}
 
-	public function getSponsorshipTypeEnum(): SponsorshipType
-	{
+	public function getSponsorshipTypeEnum(): SponsorshipType {
 		return SponsorshipType::from($this->sponsorshipType);
 	}
 
 	public function setSponsorshipTypeEnum(
-		SponsorshipType $type
+		SponsorshipType $type,
 	): void {
 		$this->setSponsorshipType($type->value);
 	}
 
-	public function getCreatedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getCreatedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->createdAt);
 	}
 
-	public function getUpdatedAtImmutable(): ?\DateTimeImmutable
-	{
+	public function getUpdatedAtImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->updatedAt);
 	}
 
-	public function validate(): void
-	{
+	public function validate(): void {
 		if ($this->fileId === null) {
 			throw new \InvalidArgumentException('fileId is required');
 		}
@@ -107,7 +101,7 @@ class SignerSponsorship extends Entity
 	}
 
 	private function asDateTime(
-		\DateTimeInterface|string|null $value
+		\DateTimeInterface|string|null $value,
 	): ?\DateTimeImmutable {
 
 		if ($value === null) {
@@ -125,8 +119,7 @@ class SignerSponsorship extends Entity
 		}
 	}
 
-	private function now(): \DateTimeImmutable
-	{
+	private function now(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),

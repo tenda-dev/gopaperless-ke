@@ -637,8 +637,12 @@ class ValidateHelper {
 	private function validateSponsorshipCoverage(
 		File $file,
 		array $data,
-		string $productCode = 'SIGN_DOCUMENT' // temporary until products are configurable
+		string $productCode = 'SIGN_DOCUMENT', // temporary until products are configurable
 	): void {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false)) {
+			return;
+		}
+
 		$this->logger->warning('SPONSORSHIP VALIDATION', [
 			'requestedStatus' => $data['status'],
 			'currentStatus' => $file->getStatusEnum()->value,
@@ -668,8 +672,8 @@ class ValidateHelper {
 		 * Once signing has begun (PARTIAL_SIGNED onwards) the workflow becomes
 		 * immutable, so sponsorship validation is no longer applicable.
 		 */
-		$shouldValidate =
-			$requestedStatus === FileStatus::ABLE_TO_SIGN
+		$shouldValidate
+			= $requestedStatus === FileStatus::ABLE_TO_SIGN
 			|| $file->getStatusEnum() === FileStatus::ABLE_TO_SIGN;
 
 		if (!$shouldValidate) {
@@ -1086,8 +1090,7 @@ class ValidateHelper {
 		}
 	}
 
-	private function resolveFileForSponsorship(array $data): ?File
-	{
+	private function resolveFileForSponsorship(array $data): ?File {
 		if (!empty($data['uuid'])) {
 			try {
 				return $this->fileMapper->getByUuid($data['uuid']);
@@ -1103,5 +1106,38 @@ class ValidateHelper {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Assert that a sign request is assigned to the given user.
+	 *
+	 * Checks the sign request's identify methods (account/email) against the
+	 * user's id and email address.
+	 */
+	public function validateSignRequestBelongsToUser(int $signRequestId, string $userId): void {
+		$this->signRequestMapper->getById($signRequestId);
+
+		$user = $this->userManager->get($userId);
+		$userEmail = $user?->getEMailAddress() ?? '';
+
+		$matrix = $this->identifyMethodService->getIdentifyMethodsFromSignRequestId($signRequestId);
+		foreach ($matrix as $methods) {
+			foreach ($methods as $identifyMethod) {
+				$methodName = $identifyMethod->getEntity()->getIdentifierKey();
+				$value = $identifyMethod->getEntity()->getIdentifierValue();
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_ACCOUNT
+					&& ($value === $userId || $value === $userEmail)) {
+					return;
+				}
+
+				if ($methodName === IdentifyMethodService::IDENTIFY_EMAIL
+					&& $value === $userEmail) {
+					return;
+				}
+			}
+		}
+
+		throw new LibresignException($this->l10n->t('Sign request is not assigned to this user'));
 	}
 }

@@ -7,11 +7,10 @@ namespace OCA\Libresign\Service\Sponsorship\DTO;
 use OCA\Libresign\Db\Entitlement;
 use OCA\Libresign\Db\EntitlementReservation;
 use OCA\Libresign\Db\Product;
-use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignerSponsorship;
+use OCA\Libresign\Db\SignRequest;
 
-final class SigningSettlementContextDTO
-{
+final class SigningSettlementContextDTO {
 	public function __construct(
 		public readonly string $signerUserId,
 		public readonly ?SignRequest $signRequest = null,
@@ -23,10 +22,10 @@ final class SigningSettlementContextDTO
 		public readonly ?SignerSponsorship $sponsorship = null,
 		public readonly ?Entitlement $entitlement = null,
 		public readonly ?EntitlementReservation $reservation = null,
-	) {}
+	) {
+	}
 
-	public function withSignRequest(SignRequest $signRequest): self
-	{
+	public function withSignRequest(SignRequest $signRequest): self {
 		return new self(
 			signerUserId: $this->signerUserId,
 			signRequest: $signRequest,
@@ -37,8 +36,7 @@ final class SigningSettlementContextDTO
 		);
 	}
 
-	public function withProduct(Product $product): self
-	{
+	public function withProduct(Product $product): self {
 		return new self(
 			signerUserId: $this->signerUserId,
 			signRequest: $this->signRequest,

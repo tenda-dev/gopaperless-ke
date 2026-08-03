@@ -6,14 +6,13 @@ namespace OCA\Libresign\Db;
 
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IDBConnection;
 use OCP\DB\Types;
+use OCP\IDBConnection;
 
 /**
  * @template-extends QBMapper<SignerSponsorship>
  */
-class SignerSponsorshipMapper extends QBMapper
-{
+class SignerSponsorshipMapper extends QBMapper {
 	public function __construct(
 		IDBConnection $db,
 	) {
@@ -198,8 +197,7 @@ class SignerSponsorshipMapper extends QBMapper
 		$qb->executeStatement();
 	}
 
-	public function deleteByFileId(int $fileId): void
-	{
+	public function deleteByFileId(int $fileId): void {
 		if ($fileId <= 0) {
 			return;
 		}
@@ -217,6 +215,6 @@ class SignerSponsorshipMapper extends QBMapper
 				),
 			);
 
-			$qb->executeStatement();
+		$qb->executeStatement();
 	}
 }

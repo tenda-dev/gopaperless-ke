@@ -15,8 +15,8 @@ use OCA\Libresign\Db\EntitlementReservationMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Service\Entitlement\EntitlementReservationService;
 use OCA\Libresign\Service\Sponsorship\DTO\SigningSettlementContextDTO;
-use Psr\Log\LoggerInterface;
 use OCP\IDBConnection;
+use Psr\Log\LoggerInterface;
 
 /**
  * Performs financial settlement after a successful signing.
@@ -44,8 +44,7 @@ use OCP\IDBConnection;
  * that have already been settled by inspecting the persisted
  * entitlement_consumed metadata before any mutation occurs.
  */
-final class SigningSettlementService
-{
+final class SigningSettlementService {
 	private const LOG_PREFIX = '[SigningSettlementService]';
 
 	public function __construct(
@@ -56,7 +55,8 @@ final class SigningSettlementService
 		private EntitlementReservationService $reservationService,
 		private SignRequestMapper $signRequestMapper,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Finalises entitlement accounting after a successful signing.

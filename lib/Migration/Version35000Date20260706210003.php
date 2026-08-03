@@ -19,14 +19,13 @@ use Override;
 /**
  * FIXME Auto-generated migration step: Please modify to your needs!
  */
-class Version35000Date20260706210003 extends SimpleMigrationStep
-{
+class Version35000Date20260706210003 extends SimpleMigrationStep {
 
 	#[Override]
 	public function changeSchema(
 		IOutput $output,
 		Closure $schemaClosure,
-		array $options
+		array $options,
 	): ?ISchemaWrapper {
 
 		$schema = $schemaClosure();

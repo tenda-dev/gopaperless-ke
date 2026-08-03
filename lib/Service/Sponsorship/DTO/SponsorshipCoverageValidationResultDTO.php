@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Sponsorship\DTO;
 
-final class SponsorshipCoverageValidationResultDTO
-{
+final class SponsorshipCoverageValidationResultDTO {
 	public function __construct(
 		private bool $allowed,
 		private int $requiredCredits,
@@ -15,28 +14,23 @@ final class SponsorshipCoverageValidationResultDTO
 	) {
 	}
 
-	public function isAllowed(): bool
-	{
+	public function isAllowed(): bool {
 		return $this->allowed;
 	}
 
-	public function getRequiredCredits(): int
-	{
+	public function getRequiredCredits(): int {
 		return $this->requiredCredits;
 	}
 
-	public function getAvailableCredits(): int
-	{
+	public function getAvailableCredits(): int {
 		return $this->availableCredits;
 	}
 
-	public function getMissingCredits(): int
-	{
+	public function getMissingCredits(): int {
 		return $this->missingCredits;
 	}
 
-	public function getBlockingSignRequestIds(): array
-	{
+	public function getBlockingSignRequestIds(): array {
 		return $this->blockingSignRequestIds;
 	}
 }

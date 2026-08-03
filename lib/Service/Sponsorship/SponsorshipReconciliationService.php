@@ -7,8 +7,7 @@ namespace OCA\Libresign\Service\Sponsorship;
 use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipChangeDTO;
 use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipReconciliationResultDTO;
 
-final class SponsorshipReconciliationService
-{
+final class SponsorshipReconciliationService {
 	/**
 	 * Converts sponsorship changes into an executable
 	 * synchronisation plan.

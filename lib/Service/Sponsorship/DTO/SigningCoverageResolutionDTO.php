@@ -26,31 +26,27 @@ namespace OCA\Libresign\Service\Sponsorship\DTO;
  *    sponsored    = false
  *    sponsorUserId  = null
  */
-final readonly class SigningCoverageResolutionDTO
-{
+final readonly class SigningCoverageResolutionDTO {
 	public function __construct(
 		public bool $allowed,
 		public bool $sponsored,
 		public ?string $sponsorUserId,
-	) {}
+	) {
+	}
 
-	public function requiresPayment(): bool
-	{
+	public function requiresPayment(): bool {
 		return !$this->allowed;
 	}
 
-	public function isRequesterSponsored(): bool
-	{
+	public function isRequesterSponsored(): bool {
 		return $this->allowed && $this->sponsored;
 	}
 
-	public function isSelfSponsored(): bool
-	{
+	public function isSelfSponsored(): bool {
 		return $this->allowed && !$this->sponsored;
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'allowed' => $this->allowed,
 			'sponsored' => $this->sponsored,

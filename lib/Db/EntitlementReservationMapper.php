@@ -7,12 +7,14 @@ namespace OCA\Libresign\Db;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\QBMapper;
-use OCP\IDBConnection;
-use OCP\DB\Types;
 use OCP\DB\Exception;
+use OCP\DB\Types;
+use OCP\IDBConnection;
 
-class EntitlementReservationMapper extends QBMapper
-{
+/**
+ * @template-extends QBMapper<EntitlementReservation>
+ */
+class EntitlementReservationMapper extends QBMapper {
 	public function __construct(
 		IDBConnection $db,
 	) {
@@ -24,7 +26,7 @@ class EntitlementReservationMapper extends QBMapper
 	}
 
 	/**
-	 * @return EntitlementReservation[]
+	 * @return list<EntitlementReservation>
 	 * @throws Exception
 	 */
 	public function findByFileId(
@@ -69,12 +71,14 @@ class EntitlementReservationMapper extends QBMapper
 			->setMaxResults(1);
 
 		try {
-			return $this->findEntity($qb);
+			/** @var EntitlementReservation $entity */
+			$entity = $this->findEntity($qb);
+			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	public function findActiveBySignRequestId(
@@ -102,12 +106,14 @@ class EntitlementReservationMapper extends QBMapper
 			->setMaxResults(1);
 
 		try {
-			return $this->findEntity($qb);
+			/** @var EntitlementReservation $entity */
+			$entity = $this->findEntity($qb);
+			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	/**
@@ -148,16 +154,18 @@ class EntitlementReservationMapper extends QBMapper
 			->forUpdate();
 
 		try {
-			return $this->findEntity($qb);
+			/** @var EntitlementReservation $entity */
+			$entity = $this->findEntity($qb);
+			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
-			return null;
-		}
+				return null;
+			}
 	}
 
 	/**
-	 * @return EntitlementReservation[]
+	 * @return list<EntitlementReservation>
 	 * @throws Exception
 	 */
 	public function findByEntitlementId(
@@ -188,7 +196,7 @@ class EntitlementReservationMapper extends QBMapper
 	 * acquire FOR UPDATE locks do so in a deterministic order,
 	 * preventing deadlocks when multiple workflows release
 	 * reservations concurrently.
-	 * @return EntitlementReservation[]
+	 * @return list<EntitlementReservation>
 	 * @throws Exception
 	 */
 	public function findActiveByFileId(
@@ -220,7 +228,7 @@ class EntitlementReservationMapper extends QBMapper
 	}
 
 	/**
-	 * @return EntitlementReservation[]
+	 * @return list<EntitlementReservation>
 	 * @throws Exception
 	 */
 	public function findActiveBySponsorUserId(

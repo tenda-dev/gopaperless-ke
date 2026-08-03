@@ -230,23 +230,23 @@ class FileListService {
 		foreach ($files as $file) {
 			$fileSignRequests = array_filter(
 				$signRequests,
-				static fn(SignRequest $signRequest): bool =>
-				$signRequest->getFileId() === $file->getId(),
+				static fn (SignRequest $signRequest): bool
+				=> $signRequest->getFileId() === $file->getId(),
 			);
 
-			$persistedSigners =
-				$this->sponsorshipContextBuilderService
-				->buildSignersWithSponsorshipContext(
-					$file,
-					$fileSignRequests,
-				);
+			$persistedSigners
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
 
 			$fileSigners = array_filter(
 				$persistedSigners,
-				static fn(
+				static fn (
 					PersistedSignerSponsorshipDTO $signer,
-				): bool =>
-				$signer
+				): bool
+				=> $signer
 					->getSignRequest()
 					->getFileId() === $file->getId(),
 			);
@@ -302,7 +302,7 @@ class FileListService {
 			$file['files'] = [];
 		} else {
 			$signRequests = array_map(
-				static fn(
+				static fn (
 					PersistedSignerSponsorshipDTO $persistedSigner,
 				): SignRequest => $persistedSigner->getSignRequest(),
 				$persistedSponsorshipSigners,
@@ -579,7 +579,7 @@ class FileListService {
 	 * @param PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
-	 * @return array
+	 * @return LibresignSignerDetail
 	 */
 	private function formatSignerDataBasic(
 		PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO,
@@ -805,9 +805,15 @@ class FileListService {
 		if ($user instanceof IUser) {
 			$this->resolveSignerMeFlags($signers, $user);
 			// Refresh signUuid after resolving me flags
-			foreach ($signers as $signerData) {
-				if ($signUuid === null && !empty($signerData['me']) && isset($signerData['sign_uuid'])) {
-					$signUuid = $signerData['sign_uuid'];
+			/** @var list<LibresignSignerDetail> $signers */
+			foreach ($signers as $resolvedSigner) {
+				if (
+					$signUuid === null
+					&& isset($resolvedSigner['me'])
+					&& $resolvedSigner['me']
+					&& isset($resolvedSigner['sign_uuid'])
+				) {
+					$signUuid = $resolvedSigner['sign_uuid'];
 					break;
 				}
 			}
@@ -1048,12 +1054,12 @@ class FileListService {
 
 			$fileSignRequests = $signRequestsByFileId[$file->getId()] ?? [];
 
-			$signers =
-				$this->sponsorshipContextBuilderService
-				->buildSignersWithSponsorshipContext(
-					$file,
-					$fileSignRequests,
-				);
+			$signers
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
 			$metadata = $file->getMetadata() ?? [];
 			$size = $this->getFileSize($file);
 			$signersFormatted = array_map(function (PersistedSignerSponsorshipDTO $persistedSigner) use ($identifyMethods) {

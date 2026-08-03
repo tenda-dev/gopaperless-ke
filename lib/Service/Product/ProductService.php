@@ -9,23 +9,26 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Product;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\Product;
 use OCA\Libresign\Db\ProductMapper;
 use OCA\Libresign\Enum\ProductCode;
 use OCP\DB\Exception;
+use OCP\IAppConfig;
 use RuntimeException;
 
-class ProductService
-{
+class ProductService {
 
+	private const DEFAULT_CURRENCY = 'KES';
 	private const DEFAULT_SIGN_DOCUMENT_PRICE = 8000; // as minor amount (cents)
 	private const DEFAULT_CERTIFICATE_ACCESS_PRICE = 30000; // as minor amount (cents)
 
 	private ProductMapper $productMapper;
+	private IAppConfig $appConfig;
 
-	public function __construct(ProductMapper $productMapper)
-	{
+	public function __construct(ProductMapper $productMapper, IAppConfig $appConfig) {
 		$this->productMapper = $productMapper;
+		$this->appConfig = $appConfig;
 	}
 
 	/**
@@ -39,8 +42,7 @@ class ProductService
 	 * @param string $code
 	 * @return Product
 	 */
-	public function getDefaultByCode(string $code): Product
-	{
+	public function getDefaultByCode(string $code): Product {
 		if ($code === '') {
 			throw new RuntimeException('Product code is required');
 		}
@@ -59,8 +61,7 @@ class ProductService
 	 * @throws Exception
 	 * @throws \Exception
 	 */
-	public function create(Product $product): Product
-	{
+	public function create(Product $product): Product {
 
 		$now = $this->now();
 
@@ -76,8 +77,7 @@ class ProductService
 	 * @throws Exception
 	 * @throws \Exception
 	 */
-	public function update(int $productId, bool $active, int $uses): Product
-	{
+	public function update(int $productId, bool $active, int $uses): Product {
 
 		$product = $this->productMapper->findById($productId);
 		if (!$product) {
@@ -104,8 +104,7 @@ class ProductService
 	 * - cannot deactivate default product
 	 * @throws Exception
 	 */
-	public function setActive(int $productId, bool $active): Product
-	{
+	public function setActive(int $productId, bool $active): Product {
 
 		$product = $this->productMapper->findById($productId);
 
@@ -130,8 +129,7 @@ class ProductService
 	 * - default must be active
 	 * @throws Exception
 	 */
-	public function setDefaultProduct(int $productId): Product
-	{
+	public function setDefaultProduct(int $productId): Product {
 
 		$product = $this->productMapper->findById($productId);
 
@@ -164,8 +162,7 @@ class ProductService
 	 * Fetch all products for a given code (admin UI)
 	 * @throws Exception
 	 */
-	public function listByCode(string $code): array
-	{
+	public function listByCode(string $code): array {
 		return $this->productMapper->findByCode($code);
 	}
 
@@ -173,32 +170,49 @@ class ProductService
 	 * Fetch ALL products (admin UI)
 	 * @throws Exception
 	 */
-	public function listAll(): array
-	{
+	public function listAll(): array {
 		return $this->productMapper->findAll();
 	}
 
 	/**
 	 * Fetch product by ID
 	 */
-	public function getById(int $id): ?Product
-	{
+	public function getById(int $id): ?Product {
 		return $this->productMapper->findById($id);
 	}
 
 	/**
 	 * @throws \Exception
 	 */
-	private function now(): string
-	{
+	private function now(): string {
 		return (new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
 		))->format(DATE_ATOM);
 	}
 
-	private function createDefaultProduct(string $code): Product
-	{
+	/**
+	 * Read a positive integer config value, falling back to the given default
+	 * when the stored value is missing, not numeric or not positive.
+	 */
+	private function getConfiguredInt(string $key, int $default): int {
+		$value = $this->appConfig->getValueString(Application::APP_ID, $key, (string)$default);
+		if (!is_numeric($value)) {
+			return $default;
+		}
+		$parsed = (int)$value;
+		return $parsed > 0 ? $parsed : $default;
+	}
+
+	/**
+	 * Read the configured default currency, falling back when empty.
+	 */
+	private function getConfiguredCurrency(): string {
+		$currency = trim($this->appConfig->getValueString(Application::APP_ID, 'product_default_currency', self::DEFAULT_CURRENCY));
+		return $currency !== '' ? $currency : self::DEFAULT_CURRENCY;
+	}
+
+	private function createDefaultProduct(string $code): Product {
 		$productCode = ProductCode::tryFrom($code);
 
 		if ($productCode === null) {
@@ -213,11 +227,11 @@ class ProductService
 		$product->setName($productCode->value);
 
 		$product->setAmount(match ($productCode) {
-			ProductCode::SIGN_DOCUMENT => self::DEFAULT_SIGN_DOCUMENT_PRICE,
-			ProductCode::CERTIFICATE_ACCESS => self::DEFAULT_CERTIFICATE_ACCESS_PRICE,
+			ProductCode::SIGN_DOCUMENT => $this->getConfiguredInt('product_sign_document_price', self::DEFAULT_SIGN_DOCUMENT_PRICE),
+			ProductCode::CERTIFICATE_ACCESS => $this->getConfiguredInt('product_certificate_access_price', self::DEFAULT_CERTIFICATE_ACCESS_PRICE),
 		});
 
-		$product->setCurrency('KES');
+		$product->setCurrency($this->getConfiguredCurrency());
 		$product->setUses(1);
 		$product->setActive(true);
 		$product->setIsDefault(true);

@@ -7,9 +7,7 @@ namespace OCA\Libresign\Service\Sponsorship;
 use OCA\Libresign\Db\SignerSponsorship;
 use OCA\Libresign\Db\SignerSponsorshipMapper;
 use OCA\Libresign\Enum\SponsorshipType;
-use OCA\Libresign\Service\Sponsorship\DTO\SettlementResolutionDTO;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
 
 /**
  * Records sponsorship relationships between
@@ -22,12 +20,12 @@ use RuntimeException;
  * Sponsorship records survive for the lifetime
  * of the workflow and are resolved during signing.
  */
-class SignerSponsorshipService
-{
+class SignerSponsorshipService {
 	public function __construct(
 		private SignerSponsorshipMapper $signerSponsorshipMapper,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	public function create(
 		int $fileId,

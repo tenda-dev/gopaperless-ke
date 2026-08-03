@@ -8,8 +8,7 @@ use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipChangeDTO;
 use OCA\Libresign\Service\Sponsorship\DTO\SponsorshipCoverageValidationResultDTO;
 
-final class SponsorshipCoverageValidatorService
-{
+final class SponsorshipCoverageValidatorService {
 	public function __construct(
 		private EntitlementService $entitlementService,
 	) {
@@ -41,8 +40,8 @@ final class SponsorshipCoverageValidatorService
 			++$requiredCredits;
 
 			if ($change->signer()->hasPersistedSignRequest()) {
-				$blockingSignRequestIds[] =
-					$change->signer()->getSignRequestId();
+				$blockingSignRequestIds[]
+					= $change->signer()->getSignRequestId();
 			}
 		}
 

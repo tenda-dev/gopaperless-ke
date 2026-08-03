@@ -12,7 +12,6 @@ use OCP\DB\Exception;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 
-
 /**
  * Manages entitlement reservations.
  *
@@ -25,13 +24,13 @@ use RuntimeException;
  *
  * Transaction ownership belongs to the caller.
  */
-class EntitlementReservationService
-{
+class EntitlementReservationService {
 	public function __construct(
 		private EntitlementMapper $entitlementMapper,
 		private EntitlementReservationMapper $reservationMapper,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Reserve entitlement capacity for a workflow.
@@ -317,8 +316,8 @@ class EntitlementReservationService
 			return;
 		}
 
-		$currentReserved =
-			$entitlement->getReservedUses() ?? 0;
+		$currentReserved
+			= $entitlement->getReservedUses() ?? 0;
 
 		$newReserved = max(
 			0,

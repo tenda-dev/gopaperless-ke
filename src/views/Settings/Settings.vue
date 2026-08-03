@@ -33,8 +33,11 @@
 		<Confetti />
 		<FreeCredits />
 		<OneTimeSigning />
+		<ProductPricing />
 		<CertificateAccess />
 		<FilesListColumns />
+		<FilesListNext />
+		<VisibleElementsNext />
 		<SmsOtpConfig />
 		<WebhookOtpConfig />
 		<DarajaConfig />
@@ -56,9 +59,12 @@ import DocMDP from './DocMDP.vue'
 import DownloadBinaries from './DownloadBinaries.vue'
 import Envelope from './Envelope.vue'
 import FilesListColumns from './FilesListColumns.vue'
+import FilesListNext from './FilesListNext.vue'
+import VisibleElementsNext from './VisibleElementsNext.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
+import ProductPricing from './ProductPricing.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'
 import LegalInformation from './LegalInformation.vue'

@@ -22,6 +22,19 @@ vi.mock('@nextcloud/dialogs', () => ({
 	showError: vi.fn(),
 }))
 
+vi.mock('../../../services/toast', () => ({
+	showError: vi.fn(),
+	showSuccess: vi.fn(),
+	showInfo: vi.fn(),
+}))
+
+vi.mock('@/store/userContext', () => ({
+	useUserContextStore: vi.fn(() => ({
+		uid: 'requester-uid',
+		initialise: vi.fn().mockResolvedValue(undefined),
+	})),
+}))
+
 vi.mock('vue-select', () => ({
 	default: {
 		name: 'VSelect',
@@ -63,6 +76,7 @@ type IdentifySignerVm = {
 	identifyMethod?: IdentifyAccountRecord['method']
 	acceptsEmailNotifications?: boolean
 	identifyMethodLabel: string
+	requesterSponsored: boolean
 	resetNameValidation: () => void
 	resetSelectedSignerState: () => void
 	applySelectedSigner: (signer: IdentifyAccountRecord | null) => void
@@ -419,6 +433,7 @@ describe('IdentifySigner rules', () => {
 						displayName: 'John Doe',
 						description: undefined,
 						email: 'john@example.com',
+						sponsorship: { type: 'self' },
 						status: 0,
 						statusText: 'Draft',
 						identifyMethods: [{
@@ -490,7 +505,7 @@ describe('IdentifySigner rules', () => {
 		})
 
 		it('handles save error gracefully', async () => {
-			const { showError } = await import('@nextcloud/dialogs')
+			const { showError } = await import('../../../services/toast')
 			filesStore.saveOrUpdateSignatureRequest.mockRejectedValue(
 				new Error('Network error')
 			)
@@ -516,6 +531,8 @@ describe('IdentifySigner rules', () => {
 				signerToEdit: signer,
 				methods: [{ name: 'email', friendly_name: 'Email' }],
 			})
+
+			await wrapper.vm.$nextTick()
 
 			expect(wrapper.vm.displayName).toBe('Jane Doe')
 			expect(wrapper.vm.description).toBe('Please review')
@@ -545,6 +562,8 @@ describe('IdentifySigner rules', () => {
 				signerToEdit: signer,
 				methods: [],
 			})
+
+			await wrapper.vm.$nextTick()
 
 			expect(wrapper.vm.enableCustomMessage).toBe(true)
 		})
@@ -608,3 +627,107 @@ describe('IdentifySigner rules', () => {
 		})
 	})
 })
+
+	describe('sponsorship feature flag', () => {
+		async function mountWithSponsorshipFlag(enabled: boolean) {
+			vi.doMock('@nextcloud/initial-state', () => ({
+				loadState: vi.fn((app: string, key: string, defaultValue: unknown) => {
+					if (app === 'libresign' && key === 'sponsorship_enabled') {
+						return enabled
+					}
+					return defaultValue
+				}),
+			}))
+			vi.resetModules()
+			const { default: IdentifySigner } = await import('../../../components/Request/IdentifySigner.vue')
+			const localWrapper = mount(IdentifySigner, {
+				props: {
+					signerToEdit: {},
+					method: 'all',
+					placeholder: 'Name',
+					methods: [
+						{ name: 'email', friendly_name: 'Email' },
+						{ name: 'account', friendly_name: 'Account' },
+					],
+					disabled: false,
+				},
+				global: {
+					stubs: {
+						NcButton: true,
+						NcCheckboxRadioSwitch: true,
+						NcIconSvgWrapper: true,
+						NcNoteCard: true,
+						NcTextArea: true,
+						NcTextField: true,
+						SignerSelect: signerSelectStub,
+					},
+					mocks: {
+						t: (_app: string, text: string) => text,
+					},
+				},
+			}) as IdentifySignerWrapper
+			return localWrapper
+		}
+
+		it('hides sponsorship controls and defaults to self when flag is off', async () => {
+			const localWrapper = await mountWithSponsorshipFlag(false)
+
+			expect(localWrapper.findComponent({ name: 'NcCheckboxRadioSwitch' }).exists()).toBe(false)
+			expect(localWrapper.findComponent({ name: 'NcNoteCard' }).exists()).toBe(false)
+
+			localWrapper.vm.identifyMethod = 'email'
+			localWrapper.vm.identify = 'other@example.com'
+			await localWrapper.vm.$nextTick()
+
+			expect(localWrapper.vm.requesterSponsored).toBe(false)
+		})
+
+		it('shows sponsorship toggle for non-requester when flag is on', async () => {
+			const localWrapper = await mountWithSponsorshipFlag(true)
+
+			localWrapper.vm.identifyMethod = 'email'
+			localWrapper.vm.identify = 'other@example.com'
+			await localWrapper.vm.$nextTick()
+
+			const toggle = localWrapper.findComponent({ name: 'NcCheckboxRadioSwitch' })
+			expect(toggle.exists()).toBe(true)
+		})
+
+		it('shows requester note card and forces requester sponsorship when flag is on', async () => {
+			const localWrapper = await mountWithSponsorshipFlag(true)
+
+			localWrapper.vm.identifyMethod = 'account'
+			localWrapper.vm.identify = 'requester-uid'
+			await localWrapper.vm.$nextTick()
+
+			// When the signer is the requester, the note card replaces the toggle
+			expect(localWrapper.findComponent({ name: 'NcNoteCard' }).exists()).toBe(true)
+			expect(localWrapper.findComponent({ name: 'NcCheckboxRadioSwitch' }).exists()).toBe(false)
+		})
+
+		it('applies requester auto-sponsor only when flag is on', async () => {
+			const localWrapper = await mountWithSponsorshipFlag(true)
+
+			localWrapper.vm.applySelectedSigner({
+				identify: 'requester-uid',
+				method: 'account',
+				displayName: 'Requester',
+				acceptsEmailNotifications: true,
+			} as IdentifyAccountRecord)
+
+			expect(localWrapper.vm.requesterSponsored).toBe(true)
+		})
+
+		it('does not auto-sponsor when flag is off', async () => {
+			const localWrapper = await mountWithSponsorshipFlag(false)
+
+			localWrapper.vm.applySelectedSigner({
+				identify: 'requester-uid',
+				method: 'account',
+				displayName: 'Requester',
+				acceptsEmailNotifications: true,
+			} as IdentifyAccountRecord)
+
+			expect(localWrapper.vm.requesterSponsored).toBe(false)
+		})
+	})

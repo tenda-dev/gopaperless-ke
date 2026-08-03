@@ -508,10 +508,10 @@ class RequestSignatureService {
 		array $data,
 		FileEntity $file,
 		string $productCode = 'SIGN_DOCUMENT',
-		): array {
+	): array {
 		if (empty($data['signers'])) {
 			return [];
-        }
+		}
 
 		$persistedSignRequests = [];
 		$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
@@ -521,13 +521,19 @@ class RequestSignatureService {
 		$this->sequentialSigningService->resetOrderCounter();
 		$fileStatus = $data['status'] ?? null;
 
+		$sponsorshipEnabled = $this->appConfig->getValueBool(
+			Application::APP_ID,
+			'sponsorship_enabled',
+			false,
+		);
+
 		foreach ($normalizedSigners as $signer) {
 			$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
 			$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
 			$signerStatus = $signer['status'] ?? null;
 			$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
 
-			$sponsorshipType = isset($signer['sponsorship']['type'])
+			$sponsorshipType = $sponsorshipEnabled && isset($signer['sponsorship']['type'])
 				? SponsorshipType::tryFrom($signer['sponsorship']['type'])
 				: null;
 
@@ -548,13 +554,17 @@ class RequestSignatureService {
 			}
 		}
 
-		return $this->sponsorshipWorkflowService->persist(
+		if (!$sponsorshipEnabled) {
+			return [];
+		}
+
+		return array_values($this->sponsorshipWorkflowService->persist(
 			file: $file,
 			requesterUserId: $data['userManager']->getUID(),
 			productCode: $productCode,
 			incomingSigners: $normalizedSigners,
 			persistedSignRequests: $persistedSignRequests,
-		);
+		));
 	}
 
 
@@ -710,8 +720,7 @@ class RequestSignatureService {
 		}
 	}
 
-	public function deleteRequestSignature(array $data): void
-	{
+	public function deleteRequestSignature(array $data): void {
 		/**
 		 * Resolve the workflow context before performing any mutations.
 		 *
@@ -840,8 +849,7 @@ class RequestSignatureService {
 	 *
 	 * @throws \Exception
 	 */
-	private function prepareDeleteContext(array $data): array
-	{
+	private function prepareDeleteContext(array $data): array {
 		if (!empty($data['uuid'])) {
 			$file = $this->fileMapper->getByUuid(
 				$data['uuid'],

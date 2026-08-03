@@ -119,9 +119,14 @@ export type AdminInitialState = {
 	free_credits_enabled: boolean
 	free_credits_uses: number
 	one_time_signing_enabled: boolean
+	product_default_currency: string
+	product_sign_document_price: number
+	product_certificate_access_price: number
 	certificate_gate_enabled: boolean
 	certificate_validity_days: number
 	files_list_show_signers: boolean
+	files_list_next_enabled: boolean
+	visible_elements_next_enabled: boolean
 }
 
 export type RuntimeFileSettingsRecord = FileSettings & Partial<SettingsRecord>

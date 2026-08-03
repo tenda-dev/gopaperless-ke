@@ -22,8 +22,7 @@ use Psr\Log\LoggerInterface;
  * Business rules such as payment orchestration and certificate
  * validity calculation remain outside this service.
  */
-final class ExtendedAccountService
-{
+final class ExtendedAccountService {
 	/**
 	 * Default certificate validity for newly granted access.
 	 *
@@ -67,7 +66,8 @@ final class ExtendedAccountService
 		private SignRequestMapper $signRequestMapper,
 		private LoggerInterface $logger,
 		private IAppConfig $appConfig,
-	) {}
+	) {
+	}
 
 	/**
 	 * Creates the extended account for a newly created user.
@@ -147,7 +147,7 @@ final class ExtendedAccountService
 	 */
 	public function getOrCreate(
 		string $userId,
-		?string $email
+		?string $email,
 	): ExtendedAccount {
 
 		$account = $this->mapper->findByUserId($userId);
@@ -212,8 +212,7 @@ final class ExtendedAccountService
 	 * override is active and no account is paywalled regardless of DB
 	 * state; flipping it true activates real DB gating.
 	 */
-	public function isGateEnabled(): bool
-	{
+	public function isGateEnabled(): bool {
 		return $this->appConfig->getValueBool(
 			Application::APP_ID,
 			self::CONFIG_KEY_CERTIFICATE_GATE_ENABLED,
@@ -235,8 +234,7 @@ final class ExtendedAccountService
 	 * is reflected on the next /account/me hydration — the FE's
 	 * userContext.refresh() is that seam.
 	 */
-	public function isCertificateValidForAccount(ExtendedAccount $account): bool
-	{
+	public function isCertificateValidForAccount(ExtendedAccount $account): bool {
 		if (!$this->isGateEnabled()) {
 			return true;
 		}
@@ -315,8 +313,7 @@ final class ExtendedAccountService
 	 * Uses the administrator-configured validity period when available,
 	 * otherwise falls back to the default of one year.
 	 */
-	private function calculateCertificateValidity(): \DateTimeImmutable
-	{
+	private function calculateCertificateValidity(): \DateTimeImmutable {
 		return $this->addValidityWindow($this->nowImmutable());
 	}
 
@@ -371,8 +368,7 @@ final class ExtendedAccountService
 			->format(DATE_ATOM);
 	}
 
-	private function nowImmutable(): \DateTimeImmutable
-	{
+	private function nowImmutable(): \DateTimeImmutable {
 		return new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),

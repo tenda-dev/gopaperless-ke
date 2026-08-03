@@ -22,20 +22,18 @@ use OCA\Libresign\Enum\SponsorshipType;
  * sponsorship persistence. It exists solely to project sponsorship
  * information to the signing UI.
  */
-final readonly class SigningSponsorshipDTO
-{
+final readonly class SigningSponsorshipDTO {
 	public function __construct(
 		public SponsorshipType $type,
 		public ?string $sponsorUserId = null,
-	) {}
+	) {
+	}
 
-	public function isSponsored(): bool
-	{
+	public function isSponsored(): bool {
 		return $this->type === SponsorshipType::REQUESTER;
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'type' => $this->type->value,
 			'sponsored' => $this->isSponsored(),

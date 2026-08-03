@@ -53,8 +53,8 @@ class EntitlementService {
 		string $userId,
 		string $productCode,
 		int $uses = 1,
-		EntitlementType $entitlementType = EntitlementType::PAY_AS_YOU_GO
-		): Entitlement {
+		EntitlementType $entitlementType = EntitlementType::PAY_AS_YOU_GO,
+	): Entitlement {
 
 		$entitlement = new Entitlement();
 		$entitlement->setUserId($userId);

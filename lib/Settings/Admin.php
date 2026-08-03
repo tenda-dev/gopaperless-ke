@@ -111,6 +111,12 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('free_credits_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true));
 		$this->initialState->provideInitialState('free_credits_uses', $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2));
 		$this->initialState->provideInitialState('one_time_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true));
+		$this->initialState->provideInitialState('sponsorship_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false));
+
+		//	PRODUCT PRICING DEFAULTS
+		$this->initialState->provideInitialState('product_default_currency', $this->appConfig->getValueString(Application::APP_ID, 'product_default_currency', 'KES'));
+		$this->initialState->provideInitialState('product_sign_document_price', $this->appConfig->getValueInt(Application::APP_ID, 'product_sign_document_price', 8000));
+		$this->initialState->provideInitialState('product_certificate_access_price', $this->appConfig->getValueInt(Application::APP_ID, 'product_certificate_access_price', 30000));
 
 		//	PERSONAL DIGITAL CERTIFICATE GATE
 		//	Gate kill-switch defaults to false = inert (nobody paywalled).
@@ -119,6 +125,10 @@ class Admin implements ISettings {
 
 		//	FILES LIST COLUMNS
 		$this->initialState->provideInitialState('files_list_show_signers', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true));
+
+		//	FEATURE FLAGS (opt-in "Next" UI rework, default false = legacy)
+		$this->initialState->provideInitialState('files_list_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false));
+		$this->initialState->provideInitialState('visible_elements_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false));
 
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));

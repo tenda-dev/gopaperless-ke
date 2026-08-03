@@ -23,15 +23,15 @@ use Psr\Log\LoggerInterface;
  *
  * Business rules remain inside the specialised services.
  */
-final class SponsorshipWorkflowService
-{
+final class SponsorshipWorkflowService {
 	public function __construct(
 		private SponsorshipChangeDetectionService $changeDetectionService,
 		private SponsorshipReconciliationService $reconciliationService,
 		private SponsorshipReservationSyncService $syncService,
 		private SponsorshipContextBuilderService $contextBuilder,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Synchronises sponsorship state after SignRequests have been persisted.
@@ -96,15 +96,13 @@ final class SponsorshipWorkflowService
 			);
 	}
 
-	public function releaseSigner(int $signRequestId): void
-	{
+	public function releaseSigner(int $signRequestId): void {
 		$this->syncService->releaseSigner(
 			$signRequestId,
 		);
 	}
 
-	public function releaseWorkflow(int $fileId): void
-	{
+	public function releaseWorkflow(int $fileId): void {
 		$this->logger->info(
 			'[SPONSORSHIP RELEASE] Starting workflow release.',
 			[

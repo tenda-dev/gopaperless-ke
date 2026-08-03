@@ -230,8 +230,8 @@ const summaryLine = computed(() => {
 
 	color: var(--color-main-text);
 
-	white-space: nowrap;
-	overflow: hidden;
+	white-space: normal;
+	overflow: visible;
 	text-overflow: ellipsis;
 }
 
