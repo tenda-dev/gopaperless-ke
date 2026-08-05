@@ -29,6 +29,18 @@ function generateWebBasePath(): string {
 const routes: RouteRecordRaw[] = [
 	// public
 	{
+		// Anonymous marketing/upload landing. Named with the `External`
+		// suffix so router.beforeEach renders it directly instead of
+		// redirecting to a non-existent `PublicUploadExternal` variant
+		// (isExternal() flags every /p/ path as external).
+		path: '/p/upload',
+		name: 'PublicUploadExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
+		component: () => import('../views/PublicUpload.vue'),
+	},
+	{
 		path: '/p/sign/:uuid',
 		redirect: (to) => {
 			const action = selectAction(loadState('libresign', 'action', 0), to, { path: '/' })

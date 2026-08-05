@@ -16,10 +16,10 @@
 				</template>
 			</NcEmptyContent>
 		</NcAppContent>
-		<RightSidebar />
+		<RightSidebar v-if="isLoggedIn" />
 	</NcContent>
-	<SponsorshipWorkflow />
-	<CertificateGate />
+	<SponsorshipWorkflow v-if="isLoggedIn" />
+	<CertificateGate v-if="isLoggedIn" />
 	<Toaster richColors position="top-right" />
 </template>
 
@@ -29,6 +29,7 @@ import { ref, computed, onMounted } from 'vue'
 defineOptions({ name: 'LibreSign' })
 
 import { useRoute } from 'vue-router'
+import { getCurrentUser } from '@nextcloud/auth'
 import { t } from '@nextcloud/l10n'
 import { Toaster } from 'vue-sonner'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
@@ -52,17 +53,28 @@ const userContext = useUserContextStore()
 
 const loading = ref(false)
 
+// Anonymous visitors (e.g. the public upload landing) have no session.
+// Authed chrome — left/right sidebars, cert gate, sponsorship all assume a
+// user and eagerly hits authed endpoints (e.g. CreditsSummaryCard calls
+// /account/me), so it must not render for guests.
+const isLoggedIn = computed(() => !!getCurrentUser())
+
 const isRoot = computed(() => route.path === '/')
 const isSignExternalPage = computed(() => route.path.startsWith('/p/'))
 const isDoNothingError = computed(() => initialActionCode.value === ACTION_CODES.DO_NOTHING)
-const showLeftSidebar = computed(() => !route.matched.some(record => record.meta?.hideLeftSidebar === true))
+const showLeftSidebar = computed(() => isLoggedIn.value && !route.matched.some(record => record.meta?.hideLeftSidebar === true))
 
 onMounted(async () => {
 	useNetworkState()
 	// Actively strip and block Nextcloud dark mode variations
 	useForceLightMode()
 
-	await userContext.initialise()
+	// Anonymous visitors (e.g. the public upload landing) have no session,
+	// so /account/me would 401/404 on load. Only hydrate when a user is present;
+	// the authed path is unchanged.
+	if (getCurrentUser()) {
+		await userContext.initialise()
+	}
 })
 </script>
 

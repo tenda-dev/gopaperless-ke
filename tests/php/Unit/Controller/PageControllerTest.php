@@ -50,6 +50,9 @@ final class PageControllerTest extends TestCase {
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('requester');
 		$this->userSession->method('getUser')->willReturn($user);
+		// index() renders the authed app only for a logged-in session;
+		// anonymous visitors are redirected to the public upload landing.
+		$this->userSession->method('isLoggedIn')->willReturn(true);
 
 		$this->accountService = $this->createMock(AccountService::class);
 		$this->accountService->method('getConfig')->willReturn([]);
