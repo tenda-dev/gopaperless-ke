@@ -25,6 +25,7 @@ use OCA\Libresign\Vendor\Endroid\QrCode\Writer\PngWriter;
 use OCA\Libresign\Vendor\Twig\Environment;
 use OCA\Libresign\Vendor\Twig\Error\SyntaxError;
 use OCA\Libresign\Vendor\Twig\Loader\FilesystemLoader;
+use OCP\Exceptions\AppConfigTypeConflictException;
 use OCP\IAppConfig;
 use OCP\IDateTimeZone;
 use OCP\IL10N;
@@ -120,8 +121,10 @@ class SignatureTextService {
 		$this->appConfig->setValueString(Application::APP_ID, 'signature_text_template', $template);
 		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_width', $signatureWidth);
 		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_height', $signatureHeight);
-		$this->appConfig->setValueFloat(Application::APP_ID, 'template_font_size', $templateFontSize);
-		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_font_size', $signatureFontSize);
+
+		// Persisted as strings to match the reader; the helper also heals legacy float-typed rows.
+		$this->setStringConfigHealingTypeConflict('template_font_size', (string)$templateFontSize);
+		$this->setStringConfigHealingTypeConflict('signature_font_size', (string)$signatureFontSize);
 		$this->appConfig->setValueString(Application::APP_ID, 'signature_render_mode', $renderMode);
 		return $this->parse($template);
 	}
@@ -583,7 +586,75 @@ class SignatureTextService {
 				return $value;
 			}
 		}
-		return $this->appConfig->getValueString(Application::APP_ID, $configKey, (string)$default);
+		return $this->getStringConfigHealingTypeConflict($configKey, (string)$default);
+	}
+
+	/**
+	 * Read an appconfig key as a string, tolerating a legacy wrong type.
+	 *
+	 * Font-size (template_font_size, signature_font_size) keys were
+	 * previously written as floats but are now read as strings.
+	 * Nextcloud throws AppConfigTypeConflictException when the
+	 * stored and requested types differ. On conflict, recover
+	 * the value, attempt to re-store it as a string, and return
+	 * it so the read remains usable. Other appconfig errors
+	 * propagate normally.
+	 */
+	private function getStringConfigHealingTypeConflict(string $key, string $default): string {
+		try {
+			return $this->appConfig->getValueString(Application::APP_ID, $key, $default);
+		} catch (AppConfigTypeConflictException $e) {
+			$recovered = $this->recoverConfigValueAsString($key, $default);
+			try {
+				$this->appConfig->setValueString(Application::APP_ID, $key, $recovered);
+				$this->logger->warning('Healed appconfig type conflict on "{key}"; re-stored as string', ['key' => $key, 'exception' => $e]);
+			} catch (AppConfigTypeConflictException $inner) {
+				$this->logger->warning('Could not re-store appconfig "{key}" as string; returning recovered value', ['key' => $key, 'exception' => $inner]);
+			}
+			return $recovered;
+		}
+	}
+
+	/**
+	 * Recover a wrongly-typed value as a string:
+	 *
+	 * try float -> int -> bool, then fall back to $default.
+	 * Type-agnostic on purpose, so it survives whatever the
+	 * key was written under.
+	 */
+	private function recoverConfigValueAsString(string $key, string $default): string {
+		foreach (['getValueFloat', 'getValueInt', 'getValueBool'] as $getter) {
+			try {
+				$value = $this->appConfig->$getter(Application::APP_ID, $key);
+				return is_bool($value) ? ($value ? '1' : '0') : (string)$value;
+			} catch (AppConfigTypeConflictException) {
+			}
+		}
+		return $default;
+	}
+
+	/**
+	 * Write an appconfig key as a string, healing a legacy wrong-typed row.
+	 *
+	 * The write-path counterpart to getStringConfigHealingTypeConflict(): a direct
+	 * setValueString() is rejected while the stored row still has the old type, so
+	 * we drop the row and re-create it as a string.
+	 */
+	private function setStringConfigHealingTypeConflict(string $key, string $value): void {
+		try {
+			$this->appConfig->setValueString(Application::APP_ID, $key, $value);
+		} catch (AppConfigTypeConflictException $e) {
+			$this->appConfig->deleteKey(Application::APP_ID, $key);
+			$this->appConfig->setValueString(Application::APP_ID, $key, $value);
+
+			$this->logger->warning(
+				'Healed appconfig type conflict on write for "{key}"; re-created value as string',
+				[
+					'key' => $key,
+					'exception' => $e,
+				]
+			);
+		}
 	}
 
 	public function hasQrCodeInTemplate(): bool {
