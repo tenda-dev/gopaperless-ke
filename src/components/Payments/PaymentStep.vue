@@ -1266,14 +1266,18 @@ async function handleMobilePayment() {
 
 	/**
 	 * Final defensive validation before charge.
+	 *
+	 * signRequestId / signUuid are only meaningful for the sign_request purpose
+	 * other purposes (e.g. credit_purchase) legitimately have neither, so they are
+	 * only required when the resolved purpose is sign_request.
 	 */
+	const isSignRequest = (payment.paymentPurpose.value ?? props.paymentPurpose) === 'sign_request'
 	if (
 		!payment.activeReference.value ||
 		!phoneNumber ||
 		!mnoToUse ||
 		!countryToUse ||
-		!props.signRequestId ||
-		!effectiveSignUuid.value
+		(isSignRequest && (!props.signRequestId || !effectiveSignUuid.value))
 	) {
 
 		payment.state.value = 'error'
