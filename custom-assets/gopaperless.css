@@ -78,9 +78,9 @@ span {
 
 #header #nextcloud .logo,
 #header #nextcloud .logo-icon {
-	width: 135px !important;
-	height: 40px !important;
-	min-height: 40px !important;
+	width: 165px !important;
+	height: 45px !important;
+	min-height: 45px !important;
 	background-size: contain !important;
 	background-position: left center !important;
 	background-repeat: no-repeat !important;

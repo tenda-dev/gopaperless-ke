@@ -7,12 +7,8 @@
 	<div class="pu">
 		<header class="pu__bar">
 			<div class="pu__inner pu__bar-row">
-				<div class="pu__brand">
-					<b class="pu__brand-name">GoPaperless</b>
-					<span class="pu__brand-by">
-						by <img class="pu__brand-by-logo" :src="TendaLogo" alt="Tendaworld">
-					</span>
-				</div>
+				<LogoWoodmark />
+
 				<button type="button" class="pu__signin" @click="gateToLogin">
 					Have an account? <span>Sign in</span>
 				</button>
@@ -140,7 +136,7 @@ import {
 	mdiArrowRight,
 } from '@mdi/js'
 
-import TendaLogo from '../../img/tenda-logo-green-updated.png'
+import LogoWoodmark from '../components/LogoWoodmark.vue'
 
 defineOptions({ name: 'PublicUpload' })
 
@@ -253,36 +249,6 @@ function gateToLogin(): void {
 		justify-content: space-between;
 		gap: 16px;
 		padding: 20px var(--pu-pad);
-	}
-
-	&__brand {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	&__brand-name {
-		font-size: 24px;
-		font-weight: 700;
-		letter-spacing: -.01em;
-		line-height: 1;
-	}
-
-	&__brand-by {
-		display: inline-flex;
-		align-items: center;
-		justify-content: start;
-		gap: 5px;
-		font-family: var(--mono);
-		font-size: 10px;
-		letter-spacing: .02em;
-		color: var(--faint);
-	}
-
-	&__brand-by-logo {
-		display: block;
-		width: auto;
-		height: 13px;
 	}
 
 	&__signin {
