@@ -42,6 +42,7 @@ use OCP\Files\NotFoundException;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -97,6 +98,7 @@ class AccountService {
 		private PhoneNumberService $phoneNumberService,
 		private EntitlementService $entitlementService,
 		private ExtendedAccountService $extendedAccountService,
+		private IDBConnection $connection,
 	) {
 	}
 
@@ -350,6 +352,83 @@ class AccountService {
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
 		];
+	}
+
+	/**
+	 * Accept the active Terms of Service documents for an existing account.
+	 *
+	 * @return array{message:string,uid:string,acceptedTerms:int}
+	 */
+	public function acceptTerms(string $userId): array {
+		$userId = trim($userId);
+		if ($userId === '') {
+			throw new LibresignException('User ID is required');
+		}
+
+		$user = $this->userManager->get($userId);
+		if ($user === null) {
+			throw new LibresignException('Account not found');
+		}
+
+		return [
+			'message' => 'Success',
+			'uid' => $user->getUID(),
+			'acceptedTerms' => $this->acceptTermsForUserId($user->getUID()),
+		];
+	}
+
+	/**
+	 * Record acceptance for every active Terms of Service document. Calls are
+	 * idempotent: documents the user has already accepted are left untouched.
+	 *
+	 * @return int Number of new acceptance records created.
+	 */
+	public function acceptTermsForUserId(string $userId): int {
+		if (!$this->connection->tableExists('termsofservice_terms')
+			|| !$this->connection->tableExists('termsofservice_sigs')) {
+			return 0;
+		}
+
+		$termQuery = $this->connection->getQueryBuilder();
+		$termQuery->select('id')
+			->from('termsofservice_terms');
+		$result = $termQuery->executeQuery();
+		$termIds = [];
+		while ($row = $result->fetch()) {
+			$termIds[] = (int)$row['id'];
+		}
+		$result->closeCursor();
+
+		$acceptedTerms = 0;
+		foreach ($termIds as $termId) {
+			$check = $this->connection->getQueryBuilder();
+			$check->select($check->expr()->literal(1))
+				->from('termsofservice_sigs')
+				->where($check->expr()->eq('user_id', $check->createNamedParameter($userId)))
+				->andWhere($check->expr()->eq('terms_id', $check->createNamedParameter($termId)))
+				->setMaxResults(1);
+			$checkResult = $check->executeQuery();
+			$exists = $checkResult->fetchOne();
+			$checkResult->closeCursor();
+			if ($exists) {
+				continue;
+			}
+
+			$insert = $this->connection->getQueryBuilder();
+			$insert->insert('termsofservice_sigs')
+				->setValue('user_id', $insert->createNamedParameter($userId))
+				->setValue('terms_id', $insert->createNamedParameter($termId))
+				->setValue('timestamp', $insert->createNamedParameter(time()));
+			$insert->executeStatement();
+			$acceptedTerms++;
+		}
+
+		$this->logger->info('Accepted Terms of Service on behalf of account', [
+			'userId' => $userId,
+			'acceptedTerms' => $acceptedTerms,
+		]);
+
+		return $acceptedTerms;
 	}
 
 	public function getExtendedAccount(

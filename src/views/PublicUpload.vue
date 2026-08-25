@@ -25,9 +25,7 @@
 					<div class="pu__kicker">Digital Signatures</div>
 					<h1 class="pu__title">Get a document signed</h1>
 					<p class="pu__lede">
-						Upload a PDF, add your signers, and mark where each one signs.
-						Send the request, track every signer, and get a sealed,
-						verifiable record when it's done.
+						Upload your document, drag signature fields where they're needed, add your signers, and hit send. That's it — your document is on its way in under 2 minutes.
 					</p>
 
 					<div class="pu__drop">
@@ -94,7 +92,7 @@
 				<div class="pu__eco-about">
 					<div class="pu__eco-kicker">About</div>
 					<p class="pu__eco-lede">
-						GoPaperless is the premier digital signature solution built for the African market, and part of the Tendaworld trust platform. Sign, send, and manage legally binding documents in minutes.
+						GoPaperless™ is the easiest way to sign documents online, built for Africa. Send, sign, and manage legally binding documents in minutes.
 					</p>
 					<a class="pu__eco-more" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">
 						More about GoPaperless
@@ -118,7 +116,7 @@
 
 			<div class="pu__inner pu__eco-cta">
 				<button type="button" class="pu__cta-btn" @click="gateToLogin">
-					<span>Ready to go paperless? <b>Sign in to upload</b></span>
+					<span>Get Started</span>
 					<svg viewBox="0 0 24 24"><path :d="mdiArrowRight" /></svg>
 				</button>
 			</div>
@@ -264,7 +262,7 @@ function gateToLogin(): void {
 	}
 
 	&__brand-name {
-		font-size: 20px;
+		font-size: 24px;
 		font-weight: 700;
 		letter-spacing: -.01em;
 		line-height: 1;
@@ -273,6 +271,7 @@ function gateToLogin(): void {
 	&__brand-by {
 		display: inline-flex;
 		align-items: center;
+		justify-content: start;
 		gap: 5px;
 		font-family: var(--mono);
 		font-size: 10px;

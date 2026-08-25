@@ -30,8 +30,6 @@ use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Config\IUserConfig;
-use OCP\DB\Exception as DBException;
-use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -62,7 +60,6 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		private Chain $loginChain,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
-		private IDBConnection $connection,
 		protected IUserSession $userSession,
 		protected SessionService $sessionService,
 		private ValidateHelper $validateHelper,
@@ -79,6 +76,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	 * @param string $password the password to then new account
 	 * @param string|null $signPassword The password to create certificate
 	 * @param string|null $phoneNumber The phone number of the user
+	 * @param bool $termsAccepted Whether the invited signer accepted the Terms of Service
 	 * @return DataResponse<Http::STATUS_OK, LibresignCreateToSignResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionMessageResponse, array{}>
 	 *
 	 * 200: OK
@@ -114,7 +112,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 
 			$userId = $this->accountService->createToSign($uuid, $email, $password, $signPassword, $phoneNumber);
 			if ($termsAccepted) {
-				$this->acceptTermsOnAccountCreation($userId);
+				$this->accountService->acceptTermsForUserId($userId);
 			}
 
 			$response = [
@@ -146,62 +144,6 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 			$response,
 			Http::STATUS_OK
 		);
-	}
-
-	/**
-	 * Accept the active Terms of Service on behalf of a newly created invited
-	 * signer so that the subsequent login chain does not block account creation.
-	 *
-	 * This only touches the Terms of Service tables when they exist; it does
-	 * nothing when the app is not installed/enabled.
-	 */
-	private function acceptTermsOnAccountCreation(string $userId): void {
-		if (!$this->connection->tableExists('termsofservice_terms')
-			|| !$this->connection->tableExists('termsofservice_sigs')) {
-			return;
-		}
-
-		try {
-			$qb = $this->connection->getQueryBuilder();
-			$qb->select('id')
-				->from('termsofservice_terms');
-			$result = $qb->executeQuery();
-			$termIds = [];
-			while ($row = $result->fetch()) {
-				$termIds[] = (int)$row['id'];
-			}
-			$result->closeCursor();
-
-			if (empty($termIds)) {
-				return;
-			}
-
-			foreach ($termIds as $termId) {
-				$check = $this->connection->getQueryBuilder();
-				$check->select($check->expr()->literal(1))
-					->from('termsofservice_sigs')
-					->where($check->expr()->eq('user_id', $check->createNamedParameter($userId)))
-					->andWhere($check->expr()->eq('terms_id', $check->createNamedParameter($termId)))
-					->setMaxResults(1);
-				$checkResult = $check->executeQuery();
-				$exists = $checkResult->fetchOne();
-				$checkResult->closeCursor();
-				if ($exists) {
-					continue;
-				}
-
-				$insert = $this->connection->getQueryBuilder();
-				$insert->insert('termsofservice_sigs')
-					->setValue('user_id', $insert->createNamedParameter($userId))
-					->setValue('terms_id', $insert->createNamedParameter($termId))
-					->setValue('timestamp', $insert->createNamedParameter(time()));
-				$insert->executeStatement();
-			}
-
-			$this->logger->info('Accepted Terms of Service on behalf of newly created invited signer', ['userId' => $userId]);
-		} catch (DBException $e) {
-			$this->logger->warning('Could not accept Terms of Service for new user: ' . $e->getMessage(), ['exception' => $e]);
-		}
 	}
 
 	/**
@@ -263,6 +205,40 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 					'message' => $e->getMessage(),
 				],
 				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
+		}
+	}
+
+	/**
+	 * Record acceptance of every active Terms of Service document for an
+	 * existing account. This supports external onboarding flows that create an
+	 * account first and obtain the user's acceptance separately.
+	 *
+	 * @param string $userId User ID of the existing account.
+	 * @return DataResponse<Http::STATUS_OK, array{message:string,uid:string,acceptedTerms:int}, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, array{message:string}, array{}>
+	 *
+	 * 200: Terms accepted successfully
+	 * 422: The account could not be found or the acceptance could not be recorded.
+	 */
+	#[NoAdminRequired]
+	#[CORS]
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/account/accept-terms',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function acceptTerms(string $userId): DataResponse {
+		try {
+			return new DataResponse(
+				$this->accountService->acceptTerms($userId),
+				Http::STATUS_OK,
+			);
+		} catch (\Throwable $e) {
+			return new DataResponse(
+				['message' => $e->getMessage()],
+				Http::STATUS_UNPROCESSABLE_ENTITY,
 			);
 		}
 	}
