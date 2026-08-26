@@ -976,6 +976,10 @@ class SignFileService {
 			'DocumentUUID' => $this->libreSignFile?->getUuid(),
 			'IssuerCommonName' => $issuerCommonName,
 			'SignerCommonName' => $signerCommonName,
+			'CertificateValidFrom' => $certificateData['valid_from'] ?? '',
+			'CertificateValidTo' => $certificateData['valid_to'] ?? '',
+			'CertificateValidFromISO8601' => $certificateData['valid_from_iso8601'] ?? '',
+			'CertificateValidToISO8601' => $certificateData['valid_to_iso8601'] ?? '',
 			'LocalSignerTimezone' => $this->dateTimeZone->getTimeZone()->getName(),
 			'LocalSignerSignatureDateTime' => (new DateTime('now', new \DateTimeZone('UTC')))
 				->format(DateTimeInterface::ATOM)

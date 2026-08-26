@@ -154,9 +154,15 @@ class SignatureTextService {
 			$date = new \DateTime('now', new \DateTimeZone('UTC'));
 			$documentUuid = UUIDUtil::getUUID();
 			$validationUrl = $this->buildValidationUrl($documentUuid);
+			$certificateValidFrom = clone $date;
+			$certificateValidTo = (clone $date)->modify('+1 year');
 			$context = [
 				'DocumentUUID' => $documentUuid,
-				'IssuerCommonName' => 'Acme Cooperative',
+				'IssuerCommonName' => 'JuliCA Certificate Authority',
+				'CertificateValidFrom' => $certificateValidFrom->format(DateTimeInterface::ATOM),
+				'CertificateValidTo' => $certificateValidTo->format(DateTimeInterface::ATOM),
+				'CertificateValidFromISO8601' => $certificateValidFrom->format(DateTimeInterface::ATOM),
+				'CertificateValidToISO8601' => $certificateValidTo->format(DateTimeInterface::ATOM),
 				'LocalSignerSignatureDateOnly' => ($date)->format('Y-m-d'),
 				'LocalSignerSignatureDateTime' => ($date)->format(DateTimeInterface::ATOM),
 				'LocalSignerTimezone' => $this->dateTimeZone->getTimeZone()->getName(),
@@ -209,6 +215,14 @@ class SignatureTextService {
 		$list = [
 			'{{DocumentUUID}}' => $this->l10n->t('Unique identifier of the signed document'),
 			'{{IssuerCommonName}}' => $this->l10n->t('Name of the certificate issuer used for the signature.'),
+			'{{CertificateValidFrom}}' => $this->l10n->t('Date when the signing certificate becomes valid.'),
+			'{{CertificateValidTo}}' => $this->l10n->t('Date when the signing certificate expires.'),
+			'{{CertificateValidFromISO8601}}' => $this->l10n->t(
+				'Certificate issue date and time as an ISO 8601 timestamp.'
+			),
+			'{{CertificateValidToISO8601}}' => $this->l10n->t(
+				'Certificate expiry date and time as an ISO 8601 timestamp.'
+			),
 			'{{LocalSignerSignatureDateOnly}}' => $this->l10n->t('Date when the signer sent the request to sign (without time, in their local time zone).'),
 			'{{LocalSignerSignatureDateTime}}' => $this->l10n->t('Date and time when the signer sent the request to sign (in their local time zone).'),
 			'{{LocalSignerTimezone}}' => $this->l10n->t('Time zone of signer when sent the request to sign (in their local time zone).'),
