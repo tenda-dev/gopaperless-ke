@@ -12,6 +12,7 @@ import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
 import logger from '../helpers/logger'
 import { getTimePresetRange } from '../utils/timePresets.js'
+import { getStatusLabel } from '../utils/fileStatus.js'
 
 /**
  * @typedef {{ id?: string, [key: string]: unknown }} FilterChip
@@ -68,6 +69,70 @@ export const useFiltersStore = defineStore('filter', () => {
 		logger.debug('File list filter chips updated', { chips: event.detail })
 	}
 
+	/**
+	 * Applies a status filter from any FilesListNext entry point, including
+	 * dashboard stat-card navigation. Updates the in-memory filter and chips
+	 * immediately, then optionally persists the selection and notifies mounted
+	 * file lists to refetch.
+	 *
+	 * `emit: false` is used when navigation will mount a fresh FilesListNext,
+	 * avoiding a redundant refetch before the navigation completes.
+	 *
+	 * @param {number[]} ids canonical FILE_STATUS ids; an empty array clears the filter
+	 * @param {{ persist?: boolean, emit?: boolean }} [opts]
+	 *   persist — persist the selection to account config (default true)
+	 *   emit — notify mounted file lists to refetch (default true)
+	 */
+	const applyStatusFilter = async (ids, opts = {}) => {
+		const { persist = true, emit: shouldEmit = true } = opts
+		const value = ids.length > 0 ? JSON.stringify(ids) : ''
+
+		// Rebuild the chips from the canonical ids so externally applied filters
+		// are immediately reflected in the existing filter-chip UI.
+		chips.value = {
+			...chips.value,
+			status: ids.map((id) => ({
+				id,
+				text: getStatusLabel(id),
+				onclick: () => applyStatusFilter(ids.filter((s) => s !== id)),
+			})),
+		}
+		filter_status.value = value
+
+		if (shouldEmit) {
+			emit('libresign:filters:update')
+		}
+
+		if (persist) {
+			try {
+				await axios.put(generateOcsUrl('/apps/libresign/api/v1/account/config/{key}', { key: 'files_list_filter_status' }), { value })
+			} catch (e) {
+				logger.error('Failed to persist status filter', { error: e })
+			}
+		}
+	}
+
+	/**
+	 * Clear all list filters (status + modified) and their chips. Called when the
+	 * FilesListNext view unmounts so filter state never leaks into the next visit
+	 * (e.g. opening the list from the sidebar after a dashboard stat-card deep
+	 * link). Persists the cleared state so it survives a reload too. Does NOT emit
+	 * `libresign:filters:update` — the view is going away, nothing should refetch.
+	 */
+	const resetFilters = async () => {
+		chips.value = {}
+		filter_status.value = ''
+		filter_modified.value = ''
+		try {
+			await Promise.all([
+				axios.put(generateOcsUrl('/apps/libresign/api/v1/account/config/{key}', { key: 'files_list_filter_status' }), { value: '' }),
+				axios.put(generateOcsUrl('/apps/libresign/api/v1/account/config/{key}', { key: 'files_list_filter_modified' }), { value: '' }),
+			])
+		} catch (e) {
+			logger.error('Failed to persist filter reset', { error: e })
+		}
+	}
+
 	return {
 		chips,
 		filter_modified,
@@ -77,5 +142,7 @@ export const useFiltersStore = defineStore('filter', () => {
 		filterModifiedRange,
 		onFilterUpdateChips,
 		onFilterUpdateChipsAndSave,
+		applyStatusFilter,
+		resetFilters,
 	}
 })

@@ -210,6 +210,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	document.removeEventListener('keydown', onKeydown)
 	clearPressTimer()
+	// Drop any active filters so they don't leak into the next visit to the list
+	// (e.g. opening it from the sidebar after a dashboard stat-card deep link).
+	filtersStore.resetFilters()
 })
 </script>
 

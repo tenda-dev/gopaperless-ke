@@ -1,6 +1,6 @@
 <template>
 	<div class="stats">
-		<div class="card stat-card">
+		<div class="card stat-card" role="button" tabindex="0" aria-label="Total documents" @click="openDocuments([])" @keydown="onCardKey($event, [])">
 			<div class="left">
 				<div class="icon">
 					<NcIconSvgWrapper :path="mdiFileDocumentOutline" :size="20" />
@@ -13,7 +13,7 @@
 			</div>
 		</div>
 
-		<div class="card stat-card">
+		<div class="card stat-card" role="button" tabindex="0" aria-label="Pending documents" @click="openDocuments(PENDING_STATUSES)" @keydown="onCardKey($event, PENDING_STATUSES)">
 
 			<div class="left">
 				<div class="icon pending">
@@ -27,7 +27,7 @@
 			</div>
 		</div>
 
-		<div class="card stat-card">
+		<div class="card stat-card" role="button" tabindex="0" aria-label="Completed documents" @click="openDocuments([FILE_STATUS.SIGNED])" @keydown="onCardKey($event, [FILE_STATUS.SIGNED])">
 			<div class="left">
 				<div class="icon success">
 					<NcIconSvgWrapper :path="mdiCheckCircleOutline" :size="20" />
@@ -40,7 +40,7 @@
 			</div>
 		</div>
 
-		<div class="card stat-card">
+		<div class="card stat-card" role="button" tabindex="0" aria-label="Draft documents" @click="openDocuments([FILE_STATUS.DRAFT])" @keydown="onCardKey($event, [FILE_STATUS.DRAFT])">
 			<div class="left">
 				<div class="icon draft">
 					<NcIconSvgWrapper :path="mdiFileEditOutline" :size="20" />
@@ -56,6 +56,8 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from 'vue-router'
+
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import {
 	mdiFileDocumentOutline,
@@ -63,6 +65,10 @@ import {
 	mdiCheckCircleOutline,
 	mdiFileEditOutline
 } from '@mdi/js'
+
+import { FILE_STATUS } from '../../../constants.js'
+import { useFiltersStore } from '../../../store/filters.js'
+
 defineProps<{
 	stats: {
 		totalDocuments: number
@@ -71,6 +77,32 @@ defineProps<{
 		draftDocuments: number
 	}
 }>()
+
+// Dashboard "Pending" = everything not Draft/Signed; the list's status filter
+// exposes exactly these two canonical values (SIGNING_IN_PROGRESS, also counted
+// as pending by the backend, has no filter option).
+const PENDING_STATUSES = [FILE_STATUS.ABLE_TO_SIGN, FILE_STATUS.PARTIAL_SIGNED]
+
+const router = useRouter()
+const filtersStore = useFiltersStore()
+
+/**
+ * Apply the requested status filter before navigating to My Documents.
+ * An empty array clears the status filter so Total cannot inherit a previous
+ * status selection. `emit: false` avoids a redundant refetch because the
+ * destination performs its normal initial fetch.
+ */
+function openDocuments(statuses: number[]) {
+	filtersStore.applyStatusFilter(statuses, { emit: false })
+	router.push({ name: 'fileslist' })
+}
+// Provide native-button-like keyboard activation for the card.
+function onCardKey(e: KeyboardEvent, statuses: number[]) {
+	if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+		e.preventDefault()
+		openDocuments(statuses)
+	}
+}
 </script>
 
 <style scoped>
@@ -82,6 +114,8 @@ defineProps<{
 }
 
 .stat-card {
+	cursor: pointer;
+
 	flex: 1 1 calc(50% - 6px);
 	min-width: 120px;
 	position: relative;
@@ -148,6 +182,11 @@ defineProps<{
 .stat-card:hover {
 	transform: translateY(-2px);
 	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card:focus-visible {
+	outline: 2px solid var(--color-primary-element, #04D56D);
+	outline-offset: 2px;
 }
 
 .icon.pending {
