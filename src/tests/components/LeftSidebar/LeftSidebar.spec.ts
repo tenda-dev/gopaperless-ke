@@ -48,7 +48,7 @@ describe('LeftSidebar', () => {
 			}
 			return fallback
 		})
-		getCurrentUserMock.mockReturnValue({ isAdmin: true })
+		getCurrentUserMock.mockReturnValue({ isAdmin: false })
 
 		const wrapper = mount(LeftSidebar, {
 			global: {
@@ -70,6 +70,9 @@ describe('LeftSidebar', () => {
 						props: ['path', 'size'],
 						template: '<i class="menu-icon" :data-path="path" />',
 					},
+					NcButton: true,
+					CreditsSummaryCard: true,
+					LogoWoodmark: true,
 					Settings: true,
 				},
 			},

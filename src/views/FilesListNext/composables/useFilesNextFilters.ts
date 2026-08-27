@@ -57,23 +57,24 @@ export function useFilesNextFilters() {
 	const statusOptions = STATUS_OPTIONS
 	const timePresets = getTimePresets() as TimePreset[]
 
-	const statusSelected = ref<number[]>([...filtersStore.filterStatusArray])
+	// Keep status selection store-backed so filters applied outside the dropdown,
+	// such as dashboard stat cards, stay synchronized with the filter UI.
+	const statusSelected = computed<number[]>(() => filtersStore.filterStatusArray)
 	const modifiedSelected = ref<string | null>(filtersStore.filter_modified || null)
 
-	function commitStatus() {
-		const chips = statusSelected.value.map((id) => ({
-			id,
-			text: getStatusLabel(id),
-			onclick: () => { statusSelected.value = statusSelected.value.filter((s) => s !== id); commitStatus() },
-		}))
-		filtersStore.onFilterUpdateChipsAndSave({ detail: chips, id: 'status' })
+	// Restore chips for a persisted status filter so it is visible immediately
+	// in the filter UI without persisting or refetching it again.
+	if (filtersStore.filterStatusArray.length > 0
+		&& !(filtersStore.chips.status && filtersStore.chips.status.length)) {
+		filtersStore.applyStatusFilter([...filtersStore.filterStatusArray], { persist: false, emit: false })
 	}
 
 	function toggleStatus(id: number) {
-		statusSelected.value = statusSelected.value.includes(id)
-			? statusSelected.value.filter((s) => s !== id)
-			: [...statusSelected.value, id]
-		commitStatus()
+		const current = filtersStore.filterStatusArray as number[]
+		const next = current.includes(id)
+			? current.filter((s) => s !== id)
+			: [...current, id]
+		filtersStore.applyStatusFilter(next)
 	}
 
 	function commitModified() {

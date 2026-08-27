@@ -15,6 +15,7 @@ use OCA\Libresign\Service\File\Pdf\PdfMetadataExtractor;
 use OCA\Libresign\Vendor\Endroid\QrCode\Color\Color;
 use OCA\Libresign\Vendor\Endroid\QrCode\Encoding\Encoding;
 use OCA\Libresign\Vendor\Endroid\QrCode\ErrorCorrectionLevel;
+use OCA\Libresign\Vendor\Endroid\QrCode\Logo\Logo;
 use OCA\Libresign\Vendor\Endroid\QrCode\QrCode;
 use OCA\Libresign\Vendor\Endroid\QrCode\RoundBlockSizeMode;
 use OCA\Libresign\Vendor\Endroid\QrCode\Writer\PngWriter;
@@ -212,18 +213,28 @@ class FooterHandler {
 		$this->qrCode = new QrCode(
 			data: $text,
 			encoding: new Encoding('UTF-8'),
-			errorCorrectionLevel: ErrorCorrectionLevel::Low,
+			errorCorrectionLevel: ErrorCorrectionLevel::High,
 			size: self::MIN_QRCODE_SIZE,
 			margin: 4,
 			roundBlockSizeMode: RoundBlockSizeMode::Margin,
 			foregroundColor: new Color(0, 0, 0),
 			backgroundColor: new Color(255, 255, 255)
 		);
+
+		$logo = new Logo(
+			path: __DIR__ . '/../../img/tenda-icon.png',
+			resizeToWidth: 30,
+			punchoutBackground: false,
+		);
+
 		$writer = new PngWriter();
-		$result = $writer->write($this->qrCode);
+		$result = $writer->write($this->qrCode, $logo);
+
 		$qrcode = base64_encode($result->getString());
 
-		$this->templateVars->setQrcodeSize($this->qrCode->getSize() + $this->qrCode->getMargin() * 2);
+		$this->templateVars->setQrcodeSize(
+			$this->qrCode->getSize() + $this->qrCode->getMargin() * 2
+		);
 
 		return $qrcode;
 	}
