@@ -41,18 +41,16 @@ final class PageControllerTest extends TestCase {
 	private FileService&MockObject $fileService;
 	private SignFileService&MockObject $signFileService;
 	private SignerElementsService&MockObject $signerElementsService;
+	private IUser&MockObject $currentUser;
 	private PageController $controller;
 
 	public function setUp(): void {
 		$this->request = $this->createMock(IRequest::class);
 		$this->request->method('getServerHost')->willReturn('localhost:8080');
 		$this->userSession = $this->createMock(IUserSession::class);
-		$user = $this->createMock(IUser::class);
-		$user->method('getUID')->willReturn('requester');
-		$this->userSession->method('getUser')->willReturn($user);
-		// index() renders the authed app only for a logged-in session;
-		// anonymous visitors are redirected to the public upload landing.
-		$this->userSession->method('isLoggedIn')->willReturn(true);
+		$this->currentUser = $this->createMock(IUser::class);
+		$this->currentUser->method('getUID')->willReturn('requester');
+		$this->setUserLoggedIn(true);
 
 		$this->accountService = $this->createMock(AccountService::class);
 		$this->accountService->method('getConfig')->willReturn([]);
@@ -121,10 +119,45 @@ final class PageControllerTest extends TestCase {
 		);
 	}
 
+	private function setUserLoggedIn(bool $loggedIn): void {
+		$this->userSession->method('isLoggedIn')->willReturn($loggedIn);
+		$this->userSession->method('getUser')->willReturn($loggedIn ? $this->currentUser : null);
+	}
+
 	public function testIndexAllowsSelfWorkerSrcDomain(): void {
 		$response = $this->controller->index();
 
 		self::assertStringContainsString("worker-src 'self'", $response->getContentSecurityPolicy()->buildPolicy());
+	}
+
+	public function testIndexRedirectsAnonymousToLoginWhenLandingDisabled(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', false);
+
+		$response = $this->controller->index();
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringContainsString('login', $response->getRedirectURL());
+	}
+
+	public function testIndexRedirectsAnonymousToPublicUploadWhenLandingEnabled(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', true);
+
+		$response = $this->controller->index();
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringContainsString('/p/upload', $response->getRedirectURL());
+	}
+
+	public function testPublicUploadRedirectsAnonymousToLoginWhenLandingDisabled(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', false);
+
+		$response = $this->controller->publicUpload();
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringContainsString('login', $response->getRedirectURL());
 	}
 
 	public function testPublicSignAllowsSelfWorkerSrcDomain(): void {

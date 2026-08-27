@@ -34,6 +34,7 @@ use OCP\Accounts\IAccountManager;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Config\IUserConfig;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Config\IMountProviderCollection;
 use OCP\Files\File;
 use OCP\Files\IMimeTypeDetector;
@@ -48,6 +49,7 @@ use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Log\Audit\CriticalActionPerformedEvent;
 use Psr\Log\LoggerInterface;
 use Sabre\DAV\UUIDUtil;
 use Throwable;
@@ -99,6 +101,7 @@ class AccountService {
 		private EntitlementService $entitlementService,
 		private ExtendedAccountService $extendedAccountService,
 		private IDBConnection $connection,
+		private IEventDispatcher $eventDispatcher,
 	) {
 	}
 
@@ -347,6 +350,11 @@ class AccountService {
 
 		$this->awardSignupBonus($newUser->getUID());
 
+		$this->eventDispatcher->dispatchTyped(new CriticalActionPerformedEvent(
+			'LibreSign account created for user %s',
+			['user' => $newUser->getUID()]
+		));
+
 		return [
 			'message' => 'Success',
 			'email' => $newUser->getSystemEMailAddress(),
@@ -427,6 +435,11 @@ class AccountService {
 			'userId' => $userId,
 			'acceptedTerms' => $acceptedTerms,
 		]);
+
+		$this->eventDispatcher->dispatchTyped(new CriticalActionPerformedEvent(
+			'Terms of Service accepted by user %s',
+			['user' => $userId]
+		));
 
 		return $acceptedTerms;
 	}

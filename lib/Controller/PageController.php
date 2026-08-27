@@ -102,6 +102,9 @@ class PageController extends AEnvironmentPageAwareController {
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse|RedirectResponse {
 		if (!$this->userSession->isLoggedIn()) {
+			if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false)) {
+				return new RedirectResponse($this->urlGenerator->linkToRoute('core.login.showLoginForm'));
+			}
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.publicUpload'));
 		}
 		return $this->renderMainApp();
@@ -176,6 +179,13 @@ class PageController extends AEnvironmentPageAwareController {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/p/upload')]
 	public function publicUpload(): TemplateResponse|RedirectResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false)) {
+			if ($this->userSession->isLoggedIn()) {
+				return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
+			}
+			return new RedirectResponse($this->urlGenerator->linkToRoute('core.login.showLoginForm'));
+		}
+
 		if ($this->userSession->isLoggedIn()) {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
 		}

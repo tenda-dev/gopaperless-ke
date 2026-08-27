@@ -44,6 +44,7 @@ use OCP\Accounts\IAccountManager;
 use OCP\Accounts\IAccountProperty;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Config\IUserConfig;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Config\IMountProviderCollection;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -52,6 +53,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -96,6 +98,8 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private FileUploadHelper&MockObject $uploadHelper;
 	private CrlService&MockObject $crlService;
 	private IConfig&MockObject $config;
+	private IDBConnection&MockObject $connection;
+	private IEventDispatcher&MockObject $eventDispatcher;
 	private LoggerInterface&MockObject $logger;
 	private PhoneNumberService $phoneNumberService;
 	private EntitlementService&MockObject $entitlementService;
@@ -137,6 +141,8 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->uploadHelper = $this->createMock(FileUploadHelper::class);
 		$this->crlService = $this->createMock(CrlService::class);
 		$this->config = $this->createMock(IConfig::class);
+		$this->connection = $this->createMock(IDBConnection::class);
+		$this->eventDispatcher = $this->createMock(IEventDispatcher::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
 		$this->phoneNumberService = new PhoneNumberService($this->logger);
 		$this->entitlementService = $this->createMock(EntitlementService::class);
@@ -185,7 +191,9 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->logger,
 			$this->phoneNumberService,
 			$this->entitlementService,
-			$this->extendedAccountService
+			$this->extendedAccountService,
+			$this->connection,
+			$this->eventDispatcher
 		);
 	}
 
