@@ -597,6 +597,12 @@ class SignatureTextService {
 				return $value;
 			}
 		}
+		if (is_float($default) || is_int($default)) {
+			return $this->appConfig->getValueFloat(Application::APP_ID, $configKey, (float)$default);
+		}
+		if (is_bool($default)) {
+			return $this->appConfig->getValueBool(Application::APP_ID, $configKey, $default);
+		}
 		return $this->appConfig->getValueString(Application::APP_ID, $configKey, (string)$default);
 	}
 
