@@ -1,3 +1,8 @@
+<!--
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 <template>
   <div class="card upload-hero">
 
@@ -188,5 +193,36 @@ function formatSize(bytes?: number) {
   color: white;
   border: none;
   cursor: pointer;
+}
+
+/**
+ * Mobile: slim the drag-drop chrome (inert on touch); keep the stacked
+ * Upload Document / GoPaperless Files buttons leading. Scoped to the dashboard
+ * hero via :deep so the shared UploadDropzone is unchanged elsewhere.
+ */
+
+
+@media (max-width: 768px) {
+	.card.upload-hero {
+		padding: 16px;
+	}
+
+	.upload-hero :deep(.dropzone) {
+		padding: 16px;
+	}
+
+	.upload-hero :deep(.dropzone > h3) {
+		display: none;
+	}
+
+	.upload-hero :deep(.dropzone > .icon) {
+		width: 36px;
+		height: 36px;
+		margin-bottom: 6px;
+	}
+
+	.upload-hero :deep(.dropzone > p) {
+		margin-bottom: 12px;
+	}
 }
 </style>

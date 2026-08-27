@@ -1,5 +1,45 @@
+<!--
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 <template>
-	<div class="card entitlement-card checkout-active">
+	<!-- COMPACT STRIP (mobile ≤768) -->
+	<div v-if="compact" class="entitlement-strip">
+		<div v-if="loading" class="strip-loading">
+			Loading credits…
+		</div>
+
+		<template v-else>
+			<div class="strip-icon">
+				<NcIconSvgWrapper :path="cardIcon" :size="20" />
+			</div>
+
+			<div class="strip-body">
+				<span class="strip-num">{{ remainingUses }}</span>
+				<span class="strip-label">credits remaining</span>
+			</div>
+
+			<div class="entitlement-cta-button strip-cta">
+				<NcButton @click="handleCtaClick" variant="tertiary">
+					Top up
+				</NcButton>
+			</div>
+		</template>
+
+		<CreditPurchaseFlow
+			v-if="showPurchaseFlow"
+			product-code="SIGN_DOCUMENT"
+			payment-purpose="credit_purchase"
+			:allow-quantity-selection="true"
+			:presentation="purchasePresentation"
+			@success="handlePurchaseSuccess"
+			@close="showPurchaseFlow = false"
+		/>
+	</div>
+
+	<!-- FULL CARD (desktop) -->
+	<div v-else class="card entitlement-card checkout-active">
 		<!-- loading -->
 		<div v-if="loading">
 			Loading credits...
@@ -59,6 +99,8 @@ import {
 	mdiCreditCardOutline
 } from '@mdi/js'
 import type { PaymentPresentation } from '@/payment'
+
+withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 
 const purchasePresentation = CREDIT_PURCHASE_PRESENTATION
 
@@ -236,5 +278,58 @@ onMounted(async () => {
 		transform: translateY(-1px);
 		box-shadow: 0 6px 14px rgba(4, 213, 109, 0.35);
 	}
+}
+
+// COMPACT MOBILE STRIP
+
+.entitlement-strip {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 64px;
+	padding: 12px 14px;
+	border-radius: 14px;
+	color: #fff;
+	--color-main-text: #fff;
+	background: linear-gradient(120deg, #052E1B 0%, #0A7C46 100%);
+	box-shadow: 0 8px 18px rgba(4, 120, 70, 0.28);
+}
+
+.strip-icon {
+	width: 28px;
+	height: 28px;
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.14);
+}
+
+.strip-body {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+}
+
+.strip-num {
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.strip-label {
+	font-size: 12px;
+	opacity: 0.8;
+}
+
+.strip-cta {
+	margin-left: auto;
+}
+
+.strip-loading {
+	font-size: 13px;
+	opacity: 0.85;
 }
 </style>

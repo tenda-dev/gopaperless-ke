@@ -1,3 +1,7 @@
+<!--
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <template>
 	<PageContainer>
 		<div class="dashboard">
@@ -63,6 +67,13 @@
 
 			<div v-else class="dashboard-content">
 
+				<!-- MOBILE: credits above upload (≤768) -->
+				<EntitlementCard
+					v-if="isMobile"
+					compact
+					:remaining="dashboard.entitlements?.SIGN_DOCUMENT?.remainingUses || 0"
+				/>
+
 				<!-- ===================== -->
 				<!-- HERO + SIDE -->
 				<!-- ===================== -->
@@ -75,7 +86,7 @@
 					</div>
 
 					<!-- RIGHT -->
-					<div class="side-column">
+					<div v-if="!isMobile" class="side-column">
 
 						<StatsCards :stats="dashboard.stats" />
 
@@ -86,6 +97,9 @@
 					</div>
 
 				</div>
+
+				<!-- MOBILE: document status chips below upload (≤768) -->
+				<StatsChips v-if="isMobile" :stats="dashboard.stats" />
 
 				<!-- ===================== -->
 				<!-- ACTION REQUIRED -->
@@ -118,12 +132,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { useDashboardStore } from '@/store/dashboard'
 import { useFilesStore } from '@/store/files'
 
 import PageContainer from '@/components/Layout/PageContainer.vue'
 import UploadHero from './components/UploadHero.vue'
 import StatsCards from './components/StatsCards.vue'
+import StatsChips from './components/StatsChips.vue'
 import EntitlementCard from './components/EntitlementCard.vue'
 
 import ActionableRequiredTable from './components/ActionableRequiredTable.vue'
@@ -131,6 +147,7 @@ import MyDocumentsTable from './components/MyDocumentsTable.vue'
 
 const dashboard = useDashboardStore()
 const filesStore = useFilesStore()
+const { isMobile } = useBreakpoint()
 
 onMounted(async () => {
 	await dashboard.loadDashboard()
@@ -387,7 +404,7 @@ onBeforeUnmount(() => {
 	}
 
 	.header-content p {
-		font-size: 14px;
+		display: none;
 	}
 }
 </style>
