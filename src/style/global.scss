@@ -63,6 +63,19 @@
 }
 
 /**
+ * Hide native public-layout elements that duplicate the landing page.
+ * Keep the public header, but remove its app title and generic guest footer.
+ * Scoped to `.pu` so other routes remain unchanged.
+ */
+#body-public:has(.pu) #header .header-info {
+	display: none;
+}
+
+#body-public:has(.pu) footer.guest-box {
+	display: none;
+}
+
+/**
  * Apply the landing page's current text colour to SVG icons in child components.
  *
  * The scoped SVG rule in PublicUpload.vue does not cross Vue component

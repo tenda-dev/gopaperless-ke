@@ -201,7 +201,7 @@ class PageController extends AEnvironmentPageAwareController {
 			$this->eventDispatcher->dispatchTyped(new LoadViewer());
 		}
 
-		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_BASE);
+		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_PUBLIC);
 
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain('\'self\'');
