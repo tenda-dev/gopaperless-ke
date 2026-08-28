@@ -60,6 +60,20 @@ const ecosystem = [
 	background: var(--eco-bg);
 }
 
+/**
+ * Let the ecosystem/footer section absorb unused vertical space on mobile.
+ *
+ * When the responsive content is shorter than the available pane, this keeps
+ * the footer anchored to the bottom of the landing surface instead of leaving
+ * the shell background exposed below it. If the content exceeds the available
+ * height, the pane remains naturally scrollable.
+ */
+@media (max-width: 860px) {
+	.pu__eco {
+		flex: 1 0 auto;
+	}
+}
+
 .pu__eco-cols {
 	display: flex;
 	flex-wrap: wrap;
