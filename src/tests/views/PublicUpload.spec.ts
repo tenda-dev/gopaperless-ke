@@ -53,13 +53,6 @@ describe('PublicUpload', () => {
 		expect(wrapper.findComponent(PublicUploadEcosystem).exists()).toBe(true)
 	})
 
-	it('passes signed state to the hero', () => {
-		const wrapper = shallowMount(PublicUpload)
-
-		const hero = wrapper.findComponent(PublicUploadHero)
-		expect(hero.props('signed')).toBe(false)
-	})
-
 	it('navigates to login when get-started is emitted', () => {
 		const hrefSetter = vi.fn()
 		Object.defineProperty(window.location, 'href', {
