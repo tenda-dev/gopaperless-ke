@@ -35,6 +35,7 @@
 		<OneTimeSigning />
 		<SponsorshipSettings />
 		<ProductPricing />
+		<PublicLanding />
 		<CertificateAccess />
 		<FilesListColumns />
 		<FilesListNext />
@@ -69,6 +70,7 @@ import FreeCredits from './FreeCredits.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
 import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'
+import PublicLanding from './PublicLanding.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'
 import LegalInformation from './LegalInformation.vue'
