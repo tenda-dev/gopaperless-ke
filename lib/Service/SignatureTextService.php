@@ -15,6 +15,7 @@ use ImagickDraw;
 use ImagickPixel;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
 use OCA\Libresign\Vendor\Endroid\QrCode\Color\Color;
 use OCA\Libresign\Vendor\Endroid\QrCode\Encoding\Encoding;
 use OCA\Libresign\Vendor\Endroid\QrCode\ErrorCorrectionLevel;
@@ -42,6 +43,8 @@ class SignatureTextService {
 	public const DEFAULT_SIGNATURE_WIDTH = 350;
 	public const DEFAULT_SIGNATURE_HEIGHT = 100;
 	private const QRCODE_SIZE = 100;
+	// Per-document stamp overrides; null means "follow the global config".
+	private ?SignatureStamp $stampOverride = null;
 	public function __construct(
 		private IAppConfig $appConfig,
 		private IL10N $l10n,
@@ -151,9 +154,15 @@ class SignatureTextService {
 			$date = new \DateTime('now', new \DateTimeZone('UTC'));
 			$documentUuid = UUIDUtil::getUUID();
 			$validationUrl = $this->buildValidationUrl($documentUuid);
+			$certificateValidFrom = clone $date;
+			$certificateValidTo = (clone $date)->modify('+1 year');
 			$context = [
 				'DocumentUUID' => $documentUuid,
-				'IssuerCommonName' => 'Acme Cooperative',
+				'IssuerCommonName' => 'JuliCA Certificate Authority',
+				'CertificateValidFrom' => $certificateValidFrom->format(DateTimeInterface::ATOM),
+				'CertificateValidTo' => $certificateValidTo->format(DateTimeInterface::ATOM),
+				'CertificateValidFromISO8601' => $certificateValidFrom->format(DateTimeInterface::ATOM),
+				'CertificateValidToISO8601' => $certificateValidTo->format(DateTimeInterface::ATOM),
 				'LocalSignerSignatureDateOnly' => ($date)->format('Y-m-d'),
 				'LocalSignerSignatureDateTime' => ($date)->format(DateTimeInterface::ATOM),
 				'LocalSignerTimezone' => $this->dateTimeZone->getTimeZone()->getName(),
@@ -195,16 +204,25 @@ class SignatureTextService {
 	}
 
 	public function getTemplate(): string {
-		if ($this->appConfig->hasKey(Application::APP_ID, 'signature_text_template')) {
-			return $this->appConfig->getValueString(Application::APP_ID, 'signature_text_template');
-		}
-		return $this->getDefaultTemplate();
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getTextTemplate(),
+			'signature_text_template',
+			$this->getDefaultTemplate(),
+		);
 	}
 
 	public function getAvailableVariables(): array {
 		$list = [
 			'{{DocumentUUID}}' => $this->l10n->t('Unique identifier of the signed document'),
 			'{{IssuerCommonName}}' => $this->l10n->t('Name of the certificate issuer used for the signature.'),
+			'{{CertificateValidFrom}}' => $this->l10n->t('Date when the signing certificate becomes valid.'),
+			'{{CertificateValidTo}}' => $this->l10n->t('Date when the signing certificate expires.'),
+			'{{CertificateValidFromISO8601}}' => $this->l10n->t(
+				'Certificate issue date and time as an ISO 8601 timestamp.'
+			),
+			'{{CertificateValidToISO8601}}' => $this->l10n->t(
+				'Certificate expiry date and time as an ISO 8601 timestamp.'
+			),
 			'{{LocalSignerSignatureDateOnly}}' => $this->l10n->t('Date when the signer sent the request to sign (without time, in their local time zone).'),
 			'{{LocalSignerSignatureDateTime}}' => $this->l10n->t('Date and time when the signer sent the request to sign (in their local time zone).'),
 			'{{LocalSignerTimezone}}' => $this->l10n->t('Time zone of signer when sent the request to sign (in their local time zone).'),
@@ -529,10 +547,14 @@ class SignatureTextService {
 
 	public function getTemplateFontSize(): float {
 		$collectMetadata = $this->appConfig->getValueBool(Application::APP_ID, 'collect_metadata', false);
-		if ($collectMetadata) {
-			return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE - 1);
-		}
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'template_font_size', self::TEMPLATE_DEFAULT_FONT_SIZE);
+		$default = $collectMetadata
+			? self::TEMPLATE_DEFAULT_FONT_SIZE - 1
+			: self::TEMPLATE_DEFAULT_FONT_SIZE;
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getTemplateFontSize(),
+			'template_font_size',
+			$default,
+		);
 	}
 
 	public function getDefaultTemplateFontSize(): float {
@@ -544,11 +566,44 @@ class SignatureTextService {
 	}
 
 	public function getSignatureFontSize(): float {
-		return $this->appConfig->getValueFloat(Application::APP_ID, 'signature_font_size', self::SIGNATURE_DEFAULT_FONT_SIZE);
+		return (float)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?float => $stamp->getSignatureFontSize(),
+			'signature_font_size',
+			self::SIGNATURE_DEFAULT_FONT_SIZE,
+		);
+	}
+
+	/**
+	 * Apply per-document stamp overrides for the duration of one signing run.
+	 * Passing null restores the global configuration.
+	 */
+	public function setStampOverride(?SignatureStamp $stampOverride): self {
+		$this->stampOverride = $stampOverride;
+		return $this;
 	}
 
 	public function getRenderMode(): string {
-		return $this->appConfig->getValueString(Application::APP_ID, 'signature_render_mode', SignerElementsService::RENDER_MODE_DEFAULT);
+		return (string)$this->getStampOverrideOrConfig(
+			fn (SignatureStamp $stamp): ?string => $stamp->getRenderMode(),
+			'signature_render_mode',
+			SignerElementsService::RENDER_MODE_DEFAULT,
+		);
+	}
+
+	private function getStampOverrideOrConfig(?callable $override, string $configKey, mixed $default): mixed {
+		if ($this->stampOverride !== null && $override !== null) {
+			$value = $override($this->stampOverride);
+			if ($value !== null) {
+				return $value;
+			}
+		}
+		if (is_float($default) || is_int($default)) {
+			return $this->appConfig->getValueFloat(Application::APP_ID, $configKey, (float)$default);
+		}
+		if (is_bool($default)) {
+			return $this->appConfig->getValueBool(Application::APP_ID, $configKey, $default);
+		}
+		return $this->appConfig->getValueString(Application::APP_ID, $configKey, (string)$default);
 	}
 
 	public function hasQrCodeInTemplate(): bool {

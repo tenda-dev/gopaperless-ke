@@ -13,8 +13,7 @@ use OCA\Libresign\Service\Payment\DTO\MobileMoneyChargeDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\MobileMoneyResultDTO;
 
-interface IMobileMoneyProvider extends IProvider
-{
+interface IMobileMoneyProvider extends IProvider {
 	/**
 	 * Initiate mobile payment flow
 	 *

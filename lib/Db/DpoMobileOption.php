@@ -42,8 +42,7 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUpdatedAt(?string $updatedAt)
  * @method ?string getUpdatedAt()
  */
-class DpoMobileOption extends Entity
-{
+class DpoMobileOption extends Entity {
 	protected string $provider = '';
 	protected string $country = '';
 
@@ -57,8 +56,7 @@ class DpoMobileOption extends Entity
 	protected ?\DateTime $createdAt = null;
 	protected ?\DateTime $updatedAt = null;
 
-	public function __construct()
-	{
+	public function __construct() {
 		$this->addType('id', 'integer');
 
 		$this->addType('provider', 'string');

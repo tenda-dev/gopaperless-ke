@@ -1,14 +1,10 @@
 <?php
 
 declare(strict_types=1);
-/**
- * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
- * SPDX-License-Identifier: AGPL-3.0-or-later
- */
-
 
 namespace OCA\Libresign\Db;
 
+use OCA\Libresign\Enum\EntitlementType;
 use OCP\AppFramework\Db\Entity;
 
 /**
@@ -38,17 +34,23 @@ use OCP\AppFramework\Db\Entity;
  * @method void setRemainingUses(?int $uses)
  * @method ?int getRemainingUses()
  *
+ * @method void setReservedUses(?int $uses)
+ * @method ?int getReservedUses()
+ *
  * @method void setExpiresAt(?\DateTimeInterface | string $date)
  * @method ?\DateTimeInterface getExpiresAt()
  *
  * @method void setCreatedAt(\DateTimeInterface | string $date)
  * @method \DateTimeInterface getCreatedAt()
+ *
+ * @method void setType(string $type)
+ * @method string getType()
  */
 class Entitlement extends Entity {
 
 	/**
 	 * CRITICAL:
-	 * Initialize ALL typed properties to avoid hydration errors
+	 * Initialise ALL typed properties to avoid hydration errors
 	 */
 
 	protected string $userId = '';
@@ -66,6 +68,11 @@ class Entitlement extends Entity {
 
 	protected \DateTimeInterface $createdAt;
 
+
+	protected ?int $reservedUses = 0;
+
+	protected string $type = EntitlementType::PAY_AS_YOU_GO->value;
+
 	/**
 	 * @throws \Exception
 	 */
@@ -73,7 +80,8 @@ class Entitlement extends Entity {
 
 		// Ensure createdAt is ALWAYS initialized
 		$this->createdAt = new \DateTimeImmutable(
-			'now', new \DateTimeZone('UTC')
+			'now',
+			new \DateTimeZone('UTC')
 		);
 
 		/**
@@ -82,6 +90,7 @@ class Entitlement extends Entity {
 
 		// integers
 		$this->addType('remainingUses', 'integer');
+		$this->addType('reservedUses', 'integer');
 
 		// datetime
 		$this->addType('createdAt', 'datetime');
@@ -90,6 +99,7 @@ class Entitlement extends Entity {
 		// strings
 		$this->addType('userId', 'string');
 		$this->addType('productCode', 'string');
+		$this->addType('type', 'string');
 	}
 
 	/**
@@ -108,6 +118,12 @@ class Entitlement extends Entity {
 		// remainingUses can be null (unlimited)
 		if ($this->remainingUses !== null && $this->remainingUses < 0) {
 			throw new \InvalidArgumentException('remainingUses cannot be negative');
+		}
+
+		if ($this->reservedUses !== null && $this->reservedUses < 0) {
+			throw new \InvalidArgumentException(
+				'reservedUses cannot be negative'
+			);
 		}
 	}
 
@@ -133,7 +149,7 @@ class Entitlement extends Entity {
 			return true;
 		}
 
-		return $this->remainingUses > 0;
+		return $this->getAvailableUses() > 0;
 	}
 
 	/**
@@ -142,7 +158,7 @@ class Entitlement extends Entity {
 	 * NOTE:
 	 * - Does NOT persist (service must handle update)
 	 */
-	public function consume(): void {
+	public function consume(int $quantity = 1): void {
 
 		if ($this->remainingUses === null) {
 			// unlimited → nothing to decrement
@@ -153,10 +169,45 @@ class Entitlement extends Entity {
 			throw new \RuntimeException('No remaining uses');
 		}
 
-		$this->setRemainingUses($this->remainingUses - 1);
+		if ($quantity <= 0) {
+			throw new \InvalidArgumentException(
+				'Quantity must be greater than zero'
+			);
+		}
+
+		if ($quantity > $this->remainingUses) {
+			throw new \RuntimeException(
+				sprintf(
+					'Cannot consume %d uses; only %d remaining',
+					$quantity,
+					$this->remainingUses
+				)
+			);
+		}
+
+		$this->setRemainingUses($this->remainingUses - $quantity);
 	}
 
 	public function getRemainingUses(): ?int {
 		return $this->remainingUses;
+	}
+
+	public function getAvailableUses(): ?int {
+		if ($this->remainingUses === null) {
+			return null;
+		}
+
+		return $this->remainingUses
+			- ($this->reservedUses ?? 0);
+	}
+
+	public function setEntitlementType(
+		EntitlementType $type,
+	): void {
+		$this->setType($type->value);
+	}
+
+	public function getEntitlementType(): EntitlementType {
+		return EntitlementType::from($this->getType());
 	}
 }

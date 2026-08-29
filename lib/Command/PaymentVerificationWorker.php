@@ -18,8 +18,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 
-class PaymentVerificationWorker extends Command
-{
+class PaymentVerificationWorker extends Command {
 	public function __construct(
 		private MessagingRabbitMqService $rabbitMqService,
 		private PaymentMapper $paymentMapper,
@@ -29,8 +28,7 @@ class PaymentVerificationWorker extends Command
 		parent::__construct();
 	}
 
-	protected function configure(): void
-	{
+	protected function configure(): void {
 		$this
 			->setName('libresign:payments:worker')
 			->setDescription(
@@ -40,7 +38,7 @@ class PaymentVerificationWorker extends Command
 
 	protected function execute(
 		InputInterface $input,
-		OutputInterface $output
+		OutputInterface $output,
 	): int {
 
 		$output->writeln(
@@ -87,8 +85,7 @@ class PaymentVerificationWorker extends Command
 	 * - Dead letter queues
 	 * - Verification locking
 	 */
-	private function processPayment(int $paymentId): void
-	{
+	private function processPayment(int $paymentId): void {
 		$this->logger->info(
 			'[PaymentWorker] processing payment',
 			[

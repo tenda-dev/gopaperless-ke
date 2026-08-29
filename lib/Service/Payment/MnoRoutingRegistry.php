@@ -37,8 +37,7 @@ use OCA\Libresign\Service\Payment\DTO\MnoRoutingResultDTO;
  *   - call DPO or Daraja APIs             → Provider adapters
  *
  */
-class MnoRoutingRegistry
-{
+class MnoRoutingRegistry {
 	// ROUTING TABLE
 
 	// Keyed by ISO 3166-1 alpha-2 region code.
@@ -85,26 +84,26 @@ class MnoRoutingRegistry
 		// Source: DPO MNO Advisory Feb 2025 + Daraja integration.
 		'KE' => [
 			[
-				'match'            => ['safaricom', 'mpesa', 'm-pesa'],
-				'mnoKey'           => 'Mpesa',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DARAJA,
-				'mode'             => PaymentFlowMode::STK_PUSH,
-				'currency'         => 'KES',
-				'minAmount'        => 1,
-				'maxAmount'        => 250000,
+				'match' => ['safaricom', 'mpesa', 'm-pesa'],
+				'mnoKey' => 'Mpesa',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DARAJA,
+				'mode' => PaymentFlowMode::STK_PUSH,
+				'currency' => 'KES',
+				'minAmount' => 1,
+				'maxAmount' => 250000,
 				'supportsDecimals' => false,
-				'notes'            => 'Safaricom/M-Pesa is routed natively through Daraja STK push',
+				'notes' => 'Safaricom/M-Pesa is routed natively through Daraja STK push',
 			],
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'KES',
-				'minAmount'        => 10,
-				'maxAmount'        => 250000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'KES',
+				'minAmount' => 10,
+				'maxAmount' => 250000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -119,69 +118,69 @@ class MnoRoutingRegistry
 		//
 		'TZ' => [
 			[
-				'match'            => ['vodacom'],
-				'mnoKey'           => 'Vodacom',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['vodacom'],
+				'mnoKey' => 'Vodacom',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['tigo', 'mipawa', 'mi-pawa'],
-				'mnoKey'           => 'Tigo',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['tigo', 'mipawa', 'mi-pawa'],
+				'mnoKey' => 'Tigo',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['halotel', 'viettel'],
-				'mnoKey'           => 'Halotel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['halotel', 'viettel'],
+				'mnoKey' => 'Halotel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['zantel'],
-				'mnoKey'           => 'Zantel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['zantel'],
+				'mnoKey' => 'Zantel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['ttcl'],
-				'mnoKey'           => 'TTCL',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['ttcl'],
+				'mnoKey' => 'TTCL',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -196,14 +195,14 @@ class MnoRoutingRegistry
 
 		'ZNZ' => [
 			[
-				'match'            => ['zntigo', 'zanzibar', 'tigo'],
-				'mnoKey'           => 'Zntigo',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'TZS',
-				'minAmount'        => 200,
-				'maxAmount'        => 3000000,
+				'match' => ['zntigo', 'zanzibar', 'tigo'],
+				'mnoKey' => 'Zntigo',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'TZS',
+				'minAmount' => 200,
+				'maxAmount' => 3000000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -216,25 +215,25 @@ class MnoRoutingRegistry
 
 		'UG' => [
 			[
-				'match'            => ['mtn'],
-				'mnoKey'           => 'MTN',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'UGX',
-				'minAmount'        => 500,
-				'maxAmount'        => 5000000,
+				'match' => ['mtn'],
+				'mnoKey' => 'MTN',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'UGX',
+				'minAmount' => 500,
+				'maxAmount' => 5000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'UGX',
-				'minAmount'        => 500,
-				'maxAmount'        => 5000000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'UGX',
+				'minAmount' => 500,
+				'maxAmount' => 5000000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -248,25 +247,25 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025.
 		'RW' => [
 			[
-				'match'            => ['mtn'],
-				'mnoKey'           => 'MTN',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'RWF',
-				'minAmount'        => 10,
-				'maxAmount'        => 2000000,
+				'match' => ['mtn'],
+				'mnoKey' => 'MTN',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'RWF',
+				'minAmount' => 10,
+				'maxAmount' => 2000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'RWF',
-				'minAmount'        => 10,
-				'maxAmount'        => 2000000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'RWF',
+				'minAmount' => 10,
+				'maxAmount' => 2000000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -280,36 +279,36 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025.
 		'GH' => [
 			[
-				'match'            => ['mtn'],
-				'mnoKey'           => 'MTN',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'GHS',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 15000,
+				'match' => ['mtn'],
+				'mnoKey' => 'MTN',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'GHS',
+				'minAmount' => 0.1,
+				'maxAmount' => 15000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['vodacom', 'vodafone'],
-				'mnoKey'           => 'Vodacom',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'GHS',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 10000,
+				'match' => ['vodacom', 'vodafone'],
+				'mnoKey' => 'Vodacom',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'GHS',
+				'minAmount' => 0.1,
+				'maxAmount' => 10000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['airtel', 'tigo', 'airteltigo'],
-				'mnoKey'           => null, // Not in DPO advisory
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::INSTRUCTIONS,
-				'currency'         => 'GHS',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 10000,
+				'match' => ['airtel', 'tigo', 'airteltigo'],
+				'mnoKey' => null, // Not in DPO advisory
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::INSTRUCTIONS,
+				'currency' => 'GHS',
+				'minAmount' => 0.1,
+				'maxAmount' => 10000,
 				'supportsDecimals' => true,
 			],
 		],
@@ -321,25 +320,25 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025.
 		'CI' => [
 			[
-				'match'            => ['mtn'],
-				'mnoKey'           => 'MTN',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'XOF',
-				'minAmount'        => 100,
-				'maxAmount'        => 2000000,
+				'match' => ['mtn'],
+				'mnoKey' => 'MTN',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'XOF',
+				'minAmount' => 100,
+				'maxAmount' => 2000000,
 				'supportsDecimals' => false,
 			],
 			[
-				'match'            => ['orange'],
-				'mnoKey'           => 'Orange',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'XOF',
-				'minAmount'        => 100,
-				'maxAmount'        => 2000000,
+				'match' => ['orange'],
+				'mnoKey' => 'Orange',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'XOF',
+				'minAmount' => 100,
+				'maxAmount' => 2000000,
 				'supportsDecimals' => false,
 			],
 		],
@@ -352,25 +351,25 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025 + DpoMnoRegistry.
 		'MW' => [
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'MWK',
-				'minAmount'        => 50,
-				'maxAmount'        => 350000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'MWK',
+				'minAmount' => 50,
+				'maxAmount' => 350000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['tnm', 'telekom networks'],
-				'mnoKey'           => null, // Not in DPO advisory
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::INSTRUCTIONS,
-				'currency'         => 'MWK',
-				'minAmount'        => 50,
-				'maxAmount'        => 350000,
+				'match' => ['tnm', 'telekom networks'],
+				'mnoKey' => null, // Not in DPO advisory
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::INSTRUCTIONS,
+				'currency' => 'MWK',
+				'minAmount' => 50,
+				'maxAmount' => 350000,
 				'supportsDecimals' => true,
 			],
 		],
@@ -383,36 +382,36 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025 + DpoMnoRegistry.
 		'ZM' => [
 			[
-				'match'            => ['mtn'],
-				'mnoKey'           => 'MTN',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'ZMW',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 20000,
+				'match' => ['mtn'],
+				'mnoKey' => 'MTN',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'ZMW',
+				'minAmount' => 0.1,
+				'maxAmount' => 20000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['airtel'],
-				'mnoKey'           => 'Airtel',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'ZMW',
-				'minAmount'        => 1,
-				'maxAmount'        => 10000,
+				'match' => ['airtel'],
+				'mnoKey' => 'Airtel',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'ZMW',
+				'minAmount' => 1,
+				'maxAmount' => 10000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['zamtel'],
-				'mnoKey'           => null, // Not in DPO advisory
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::INSTRUCTIONS,
-				'currency'         => 'ZMW',
-				'minAmount'        => 1,
-				'maxAmount'        => 10000,
+				'match' => ['zamtel'],
+				'mnoKey' => null, // Not in DPO advisory
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::INSTRUCTIONS,
+				'currency' => 'ZMW',
+				'minAmount' => 1,
+				'maxAmount' => 10000,
 				'supportsDecimals' => true,
 			],
 		],
@@ -425,37 +424,37 @@ class MnoRoutingRegistry
 		// Source: DPO Advisory Feb 2025 + DpoMnoRegistry.
 		'ZW' => [
 			[
-				'match'            => ['ecocash', 'econet'],
-				'mnoKey'           => 'EcoCash',
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::BOTH,
-				'currency'         => 'ZWL', // primary; USD also supported
-				'altCurrency'      => 'USD',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 1000000,
+				'match' => ['ecocash', 'econet'],
+				'mnoKey' => 'EcoCash',
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::BOTH,
+				'currency' => 'ZWL', // primary; USD also supported
+				'altCurrency' => 'USD',
+				'minAmount' => 0.1,
+				'maxAmount' => 1000000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['onemoney', 'one money', 'netone'],
-				'mnoKey'           => null, // Not in DPO advisory
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::INSTRUCTIONS,
-				'currency'         => 'ZWL',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 1000000,
+				'match' => ['onemoney', 'one money', 'netone'],
+				'mnoKey' => null, // Not in DPO advisory
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::INSTRUCTIONS,
+				'currency' => 'ZWL',
+				'minAmount' => 0.1,
+				'maxAmount' => 1000000,
 				'supportsDecimals' => true,
 			],
 			[
-				'match'            => ['telecash', 'telecel'],
-				'mnoKey'           => null, // Not in DPO advisory
-				'capability'       => PaymentCapability::MOBILE_MONEY,
-				'preferredProvider'=> PaymentProvider::DPO,
-				'mode'             => PaymentFlowMode::INSTRUCTIONS,
-				'currency'         => 'ZWL',
-				'minAmount'        => 0.1,
-				'maxAmount'        => 1000000,
+				'match' => ['telecash', 'telecel'],
+				'mnoKey' => null, // Not in DPO advisory
+				'capability' => PaymentCapability::MOBILE_MONEY,
+				'preferredProvider' => PaymentProvider::DPO,
+				'mode' => PaymentFlowMode::INSTRUCTIONS,
+				'currency' => 'ZWL',
+				'minAmount' => 0.1,
+				'maxAmount' => 1000000,
 				'supportsDecimals' => true,
 			],
 		],
@@ -466,14 +465,14 @@ class MnoRoutingRegistry
 	/**
 	 * Route a carrier to a capability + provider decision.
 	 *
-	 * @param string|null $region     ISO 3166-1 alpha-2 (e.g. 'KE', 'TZ')
-	 *                                or 'ZNZ' for Zanzibar.
-	 * @param string|null $carrier    Carrier name from PhoneResolutionService or MnoDetectionRegistry
-	 *                                mno key. Will be normalised to lowercase internally.
-	 * @param ResolutionConfidence    $confidence 'high' | 'ambiguous' | 'unknown'
-	 *                                Passed in from MnoDetectionRegistry or PhoneResolutionService.
-	 *                                This class NEVER overrides a lower confidence —
-	 *                                it may only degrade it (e.g. null mnoKey).
+	 * @param string|null $region ISO 3166-1 alpha-2 (e.g. 'KE', 'TZ')
+	 *                            or 'ZNZ' for Zanzibar.
+	 * @param string|null $carrier Carrier name from PhoneResolutionService or MnoDetectionRegistry
+	 *                             mno key. Will be normalised to lowercase internally.
+	 * @param ResolutionConfidence $confidence 'high' | 'ambiguous' | 'unknown'
+	 *                                         Passed in from MnoDetectionRegistry or PhoneResolutionService.
+	 *                                         This class NEVER overrides a lower confidence —
+	 *                                         it may only degrade it (e.g. null mnoKey).
 	 *
 	 * @return MnoRoutingResultDTO
 	 */
@@ -482,7 +481,7 @@ class MnoRoutingRegistry
 		?string $country,
 		?string $region,
 		?string $carrier,
-		ResolutionConfidence $confidence = ResolutionConfidence::UNKNOWN
+		ResolutionConfidence $confidence = ResolutionConfidence::UNKNOWN,
 	): MnoRoutingResultDTO {
 
 		if ($capability === PaymentCapability::CARD) {
@@ -504,7 +503,7 @@ class MnoRoutingRegistry
 			);
 		}
 
-		$region  = $region  ? strtoupper(trim($region))  : null;
+		$region = $region  ? strtoupper(trim($region))  : null;
 		$carrier = $carrier ? strtolower(trim($carrier)) : null;
 
 		// No region
@@ -594,21 +593,18 @@ class MnoRoutingRegistry
 		);
 	}
 
-	public function supportsRegion(string $region): bool
-	{
+	public function supportsRegion(string $region): bool {
 		return isset(self::ROUTES[strtoupper($region)]);
 	}
 
-	public function supportedRegions(): array
-	{
+	public function supportedRegions(): array {
 		return array_keys(self::ROUTES);
 	}
 
 	/**
 	 * Validate amount using DTO
 	 */
-	public function validateAmount(MnoRoutingResultDTO $route, float $amount): array
-	{
+	public function validateAmount(MnoRoutingResultDTO $route, float $amount): array {
 		try {
 			$route->validateAmount($amount);
 			return ['valid' => true, 'reason' => null];

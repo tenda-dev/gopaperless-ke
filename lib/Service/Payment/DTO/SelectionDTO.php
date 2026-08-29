@@ -9,16 +9,16 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment\DTO;
 
-final class SelectionDTO
-{
+final class SelectionDTO {
 	public function __construct(
 		public readonly bool $required,
-		public readonly array $options, // array of normalised option arrays
+		public readonly array $options,
+		// array of normalised option arrays
 		public readonly ?int $refreshedAt = null,
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'required' => $this->required,
 			'options' => $this->options,
@@ -26,8 +26,7 @@ final class SelectionDTO
 		];
 	}
 
-	public static function fromArray(array $data): self
-	{
+	public static function fromArray(array $data): self {
 		return new self(
 			required: is_bool($data['required'] ?? null)
 				? $data['required']

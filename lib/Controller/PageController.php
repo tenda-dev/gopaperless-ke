@@ -39,6 +39,7 @@ use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\FileDisplayResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\IEventDispatcher;
@@ -85,15 +86,40 @@ class PageController extends AEnvironmentPageAwareController {
 	/**
 	 * Index page
 	 *
-	 * @return TemplateResponse<Http::STATUS_OK, array{}>
+	 * Authenticated users get the main app. Anonymous visitors are redirected
+	 * to the public upload landing (marketing on-ramp) instead of being
+	 * bounced to the Nextcloud login screen — hence PublicPage with a guest
+	 * redirect rather than an authed-only route.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
 	 * 200: OK
+	 * 303: Anonymous visitor redirected to the public upload landing
 	 */
-	#[NoAdminRequired]
+	#[PublicPage]
 	#[NoCSRFRequired]
 	#[RequireSetupOk(template: 'main')]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
-	public function index(): TemplateResponse {
+	public function index(): TemplateResponse|RedirectResponse {
+		if (!$this->userSession->isLoggedIn()) {
+			if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false)) {
+				return new RedirectResponse($this->urlGenerator->linkToRoute('core.login.showLoginForm'));
+			}
+			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.publicUpload'));
+		}
+		return $this->renderMainApp();
+	}
+
+	/**
+	 * Render the authenticated main app shell.
+	 *
+	 * Shared by the authed page routes (index, indexF, indexFPath, signF,
+	 * signFPath). Kept separate from index() so these internal callers never
+	 * trigger index()'s anonymous → upload-landing redirect.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>
+	 */
+	private function renderMainApp(): TemplateResponse {
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 		$this->initialState->provideInitialState('filters', $this->accountService->getConfigFilters($this->userSession->getUser()));
 		$this->initialState->provideInitialState('sorting', $this->accountService->getConfigSorting($this->userSession->getUser()));
@@ -133,6 +159,59 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
+	 * Public upload landing page (anonymous entry point)
+	 *
+	 * Renders the upload view for a visitor with no Nextcloud session, as a
+	 * marketing on-ramp: the dropzone and value prop show immediately, and
+	 * auth is gated at the first action.
+	 *
+	 * Reachable directly as the shareable public URL, and as the redirect
+	 * target for anonymous visitors hitting the app root (see index()).
+	 *
+	 * A logged-in visitor are sent straight to the authenticated upload/request view instead.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Logged-in visitor redirected to the authenticated request view
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/upload')]
+	public function publicUpload(): TemplateResponse|RedirectResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false)) {
+			if ($this->userSession->isLoggedIn()) {
+				return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
+			}
+			return new RedirectResponse($this->urlGenerator->linkToRoute('core.login.showLoginForm'));
+		}
+
+		if ($this->userSession->isLoggedIn()) {
+			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
+		}
+		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
+
+		Util::addScript(Application::APP_ID, 'libresign-main');
+		Util::addStyle(Application::APP_ID, 'libresign-main');
+
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
+
+		if (class_exists(LoadViewer::class)) {
+			$this->eventDispatcher->dispatchTyped(new LoadViewer());
+		}
+
+		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_BASE);
+
+		$policy = new ContentSecurityPolicy();
+		$policy->addAllowedFrameDomain('\'self\'');
+		$policy->addAllowedWorkerSrcDomain("'self'");
+		$response->setContentSecurityPolicy($policy);
+
+		return $response;
+	}
+
+	/**
 	 * Index page to authenticated users
 	 *
 	 * This router is used to be possible render pages with /f/, is a
@@ -147,7 +226,7 @@ class PageController extends AEnvironmentPageAwareController {
 	#[RequireSetupOk(template: 'main')]
 	#[FrontpageRoute(verb: 'GET', url: '/f/')]
 	public function indexF(): TemplateResponse {
-		return $this->index();
+		return $this->renderMainApp();
 	}
 
 	/**
@@ -268,7 +347,7 @@ class PageController extends AEnvironmentPageAwareController {
 				]), Http::STATUS_NOT_FOUND);
 			}
 		}
-		return $this->index();
+		return $this->renderMainApp();
 	}
 
 
@@ -288,7 +367,7 @@ class PageController extends AEnvironmentPageAwareController {
 	#[FrontpageRoute(verb: 'GET', url: '/f/sign/{uuid}')]
 	public function signF(string $uuid): TemplateResponse {
 		$this->initialState->provideInitialState('action', JSActions::ACTION_SIGN_INTERNAL);
-		return $this->index();
+		return $this->renderMainApp();
 	}
 
 	/**
@@ -309,7 +388,7 @@ class PageController extends AEnvironmentPageAwareController {
 	#[FrontpageRoute(verb: 'GET', url: '/f/sign/{uuid}/{path}', requirements: ['path' => '.+'])]
 	public function signFPath(string $uuid): TemplateResponse {
 		$this->initialState->provideInitialState('action', JSActions::ACTION_SIGN_INTERNAL);
-		return $this->index();
+		return $this->renderMainApp();
 	}
 
 	/**

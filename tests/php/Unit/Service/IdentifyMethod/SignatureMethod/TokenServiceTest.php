@@ -31,23 +31,16 @@ final class TokenServiceTest extends TestCase {
 		$this->secureRandom = $this->createMock(ISecureRandom::class);
 		$this->hasher = $this->createMock(IHasher::class);
 
-		$this->service = new class(
-			$this->secureRandom,
-			$this->hasher,
-			$this->createMock(MailService::class),
-			$this->createMock(IL10N::class),
-			$this->createMock(SMSService::class),
-			$this->createMock(LoggerInterface::class),
-			$this->createMock(IAccountManager::class),
-			$this->createMock(WebhookService::class),
-		) extends TokenService {
+		$this->service = new class($this->secureRandom, $this->hasher, $this->createMock(MailService::class), $this->createMock(IL10N::class), $this->createMock(SMSService::class), $this->createMock(LoggerInterface::class), $this->createMock(IAccountManager::class), $this->createMock(WebhookService::class), ) extends TokenService {
 			public ?object $capturedGateway = null;
 			public ?string $capturedIdentifier = null;
 			public ?string $capturedMessage = null;
 
 			private function getGateway(string $gatewayName): object {
 				return new class($this) {
-					public function __construct(private TokenService $testCase) {
+					public function __construct(
+						private TokenService $testCase,
+					) {
 					}
 
 					public function isComplete(): bool {

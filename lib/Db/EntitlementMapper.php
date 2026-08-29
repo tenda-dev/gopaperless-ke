@@ -1,14 +1,10 @@
 <?php
 
 declare(strict_types=1);
-/**
- * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
- * SPDX-License-Identifier: AGPL-3.0-or-later
- */
-
 
 namespace OCA\Libresign\Db;
 
+use OCA\Libresign\Enum\EntitlementType;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\QBMapper;
@@ -16,6 +12,9 @@ use OCP\DB\Exception;
 use OCP\DB\Types;
 use OCP\IDBConnection;
 
+/**
+ * @template-extends QBMapper<Entitlement>
+ */
 class EntitlementMapper extends QBMapper {
 
 	public function __construct(IDBConnection $db) {
@@ -50,32 +49,56 @@ class EntitlementMapper extends QBMapper {
 	}
 
 	/**
-	 * Fetch all entitlements for a user + product
+	 * Find entitlement by ID and acquire a row lock.
 	 *
-	 * Used by service to determine usable entitlements
+	 * Acquires a pessimistic lock for transactional mutation paths such as
+	 * reservation, release and settlement. Read-only callers should continue
+	 * using findById() to avoid unnecessary lock contention.
+	 *
+	 * The caller is responsible for owning the transaction.
+	 *
 	 * @throws Exception
 	 */
-	public function findByUserAndProduct(string $userId, string $productCode): array {
-
+	public function findByIdForUpdate(int $id): ?Entitlement {
 		$qb = $this->db->getQueryBuilder();
 
 		$qb->select('e.*')
 			->from($this->getTableName(), 'e')
 			->where(
-				$qb->expr()->andX(
-					$qb->expr()->eq(
-						'e.user_id',
-						$qb->createNamedParameter($userId, Types::STRING)
+				$qb->expr()->eq(
+					'e.id',
+					$qb->createNamedParameter(
+						$id,
+						Types::INTEGER,
 					),
-					$qb->expr()->eq(
-						'e.product_code',
-						$qb->createNamedParameter($productCode, Types::STRING)
-					)
-				)
+				),
 			)
-			->orderBy('e.created_at', 'ASC'); // oldest first (FIFO consumption)
+			->setMaxResults(1)
+			->forUpdate();
 
-		return $this->findEntities($qb);
+		try {
+			/** @var Entitlement $entity */
+			$entity = $this->findEntity($qb);
+			return $entity;
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
+			return null;
+		}
+	}
+
+	/**
+	 * Fetch all entitlements for a user + product
+	 *
+	 * Used by service to determine usable entitlements
+	 * @throws Exception
+	 */
+	public function findByUserAndProduct(
+		string $userId,
+		string $productCode,
+	): array {
+		return $this->findActiveByUserAndProduct(
+			$userId,
+			$productCode
+		);
 	}
 
 	/**
@@ -113,8 +136,104 @@ class EntitlementMapper extends QBMapper {
 					)
 				)
 			)
+			->orderBy('e.created_at', 'ASC'); // oldest first (FIFO consumption)
+
+		return $this->findEntities($qb);
+	}
+
+
+	public function findActiveByUserAndProduct(
+		string $userId,
+		string $productCode,
+	): array {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('e.*')
+			->from($this->getTableName(), 'e')
+			->where(
+				$qb->expr()->andX(
+					$qb->expr()->eq(
+						'e.user_id',
+						$qb->createNamedParameter(
+							$userId,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'e.product_code',
+						$qb->createNamedParameter(
+							$productCode,
+							Types::STRING
+						)
+					)
+				)
+			)
+			->orderBy('e.type', 'ASC')
+			->addOrderBy('e.created_at', 'ASC');
+
+		return $this->findEntities($qb);
+	}
+
+
+	/**
+	 * @return list<Entitlement>
+	 * @throws Exception
+	 */
+	public function findActiveByUserProductAndType(
+		string $userId,
+		string $productCode,
+		string $type,
+	): array {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('e.*')
+			->from($this->getTableName(), 'e')
+			->where(
+				$qb->expr()->andX(
+					$qb->expr()->eq(
+						'e.user_id',
+						$qb->createNamedParameter(
+							$userId,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'e.product_code',
+						$qb->createNamedParameter(
+							$productCode,
+							Types::STRING
+						)
+					),
+					$qb->expr()->eq(
+						'e.type',
+						$qb->createNamedParameter(
+							$type,
+							Types::STRING
+						)
+					)
+				)
+			)
 			->orderBy('e.created_at', 'ASC');
 
 		return $this->findEntities($qb);
+	}
+
+
+	/**
+	 * @return list<Entitlement>
+	 * @throws Exception
+	 */
+	public function findActiveByUserProductAndEntitlementType(
+		string $userId,
+		string $productCode,
+		EntitlementType $type,
+	): array {
+		return $this->findActiveByUserProductAndType(
+			$userId,
+			$productCode,
+			$type->value
+		);
 	}
 }

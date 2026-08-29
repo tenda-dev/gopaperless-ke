@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
@@ -34,8 +35,7 @@ use OCA\Libresign\Enum\ResolutionConfidence;
  * - Prefixes are matched against the national subscriber number ONLY
  *   (country code already stripped by the caller via libphonenumber).
  */
-final class MnoDetectionRegistry
-{
+final class MnoDetectionRegistry {
 	/**
 	 * Resolution result shape:
 	 *
@@ -72,7 +72,7 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'KE' => [
 			'mpesa' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^70/', '/^71/', '/^72/',
 					'/^740/', '/^741/', '/^742/', '/^743/',
 					'/^745/', '/^746/', '/^748/',
@@ -82,22 +82,22 @@ final class MnoDetectionRegistry
 					'/^110/', '/^111/', '/^112/', '/^113/', '/^114/', '/^115/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Safaricom M-Pesa. Allocation is clear; portability negligible.',
+				'note' => 'Safaricom M-Pesa. Allocation is clear; portability negligible.',
 			],
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^73/',
 					'/^750/', '/^751/', '/^752/', '/^753/', '/^754/', '/^755/', '/^756/',
 					'/^78/',
 					'/^100/', '/^101/', '/^102/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Airtel Kenya. Well-separated from Safaricom blocks.',
+				'note' => 'Airtel Kenya. Well-separated from Safaricom blocks.',
 			],
 			'faiba' => [
-				'prefixes'  => ['/^747/'],
+				'prefixes' => ['/^747/'],
 				'ambiguous' => false,
-				'note'      => 'Faiba 4G (Jamii Telecom). Mobile data SIMs; rare for M-payments.',
+				'note' => 'Faiba 4G (Jamii Telecom). Mobile data SIMs; rare for M-payments.',
 			],
 		],
 
@@ -110,42 +110,42 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'TZ' => [
 			'vodacom' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^74/', '/^75/', '/^76/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Vodacom Tanzania (M-Pesa). Largest allocation, stable.',
+				'note' => 'Vodacom Tanzania (M-Pesa). Largest allocation, stable.',
 			],
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^78/', '/^68/', '/^69/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Airtel Tanzania. Distinct blocks from Vodacom.',
+				'note' => 'Airtel Tanzania. Distinct blocks from Vodacom.',
 			],
 			'tigo' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^71/', '/^65/', '/^67/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Tigo / MiPawa. Rebranded 2023 but numbering unchanged. Confirm DPO key.',
+				'note' => 'Tigo / MiPawa. Rebranded 2023 but numbering unchanged. Confirm DPO key.',
 			],
 			'halotel' => [
-				'prefixes'  => ['/^62/'],
+				'prefixes' => ['/^62/'],
 				'ambiguous' => false,
-				'note'      => 'Halotel (Viettel Tanzania). Small allocation, stable.',
+				'note' => 'Halotel (Viettel Tanzania). Small allocation, stable.',
 			],
 			'zantel' => [
-				'prefixes'  => ['/^77/'],
+				'prefixes' => ['/^77/'],
 				'ambiguous' => true,
-				'note'      => 'Zantel (Zain → Etisalat → Zanzibar Telecom). Thin allocation; '
+				'note' => 'Zantel (Zain → Etisalat → Zanzibar Telecom). Thin allocation; '
 					. 'some 077 numbers reassigned to other operators post-merger. '
 					. 'Treat as ambiguous and fall back to DPO options.',
 			],
 			'ttcl' => [
-				'prefixes'  => ['/^73/'],
+				'prefixes' => ['/^73/'],
 				'ambiguous' => true,
-				'note'      => 'TTCL mobile. Very small subscriber base; prefix partially '
+				'note' => 'TTCL mobile. Very small subscriber base; prefix partially '
 					. 'overlaps with historical Airtel allocations. Fall back to DPO options.',
 			],
 		],
@@ -158,24 +158,24 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'UG' => [
 			'mtn' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^77/', '/^78/', '/^76/', '/^39/',
 					'/^31/', '/^30/',
 				],
 				'ambiguous' => false,
-				'note'      => 'MTN Uganda Mobile Money. Dominant operator.',
+				'note' => 'MTN Uganda Mobile Money. Dominant operator.',
 			],
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^70/', '/^75/', '/^74/', '/^20/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Airtel Uganda. Distinct from MTN blocks.',
+				'note' => 'Airtel Uganda. Distinct from MTN blocks.',
 			],
 			'africell' => [
-				'prefixes'  => ['/^79/'],
+				'prefixes' => ['/^79/'],
 				'ambiguous' => false,
-				'note'      => 'Africell Uganda. Small base; confirm DPO supports this provider.',
+				'note' => 'Africell Uganda. Small base; confirm DPO supports this provider.',
 			],
 		],
 
@@ -187,18 +187,18 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'RW' => [
 			'mtn' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^78/', '/^79/', '/^72/',
 				],
 				'ambiguous' => false,
-				'note'      => 'MTN Rwanda MoMo. 078/079 are strongly MTN; 072 less so.',
+				'note' => 'MTN Rwanda MoMo. 078/079 are strongly MTN; 072 less so.',
 			],
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^73/', '/^72/',
 				],
 				'ambiguous' => true,
-				'note'      => '073 is primarily Airtel. 072 overlaps with MTN allocation — '
+				'note' => '073 is primarily Airtel. 072 overlaps with MTN allocation — '
 					. 'portability means prefix alone is unreliable here. '
 					. 'If matched 072, return AMBIGUOUS.',
 			],
@@ -212,20 +212,20 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'MW' => [
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^99/', '/^98/', '/^89/',
 					'/^88/', // partial overlap with TNM — flagged below
 				],
 				'ambiguous' => false,
-				'note'      => 'Airtel Malawi. 099/098/089 are unambiguous. '
+				'note' => 'Airtel Malawi. 099/098/089 are unambiguous. '
 					. '088 has historical overlap — see TNM note.',
 			],
 			'tnm' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^88/', '/^84/',
 				],
 				'ambiguous' => true,
-				'note'      => 'TNM (Telekom Networks Malawi). 088 overlaps with Airtel '
+				'note' => 'TNM (Telekom Networks Malawi). 088 overlaps with Airtel '
 					. 'allocation. If matched exclusively on 088, treat as AMBIGUOUS.',
 			],
 		],
@@ -238,25 +238,25 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'ZM' => [
 			'mtn' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^96/', '/^76/',
 				],
 				'ambiguous' => false,
-				'note'      => 'MTN Zambia. Clear allocation.',
+				'note' => 'MTN Zambia. Clear allocation.',
 			],
 			'airtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^97/', '/^77/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Airtel Zambia. Distinct from MTN.',
+				'note' => 'Airtel Zambia. Distinct from MTN.',
 			],
 			'zamtel' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^95/', '/^75/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Zamtel. Government operator, small base. ',
+				'note' => 'Zamtel. Government operator, small base. ',
 			],
 		],
 
@@ -269,27 +269,27 @@ final class MnoDetectionRegistry
 		// -------------------------------------------------------------------------
 		'ZW' => [
 			'ecocash' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^77/', '/^78/', '/^71/', '/^73/',
 				],
 				'ambiguous' => false,
-				'note'      => 'Econet / EcoCash. Dominant by far (~95% mobile money share). '
+				'note' => 'Econet / EcoCash. Dominant by far (~95% mobile money share). '
 					. '077 is strongly EcoCash in practice despite formal overlap.',
 			],
 			'onemoney' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^71/', '/^78/',
 				],
 				'ambiguous' => true,
-				'note'      => 'NetOne OneWallet. Prefix allocation overlaps with EcoCash. '
+				'note' => 'NetOne OneWallet. Prefix allocation overlaps with EcoCash. '
 					. 'Cannot reliably distinguish from EcoCash on prefix alone.',
 			],
 			'telecash' => [
-				'prefixes'  => [
+				'prefixes' => [
 					'/^73/',
 				],
 				'ambiguous' => true,
-				'note'      => 'Telecel / Telecash. Thin allocation, overlaps with EcoCash 073. '
+				'note' => 'Telecel / Telecash. Thin allocation, overlaps with EcoCash 073. '
 					. 'Very small subscriber base. Fall back to DPO options.',
 			],
 		],
@@ -298,7 +298,7 @@ final class MnoDetectionRegistry
 	/**
 	 * Resolve MNO and confidence from a region code and national subscriber number.
 	 *
-	 * @param string $region      ISO 3166-1 alpha-2 (e.g. 'KE', 'TZ')
+	 * @param string $region ISO 3166-1 alpha-2 (e.g. 'KE', 'TZ')
 	 * @param string $localNumber National subscriber number, digits only, no country code
 	 *                            (e.g. '712345678' for +254712345678)
 	 *
@@ -309,8 +309,7 @@ final class MnoDetectionRegistry
 	 *   note: string|null
 	 * }
 	 */
-	public function resolve(string $region, string $localNumber): array
-	{
+	public function resolve(string $region, string $localNumber): array {
 		$region = strtoupper($region);
 		$localNumber = preg_replace('/\D/', '', $localNumber);
 		$localNumber = ltrim($localNumber, '0');
@@ -339,9 +338,9 @@ final class MnoDetectionRegistry
 			foreach ($entry['prefixes'] as $pattern) {
 				if (preg_match($pattern, $localNumber)) {
 					$matches[] = [
-						'mno'       => $mno,
+						'mno' => $mno,
 						'ambiguous' => $entry['ambiguous'],
-						'note'      => $entry['note'],
+						'note' => $entry['note'],
 					];
 					break; // one match per MNO is enough
 				}
@@ -383,8 +382,7 @@ final class MnoDetectionRegistry
 	 * Whether a region is known to the registry at all.
 	 * Use this to short-circuit before calling resolve() if needed.
 	 */
-	public function supportsRegion(string $region): bool
-	{
+	public function supportsRegion(string $region): bool {
 		return isset(self::MAP[strtoupper($region)]);
 	}
 
@@ -393,8 +391,7 @@ final class MnoDetectionRegistry
 	 * Useful for building a manual selector without calling DPO.
 	 * Note: DPO options remain authoritative — use this only as a fallback.
 	 */
-	public function mnoKeysForRegion(string $region): array
-	{
+	public function mnoKeysForRegion(string $region): array {
 		return array_keys(self::MAP[strtoupper($region)] ?? []);
 	}
 
@@ -406,13 +403,13 @@ final class MnoDetectionRegistry
 		?string $mno,
 		ResolutionConfidence $confidence,
 		string $region,
-		?string $note
+		?string $note,
 	): array {
 		return [
-			'mno'        => $mno,
+			'mno' => $mno,
 			'confidence' => $confidence,
-			'region'     => $region,
-			'note'       => $note,
+			'region' => $region,
+			'note' => $note,
 		];
 	}
 }

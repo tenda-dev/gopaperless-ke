@@ -28,19 +28,18 @@ use Psr\Log\LoggerInterface;
  * This class only schedules verification work.
  * Actual payment verification happens inside PaymentVerificationWorker.
  */
-class RabbitMqVerificationDispatcher
-	implements IVerificationDispatcher
-{
+class RabbitMqVerificationDispatcher implements IVerificationDispatcher {
 	public function __construct(
 		private RabbitMqService $rabbitMqService,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Dispatch payment verification via RabbitMQ.
 	 */
 	public function dispatchVerification(
-		int $paymentId
+		int $paymentId,
 	): void {
 
 		$this->logger->info(

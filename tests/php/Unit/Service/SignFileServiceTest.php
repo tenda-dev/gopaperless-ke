@@ -50,6 +50,9 @@ use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\PdfSignatureDetectionService;
 use OCA\Libresign\Service\PfxProvider;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureStamp;
+use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Service\SigningCoordinatorService;
@@ -123,6 +126,8 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private PfxProvider $pfxProvider;
 	private SubjectAlternativeNameService&MockObject $subjectAlternativeNameService;
 	private SignRequestService&MockObject $signRequestService;
+	private SignatureTextService&MockObject $signatureTextService;
+	private \OCP\IDBConnection $db;
 
 	public function setUp(): void {
 		parent::setUp();
@@ -177,6 +182,8 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->secureRandom,
 		);
 		$this->signRequestService = $this->createMock(SignRequestService::class);
+		$this->signatureTextService = $this->createMock(SignatureTextService::class);
+		$this->db = \OCP\Server::get(\OCP\IDBConnection::class);
 	}
 
 	public function testClickToSignUsesShortLivedCertificate(): void {
@@ -477,6 +484,8 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 					$this->pfxProvider,
 					$this->subjectAlternativeNameService,
 					$this->signRequestService,
+					$this->signatureTextService,
+					$this->db,
 				])
 				->onlyMethods($methods)
 				->getMock();
@@ -521,6 +530,8 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->pfxProvider,
 			$this->subjectAlternativeNameService,
 			$this->signRequestService,
+			$this->signatureTextService,
+			$this->db,
 		);
 	}
 
@@ -2733,5 +2744,217 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		self::invokePrivate($service, 'cleanupUnsignedSignedFile');
 
 		$this->assertNull(self::invokePrivate($service, 'createdSignedFile'));
+	}
+
+	public function testGetSignatureProfileReturnsDefaultWhenMetadataMissing(): void {
+		$service = $this->getService();
+		$file = new File();
+		$file->setMetadata(['extension' => 'pdf']);
+
+		$profile = self::invokePrivate(
+			$service->setLibreSignFile($file),
+			'getSignatureProfile',
+		);
+
+		$this->assertEquals(SignatureProfile::default(), $profile);
+	}
+
+	public function testGetSignatureProfileReadsStoredProfile(): void {
+		$service = $this->getService();
+		$file = new File();
+		$file->setMetadata([
+			'appearance_profile' => [
+				'footer' => false,
+				'qr' => false,
+				'stamp' => [
+					'enabled' => true,
+					'renderMode' => 'DESCRIPTION_ONLY',
+				],
+				'auditInfo' => true,
+			],
+		]);
+
+		$profile = self::invokePrivate(
+			$service->setLibreSignFile($file),
+			'getSignatureProfile',
+		);
+
+		$this->assertFalse($profile->shouldRenderFooter());
+		$this->assertFalse($profile->shouldRenderQrCode());
+		$this->assertTrue($profile->shouldRenderStamp());
+		$this->assertSame('DESCRIPTION_ONLY', $profile->getStamp()->getRenderMode());
+		$this->assertTrue($profile->shouldRenderAuditInfo());
+	}
+
+	public function testGetPdfToSignSkipsFooterWhenProfileDisablesIt(): void {
+		$service = $this->getService([
+			'getSignedFile',
+			'createSignedFile',
+			'getSigners',
+		]);
+
+		$libreSignFile = new File();
+		$libreSignFile->setMetadata([
+			'appearance_profile' => ['footer' => false],
+		]);
+
+		$originalFile = $this->createMock(\OCP\Files\File::class);
+		$originalFile->method('getContent')->willReturn('%PDF-original%');
+
+		$this->pdfSignatureDetectionService
+			->method('hasSignatures')
+			->with('%PDF-original%')
+			->willReturn(false);
+
+		$service->method('getSignedFile')->willReturn(null);
+		$service->method('getSigners')->willReturn([]);
+
+		$signedFile = $this->createMock(\OCP\Files\File::class);
+		$service->expects($this->once())
+			->method('createSignedFile')
+			->with($originalFile, '%PDF-original%')
+			->willReturn($signedFile);
+
+		$this->footerHandler->expects($this->never())->method('getMetadata');
+		$this->footerHandler->expects($this->never())->method('getFooter');
+
+		self::invokePrivate(
+			$service->setLibreSignFile($libreSignFile),
+			'getPdfToSign',
+			[$originalFile],
+		);
+	}
+
+	public function testGetPdfToSignUsesDefaultProfileWhenMetadataMissing(): void {
+		$service = $this->getService([
+			'getSignedFile',
+			'createSignedFile',
+			'getSigners',
+		]);
+
+		$libreSignFile = new File();
+		$originalFile = $this->createMock(\OCP\Files\File::class);
+		$originalFile->method('getContent')->willReturn('%PDF-original%');
+
+		$this->pdfSignatureDetectionService
+			->method('hasSignatures')
+			->willReturn(false);
+
+		$service->method('getSignedFile')->willReturn(null);
+		$service->method('getSigners')->willReturn([]);
+
+		$this->footerHandler
+			->expects($this->once())
+			->method('getMetadata')
+			->willReturn(['d' => [['w' => 210.0, 'h' => 297.0]]]);
+
+		$this->footerHandler
+			->expects($this->once())
+			->method('setRenderQrCode')
+			->with(true)
+			->willReturnSelf();
+
+		$this->footerHandler
+			->expects($this->once())
+			->method('setRenderAuditInfo')
+			->with(true)
+			->willReturnSelf();
+
+		$this->footerHandler
+			->expects($this->exactly(2))
+			->method('setTemplateVar')
+			->willReturnSelf();
+
+		$this->footerHandler
+			->expects($this->once())
+			->method('getFooter')
+			->with([['w' => 210.0, 'h' => 297.0]])
+			->willReturn('');
+
+		$service->expects($this->once())
+			->method('createSignedFile')
+			->with($originalFile, '%PDF-original%');
+
+		self::invokePrivate(
+			$service->setLibreSignFile($libreSignFile),
+			'getPdfToSign',
+			[$originalFile],
+		);
+	}
+
+	public function testConfigureEngineAppliesStampOverrideFromProfile(): void {
+		$service = $this->getService(['getFileToSign']);
+
+		$libreSignFile = new File();
+		$libreSignFile->setMetadata([
+			'appearance_profile' => [
+				'stamp' => [
+					'enabled' => true,
+					'renderMode' => 'DESCRIPTION_ONLY',
+					'textTemplate' => 'Custom template',
+					'signatureFontSize' => 18.0,
+				],
+			],
+		]);
+		$service->setLibreSignFile($libreSignFile);
+
+		$file = $this->createMock(\OCP\Files\File::class);
+		$service->method('getFileToSign')->willReturn($file);
+
+		$engine = $this->createMock(Pkcs12Handler::class);
+		$engine->method('setInputFile')->willReturnSelf();
+		$engine->method('setCertificate')->willReturnSelf();
+		$engine->method('setPassword')->willReturnSelf();
+		$engine->expects($this->once())
+			->method('setVisibleElements')
+			->with([])
+			->willReturnSelf();
+		$engine->expects($this->once())
+			->method('setSignatureParams')
+			->willReturnSelf();
+
+		$this->signatureTextService->expects($this->once())
+			->method('setStampOverride')
+			->with($this->callback(fn (SignatureStamp $stamp): bool
+				=> $stamp->isEnabled()
+				&& $stamp->getRenderMode() === 'DESCRIPTION_ONLY'
+				&& $stamp->getTextTemplate() === 'Custom template'
+				&& $stamp->getSignatureFontSize() === 18.0
+			));
+
+		self::invokePrivate($service, 'engine', [$engine]);
+		self::invokePrivate($service, 'configureEngine');
+	}
+
+	public function testConfigureEngineSuppressesStampWhenProfileDisablesIt(): void {
+		$service = $this->getService(['getFileToSign']);
+
+		$libreSignFile = new File();
+		$libreSignFile->setMetadata([
+			'appearance_profile' => ['stamp' => ['enabled' => false]],
+		]);
+		$service->setLibreSignFile($libreSignFile);
+
+		$file = $this->createMock(\OCP\Files\File::class);
+		$service->method('getFileToSign')->willReturn($file);
+
+		$engine = $this->createMock(Pkcs12Handler::class);
+		$engine->method('setInputFile')->willReturnSelf();
+		$engine->method('setCertificate')->willReturnSelf();
+		$engine->method('setPassword')->willReturnSelf();
+		$engine->expects($this->once())
+			->method('setVisibleElements')
+			->with([])
+			->willReturnSelf();
+		$engine->expects($this->once())
+			->method('setSignatureParams')
+			->willReturnSelf();
+
+		$this->signatureTextService->expects($this->once())
+			->method('setStampOverride')
+			->with(null);
+
+		self::invokePrivate($service, 'engine', [$engine]);
+		self::invokePrivate($service, 'configureEngine');
 	}
 }

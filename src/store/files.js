@@ -13,11 +13,14 @@ import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import Moment from '@nextcloud/moment'
 import { generateOcsUrl } from '@nextcloud/router'
+import cloneDeep from 'lodash/cloneDeep'
 
 import { useFilesSortingStore } from './filesSorting.js'
 import { useFiltersStore } from './filters.js'
 import { useIdentificationDocumentStore } from './identificationDocument.js'
 import { useSidebarStore } from './sidebar.js'
+import { useSponsorshipWorkflowStore } from './sponsorshipWorkflow.ts'
+import { useEntitlementStore } from './entitlement.ts'
 import { FILE_STATUS } from '../constants.js'
 
 /** @typedef {import('../types/index').IdentifyMethodRecord} SignerMethodRecord */
@@ -40,6 +43,7 @@ import { FILE_STATUS } from '../constants.js'
 /** @typedef {import('../types/index').ValidationMetadataRecord} ValidationMetadataRecord */
 /** @typedef {import('../types/index').VisibleElementRecord} VisibleElementRecord */
 /** @typedef {import('../types/index').VisibleElementDraft} VisibleElementDraft */
+/** @typedef {import('../types/index').Sponsorship} Sponsorship */
 
 /**
  * @typedef {{
@@ -59,6 +63,7 @@ import { FILE_STATUS } from '../constants.js'
  * 	signed?: string | null | boolean | unknown[]
  * 	sign_uuid?: string | null
  * 	sign_request_uuid?: string | null
+ * 	sponsorship?: Sponsorship
  * }} EditableSignerDraft
  */
 
@@ -172,7 +177,7 @@ import { FILE_STATUS } from '../constants.js'
  */
 
 /**
- * @typedef {PublicFileState | { success: false, message: string, error: unknown }} SaveSignatureRequestResponse
+ * @typedef {PublicFileState | { success: false, message: string, error: unknown, handled?: boolean }} SaveSignatureRequestResponse
  */
 
 /** @type {EditableFileDraft} */
@@ -979,6 +984,13 @@ const _filesStore = defineStore('files', () => {
 					...(typeof signer.notify === 'number' ? { notify: signer.notify } : {}),
 					...(typeof signer.signingOrder === 'number' ? { signingOrder: signer.signingOrder } : {}),
 					...(typeof signer.status === 'number' ? { status: signer.status } : {}),
+					...(signer.sponsorship
+						? {
+							sponsorship: {
+								type: signer.sponsorship.type,
+							},
+						}
+						: {}),
 				}
 			})
 			.filter((signer) => signer && signer.identifyMethods?.length)
@@ -1287,6 +1299,8 @@ const _filesStore = defineStore('files', () => {
 	 */
 	async function saveOrUpdateSignatureRequest({ visibleElements = [], signers = null, uuid = null, status = 0, signatureFlow = null } = {}) {
 		const store = getStore()
+		const entitlementStore = useEntitlementStore()
+		const sponsorshipWorkflowStore = useSponsorshipWorkflowStore()
 		const currentFileKey = selectedFileId.value
 		const selectedFile = getFile()
 		const requestSigners = serializeRequestSigners(signers || selectedFile?.signers || [])
@@ -1330,7 +1344,28 @@ const _filesStore = defineStore('files', () => {
 
 		let response = await axios(config)
 			.catch((error) => {
-				const message = error.response?.data?.ocs?.data?.message || t('libresign', 'Failed to save or update signature request')
+				const payload = error.response?.data?.ocs?.data
+
+				if (payload?.action === 'purchase_signing_credits') {
+                    try {
+					sponsorshipWorkflowStore.start({
+						instruction: payload,
+						pendingRequest: {
+							...config,
+							data: cloneDeep(config.data),
+						},
+					})
+				    } catch (e) {
+						console.error('Error starting sponsorship workflow:', e)
+					}
+
+					return {
+						success: false,
+						handled: true,
+					}
+				}
+
+				const message = payload?.message || t('libresign', 'Failed to save or update signature request')
 				return {
 					success: false,
 					message,
@@ -1407,6 +1442,9 @@ const _filesStore = defineStore('files', () => {
 			path: responseFile.settings?.path,
 			nodeId: responseFile.nodeId,
 		})
+
+		await entitlementStore.refresh()
+
 		return responseFile
 	}
 

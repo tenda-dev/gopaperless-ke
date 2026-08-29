@@ -15,8 +15,7 @@ use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Service\Dashboard\ValueObject\DashboardWorkflowContext;
 
-final class DashboardWorkflowResolver
-{
+final class DashboardWorkflowResolver {
 
 	public function resolveStatus(
 		DashboardWorkflowContext $context,
@@ -92,20 +91,20 @@ final class DashboardWorkflowResolver
 
 		return match ($this->resolveStatus($context)) {
 
-			DashboardWorkflowStatus::ACTION_REQUIRED =>
-			'Waiting for your signature',
+			DashboardWorkflowStatus::ACTION_REQUIRED
+			=> 'Waiting for your signature',
 
-			DashboardWorkflowStatus::WAITING_FOR_OTHERS =>
-			'Waiting for other participants',
+			DashboardWorkflowStatus::WAITING_FOR_OTHERS
+			=> 'Waiting for other participants',
 
-			DashboardWorkflowStatus::PAYMENT_REQUIRED =>
-			'Payment required before signing',
+			DashboardWorkflowStatus::PAYMENT_REQUIRED
+			=> 'Payment required before signing',
 
-			DashboardWorkflowStatus::COMPLETED =>
-			'Completed',
+			DashboardWorkflowStatus::COMPLETED
+			=> 'Completed',
 
-			DashboardWorkflowStatus::DRAFT =>
-			'Draft',
+			DashboardWorkflowStatus::DRAFT
+			=> 'Draft',
 		};
 	}
 

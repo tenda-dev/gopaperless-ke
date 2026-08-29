@@ -22,19 +22,22 @@ use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCP\Accounts\IAccountManager;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\CORS;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Config\IUserConfig;
-use OCP\DB\Exception as DBException;
-use OCP\IDBConnection;
+use OCP\IAppConfig;
+use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use OCP\IUserManager;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -62,7 +65,9 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		private Chain $loginChain,
 		private IURLGenerator $urlGenerator,
 		private LoggerInterface $logger,
-		private IDBConnection $connection,
+		private IAppConfig $appConfig,
+		private IGroupManager $groupManager,
+		private IUserManager $userManager,
 		protected IUserSession $userSession,
 		protected SessionService $sessionService,
 		private ValidateHelper $validateHelper,
@@ -79,6 +84,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	 * @param string $password the password to then new account
 	 * @param string|null $signPassword The password to create certificate
 	 * @param string|null $phoneNumber The phone number of the user
+	 * @param bool $termsAccepted Whether the invited signer accepted the Terms of Service
 	 * @return DataResponse<Http::STATUS_OK, LibresignCreateToSignResponse, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, LibresignActionMessageResponse, array{}>
 	 *
 	 * 200: OK
@@ -114,7 +120,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 
 			$userId = $this->accountService->createToSign($uuid, $email, $password, $signPassword, $phoneNumber);
 			if ($termsAccepted) {
-				$this->acceptTermsOnAccountCreation($userId);
+				$this->accountService->acceptTermsForUserId($userId);
 			}
 
 			$response = [
@@ -149,62 +155,6 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	}
 
 	/**
-	 * Accept the active Terms of Service on behalf of a newly created invited
-	 * signer so that the subsequent login chain does not block account creation.
-	 *
-	 * This only touches the Terms of Service tables when they exist; it does
-	 * nothing when the app is not installed/enabled.
-	 */
-	private function acceptTermsOnAccountCreation(string $userId): void {
-		if (!$this->connection->tableExists('termsofservice_terms')
-			|| !$this->connection->tableExists('termsofservice_sigs')) {
-			return;
-		}
-
-		try {
-			$qb = $this->connection->getQueryBuilder();
-			$qb->select('id')
-				->from('termsofservice_terms');
-			$result = $qb->executeQuery();
-			$termIds = [];
-			while ($row = $result->fetch()) {
-				$termIds[] = (int)$row['id'];
-			}
-			$result->closeCursor();
-
-			if (empty($termIds)) {
-				return;
-			}
-
-			foreach ($termIds as $termId) {
-				$check = $this->connection->getQueryBuilder();
-				$check->select($check->expr()->literal(1))
-					->from('termsofservice_sigs')
-					->where($check->expr()->eq('user_id', $check->createNamedParameter($userId)))
-					->andWhere($check->expr()->eq('terms_id', $check->createNamedParameter($termId)))
-					->setMaxResults(1);
-				$checkResult = $check->executeQuery();
-				$exists = $checkResult->fetchOne();
-				$checkResult->closeCursor();
-				if ($exists) {
-					continue;
-				}
-
-				$insert = $this->connection->getQueryBuilder();
-				$insert->insert('termsofservice_sigs')
-					->setValue('user_id', $insert->createNamedParameter($userId))
-					->setValue('terms_id', $insert->createNamedParameter($termId))
-					->setValue('timestamp', $insert->createNamedParameter(time()));
-				$insert->executeStatement();
-			}
-
-			$this->logger->info('Accepted Terms of Service on behalf of newly created invited signer', ['userId' => $userId]);
-		} catch (DBException $e) {
-			$this->logger->warning('Could not accept Terms of Service for new user: ' . $e->getMessage(), ['exception' => $e]);
-		}
-	}
-
-	/**
 	 * Create a standalone GoPaperless account.
 	 *
 	 * This endpoint is intended for onboarding, testing and future
@@ -220,10 +170,10 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	 * @param string $password Password for the new account.
 	 * @param string|null $phoneNumber Optional phone number in E.164 format.
 	 *
-	 * @return DataResponse<Http::STATUS_OK, array{message:string,email:string,uid:string}, array{}>
-	 * @return DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, array{message:string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, array{message:string,email:string,uid:string}, array{}>|DataResponse<Http::STATUS_NOT_FOUND, array{message:string}, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, array{message:string}, array{}>
 	 *
 	 * 200: Account created successfully.
+	 * 404: Public account creation is disabled.
 	 * 422: Validation failed or account creation could not be completed.
 	 */
 	#[NoAdminRequired]
@@ -231,6 +181,8 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 	#[NoCSRFRequired]
 	#[PublicPage]
 	#[UseSession]
+	#[AnonRateLimit(limit: 10, period: 60)]
+	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(
 		verb: 'POST',
 		url: '/api/{apiVersion}/account/create-only',
@@ -241,6 +193,13 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		string $password,
 		?string $phoneNumber = null,
 	): DataResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false)) {
+			return new DataResponse(
+				['message' => $this->l10n->t('Not found')],
+				Http::STATUS_NOT_FOUND
+			);
+		}
+
 		try {
 			$email = trim(strtolower($email));
 			$phoneNumber = $phoneNumber !== null
@@ -258,11 +217,88 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 				Http::STATUS_OK
 			);
 		} catch (\Throwable $e) {
+			$this->logger->error('Public account creation failed', [
+				'email' => $email,
+				'exception' => $e,
+			]);
 			return new DataResponse(
-				[
-					'message' => $e->getMessage(),
-				],
+				['message' => $this->l10n->t('Unable to create account')],
 				Http::STATUS_UNPROCESSABLE_ENTITY
+			);
+		}
+	}
+
+	/**
+	 * Record acceptance of every active Terms of Service document for an
+	 * existing account. This supports external onboarding flows that create an
+	 * account first and obtain the user's acceptance separately.
+	 *
+	 * @param string $userId User ID of the existing account.
+	 * @return DataResponse<Http::STATUS_OK, array{message:string,uid:string,acceptedTerms:int}, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, array{message:string}, array{}>|DataResponse<Http::STATUS_FORBIDDEN, array{message:string}, array{}>|DataResponse<Http::STATUS_NOT_FOUND, array{message:string}, array{}>|DataResponse<Http::STATUS_UNPROCESSABLE_ENTITY, array{message:string}, array{}>
+	 *
+	 * 200: Terms accepted successfully.
+	 * 401: No authenticated session.
+	 * 403: Caller is not the account owner or an admin.
+	 * 404: Public terms acceptance is disabled or the account does not exist.
+	 * 422: The acceptance could not be recorded.
+	 */
+	#[NoAdminRequired]
+	#[CORS]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 10, period: 60)]
+	#[UserRateLimit(limit: 30, period: 60)]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/account/accept-terms',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function acceptTerms(string $userId): DataResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false)) {
+			return new DataResponse(
+				['message' => $this->l10n->t('Not found')],
+				Http::STATUS_NOT_FOUND,
+			);
+		}
+
+		$currentUser = $this->userSession->getUser();
+		if ($currentUser === null) {
+			return new DataResponse(
+				['message' => $this->l10n->t('Unauthorized')],
+				Http::STATUS_UNAUTHORIZED,
+			);
+		}
+
+		$requestedUser = $this->userManager->get($userId);
+		if ($requestedUser === null) {
+			return new DataResponse(
+				['message' => $this->l10n->t('Account not found')],
+				Http::STATUS_NOT_FOUND,
+			);
+		}
+
+		$isOwnAccount = $currentUser->getUID() === $requestedUser->getUID();
+		$isAdmin = $this->groupManager->isAdmin($currentUser->getUID());
+		if (!$isOwnAccount && !$isAdmin) {
+			return new DataResponse(
+				['message' => $this->l10n->t('Forbidden')],
+				Http::STATUS_FORBIDDEN,
+			);
+		}
+
+		try {
+			return new DataResponse(
+				$this->accountService->acceptTerms($requestedUser->getUID()),
+				Http::STATUS_OK,
+			);
+		} catch (\Throwable $e) {
+			$this->logger->error('Terms acceptance failed', [
+				'actor' => $currentUser->getUID(),
+				'userId' => $requestedUser->getUID(),
+				'exception' => $e,
+			]);
+			return new DataResponse(
+				['message' => $this->l10n->t('Unable to accept terms')],
+				Http::STATUS_UNPROCESSABLE_ENTITY,
 			);
 		}
 	}
@@ -352,6 +388,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 					'emailAddress' => $user->getEMailAddress() ?? '',
 					'displayName' => $user->getDisplayName()
 				],
+				'extended' => $this->accountService->getExtendedAccount($user->getUID(), $user->getEMailAddress()),
 				'settings' => $this->accountService->getSettings($this->userSession->getUser())
 			],
 			Http::STATUS_OK

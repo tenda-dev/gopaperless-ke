@@ -49,18 +49,18 @@ final class DashboardWorkflowContextFactory {
 		$owner = $this->userManager
 			->get($file->getUserId());
 
-		$requesterName =
-			$owner?->getDisplayName()
+		$requesterName
+			= $owner?->getDisplayName()
 			?? $file->getUserId();
 
-		$isOwner =
-			$file->getUserId() === $user->getUID();
+		$isOwner
+			= $file->getUserId() === $user->getUID();
 
-		$isCompleted =
-			$file->getStatusEnum() === FileStatus::SIGNED;
+		$isCompleted
+			= $file->getStatusEnum() === FileStatus::SIGNED;
 
-		$isDraft =
-			$file->getStatusEnum() === FileStatus::DRAFT;
+		$isDraft
+			= $file->getStatusEnum() === FileStatus::DRAFT;
 
 		$payment = $this->resolvePayment(
 			$participantContext->signRequest?->getId()

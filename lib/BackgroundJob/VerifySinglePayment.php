@@ -9,15 +9,13 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\BackgroundJob;
 
-use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Db\PaymentMapper;
+use OCA\Libresign\Service\Payment\PaymentService;
 use OCP\AppFramework\Utility\ITimeFactory;
-use OCP\BackgroundJob\IJob;
 use OCP\BackgroundJob\QueuedJob;
 use Psr\Log\LoggerInterface;
 
-class VerifySinglePayment extends QueuedJob
-{
+class VerifySinglePayment extends QueuedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private PaymentMapper $mapper,
@@ -27,8 +25,7 @@ class VerifySinglePayment extends QueuedJob
 		parent::__construct($time);
 	}
 
-	protected function run($argument): void
-	{
+	protected function run($argument): void {
 		$this->logger->info('[VerifySinglePayment] job started');
 
 		$paymentId = (int)($argument['paymentId'] ?? 0);

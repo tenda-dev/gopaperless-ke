@@ -9,8 +9,7 @@
 			<template #list>
 
 				<div class="sidebar-header">
-					<h2>GoPaperless</h2>
-					<p>Sign, Seal and Deliver</p>
+					<LogoWoodmark :name="'Sign, Seal, Deliver'" :font-size="18" />
 
 
 					<CreditsSummaryCard />
@@ -28,7 +27,7 @@
 					<NcAppNavigationItem v-if="canRequestSign"
 						id="dashboard"
 						:to="{name: 'Dashboard'}"
-						:name="t('libresign', 'GoPaperless Dashboard')"
+						:name="t('libresign', 'Dashboard')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -39,7 +38,7 @@
 					<NcAppNavigationItem v-if="canRequestSign"
 						id="request-files"
 						:to="{name: 'requestFiles'}"
-						:name="t('libresign', 'Request')"
+						:name="t('libresign', 'Request Signature')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -49,7 +48,7 @@
 					</NcAppNavigationItem>
 					<NcAppNavigationItem id="fileslist"
 						:to="{ name: 'fileslist' }"
-						:name="t('libresign', 'GoPaperless Documents')"
+						:name="t('libresign', 'My Documents')"
 						@click="unselectFile">
 						<template #icon>
 							<div class="icon-wrapper">
@@ -147,6 +146,7 @@ import Settings from '../Settings/Settings.vue'
 
 import { useFilesStore } from '../../store/files.js'
 import CreditsSummaryCard from '../Entitlement/CreditsSummaryCard.vue'
+import LogoWoodmark from '../LogoWoodmark.vue'
 
 defineOptions({
 	name: 'LeftSidebar',

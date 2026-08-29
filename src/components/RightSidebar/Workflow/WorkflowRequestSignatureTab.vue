@@ -87,6 +87,17 @@
 			:is-loading="hasLoading" />
 
 		<!-- ========================================= -->
+		<!-- FILE ACTIONS -->
+		<!-- ========================================= -->
+		<WorkflowFileActions
+			:file="state.file.value"
+			:is-envelope="state.isEnvelope.value"
+			:can-validate="state.canValidate.value"
+			@open-file="openFile"
+			@manage-files="openManageFiles"
+			@validate-file="validationFile" />
+
+		<!-- ========================================= -->
 		<!-- PRIMARY ACTION -->
 		<!-- ========================================= -->
 		<WorkflowActions
@@ -225,8 +236,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import { mdiSend } from '@mdi/js'
 
@@ -243,11 +255,11 @@ import EnvelopeFilesList  from '../EnvelopeFilesList.vue'
 import IdentifySigner     from '../../Request/IdentifySigner.vue'
 import SigningOrderDiagram from '../../SigningOrder/SigningOrderDiagram.vue'
 import SigningProgress     from '../../RequestSigningProgress.vue'
-import VisibleElements    from '../../Request/VisibleElements.vue'
 import WorkflowSignatureSetup from './WorkflowSignatureSetup.vue'
 
 // ── New workflow UI components ───────────────────────────────────────────────
 import WorkflowActions    from './WorkflowActions.vue'
+import WorkflowFileActions from './WorkflowFileActions.vue'
 import WorkflowHeaderCard from './WorkflowHeader.vue'
 import WorkflowSigners    from './WorkflowSigners.vue'
 import WorkflowStepper    from './WorkflowStepper.vue'
@@ -332,6 +344,19 @@ const {
  * ─────────────────────────────────────────────────────────────────────────── */
 const filesStore = useFilesStore()
 
+/* ── Signature positions editor (feature-flagged) ────────────────────────────
+ *
+ * VisibleElementsNext is opt-in via the visible_elements_next_enabled app
+ * config flag (default false). The legacy editor remains the default.
+ * ─────────────────────────────────────────────────────────────────────────── */
+const visibleElementsNextEnabled = (
+	loadState('libresign', 'config', {}) as { visible_elements_next_enabled?: boolean }
+).visible_elements_next_enabled === true
+
+const VisibleElements = visibleElementsNextEnabled
+	? defineAsyncComponent(() => import('../../Request/VisibleElementsNext/VisibleElementsNext.vue'))
+	: defineAsyncComponent(() => import('../../Request/VisibleElements.vue'))
+
 /* ── Derived template helpers ─────────────────────────────────────────────── */
 
 const hasWarnings = computed(() =>
@@ -366,7 +391,13 @@ const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 	display: flex;
 	flex-direction: column;
 	gap: 24px;
-	padding: 0;
+}
+
+/* On mobile the sidebar clips the last actions; add room to scroll past. */
+@media (max-width: 512px) {
+	.workflow-request-signature-tab {
+		padding-bottom: 100px;
+	}
 }
 
 .workflow-warning-stack {

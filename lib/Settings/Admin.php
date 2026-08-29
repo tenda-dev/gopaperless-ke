@@ -16,6 +16,7 @@ use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
@@ -41,6 +42,7 @@ class Admin implements ISettings {
 		private SignatureBackgroundService $signatureBackgroundService,
 		private FooterService $footerService,
 		private DocMdpConfigService $docMdpConfigService,
+		private SignatureProfileService $signatureProfileService,
 	) {
 	}
 	#[\Override]
@@ -97,11 +99,37 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('show_confetti_after_signing', $this->appConfig->getValueBool(Application::APP_ID, 'show_confetti_after_signing', true));
 		$this->initialState->provideInitialState('crl_external_validation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true));
 		$this->initialState->provideInitialState('ldap_extension_available', function_exists('ldap_connect'));
+		$this->initialState->provideInitialState('appearance_profiles_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false));
+
+		//	SIGNATURE APPEARANCE PROFILES
+		// Prune profiles whose Nextcloud group has been deleted, then expose the
+		// clean map plus the ids that were removed so the admin can be informed.
+		$reconciledProfiles = $this->signatureProfileService->reconcileConfiguredGroups();
+		$this->initialState->provideInitialState('appearance_profiles', $reconciledProfiles['profiles']);
+		$this->initialState->provideInitialState('appearance_profiles_removed', $reconciledProfiles['removed']);
 
 		//	FREE SIGNING CREDITS (signup bonus) & ONE-TIME SIGNING OPTION
 		$this->initialState->provideInitialState('free_credits_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true));
 		$this->initialState->provideInitialState('free_credits_uses', $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2));
 		$this->initialState->provideInitialState('one_time_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true));
+		$this->initialState->provideInitialState('sponsorship_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false));
+
+		//	PRODUCT PRICING DEFAULTS
+		$this->initialState->provideInitialState('product_default_currency', $this->appConfig->getValueString(Application::APP_ID, 'product_default_currency', 'KES'));
+		$this->initialState->provideInitialState('product_sign_document_price', $this->appConfig->getValueInt(Application::APP_ID, 'product_sign_document_price', 8000));
+		$this->initialState->provideInitialState('product_certificate_access_price', $this->appConfig->getValueInt(Application::APP_ID, 'product_certificate_access_price', 30000));
+
+		//	PERSONAL DIGITAL CERTIFICATE GATE
+		//	Gate kill-switch defaults to false = inert (nobody paywalled).
+		$this->initialState->provideInitialState('certificate_gate_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'certificate_gate_enabled', false));
+		$this->initialState->provideInitialState('certificate_validity_days', $this->appConfig->getValueInt(Application::APP_ID, 'certificate_validity_days', 365));
+
+		//	FILES LIST COLUMNS
+		$this->initialState->provideInitialState('files_list_show_signers', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true));
+
+		//	FEATURE FLAGS (opt-in "Next" UI rework, default false = legacy)
+		$this->initialState->provideInitialState('files_list_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false));
+		$this->initialState->provideInitialState('visible_elements_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false));
 
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));

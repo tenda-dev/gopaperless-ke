@@ -16,8 +16,7 @@ use OCA\Libresign\Service\Dashboard\ValueObject\DashboardParticipantContext;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCP\IUser;
 
-final class DashboardParticipantResolver
-{
+final class DashboardParticipantResolver {
 
 	/**
 	 * @param SignRequest[] $signRequests
@@ -31,27 +30,25 @@ final class DashboardParticipantResolver
 
 		foreach ($signRequests as $signRequest) {
 
-			$methods =
-				$identifyMethods[$signRequest->getId()] ?? [];
+			$methods
+				= $identifyMethods[$signRequest->getId()] ?? [];
 
 			foreach ($methods as $method) {
 
-				$isAccountMatch =
-					$method->getIdentifierKey()
+				$isAccountMatch
+					= $method->getIdentifierKey()
 					=== IdentifyMethodService::IDENTIFY_ACCOUNT
-					&&
-					$method->getIdentifierValue()
+					&& $method->getIdentifierValue()
 					=== $user->getUID();
 
-				$isEmailMatch =
-					$method->getIdentifierKey()
+				$isEmailMatch
+					= $method->getIdentifierKey()
 					=== IdentifyMethodService::IDENTIFY_EMAIL
-					&&
-					$method->getIdentifierValue()
+					&& $method->getIdentifierValue()
 					=== $user->getEMailAddress();
 
-				$isMatchingParticipant =
-					$isAccountMatch
+				$isMatchingParticipant
+					= $isAccountMatch
 					|| $isEmailMatch;
 
 				if (!$isMatchingParticipant) {

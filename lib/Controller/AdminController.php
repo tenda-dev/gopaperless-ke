@@ -26,6 +26,7 @@ use OCA\Libresign\Service\Install\ConfigureCheckService;
 use OCA\Libresign\Service\Install\InstallService;
 use OCA\Libresign\Service\ReminderService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
 use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Settings\Admin;
 use OCP\AppFramework\Http;
@@ -39,9 +40,12 @@ use OCP\Files\SimpleFS\InMemoryFile;
 use OCP\IAppConfig;
 use OCP\IEventSource;
 use OCP\IEventSourceFactory;
+use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
+use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 use UnexpectedValueException;
 
 /**
@@ -85,6 +89,9 @@ class AdminController extends AEnvironmentAwareController {
 		private DocMdpConfigService $docMdpConfigService,
 		private IdentifyMethodService $identifyMethodService,
 		private FileMapper $fileMapper,
+		private IGroupManager $groupManager,
+		private IUserSession $userSession,
+		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -982,6 +989,62 @@ class AdminController extends AEnvironmentAwareController {
 			return new DataResponse([
 				'error' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist the per-group signature appearance profiles
+	 *
+	 * The map is keyed by Nextcloud group id. Each entry controls which visual
+	 * elements are rendered for documents owned by that customer group. Missing
+	 * flags default to `true` (default-on), matching the resolved default profile.
+	 *
+	 * @param array<string, array{footer?: bool, qr?: bool, stamp?: bool|array<string, mixed>, auditInfo?: bool}> $profiles Appearance profile map keyed by group id. `stamp` may be a boolean or an object of stamp overrides.
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_FORBIDDEN, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Settings saved
+	 * 400: Bad request
+	 * 403: Forbidden
+	 * 500: Internal server error
+	 */
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/appearance-profiles/config', requirements: ['apiVersion' => '(v1)'])]
+	public function setAppearanceProfilesConfig(array $profiles = []): DataResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false)) {
+			throw new LibresignException($this->l10n->t('Appearance profiles feature is disabled'), Http::STATUS_FORBIDDEN);
+		}
+		$this->assertAdminUser();
+		try {
+			$normalised = [];
+			foreach ($profiles as $groupId => $flags) {
+				$groupId = (string)$groupId;
+				// Skip empty ids, malformed entries, and groups that no longer
+				// exist so a deleted group is never (re)persisted into the map.
+				if ($groupId === '' || !is_array($flags) || !$this->groupManager->groupExists($groupId)) {
+					continue;
+				}
+				/**
+				 * Normalise through the value object so the stored shape (including
+				 * the nested stamp object and default-on flags) has a single source
+				 * of truth shared with the resolver.
+				 */
+				$normalised[$groupId] = SignatureProfile::fromArray($flags)->toArray();
+			}
+			$this->appConfig->setValueArray(Application::APP_ID, 'appearance_profiles', $normalised);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Settings saved'),
+			]);
+		} catch (\Exception $e) {
+			$this->logger->error('Failed to save appearance profiles', ['exception' => $e]);
+			return new DataResponse([
+				'error' => $this->l10n->t('Could not save appearance profiles'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function assertAdminUser(): void {
+		if (!$this->groupManager->isAdmin($this->userSession->getUser()?->getUID() ?? '')) {
+			throw new LibresignException($this->l10n->t('Unauthorized'), Http::STATUS_FORBIDDEN);
 		}
 	}
 

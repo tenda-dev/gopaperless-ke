@@ -19,13 +19,6 @@
 
 		<!-- SECONDARY -->
 		<div class="secondary-picker-options">
-			<NcButton variant="secondary" @click="handleAction('uploadUrl')">
-				<template #icon>
-					<NcIconSvgWrapper :path="getIcon('uploadUrl')" :size="20" />
-				</template>
-				Upload from URL
-			</NcButton>
-
 			<NcButton variant="secondary" :title="allowMultiple ? 'Multiple files allowed' : null"
 				@click="handleAction('pickFile')">
 				<template #icon>
@@ -131,7 +124,6 @@ function getIcon(action: UploadAction) {
 	flex-direction: column;
 	align-items: center;
 	gap: 16px;
-	width: 100%;
 	max-width: 420px;
 	margin: 0 auto;
 

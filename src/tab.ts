@@ -13,6 +13,8 @@ import { FileType, registerSidebarTab } from '@nextcloud/files'
 import LibreSignLogoDarkSvg from '../img/app-dark.svg?raw'
 
 import './style/icons.scss'
+// Scoped to the tab element only — must not force the host Files app light.
+import './style/force-light-tab.scss'
 
 if (!window.OCA.Libresign) {
 	window.OCA.Libresign = {}

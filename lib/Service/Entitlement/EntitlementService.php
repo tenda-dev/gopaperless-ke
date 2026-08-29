@@ -12,6 +12,7 @@ namespace OCA\Libresign\Service\Entitlement;
 use OCA\Libresign\Db\Entitlement;
 use OCA\Libresign\Db\EntitlementMapper;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\EntitlementType;
 use OCA\Libresign\Service\Product\ProductService;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
@@ -48,13 +49,19 @@ class EntitlementService {
 	 * @throws Exception
 	 * @throws \Exception
 	 */
-	public function create(string $userId, string $productCode, int $uses = 1): Entitlement {
+	public function create(
+		string $userId,
+		string $productCode,
+		int $uses = 1,
+		EntitlementType $entitlementType = EntitlementType::PAY_AS_YOU_GO,
+	): Entitlement {
 
 		$entitlement = new Entitlement();
 		$entitlement->setUserId($userId);
 		$entitlement->setProductCode($productCode);
 		$entitlement->setRemainingUses($uses);
 		$entitlement->setCreatedAt($this->now());
+		$entitlement->setEntitlementType($entitlementType);
 		$entitlement->validate();
 
 		/** @var Entitlement $inserted */
@@ -104,6 +111,12 @@ class EntitlementService {
 	 * Proper fix: move event dispatch to async/background job or after DB commit.
 	 * @throws Exception
 	 */
+
+	// TODO GoPaperless Sponsorship
+	// Resolve payer through SigningSettlementService.
+	// Today signer always pays.
+	// Future:
+	// $payerUserId = $settlementService->resolve(...)->payerUserId;
 	public function consumeAfterSign(
 		string $userId,
 		string $signUuid,
@@ -313,6 +326,7 @@ class EntitlementService {
 	 * @return array{
 	 *     productCode: string,
 	 *     remainingUses: int,
+	 *     reservedUses: int,
 	 *     activeEntitlements: int,
 	 *     canUse: bool
 	 * }
@@ -330,6 +344,7 @@ class EntitlementService {
 			->findByUserAndProduct($userId, $productCode);
 
 		$remainingUses = 0;
+		$reservedUses = 0;
 		$activeEntitlements = 0;
 
 		foreach ($entitlements as $entitlement) {
@@ -337,13 +352,15 @@ class EntitlementService {
 				continue;
 			}
 
-			$remainingUses += $entitlement->getRemainingUses();
+			$remainingUses += $entitlement->getAvailableUses();
+			$reservedUses += $entitlement->getReservedUses() ?? 0;
 			$activeEntitlements++;
 		}
 
 		return [
 			'productCode' => $productCode,
 			'remainingUses' => $remainingUses,
+			'reservedUses' => $reservedUses,
 			'activeEntitlements' => $activeEntitlements,
 			'canUse' => $remainingUses > 0,
 		];

@@ -11,8 +11,7 @@ namespace OCA\Libresign\Service\Payment\DTO;
 
 use OCA\Libresign\Enum\ProviderExecutionState;
 
-final class PaymentMetadataDTO
-{
+final class PaymentMetadataDTO {
 	public function __construct(
 		public readonly ?\DateTimeImmutable $updatedAt,
 		public readonly string $preferredProvider,
@@ -24,7 +23,6 @@ final class PaymentMetadataDTO
 		public readonly SuggestedMnoDTO $suggested,
 		public readonly SelectionDTO $selection,
 		public readonly ?string $confidence,
-
 		/**
 		 * Indicates whether provider-side charge initiation
 		 * has already occurred.
@@ -42,12 +40,13 @@ final class PaymentMetadataDTO
 		public readonly ?string $instructions,
 		public readonly ?ProviderExecutionState $providerExecutionState,
 		public readonly ProviderPayloadDTO $providerPayload,
-		public readonly array $context = [], // for extra data like region, carrier
+		public readonly array $context = [],
+		// for extra data like region, carrier
 		public readonly ?array $providerError = null,
-	) {}
+	) {
+	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'updatedAt' => $this->updatedAt?->format(DATE_ATOM),
 			'preferredProvider' => $this->preferredProvider,
@@ -68,8 +67,7 @@ final class PaymentMetadataDTO
 		];
 	}
 
-	public static function fromArray(array $data): self
-	{
+	public static function fromArray(array $data): self {
 		return new self(
 			updatedAt: self::parseDate(
 				$data['updatedAt'] ?? null
@@ -142,9 +140,9 @@ final class PaymentMetadataDTO
 				: null,
 
 			providerExecutionState: is_string(
-               $data['providerExecutionState'] ?? null
+				$data['providerExecutionState'] ?? null
 			)
-			    ? ProviderExecutionState::from($data['providerExecutionState'])
+				? ProviderExecutionState::from($data['providerExecutionState'])
 				: null,
 
 			providerPayload: ProviderPayloadDTO::fromArray(

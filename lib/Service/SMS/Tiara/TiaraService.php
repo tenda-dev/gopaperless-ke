@@ -7,16 +7,16 @@ namespace OCA\Libresign\Service\SMS\Tiara;
 use OCA\Libresign\AppInfo\Application;
 use OCP\Http\Client\IClientService;
 use Psr\Log\LoggerInterface;
-use Throwable;
 use Ramsey\Uuid\Uuid;
+use Throwable;
 
-final class TiaraService
-{
+final class TiaraService {
 	public function __construct(
 		private LoggerInterface $logger,
 		private IClientService $httpClientService,
 		private TiaraConfigurationService $configurationService,
-	) {}
+	) {
+	}
 
 	/**
 	 * Sends an SMS using the Tiara SMS gateway.
@@ -92,8 +92,7 @@ final class TiaraService
 		}
 	}
 
-	private function generateReferenceId(): string
-	{
+	private function generateReferenceId(): string {
 		return Uuid::uuid4()->toString();
 	}
 
@@ -173,11 +172,10 @@ final class TiaraService
 			return false;
 		}
 
-		$success =
-			($response['status'] ?? null)
+		$success
+			= ($response['status'] ?? null)
 			=== 'SUCCESS'
-			&&
-			(string) (
+			&& (string)(
 				$response['statusCode']
 				?? ''
 			) === '0';
@@ -198,14 +196,14 @@ final class TiaraService
 		$this->logger->info(
 			'[Tiara] SMS accepted',
 			[
-				'msgId' =>
-				$response['msgId']
+				'msgId'
+				=> $response['msgId']
 					?? null,
-				'to' =>
-				$response['to']
+				'to'
+				=> $response['to']
 					?? null,
-				'cost' =>
-				$response['cost']
+				'cost'
+				=> $response['cost']
 					?? null,
 				'app' => Application::APP_ID,
 			]

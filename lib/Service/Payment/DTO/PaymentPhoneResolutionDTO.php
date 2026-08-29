@@ -11,8 +11,7 @@ namespace OCA\Libresign\Service\Payment\DTO;
 
 use InvalidArgumentException;
 
-final class PaymentPhoneResolutionDTO
-{
+final class PaymentPhoneResolutionDTO {
 	public function __construct(
 		public readonly bool $valid,
 		public readonly ?string $e164,
@@ -27,8 +26,7 @@ final class PaymentPhoneResolutionDTO
 		}
 	}
 
-	public function toArray(): array
-	{
+	public function toArray(): array {
 		return [
 			'valid' => $this->valid,
 			'e164' => $this->e164,

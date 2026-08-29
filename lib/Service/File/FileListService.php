@@ -21,6 +21,8 @@ use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\ResponseDefinitions;
 use OCA\Libresign\Service\FileElementService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
+use OCA\Libresign\Service\Sponsorship\SponsorshipContextBuilderService;
 use OCP\AppFramework\Db\Entity;
 use OCP\Files\File as NodeFile;
 use OCP\Files\IRootFolder;
@@ -51,6 +53,7 @@ class FileListService {
 		private IL10N $l10n,
 		private IUserManager $userManager,
 		private IRootFolder $root,
+		private SponsorshipContextBuilderService $sponsorshipContextBuilderService,
 	) {
 	}
 
@@ -113,21 +116,35 @@ class FileListService {
 	}
 
 	public function formatSingleFile(IUser $user, File $file): array {
-		$signers = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
-		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($signers);
-		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($signers);
+		$signRequests = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
 
-		return $this->formatSingleFileData($file, $signers, $identifyMethods, $visibleElements, $user);
+		$persistedSigners = $this->sponsorshipContextBuilderService
+			->buildSignersWithSponsorshipContext(
+				$file,
+				$signRequests,
+			);
+
+		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($signRequests);
+		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($signRequests);
+
+		return $this->formatSingleFileData($file, $persistedSigners, $identifyMethods, $visibleElements, $user);
 	}
 
 	public function formatSingleFileForSignRequest(File $file, ?SignRequest $currentSignRequest = null): array {
-		$signers = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
-		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($signers);
-		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($signers);
+		$signRequests = $this->signRequestMapper->getByMultipleFileId([$file->getId()]);
+
+		$persistedSigners = $this->sponsorshipContextBuilderService
+			->buildSignersWithSponsorshipContext(
+				$file,
+				$signRequests,
+			);
+
+		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($signRequests);
+		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($signRequests);
 
 		return $this->formatSingleFileData(
 			$file,
-			$signers,
+			$persistedSigners,
 			$identifyMethods,
 			$visibleElements,
 			null,
@@ -150,6 +167,7 @@ class FileListService {
 	): array {
 		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($childSignRequests);
 		$visibleElements = $this->signRequestMapper->getVisibleElementsFromSigners($childSignRequests);
+
 		$signRequestsByFileId = [];
 		foreach ($childSignRequests as $signRequest) {
 			$signRequestsByFileId[$signRequest->getFileId()][] = $signRequest;
@@ -178,9 +196,11 @@ class FileListService {
 				}
 			}
 
+			$persistedSigners = $this->sponsorshipContextBuilderService->buildSignersWithSponsorshipContext($childFile, $signers);
+
 			$formatted[] = $this->formatSingleFileData(
 				$childFile,
-				$signers,
+				$persistedSigners,
 				$identifyMethods,
 				$visibleElements,
 				null,
@@ -193,7 +213,7 @@ class FileListService {
 
 	/**
 	 * @param File[] $files
-	 * @param SignRequest[] $signers
+	 * @param SignRequest[] $signRequests
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
 	 * @return list<LibresignDetailedFile>
@@ -201,14 +221,37 @@ class FileListService {
 	private function associateAllAndFormat(
 		IUser $user,
 		array $files,
-		array $signers,
+		array $signRequests,
 		array $identifyMethods,
 		array $visibleElements,
 	): array {
 		$formattedFiles = [];
+
 		foreach ($files as $file) {
-			$fileSigners = array_filter($signers, fn ($signer) => $signer->getFileId() === $file->getId());
-			$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user);
+			$fileSignRequests = array_filter(
+				$signRequests,
+				static fn (SignRequest $signRequest): bool
+				=> $signRequest->getFileId() === $file->getId(),
+			);
+
+			$persistedSigners
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
+
+			$fileSigners = array_filter(
+				$persistedSigners,
+				static fn (
+					PersistedSignerSponsorshipDTO $signer,
+				): bool
+				=> $signer
+					->getSignRequest()
+					->getFileId() === $file->getId(),
+			);
+
+			$formattedFiles[] = $this->formatSingleFileData($file, $fileSigners, $identifyMethods, $visibleElements, $user, null);
 		}
 		return $formattedFiles;
 	}
@@ -218,7 +261,7 @@ class FileListService {
 	 * Core formatting used by list and single file operations.
 	 *
 	 * @param File $fileEntity
-	 * @param SignRequest[] $signers
+	 * @param PersistedSignerSponsorshipDTO[] $persistedSponsorshipSigners
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
 	 * @param IUser|null $user
@@ -226,7 +269,7 @@ class FileListService {
 	 */
 	private function formatSingleFileData(
 		File $fileEntity,
-		array $signers,
+		array $persistedSponsorshipSigners,
 		array $identifyMethods,
 		array $visibleElements,
 		?IUser $user,
@@ -258,20 +301,27 @@ class FileListService {
 			$file['filesCount'] = $file['metadata']['filesCount'] ?? 0;
 			$file['files'] = [];
 		} else {
+			$signRequests = array_map(
+				static fn (
+					PersistedSignerSponsorshipDTO $persistedSigner,
+				): SignRequest => $persistedSigner->getSignRequest(),
+				$persistedSponsorshipSigners,
+			);
 			$file['filesCount'] = 1;
-			$file['files'] = $this->formatChildFilesResponse([$fileEntity], $signers, $identifyMethods);
+			$file['files'] = $this->formatChildFilesResponse([$fileEntity], $signRequests, $identifyMethods);
 		}
 
 		// Remove raw fields not needed in response
 		unset($file['userId'], $file['createdAt']);
 
 		$file['signers'] = [];
-		foreach ($signers as $signer) {
+		foreach ($persistedSponsorshipSigners as $sponsoredSigner) {
+			$signer = $sponsoredSigner->getSignRequest();
 			if ($signer->getFileId() !== $fileEntity->getId()) {
 				continue;
 			}
 			$signerData = $this->formatSignerData(
-				$signer,
+				$sponsoredSigner,
 				$identifyMethods,
 				$visibleElements,
 				$file['metadata'],
@@ -423,7 +473,7 @@ class FileListService {
 	/**
 	 * Format a single signer with its identify methods and visible elements
 	 *
-	 * @param SignRequest $signer
+	 * @param PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
 	 * @param array $metadata
@@ -431,13 +481,14 @@ class FileListService {
 	 * @return LibresignSignerDetail
 	 */
 	private function formatSignerData(
-		SignRequest $signer,
+		PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO,
 		array $identifyMethods,
 		array $visibleElements,
 		array $metadata,
 		?IUser $user,
 		?int $meSignRequestId = null,
 	): array {
+		$signer = $persistedSignerSponsorshipDTO->getSignRequest();
 		$identifyMethodsOfSigner = $identifyMethods[$signer->getId()] ?? [];
 		$resolvedDisplayName = $this->resolveSignerDisplayName($signer, $identifyMethodsOfSigner);
 		$me = false;
@@ -485,6 +536,7 @@ class FileListService {
 				'value' => $identifyMethod->getIdentifierValue(),
 				'mandatory' => $identifyMethod->getMandatory(),
 			], array_values($identifyMethodsOfSigner)),
+			'sponsorship' => $persistedSignerSponsorshipDTO->getSponsorship()->toArray(),
 		];
 
 		if ($data['me'] && !empty($identifyMethodsOfSigner)) {
@@ -524,16 +576,17 @@ class FileListService {
 	/**
 	 * Format signer data without user context
 	 * Used when $user is null to still include basic signer information
-	 * @param SignRequest $signer
+	 * @param PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO
 	 * @param array<int, array<string, Entity&IdentifyMethod>> $identifyMethods
 	 * @param array<int, FileElement[]> $visibleElements
-	 * @return array
+	 * @return LibresignSignerDetail
 	 */
 	private function formatSignerDataBasic(
-		SignRequest $signer,
+		PersistedSignerSponsorshipDTO $persistedSignerSponsorshipDTO,
 		array $identifyMethods,
 		array $visibleElements,
 	): array {
+		$signer = $persistedSignerSponsorshipDTO->getSignRequest();
 		$identifyMethodsOfSigner = $identifyMethods[$signer->getId()] ?? [];
 		$resolvedDisplayName = $this->resolveSignerDisplayName($signer, $identifyMethodsOfSigner);
 		/** @var LibresignSignerDetail */
@@ -567,6 +620,7 @@ class FileListService {
 				'value' => $identifyMethod->getIdentifierValue(),
 				'mandatory' => $identifyMethod->getMandatory(),
 			], array_values($identifyMethodsOfSigner)),
+			'sponsorship' => $persistedSignerSponsorshipDTO->getSponsorship()->toArray(),
 		];
 
 		if ($signer->getSigned()) {
@@ -718,6 +772,13 @@ class FileListService {
 		$metadata = $mainEntity->getMetadata() ?? [];
 
 		$signRequestEntities = $this->signRequestMapper->getByFileId($mainEntity->getId());
+
+		$persistedSigners = $this->sponsorshipContextBuilderService
+			->buildSignersWithSponsorshipContext(
+				$mainEntity,
+				$signRequestEntities,
+			);
+
 		$identifyMethods = $this->signRequestMapper->getIdentifyMethodsFromSigners($signRequestEntities);
 		$childContext = $mainEntity->getNodeType() === 'envelope' && !empty($childFiles)
 			? $this->getEnvelopeChildContext($childFiles)
@@ -728,7 +789,7 @@ class FileListService {
 
 		$signers = [];
 		$signUuid = null;
-		foreach ($signRequestEntities as $signer) {
+		foreach ($persistedSigners as $signer) {
 			if ($user) {
 				$signerData = $this->formatSignerData($signer, $identifyMethods, $visibleElementsData, $metadata, $user);
 				$signers[] = $signerData;
@@ -744,9 +805,15 @@ class FileListService {
 		if ($user instanceof IUser) {
 			$this->resolveSignerMeFlags($signers, $user);
 			// Refresh signUuid after resolving me flags
-			foreach ($signers as $signerData) {
-				if ($signUuid === null && !empty($signerData['me']) && isset($signerData['sign_uuid'])) {
-					$signUuid = $signerData['sign_uuid'];
+			/** @var list<LibresignSignerDetail> $signers */
+			foreach ($signers as $resolvedSigner) {
+				if (
+					$signUuid === null
+					&& isset($resolvedSigner['me'])
+					&& $resolvedSigner['me']
+					&& isset($resolvedSigner['sign_uuid'])
+				) {
+					$signUuid = $resolvedSigner['sign_uuid'];
 					break;
 				}
 			}
@@ -966,23 +1033,37 @@ class FileListService {
 	 */
 	private function formatChildFilesResponse(
 		array $files,
-		?array $allSigners = null,
+		?array $allSignRequests = null,
 		?array $identifyMethods = null,
 	): array {
 		$fileIds = array_map(fn (File $file) => $file->getId(), $files);
-		$allSigners = $allSigners ?? ($fileIds ? $this->signRequestMapper->getByMultipleFileId($fileIds) : []);
-		$identifyMethods = $identifyMethods ?? $this->signRequestMapper->getIdentifyMethodsFromSigners($allSigners);
+		$allSignRequests = $allSignRequests ?? ($fileIds ? $this->signRequestMapper->getByMultipleFileId($fileIds) : []);
+		$identifyMethods = $identifyMethods ?? $this->signRequestMapper->getIdentifyMethodsFromSigners($allSignRequests);
 
-		$signersByFileId = [];
-		foreach ($allSigners as $signer) {
-			$signersByFileId[$signer->getFileId()][] = $signer;
+		/**
+		 * Index sign requests by file once to avoid repeatedly
+		 * scanning the full collection while formatting child files.
+		 */
+		$signRequestsByFileId = [];
+
+		foreach ($allSignRequests as $signRequest) {
+			$signRequestsByFileId[$signRequest->getFileId()][] = $signRequest;
 		}
 
-		return array_values(array_map(function (File $file) use ($signersByFileId, $identifyMethods) {
-			$signers = $signersByFileId[$file->getId()] ?? [];
+		return array_values(array_map(function (File $file) use ($signRequestsByFileId, $identifyMethods) {
+
+			$fileSignRequests = $signRequestsByFileId[$file->getId()] ?? [];
+
+			$signers
+				= $this->sponsorshipContextBuilderService
+					->buildSignersWithSponsorshipContext(
+						$file,
+						$fileSignRequests,
+					);
 			$metadata = $file->getMetadata() ?? [];
 			$size = $this->getFileSize($file);
-			$signersFormatted = array_map(function (SignRequest $signer) use ($identifyMethods) {
+			$signersFormatted = array_map(function (PersistedSignerSponsorshipDTO $persistedSigner) use ($identifyMethods) {
+				$signer = $persistedSigner->getSignRequest();
 				$identifyMethodsOfSigner = $identifyMethods[$signer->getId()] ?? [];
 				$email = array_reduce($identifyMethodsOfSigner, function (string $carry, IdentifyMethod $identifyMethod): string {
 					if ($identifyMethod->getIdentifierKey() === IdentifyMethodService::IDENTIFY_EMAIL) {
@@ -1013,6 +1094,7 @@ class FileListService {
 					'signed' => $signer->getSigned()?->format(\DateTimeInterface::ATOM),
 					'status' => $signer->getSigned() ? 1 : 0,
 					'statusText' => $signer->getSigned() ? $this->l10n->t('Signed') : $this->l10n->t('Pending'),
+					'sponsorship' => $persistedSigner->getSponsorship()->toArray(),
 				];
 			}, $signers);
 

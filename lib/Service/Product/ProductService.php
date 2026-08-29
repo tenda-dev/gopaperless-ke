@@ -9,22 +9,33 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Product;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\Product;
 use OCA\Libresign\Db\ProductMapper;
+use OCA\Libresign\Enum\ProductCode;
 use OCP\DB\Exception;
+use OCP\IAppConfig;
 use RuntimeException;
 
 class ProductService {
 
-	private ProductMapper $productMapper;
+	private const DEFAULT_CURRENCY = 'KES';
+	private const DEFAULT_SIGN_DOCUMENT_PRICE = 8000; // as minor amount (cents)
+	private const DEFAULT_CERTIFICATE_ACCESS_PRICE = 30000; // as minor amount (cents)
 
-	public function __construct(ProductMapper $productMapper) {
+	private ProductMapper $productMapper;
+	private IAppConfig $appConfig;
+
+	public function __construct(ProductMapper $productMapper, IAppConfig $appConfig) {
 		$this->productMapper = $productMapper;
+		$this->appConfig = $appConfig;
 	}
 
 	/**
 	 * CRITICAL:
 	 * Resolve the default product for a given code.
+	 *
+	 * Creates the default product with sensible defaults if it does not already exist.
 	 *
 	 * Used by PaymentService to determine pricing.
 	 *
@@ -32,18 +43,17 @@ class ProductService {
 	 * @return Product
 	 */
 	public function getDefaultByCode(string $code): Product {
-
 		if ($code === '') {
 			throw new RuntimeException('Product code is required');
 		}
 
 		$product = $this->productMapper->findDefaultByCode($code);
 
-		if (!$product) {
-			throw new RuntimeException("No default product configured for code: {$code}");
+		if ($product !== null) {
+			return $product;
 		}
 
-		return $product;
+		return $this->createDefaultProduct($code);
 	}
 
 	/**
@@ -53,8 +63,10 @@ class ProductService {
 	 */
 	public function create(Product $product): Product {
 
-		$product->setCreatedAt($this->now());
-		$product->setUpdatedAt($this->now());
+		$now = $this->now();
+
+		$product->setCreatedAt($now);
+		$product->setUpdatedAt($now);
 		$product->validate();
 
 		return $this->productMapper->insert($product);
@@ -172,11 +184,58 @@ class ProductService {
 	/**
 	 * @throws \Exception
 	 */
-	private function now(): string
-	{
+	private function now(): string {
 		return (new \DateTimeImmutable(
 			'now',
 			new \DateTimeZone('UTC'),
 		))->format(DATE_ATOM);
+	}
+
+	/**
+	 * Read a positive integer config value, falling back to the given default
+	 * when the stored value is missing, not numeric or not positive.
+	 */
+	private function getConfiguredInt(string $key, int $default): int {
+		$value = $this->appConfig->getValueString(Application::APP_ID, $key, (string)$default);
+		if (!is_numeric($value)) {
+			return $default;
+		}
+		$parsed = (int)$value;
+		return $parsed > 0 ? $parsed : $default;
+	}
+
+	/**
+	 * Read the configured default currency, falling back when empty.
+	 */
+	private function getConfiguredCurrency(): string {
+		$currency = trim($this->appConfig->getValueString(Application::APP_ID, 'product_default_currency', self::DEFAULT_CURRENCY));
+		return $currency !== '' ? $currency : self::DEFAULT_CURRENCY;
+	}
+
+	private function createDefaultProduct(string $code): Product {
+		$productCode = ProductCode::tryFrom($code);
+
+		if ($productCode === null) {
+			throw new RuntimeException(
+				sprintf('Unknown product code: %s', $code),
+			);
+		}
+
+		$product = new Product();
+
+		$product->setCode($productCode->value);
+		$product->setName($productCode->value);
+
+		$product->setAmount(match ($productCode) {
+			ProductCode::SIGN_DOCUMENT => $this->getConfiguredInt('product_sign_document_price', self::DEFAULT_SIGN_DOCUMENT_PRICE),
+			ProductCode::CERTIFICATE_ACCESS => $this->getConfiguredInt('product_certificate_access_price', self::DEFAULT_CERTIFICATE_ACCESS_PRICE),
+		});
+
+		$product->setCurrency($this->getConfiguredCurrency());
+		$product->setUses(1);
+		$product->setActive(true);
+		$product->setIsDefault(true);
+
+		return $this->create($product);
 	}
 }

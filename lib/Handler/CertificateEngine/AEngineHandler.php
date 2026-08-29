@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Handler\CertificateEngine;
 
+use DateTimeInterface;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Enum\CrlValidationStatus;
 use OCA\Libresign\Exception\EmptyCertificateException;
@@ -178,6 +179,14 @@ abstract class AEngineHandler implements IEngineHandler {
 
 		$return['valid_from'] = $this->dateTimeFormatter->formatDateTime($parsed['validFrom_time_t']);
 		$return['valid_to'] = $this->dateTimeFormatter->formatDateTime($parsed['validTo_time_t']);
+
+		$return['valid_from_iso8601'] = (new \DateTimeImmutable(
+			'@' . $parsed['validFrom_time_t']
+		))->format(DateTimeInterface::ATOM);
+
+		$return['valid_to_iso8601'] = (new \DateTimeImmutable(
+			'@' . $parsed['validTo_time_t']
+		))->format(DateTimeInterface::ATOM);
 
 		$this->addCrlValidationInfo($return, $x509);
 

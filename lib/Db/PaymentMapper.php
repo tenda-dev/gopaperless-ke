@@ -12,17 +12,16 @@ namespace OCA\Libresign\Db;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
-use OCP\AppFramework\Db\QBMapper;
-use OCP\DB\Exception;
-use OCP\IDBConnection;
-use OCP\DB\Types;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
+use OCP\AppFramework\Db\QBMapper;
+use OCP\DB\Exception;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\DB\Types;
+use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
-class PaymentMapper extends QBMapper
-{
+class PaymentMapper extends QBMapper {
 
 	public function __construct(
 		IDBConnection $db,
@@ -35,8 +34,7 @@ class PaymentMapper extends QBMapper
 	 * Find payment by Payment ID.
 	 * @throws Exception
 	 */
-	public function findById(int $id): ?Payment
-	{
+	public function findById(int $id): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -54,7 +52,7 @@ class PaymentMapper extends QBMapper
 			/** @var Payment $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -62,8 +60,7 @@ class PaymentMapper extends QBMapper
 	/**
 	 * Find payment by provider reference.
 	 */
-	public function findByProviderReference(string $reference): ?Payment
-	{
+	public function findByProviderReference(string $reference): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -81,7 +78,7 @@ class PaymentMapper extends QBMapper
 			/** @var Payment $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -89,8 +86,7 @@ class PaymentMapper extends QBMapper
 	/**
 	 * Find payment by provider + reference
 	 */
-	public function findByProviderAndReference(PaymentProvider $provider, string $reference): ?Payment
-	{
+	public function findByProviderAndReference(PaymentProvider $provider, string $reference): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -114,7 +110,7 @@ class PaymentMapper extends QBMapper
 			/** @var Payment $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -122,8 +118,7 @@ class PaymentMapper extends QBMapper
 	/**
 	 * Find payment by payment attempt id (idempotency protection).
 	 */
-	public function findByAttemptId(string $attemptId): ?Payment
-	{
+	public function findByAttemptId(string $attemptId): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -141,7 +136,7 @@ class PaymentMapper extends QBMapper
 			/** @var Payment $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -157,8 +152,7 @@ class PaymentMapper extends QBMapper
 	 * @return Payment[]
 	 * @throws Exception
 	 */
-	public function findAllByUserId(string $userId): array
-	{
+	public function findAllByUserId(string $userId): array {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -181,8 +175,7 @@ class PaymentMapper extends QBMapper
 	 * @return Payment[]
 	 * @throws Exception
 	 */
-	public function findAllByTransactionId(int $transactionId): array
-	{
+	public function findAllByTransactionId(int $transactionId): array {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -212,7 +205,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function findLatestByTransactionId(
-		int $transactionId
+		int $transactionId,
 	): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
@@ -238,11 +231,11 @@ class PaymentMapper extends QBMapper
 
 			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
 
-			return null;
-		}
+				return null;
+			}
 	}
 
 
@@ -251,8 +244,7 @@ class PaymentMapper extends QBMapper
 	 *
 	 * @throws Exception
 	 */
-	public function findLatestPaidByTransactionId(int $transactionId): ?Payment
-	{
+	public function findLatestPaidByTransactionId(int $transactionId): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
 
@@ -277,7 +269,7 @@ class PaymentMapper extends QBMapper
 			/** @var Payment $entity */
 			$entity = $this->findEntity($qb);
 			return $entity;
-		} catch (DoesNotExistException | MultipleObjectsReturnedException) {
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
 			return null;
 		}
 	}
@@ -288,7 +280,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function findLatestPendingByTransactionId(
-		int $transactionId
+		int $transactionId,
 	): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
@@ -323,11 +315,11 @@ class PaymentMapper extends QBMapper
 
 			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
 
-			return null;
-		}
+				return null;
+			}
 	}
 
 
@@ -337,7 +329,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function findLatestFailedByTransactionId(
-		int $transactionId
+		int $transactionId,
 	): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
@@ -372,11 +364,11 @@ class PaymentMapper extends QBMapper
 
 			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
 
-			return null;
-		}
+				return null;
+			}
 	}
 
 
@@ -386,7 +378,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function findLatestExpiredByTransactionId(
-		int $transactionId
+		int $transactionId,
 	): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
@@ -421,11 +413,11 @@ class PaymentMapper extends QBMapper
 
 			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
 
-			return null;
-		}
+				return null;
+			}
 	}
 
 
@@ -437,7 +429,7 @@ class PaymentMapper extends QBMapper
 	 */
 	public function findAllByStatus(
 		PaymentStatus $status,
-		int $limit = 100
+		int $limit = 100,
 	): array {
 
 		$qb = $this->db->getQueryBuilder();
@@ -467,7 +459,7 @@ class PaymentMapper extends QBMapper
 	 */
 	public function findAllByProvider(
 		PaymentProvider $provider,
-		int $limit = 100
+		int $limit = 100,
 	): array {
 
 		$qb = $this->db->getQueryBuilder();
@@ -497,7 +489,7 @@ class PaymentMapper extends QBMapper
 	 */
 	public function findStaleVerificationLocks(
 		int $timeoutSeconds = 600,
-		int $limit = 100
+		int $limit = 100,
 	): array {
 
 		$qb = $this->db->getQueryBuilder();
@@ -536,7 +528,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function findExpiredPendingPayments(
-		int $limit = 100
+		int $limit = 100,
 	): array {
 
 		$qb = $this->db->getQueryBuilder();
@@ -581,7 +573,7 @@ class PaymentMapper extends QBMapper
 	 * @throws Exception
 	 */
 	public function existsPaidByTransactionId(
-		int $transactionId
+		int $transactionId,
 	): bool {
 
 		return $this->findLatestPaidByTransactionId(
@@ -605,8 +597,7 @@ class PaymentMapper extends QBMapper
 	 *
 	 * @return Payment[]
 	 */
-	public function findPendingForVerification(int $limit = 100): array
-	{
+	public function findPendingForVerification(int $limit = 100): array {
 		$qb = $this->db->getQueryBuilder();
 
 		$now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
@@ -670,7 +661,7 @@ class PaymentMapper extends QBMapper
 	 */
 	public function findLatestPendingCreditPurchaseByUserId(
 		string $userId,
-		string $productCode
+		string $productCode,
 	): ?Payment {
 
 		$qb = $this->db->getQueryBuilder();
@@ -719,11 +710,11 @@ class PaymentMapper extends QBMapper
 
 			return $entity;
 		} catch (
-			DoesNotExistException |
+			DoesNotExistException|
 			MultipleObjectsReturnedException) {
 
-			return null;
-		}
+				return null;
+			}
 	}
 
 
@@ -742,8 +733,7 @@ class PaymentMapper extends QBMapper
 	 *
 	 * @throws Exception
 	 */
-	public function tryLockVerification(int $paymentId): bool
-	{
+	public function tryLockVerification(int $paymentId): bool {
 		$qb = $this->db->getQueryBuilder();
 
 		$now = new \DateTimeImmutable(
@@ -776,8 +766,7 @@ class PaymentMapper extends QBMapper
 		return $qb->executeStatement() === 1;
 	}
 
-	private function status(PaymentStatus $status): string
-	{
+	private function status(PaymentStatus $status): string {
 		return $status->value;
 	}
 }

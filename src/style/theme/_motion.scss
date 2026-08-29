@@ -1,0 +1,13 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+:root {
+	--tenda-duration-fast: 100ms; /* Hover, focus, small state changes */
+	--tenda-duration-base: 200ms; /* Standard enter/exit transitions */
+	--tenda-duration-slow: 300ms; /* Larger surfaces, modals */
+
+	--tenda-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);   /* General UI motion */
+	--tenda-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);   /* Prominent, expressive motion */
+}

@@ -524,7 +524,8 @@ const paymentPresentation = computed<PaymentPresentation>(() => {
 const showSignCreditsBanner = computed(() => {
 	return (
 		!loading.value &&
-		!needCreateSignature.value
+		!needCreateSignature.value &&
+		signerContextStore.signRequestId
 	)
 })
 
@@ -685,7 +686,7 @@ async function signWithClickGated() {
 	)
 
 	try {
-		const { allowed } = await entitlementStore.check(signStore.productCode)
+		const { allowed } = await entitlementStore.check(signerContextStore.signRequestId, signStore.productCode)
 
 		if (!allowed) {
 			// Same behaviour as the sidebar "Sign the document." button: open payment flow
@@ -887,6 +888,7 @@ async function confirmSignDocument() {
 
 	// 2. Check entitlement FIRST
 	const { allowed } = await entitlementStore.check(
+		signerContextStore.signRequestId,
 		signStore.productCode,
 	)
 

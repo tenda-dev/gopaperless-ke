@@ -28,19 +28,18 @@ use Psr\Log\LoggerInterface;
  * Background jobs are NOT suitable for high-throughput
  * payment systems but provide a reasonable default.
  */
-class NextcloudVerificationDispatcher
-	implements IVerificationDispatcher
-{
+class NextcloudVerificationDispatcher implements IVerificationDispatcher {
 	public function __construct(
 		private IJobList $jobList,
 		private LoggerInterface $logger,
-	) {}
+	) {
+	}
 
 	/**
 	 * Dispatch payment verification using Nextcloud jobs.
 	 */
 	public function dispatchVerification(
-		int $paymentId
+		int $paymentId,
 	): void {
 
 		$this->logger->info(

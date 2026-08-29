@@ -43,8 +43,7 @@ use RuntimeException;
  * 2. OpenExchangeRates (secondary)
  * 3. Emergency fixed rates (last resort)
  */
-class FxEngineService
-{
+class FxEngineService {
 	private const BASE_CURRENCY = 'KES';
 
 	/**
@@ -80,14 +79,14 @@ class FxEngineService
 		private readonly LoggerInterface $logger,
 		private readonly IClientService $clientService,
 		private readonly IAppConfig $appConfig,
-	) {}
+	) {
+	}
 
 	// -------------------------------------------------------------------------
 	// PUBLIC API
 	// -------------------------------------------------------------------------
 
-	public function convert(int $kesAmount, string $targetCurrency): FxEngineResultDTO
-	{
+	public function convert(int $kesAmount, string $targetCurrency): FxEngineResultDTO {
 		$targetCurrency = strtoupper($targetCurrency);
 
 		if ($targetCurrency === self::BASE_CURRENCY) {
@@ -112,8 +111,7 @@ class FxEngineService
 		);
 	}
 
-	public function currencyForRegion(string $region): ?string
-	{
+	public function currencyForRegion(string $region): ?string {
 		foreach (CurrencyConfig::SUPPORTED_CURRENCIES as $currency => $config) {
 			if (in_array(strtoupper($region), $config['countries'], true)) {
 				return $currency;
@@ -122,8 +120,7 @@ class FxEngineService
 		return null;
 	}
 
-	public function supports(string $currency): bool
-	{
+	public function supports(string $currency): bool {
 		return isset(CurrencyConfig::SUPPORTED_CURRENCIES[$currency]);
 	}
 
@@ -131,8 +128,7 @@ class FxEngineService
 	// RATE RESOLUTION (USD BASE)
 	// -------------------------------------------------------------------------
 
-	private function resolveRate(string $currency): array
-	{
+	private function resolveRate(string $currency): array {
 		if ($this->isCacheHit($currency)) {
 			return $this->rateCache[$currency];
 		}
@@ -166,8 +162,7 @@ class FxEngineService
 	 *
 	 * Returns USD-based rates → compute cross-rate
 	 */
-	private function fetchFromExchangeRateApi(string $targetCurrency): ?string
-	{
+	private function fetchFromExchangeRateApi(string $targetCurrency): ?string {
 		try {
 			$apiKey = $this->appConfig->getValueString(Application::APP_ID, 'fx_exchangerate_api_key', '');
 			if ($apiKey === '') {
@@ -212,8 +207,7 @@ class FxEngineService
 	/**
 	 * SECONDARY: OpenExchangeRates
 	 */
-	private function fetchFromOpenExchangeRates(string $targetCurrency): ?string
-	{
+	private function fetchFromOpenExchangeRates(string $targetCurrency): ?string {
 		try {
 			$appId = $this->appConfig->getValueString(Application::APP_ID, 'fx_openexchange_app_id', '');
 			if ($appId === '') {
@@ -252,8 +246,7 @@ class FxEngineService
 	// CALCULATION
 	// -------------------------------------------------------------------------
 
-	private function applyRate(int $baseAmountMinor, string $rate, string $targetCurrency): int
-	{
+	private function applyRate(int $baseAmountMinor, string $rate, string $targetCurrency): int {
 		// Base currency decimals (e.g. KES = 2)
 		$baseDecimals = CurrencyConfig::SUPPORTED_CURRENCIES[self::BASE_CURRENCY]['decimals'];
 
@@ -261,7 +254,7 @@ class FxEngineService
 		$targetDecimals = CurrencyConfig::SUPPORTED_CURRENCIES[$targetCurrency]['decimals'];
 
 		// Convert rate safely
-		$rateFloat = (float) $rate;
+		$rateFloat = (float)$rate;
 
 		// Convert base minor → major (e.g. cents → shillings)
 		$baseMajor = $baseAmountMinor / (10 ** $baseDecimals);
@@ -272,18 +265,17 @@ class FxEngineService
 		// Convert back to target minor units with correct rounding
 		if ($targetDecimals === 0) {
 			// No decimals (UGX, TZS, RWF, etc.)
-			return (int) round($targetMajor, 0, PHP_ROUND_HALF_UP);
+			return (int)round($targetMajor, 0, PHP_ROUND_HALF_UP);
 		}
 
-		return (int) round(
+		return (int)round(
 			$targetMajor * (10 ** $targetDecimals),
 			0,
 			PHP_ROUND_HALF_UP
 		);
 	}
 
-	public function identityResult(int $kesAmount): FxEngineResultDTO
-	{
+	public function identityResult(int $kesAmount): FxEngineResultDTO {
 		$now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
 
 		return new FxEngineResultDTO(
@@ -299,8 +291,7 @@ class FxEngineService
 	// CACHE
 	// -------------------------------------------------------------------------
 
-	private function isCacheHit(string $currency): bool
-	{
+	private function isCacheHit(string $currency): bool {
 		if (!isset($this->rateCache[$currency])) {
 			return false;
 		}
@@ -310,11 +301,10 @@ class FxEngineService
 		return $age < self::MAX_RATE_AGE_SECONDS;
 	}
 
-	private function cache(string $currency, string $rate, string $source): array
-	{
+	private function cache(string $currency, string $rate, string $source): array {
 		$entry = [
-			'rate'      => $rate,
-			'source'    => $source,
+			'rate' => $rate,
+			'source' => $source,
 			'fetchedAt' => new DateTimeImmutable('now', new DateTimeZone('UTC')),
 		];
 

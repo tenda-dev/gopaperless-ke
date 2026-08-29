@@ -9,13 +9,11 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Enum;
 
-enum PaymentProvider: string
-{
+enum PaymentProvider: string {
 	case DPO = 'dpo';
 	case DARAJA = 'daraja';
 
-	public function isVerifiable(): bool
-	{
+	public function isVerifiable(): bool {
 		return match ($this) {
 			self::DPO => true,
 			self::DARAJA => false,
@@ -25,11 +23,10 @@ enum PaymentProvider: string
 	/**
 	 * Helper for DB queries
 	 */
-	public static function verifiableValues(): array
-	{
+	public static function verifiableValues(): array {
 		return array_map(
-			fn(self $p) => $p->value,
-			array_filter(self::cases(), fn(self $p) => $p->isVerifiable())
+			fn (self $p) => $p->value,
+			array_filter(self::cases(), fn (self $p) => $p->isVerifiable())
 		);
 	}
 }

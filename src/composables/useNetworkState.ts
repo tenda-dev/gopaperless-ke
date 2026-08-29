@@ -72,13 +72,13 @@ function markOnline() {
  * IMPORTANT:
  * Axios/network requests:
  * - no response + request exists
- * - timeout
+ *
+ * A request timeout (ECONNABORTED) is deliberately NOT treated as a network
+ * error: it produced false positives. A slow request that timed out is not
+ * the same as a lost connection.
  */
 function isNetworkError(error: any): boolean {
-	return (
-		(!error?.response && !!error?.request) ||
-		error?.code === 'ECONNABORTED'
-	)
+	return !error?.response && !!error?.request
 }
 
 /**

@@ -22,9 +22,9 @@ use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 final class RequestSignatureControllerTest extends TestCase {
 	private RequestSignatureController $controller;

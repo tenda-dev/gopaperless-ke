@@ -27,12 +27,14 @@ use OCA\Libresign\Helper\FileUploadHelper;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Crl\CrlService;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
+use OCA\Libresign\Service\ExtendedAccount\ExtendedAccountService;
 use OCA\Libresign\Service\PhoneNumber\PhoneNumberService;
 use OCA\Settings\Mailer\NewUserMailHelper;
 use OCP\Accounts\IAccountManager;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Config\IUserConfig;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Config\IMountProviderCollection;
 use OCP\Files\File;
 use OCP\Files\IMimeTypeDetector;
@@ -41,11 +43,13 @@ use OCP\Files\NotFoundException;
 use OCP\Http\Client\IClientService;
 use OCP\IAppConfig;
 use OCP\IConfig;
+use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Log\Audit\CriticalActionPerformedEvent;
 use Psr\Log\LoggerInterface;
 use Sabre\DAV\UUIDUtil;
 use Throwable;
@@ -95,6 +99,9 @@ class AccountService {
 		private LoggerInterface $logger,
 		private PhoneNumberService $phoneNumberService,
 		private EntitlementService $entitlementService,
+		private ExtendedAccountService $extendedAccountService,
+		private IDBConnection $connection,
+		private IEventDispatcher $eventDispatcher,
 	) {
 	}
 
@@ -251,6 +258,10 @@ class AccountService {
 			// when the object itself is updated. No explicit updateUser call is usually needed.
 		}
 
+		$this->extendedAccountService->create(
+			$newUser->getUID(),
+		);
+
 		$this->updateIdentifyMethodToAccount($signRequest->getId(), $email, $newUser->getUID());
 
 		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
@@ -318,6 +329,10 @@ class AccountService {
 			$this->setPhoneNumber($newUser, $resolved->e164);
 		}
 
+		$this->extendedAccountService->create(
+			$newUser->getUID(),
+		);
+
 		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
 			try {
 				$emailTemplate = $this->newUserMail->generateTemplate($newUser, false);
@@ -335,10 +350,118 @@ class AccountService {
 
 		$this->awardSignupBonus($newUser->getUID());
 
+		$this->eventDispatcher->dispatchTyped(new CriticalActionPerformedEvent(
+			'LibreSign account created for user %s',
+			['user' => $newUser->getUID()]
+		));
+
 		return [
 			'message' => 'Success',
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
+		];
+	}
+
+	/**
+	 * Accept the active Terms of Service documents for an existing account.
+	 *
+	 * @return array{message:string,uid:string,acceptedTerms:int}
+	 */
+	public function acceptTerms(string $userId): array {
+		$userId = trim($userId);
+		if ($userId === '') {
+			throw new LibresignException('User ID is required');
+		}
+
+		$user = $this->userManager->get($userId);
+		if ($user === null) {
+			throw new LibresignException('Account not found');
+		}
+
+		return [
+			'message' => 'Success',
+			'uid' => $user->getUID(),
+			'acceptedTerms' => $this->acceptTermsForUserId($user->getUID()),
+		];
+	}
+
+	/**
+	 * Record acceptance for every active Terms of Service document. Calls are
+	 * idempotent: documents the user has already accepted are left untouched.
+	 *
+	 * @return int Number of new acceptance records created.
+	 */
+	public function acceptTermsForUserId(string $userId): int {
+		if (!$this->connection->tableExists('termsofservice_terms')
+			|| !$this->connection->tableExists('termsofservice_sigs')) {
+			return 0;
+		}
+
+		$termQuery = $this->connection->getQueryBuilder();
+		$termQuery->select('id')
+			->from('termsofservice_terms');
+		$result = $termQuery->executeQuery();
+		$termIds = [];
+		while ($row = $result->fetch()) {
+			$termIds[] = (int)$row['id'];
+		}
+		$result->closeCursor();
+
+		$acceptedTerms = 0;
+		foreach ($termIds as $termId) {
+			$check = $this->connection->getQueryBuilder();
+			$check->select($check->expr()->literal(1))
+				->from('termsofservice_sigs')
+				->where($check->expr()->eq('user_id', $check->createNamedParameter($userId)))
+				->andWhere($check->expr()->eq('terms_id', $check->createNamedParameter($termId)))
+				->setMaxResults(1);
+			$checkResult = $check->executeQuery();
+			$exists = $checkResult->fetchOne();
+			$checkResult->closeCursor();
+			if ($exists) {
+				continue;
+			}
+
+			$insert = $this->connection->getQueryBuilder();
+			$insert->insert('termsofservice_sigs')
+				->setValue('user_id', $insert->createNamedParameter($userId))
+				->setValue('terms_id', $insert->createNamedParameter($termId))
+				->setValue('timestamp', $insert->createNamedParameter(time()));
+			$insert->executeStatement();
+			$acceptedTerms++;
+		}
+
+		$this->logger->info('Accepted Terms of Service on behalf of account', [
+			'userId' => $userId,
+			'acceptedTerms' => $acceptedTerms,
+		]);
+
+		$this->eventDispatcher->dispatchTyped(new CriticalActionPerformedEvent(
+			'Terms of Service accepted by user %s',
+			['user' => $userId]
+		));
+
+		return $acceptedTerms;
+	}
+
+	public function getExtendedAccount(
+		string $userId,
+		?string $email,
+	): array {
+
+		$extended = $this->extendedAccountService->getOrCreate(
+			$userId,
+			$email
+		);
+
+		return [
+			'createdAt' => $extended->getCreatedAtImmutable()->format(DATE_ATOM),
+			'paidCertificate' => $extended->getPaidCertificate(),
+			'certPaidAt' => $extended->getCertPaidAtImmutable()?->format(DATE_ATOM),
+			'validUntil' => $extended->getValidUntilImmutable()?->format(DATE_ATOM),
+			// Gate-aware: applies the admin kill-switch on top of DB state.
+			// This boolean is the FE's single source of truth for gating.
+			'isCertificateValid' => $this->extendedAccountService->isCertificateValidForAccount($extended),
 		];
 	}
 
@@ -403,6 +526,10 @@ class AccountService {
 		// Appended AFTER array_filter so a `false` value survives (array_filter
 		// would strip it, wrongly falling back to the frontend default).
 		$config['one_time_signing_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true);
+		$config['files_list_show_signers'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_show_signers', true);
+		$config['files_list_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false);
+		$config['visible_elements_next_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false);
+		$config['sponsorship_enabled'] = $this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false);
 
 		return $config;
 	}

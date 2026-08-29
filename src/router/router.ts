@@ -29,6 +29,18 @@ function generateWebBasePath(): string {
 const routes: RouteRecordRaw[] = [
 	// public
 	{
+		// Anonymous marketing/upload landing. Named with the `External`
+		// suffix so router.beforeEach renders it directly instead of
+		// redirecting to a non-existent `PublicUploadExternal` variant
+		// (isExternal() flags every /p/ path as external).
+		path: '/p/upload',
+		name: 'PublicUploadExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
+		component: () => import('../views/PublicUpload.vue'),
+	},
+	{
 		path: '/p/sign/:uuid',
 		redirect: (to) => {
 			const action = selectAction(loadState('libresign', 'action', 0), to, { path: '/' })
@@ -151,6 +163,19 @@ const routes: RouteRecordRaw[] = [
 	{
 		path: '/f/filelist/sign',
 		name: 'fileslist',
+		// FilesListNext is opt-in via the files_list_next_enabled app config
+		// flag (default false). Legacy FilesList remains the default.
+		component: () => {
+			const config = loadState('libresign', 'config', {}) as { files_list_next_enabled?: boolean }
+			return config.files_list_next_enabled === true
+				? import('../views/FilesListNext/FilesListNext.vue')
+				: import('../views/FilesList/FilesList.vue')
+		},
+	},
+	{
+		// Previous Files list, kept available at a legacy route.
+		path: '/f/filelist/legacy',
+		name: 'fileslistLegacy',
 		component: () => import('../views/FilesList/FilesList.vue'),
 	},
 	{

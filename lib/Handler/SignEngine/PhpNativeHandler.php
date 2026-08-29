@@ -151,7 +151,9 @@ class PhpNativeHandler extends Pkcs12Handler {
 		if ($renderMode === SignerElementsService::RENDER_MODE_GRAPHIC_AND_DESCRIPTION) {
 			if ($signatureImagePath !== '' && is_file($signatureImagePath)) {
 				$userImgPath = $signatureImagePath;
-				$userImgRect = [0.0, 0.0, (float)$width / 2.0, (float)$height];
+
+				$nameAreaHeight = max(12.0, (float)$height * 0.15);
+				$userImgRect = [0.0, $nameAreaHeight, (float)$width / 2.0, (float)$height];
 			}
 		} elseif ($renderMode === SignerElementsService::RENDER_MODE_GRAPHIC_ONLY) {
 			if ($signatureImagePath !== '' && is_file($signatureImagePath)) {
@@ -350,32 +352,31 @@ class PhpNativeHandler extends Pkcs12Handler {
 
 		// Left half: signer name as large text operators (SIGNAME_AND_DESCRIPTION only).
 		// No image generation — the name is drawn directly with PDF text commands.
-		if ($renderMode === SignerElementsService::RENDER_MODE_SIGNAME_AND_DESCRIPTION) {
+		// Left half: user's display/common name below the signature.
+		if ($renderMode === SignerElementsService::RENDER_MODE_GRAPHIC_AND_DESCRIPTION) {
 			$commonName = !empty($params['SignerCommonName'])
 				? (string)$params['SignerCommonName']
 				: ($this->readCertificate()['subject']['CN'] ?? '');
+
 			if ($commonName !== '') {
-				$nameFontSize = $this->signatureTextService->getSignatureFontSize();
+				$nameFontSize = min(8.0, $descFontSize);
 				$leftHalfW = (float)$width / 2.0;
-				$nameLines = $this->wrapTextForPdf($commonName, $leftHalfW - $leftPadding * 2, $nameFontSize);
-				$nameLineCount = count($nameLines);
-				$totalNameHeight = $nameLineCount * $nameFontSize * 1.0;
-				$nameStartY = ((float)$height + $totalNameHeight) / 2.0 - $nameFontSize;
-				$nameStartY = max(0.0, $nameStartY);
-				$nameY = $nameStartY;
-				$estimatedCharWidth = $nameFontSize * 0.52;
-				foreach ($nameLines as $nameLine) {
-					$lineWidth = strlen($nameLine) * $estimatedCharWidth;
-					$nameX = max($leftPadding, ($leftHalfW - $lineWidth) / 2.0);
-					$escaped = $this->escapePdfText($nameLine);
-					$stream .= "BT\n";
-					$stream .= sprintf("/F1 %.2F Tf\n", $nameFontSize);
-					$stream .= "0 0 0 rg\n";
-					$stream .= sprintf("%.2F %.2F Td\n", $nameX, $nameY);
-					$stream .= sprintf("(%s) Tj\n", $escaped);
-					$stream .= "ET\n";
-					$nameY -= $nameFontSize * 1.0;
-				}
+				$nameWidth = strlen($commonName) * ($nameFontSize * 0.52);
+				$nameX = max(
+					$leftPadding,
+					($leftHalfW - $nameWidth) / 2.0
+				);
+
+				$nameY = 18.0;
+
+				$escaped = $this->escapePdfText($commonName);
+
+				$stream .= "BT\n";
+				$stream .= sprintf("/F1 %.2F Tf\n", $nameFontSize);
+				$stream .= "0 0 0 rg\n";
+				$stream .= sprintf("%.2F %.2F Td\n", $nameX, $nameY);
+				$stream .= sprintf("(%s) Tj\n", $escaped);
+				$stream .= "ET\n";
 			}
 		}
 

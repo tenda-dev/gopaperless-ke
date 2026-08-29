@@ -17,6 +17,7 @@ use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Enum\SignatureFlow;
+use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Events\SignRequestCanceledEvent;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Handler\DocMdpHandler;
@@ -27,7 +28,10 @@ use OCA\Libresign\Service\Envelope\EnvelopeFileRelocator;
 use OCA\Libresign\Service\Envelope\EnvelopeService;
 use OCA\Libresign\Service\File\Pdf\PdfMetadataExtractor;
 use OCA\Libresign\Service\IdentifyMethod\IIdentifyMethod;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignRequest\SignRequestService;
+use OCA\Libresign\Service\Sponsorship\DTO\PersistedSignerSponsorshipDTO;
+use OCA\Libresign\Service\Sponsorship\SponsorshipWorkflowService;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\Node;
@@ -67,6 +71,8 @@ class RequestSignatureService {
 		protected EnvelopeFileRelocator $envelopeFileRelocator,
 		protected FileUploadHelper $uploadHelper,
 		protected SignRequestService $signRequestService,
+		protected SponsorshipWorkflowService $sponsorshipWorkflowService,
+		protected SignatureProfileService $signatureProfileService,
 	) {
 	}
 
@@ -359,6 +365,17 @@ class RequestSignatureService {
 			$name = $node->getName();
 		}
 		$file->setName($this->removeExtensionFromName($name, $metadata));
+		/**
+		 * Resolve the appearance profile once, from the requester (document owner),
+		 * and patch it into the file metadata. Workers will read this and will never
+		 * perform group lookups. The customer appearance is applied by default.
+		 */
+		$requesterId = $file->getUserId();
+		if ($requesterId && $this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false)) {
+			$metadata['appearance_profile'] = $this->signatureProfileService
+				->resolveForRequester($requesterId, true)
+				->toArray();
+		}
 		$file->setMetadata($metadata);
 		if (!empty($data['callback'])) {
 			$file->setCallback($data['callback']);
@@ -483,43 +500,71 @@ class RequestSignatureService {
 	}
 
 	/**
-	 * @return SignRequestEntity[]
+	 * @return PersistedSignerSponsorshipDTO[]
 	 *
-	 * @psalm-return list<SignRequestEntity>
+	 * @psalm-return list<PersistedSignerSponsorshipDTO>
 	 */
-	private function associateToSigners(array $data, FileEntity $file): array {
-		$return = [];
-		if (!empty($data['signers'])) {
-			$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
-			$this->deleteIdentifyMethodIfNotExits($normalizedSigners, $file);
-			$this->identifyMethod->clearCache();
+	private function associateToSigners(
+		array $data,
+		FileEntity $file,
+		string $productCode = 'SIGN_DOCUMENT',
+	): array {
+		if (empty($data['signers'])) {
+			return [];
+		}
 
-			$this->sequentialSigningService->resetOrderCounter();
-			$fileStatus = $data['status'] ?? null;
+		$persistedSignRequests = [];
+		$normalizedSigners = $this->validateHelper->normalizeRequestSigners($data['signers']);
+		$this->deleteIdentifyMethodIfNotExits($normalizedSigners, $file);
+		$this->identifyMethod->clearCache();
 
-			foreach ($normalizedSigners as $signer) {
-				$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
-				$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
-				$signerStatus = $signer['status'] ?? null;
-				$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
+		$this->sequentialSigningService->resetOrderCounter();
+		$fileStatus = $data['status'] ?? null;
 
-				foreach ($signer['identifyMethods'] as $identifyMethod) {
-					$return[] = $this->signRequestService->createOrUpdateSignRequest(
-						identifyMethods: [
-							$identifyMethod['method'] => $identifyMethod['value'],
-						],
-						displayName: $signer['displayName'] ?? '',
-						description: $signer['description'] ?? '',
-						notify: $shouldNotify,
-						fileId: $file->getId(),
-						signingOrder: $signingOrder,
-						fileStatus: $fileStatus,
-						signerStatus: $signerStatus,
-					);
-				}
+		$sponsorshipEnabled = $this->appConfig->getValueBool(
+			Application::APP_ID,
+			'sponsorship_enabled',
+			false,
+		);
+
+		foreach ($normalizedSigners as $signer) {
+			$userProvidedOrder = isset($signer['signingOrder']) ? (int)$signer['signingOrder'] : null;
+			$signingOrder = $this->sequentialSigningService->determineSigningOrder($userProvidedOrder);
+			$signerStatus = $signer['status'] ?? null;
+			$shouldNotify = !isset($signer['notify']) || $signer['notify'] !== 0;
+
+			$sponsorshipType = $sponsorshipEnabled && isset($signer['sponsorship']['type'])
+				? SponsorshipType::tryFrom($signer['sponsorship']['type'])
+				: null;
+
+			foreach ($signer['identifyMethods'] as $identifyMethod) {
+				$persistedSignRequests[] = $this->signRequestService->createOrUpdateSignRequest(
+					identifyMethods: [
+						$identifyMethod['method'] => $identifyMethod['value'],
+					],
+					displayName: $signer['displayName'] ?? '',
+					description: $signer['description'] ?? '',
+					notify: $shouldNotify,
+					fileId: $file->getId(),
+					signingOrder: $signingOrder,
+					fileStatus: $fileStatus,
+					signerStatus: $signerStatus,
+					sponsorshipType: $sponsorshipType
+				);
 			}
 		}
-		return $return;
+
+		if (!$sponsorshipEnabled) {
+			return [];
+		}
+
+		return array_values($this->sponsorshipWorkflowService->persist(
+			file: $file,
+			requesterUserId: $data['userManager']->getUID(),
+			productCode: $productCode,
+			incomingSigners: $normalizedSigners,
+			persistedSignRequests: $persistedSignRequests,
+		));
 	}
 
 
@@ -593,6 +638,9 @@ class RequestSignatureService {
 		$this->dispatchCancellationEventIfNeeded($signRequest, $file, $groupedIdentifyMethods);
 
 		try {
+			$this->sponsorshipWorkflowService->releaseSigner(
+				$signRequestId
+			);
 			$this->signRequestMapper->delete($signRequest);
 			$this->identifyMethod->deleteBySignRequestId($signRequestId);
 			$visibleElements = $this->fileElementMapper->getByFileIdAndSignRequestId($fileId, $signRequestId);
@@ -673,20 +721,162 @@ class RequestSignatureService {
 	}
 
 	public function deleteRequestSignature(array $data): void {
+		/**
+		 * Resolve the workflow context before performing any mutations.
+		 *
+		 * If context resolution fails we cannot safely continue because
+		 * we no longer know which workflow should be deleted or which
+		 * sponsorship reservations belong to it.
+		 */
+		$context = $this->prepareDeleteContext($data);
+
+		$fileData = $context['file'];
+		$signatures = $context['signRequests'];
+
+		$this->logger->info(
+			'[WORKFLOW DELETE] Starting workflow deletion.',
+			[
+				'fileId' => $fileData->getId(),
+				'signRequestCount' => count($signatures),
+			],
+		);
+
+		try {
+			foreach ($signatures as $signRequest) {
+				$this->identifyMethod->deleteBySignRequestId(
+					$signRequest->getId(),
+				);
+
+				$this->signRequestMapper->delete(
+					$signRequest,
+				);
+			}
+
+			$this->fileMapper->delete(
+				$fileData,
+			);
+
+			$this->fileElementService->deleteVisibleElements(
+				$fileData->getId(),
+			);
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'[WORKFLOW DELETE] Failed to delete workflow.',
+				[
+					'fileId' => $fileData->getId(),
+					'exception' => $e,
+				],
+			);
+
+			throw $e;
+		} finally {
+			/**
+			 * Sponsorship reservations are released independently of
+			 * teardown outcome, keyed by fileId (not by the File entity),
+			 * so release works even after a partial teardown.
+			 *
+			 * SAFETY: releasing during a partial teardown cannot cause a
+			 * double-spend. SigningCoverageService fail-closes — it will
+			 * not authorise a signing against a released reservation and
+			 * falls back to the signer's own credits or the paywall.
+			 * SigningSettlementValidationService independently rejects an
+			 * already-released reservation. Both gates must hold for this
+			 * to remain safe; see SigningCoverageService::resolveSigningCoverage.
+			 *
+			 * IDEMPOTENT: releaseWorkflow filters already-released
+			 * reservations and re-guards on releasedAt, so repeated
+			 * attempts (e.g. delete retries) release at most once.
+			 *
+			 * KNOWN LIMITATION: if teardown succeeds but this release
+			 * throws, the failure is logged and swallowed and the
+			 * reservation is not returned until a subsequent retry or
+			 * reconciliation. This is a deliberate trade to avoid coupling
+			 * credit release to LibreSign teardown reliability. Pending EntitlementLedger
+			 */
+			try {
+				$this->logger->info(
+					'[WORKFLOW DELETE] Releasing sponsorship reservations.',
+					[
+						'fileId' => $fileData->getId(),
+					],
+				);
+				$this->sponsorshipWorkflowService->releaseWorkflow(
+					$fileData->getId(),
+				);
+
+				$this->logger->info(
+					'[WORKFLOW DELETE] Sponsorship reservations released.',
+					[
+						'fileId' => $fileData->getId(),
+					],
+				);
+			} catch (\Throwable $e) {
+				$this->logger->error(
+					'[WORKFLOW DELETE] Failed to release sponsorship reservations.',
+					[
+						'fileId' => $fileData->getId(),
+						'exception' => $e,
+					],
+				);
+			}
+		}
+	}
+
+
+	/**
+	 * Resolves the workflow context required to delete a signing workflow.
+	 *
+	 * Responsibilities:
+	 * - Resolve the persisted file.
+	 * - Resolve all SignRequests belonging to the workflow.
+	 * - Validate the incoming delete payload.
+	 *
+	 * This method performs no mutations.
+	 * It exists solely to prepare the context required by the deletion
+	 * and sponsorship cleanup phases.
+	 *
+	 * @param array{
+	 *     uuid?: string,
+	 *     file?: array{
+	 *         fileId: int,
+	 *     },
+	 * } $data
+	 *
+	 * @return array{
+	 *     file: FileEntity,
+	 *     signRequests: SignRequestEntity[],
+	 * }
+	 *
+	 * @throws \Exception
+	 */
+	private function prepareDeleteContext(array $data): array {
 		if (!empty($data['uuid'])) {
-			$signatures = $this->signRequestMapper->getByFileUuid($data['uuid']);
-			$fileData = $this->fileMapper->getByUuid($data['uuid']);
+			$file = $this->fileMapper->getByUuid(
+				$data['uuid'],
+			);
+
+			$signRequests = $this->signRequestMapper->getByFileUuid(
+				$data['uuid'],
+			);
 		} elseif (!empty($data['file']['fileId'])) {
-			$fileData = $this->fileMapper->getById($data['file']['fileId']);
-			$signatures = $this->signRequestMapper->getByFileId($fileData->getId());
+			$file = $this->fileMapper->getById(
+				$data['file']['fileId'],
+			);
+
+			$signRequests = $this->signRequestMapper->getByFileId(
+				$file->getId(),
+			);
 		} else {
-			throw new \Exception($this->l10n->t('Please provide either UUID or File object'));
+			throw new \Exception(
+				$this->l10n->t(
+					'Please provide either UUID or File object',
+				),
+			);
 		}
-		foreach ($signatures as $signRequest) {
-			$this->identifyMethod->deleteBySignRequestId($signRequest->getId());
-			$this->signRequestMapper->delete($signRequest);
-		}
-		$this->fileMapper->delete($fileData);
-		$this->fileElementService->deleteVisibleElements($fileData->getId());
+
+		return [
+			'file' => $file,
+			'signRequests' => $signRequests,
+		];
 	}
 }

@@ -20,6 +20,7 @@
 		<SignatureFlow />
 		<SigningMode v-if="false" />
 		<AllowedGroups />
+		<SignatureProfileSettings v-if="appearanceProfilesEnabled" />
 		<LegalInformation />
 		<IdentificationDocuments />
 		<CollectMetadata />
@@ -32,6 +33,12 @@
 		<Confetti />
 		<FreeCredits />
 		<OneTimeSigning />
+		<SponsorshipSettings />
+		<ProductPricing />
+		<CertificateAccess />
+		<FilesListColumns />
+		<FilesListNext />
+		<VisibleElementsNext />
 		<SmsOtpConfig />
 		<WebhookOtpConfig />
 		<DarajaConfig />
@@ -41,7 +48,10 @@
 </template>
 
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
+import { loadState } from '@nextcloud/initial-state'
 import AllowedGroups from './AllowedGroups.vue'
+import CertificateAccess from './CertificateAccess.vue'
 import CertificateEngine from './CertificateEngine.vue'
 import ConfigureCheck from './ConfigureCheck.vue'
 import CollectMetadata from './CollectMetadata.vue'
@@ -51,9 +61,14 @@ import DefaultUserFolder from './DefaultUserFolder.vue'
 import DocMDP from './DocMDP.vue'
 import DownloadBinaries from './DownloadBinaries.vue'
 import Envelope from './Envelope.vue'
+import FilesListColumns from './FilesListColumns.vue'
+import FilesListNext from './FilesListNext.vue'
+import VisibleElementsNext from './VisibleElementsNext.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
+import SponsorshipSettings from './SponsorshipSettings.vue'
+import ProductPricing from './ProductPricing.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'
 import LegalInformation from './LegalInformation.vue'
@@ -73,6 +88,10 @@ import DarajaConfig from "@/views/Settings/DarajaConfig.vue";
 import DpoPaymentConfig from "@/views/Settings/DpoPaymentConfig.vue";
 import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerificationDispatcherConfig.vue";
 import WebhookOtpConfig from './WebhookOtpConfig.vue'
+
+const appearanceProfilesEnabled = loadState('libresign', 'appearance_profiles_enabled', false)
+const SignatureProfileSettings = defineAsyncComponent(() => import('./SignatureProfile/SignatureProfileSettings.vue'))
+
 defineOptions({
 	name: 'Settings',
 })
