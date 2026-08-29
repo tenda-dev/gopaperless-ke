@@ -81,30 +81,25 @@
 						{{ t('libresign', 'I agree to the Terms of Service') }}
 					</NcCheckboxRadioSwitch>
 				</div>
-				<NcModal v-if="state.showTermsModal"
-					:size="'large'"
+				<TermsOfServiceModal
+					:open="state.showTermsModal"
+					:body="termsBody"
+					:loading="state.termsLoading"
+					:error="state.termsError"
 					@close="state.showTermsModal = false">
-					<div class="terms-modal-content">
-						<h3>{{ t('libresign', 'Terms of Service') }}</h3>
-						<NcNoteCard v-if="state.termsError" type="error">
-							{{ state.termsError }}
-						</NcNoteCard>
-						<NcLoadingIcon v-else-if="state.termsLoading" :size="32" />
-						<div v-else class="terms-body" v-html="termsBody" />
-						<div class="terms-modal-actions">
-							<NcButton variant="secondary"
-								:disabled="state.termsLoading"
-								@click="state.showTermsModal = false">
-								{{ t('libresign', 'Close') }}
-							</NcButton>
-							<NcButton variant="primary"
-								:disabled="state.termsLoading || !!state.termsError"
-								@click="acceptTermsAndClose">
-								{{ t('libresign', 'I agree') }}
-							</NcButton>
-						</div>
-					</div>
-				</NcModal>
+					<template #actions>
+						<NcButton variant="secondary"
+							:disabled="state.termsLoading"
+							@click="state.showTermsModal = false">
+							{{ t('libresign', 'Close') }}
+						</NcButton>
+						<NcButton variant="primary"
+							:disabled="state.termsLoading || !!state.termsError"
+							@click="acceptTermsAndClose">
+							{{ t('libresign', 'I agree') }}
+						</NcButton>
+					</template>
+				</TermsOfServiceModal>
 				<div class="login-button-container">
 					<NcButton :wide="true"
 						variant="primary"
@@ -139,11 +134,11 @@ import { generateOcsUrl } from '@nextcloud/router'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import NcModal from '@nextcloud/vue/components/NcModal'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcPasswordField from '@nextcloud/vue/components/NcPasswordField'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import TermsOfServiceModal from '@/components/TermsOfServiceModal.vue'
 import {
 	mdiEmail,
 	mdiChevronRight,
@@ -732,31 +727,4 @@ body {
 	}
 }
 
-.terms-modal-content {
-	padding: 24px;
-	max-width: 720px;
-	max-height: 80vh;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-
-	h3 {
-		margin: 0;
-	}
-
-	.terms-body {
-		overflow-y: auto;
-		max-height: 50vh;
-		padding: 12px;
-		border: 1px solid var(--color-border);
-		border-radius: var(--border-radius);
-		background: var(--color-background-dark);
-	}
-
-	.terms-modal-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 12px;
-	}
-}
 </style>

@@ -18,20 +18,21 @@
 		</NcAppContent>
 		<RightSidebar />
 	</NcContent>
-	<NcModal v-if="termsRequired" :size="'large'" @close="termsRequired = true">
-		<div class="terms-modal-content">
-			<h2>{{ t('libresign', 'Terms of Service') }}</h2>
-			<NcNoteCard v-if="termsError" type="error">{{ termsError }}</NcNoteCard>
-			<NcLoadingIcon v-else-if="termsLoading" :size="32" />
-			<div v-else class="terms-body" v-html="termsBody" />
+	<TermsOfServiceModal
+		:open="termsRequired"
+		:body="termsBody"
+		:loading="termsLoading"
+		:error="termsError"
+		@close="termsRequired = true">
+		<template #actions>
 			<NcButton
 				variant="primary"
 				:disabled="termsLoading || termsSigning"
 				@click="termsError ? checkTerms() : acceptTerms">
 				{{ termsError ? t('libresign', 'Retry') : termsSigning ? t('libresign', 'Saving...') : t('libresign', 'I agree') }}
 			</NcButton>
-		</div>
-	</NcModal>
+		</template>
+	</TermsOfServiceModal>
 	<Toaster richColors position="top-right" />
 </template>
 
@@ -49,13 +50,11 @@ import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
-import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import NcModal from '@nextcloud/vue/components/NcModal'
-import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 
 import LeftSidebar from './components/LeftSidebar/LeftSidebar.vue'
 import RightSidebar from './components/RightSidebar/RightSidebar.vue'
 import DefaultPageError from './views/DefaultPageError.vue'
+import TermsOfServiceModal from './components/TermsOfServiceModal.vue'
 
 import { initialActionCode, ACTION_CODES } from './helpers/ActionMapping'
 import TendaworldSign from '../img/tenda-icon.png'
@@ -171,14 +170,4 @@ onMounted(async () => {
 	}
 }
 
-.terms-modal-content {
-	padding: 24px;
-	max-width: 760px;
-}
-
-.terms-body {
-	max-height: 55vh;
-	overflow: auto;
-	margin: 16px 0;
-}
 </style>
