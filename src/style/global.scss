@@ -41,3 +41,47 @@
 }
 
 
+
+/**
+ * Keep the public upload landing page contained within the Nextcloud content pane.
+ *
+ * Nextcloud's public layout adds footer padding and scrolling to #app-content-vue,
+ * which creates extra space below the landing surface and an unwanted page
+ * scrollbar. Scope the override to pages containing .pu so authenticated views
+ * retain their normal layout behaviour.
+ *
+ * Desktop uses a fixed viewport composition and therefore locks pane scrolling.
+ * Smaller viewports remain scrollable because the responsive landing page can
+ * exceed the available height.
+ */
+#body-public #app-content-vue:has(.pu) {
+	padding-block-end: 0 !important;
+
+	@media (min-width: 861px) {
+		overflow: hidden !important;
+	}
+}
+
+/**
+ * Hide native public-layout elements that duplicate the landing page.
+ * Keep the public header, but remove its app title and generic guest footer.
+ * Scoped to `.pu` so other routes remain unchanged.
+ */
+#body-public:has(.pu) #header .header-info {
+	display: none;
+}
+
+#body-public:has(.pu) footer.guest-box {
+	display: none;
+}
+
+/**
+ * Apply the landing page's current text colour to SVG icons in child components.
+ *
+ * The scoped SVG rule in PublicUpload.vue does not cross Vue component
+ * boundaries, so icons rendered by the header, workflow rail, and footer need
+ * this shared rule to inherit their surrounding colour.
+ */
+.pu svg:not(.pu__sig) {
+	fill: currentColor;
+}

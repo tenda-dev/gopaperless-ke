@@ -31,11 +31,10 @@
 			</div>
 		</div>
 
-		<div class="pu__inner pu__eco-cta">
-			<button type="button" class="pu__cta-btn" @click="$emit('getStarted')">
-				<span>Get Started</span>
-				<svg viewBox="0 0 24 24"><path :d="mdiArrowRight" /></svg>
-			</button>
+		<div class="pu__inner pu__eco-legal">
+			<a class="pu__eco-legal-link" href="https://tendaworld.com/gopaperless/" target="_blank" rel="noopener">Terms and Conditions</a>
+			<span class="pu__eco-legal-sep" aria-hidden="true">·</span>
+			<a class="pu__eco-legal-link" href="https://tendaworld.com/gopaperless/" target="_blank" rel="noopener">Privacy Policy</a>
 		</div>
 	</div>
 </template>
@@ -45,18 +44,13 @@ import {
 	mdiShieldCheckOutline,
 	mdiShieldLockOutline,
 	mdiArrowTopRight,
-	mdiArrowRight,
 } from '@mdi/js'
 
 defineOptions({ name: 'PublicUploadEcosystem' })
 
-defineEmits<{
-	getStarted: []
-}>()
-
 const ecosystem = [
-	{ name: 'JuliCA™', sub: 'the PKI that seals & verifies every document', href: 'https://tendaworld.com/julica', icon: mdiShieldCheckOutline },
-	{ name: 'SecurySign™', sub: 'identity-verified digital signing', href: 'https://tendaworld.com/securysign', icon: mdiShieldLockOutline },
+	{ name: 'JuliCA Certification Authority', sub: 'Issued and Regulated by the Communications Authority of Kenya', href: 'https://tendaworld.com/julica', icon: mdiShieldCheckOutline },
+	{ name: 'Securysign', sub: 'The public key infrastructure built for Africa', href: 'https://tendaworld.com/securysign', icon: mdiShieldLockOutline },
 ]
 </script>
 
@@ -66,11 +60,25 @@ const ecosystem = [
 	background: var(--eco-bg);
 }
 
+/**
+ * Let the ecosystem/footer section absorb unused vertical space on mobile.
+ *
+ * When the responsive content is shorter than the available pane, this keeps
+ * the footer anchored to the bottom of the landing surface instead of leaving
+ * the shell background exposed below it. If the content exceeds the available
+ * height, the pane remains naturally scrollable.
+ */
+@media (max-width: 860px) {
+	.pu__eco {
+		flex: 1 0 auto;
+	}
+}
+
 .pu__eco-cols {
 	display: flex;
 	flex-wrap: wrap;
 	gap: clamp(24px, 4vw, 56px);
-	padding: clamp(24px, 3.5vw, 40px) var(--pu-pad) clamp(20px, 2.5vw, 28px);
+	padding: clamp(20px, 2.6vw, 30px) var(--pu-pad) clamp(16px, 2vw, 22px);
 }
 
 .pu__eco-about {
@@ -153,7 +161,8 @@ const ecosystem = [
 	border: 1px solid rgba(255, 255, 255, .12);
 	border-radius: 9px;
 	background: rgba(255, 255, 255, .06);
-	color: var(--eco-accent);
+	// White/light icon for contrast against the dark footer.
+	color: #ffffff;
 
 	svg {
 		width: 17px;
@@ -187,39 +196,30 @@ const ecosystem = [
 	transition: color .18s, transform .18s;
 }
 
-.pu__eco-cta {
+.pu__eco-legal {
 	display: flex;
+	align-items: center;
 	justify-content: center;
-	padding: clamp(8px, 1.5vw, 16px) var(--pu-pad) clamp(28px, 3.5vw, 44px);
+	flex-wrap: wrap;
+	gap: 10px;
+	padding: clamp(8px, 1.4vw, 14px) var(--pu-pad) clamp(16px, 2vw, 24px);
 }
 
-.pu__cta-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 10px;
-	padding: 12px 24px;
-	border: none;
-	border-radius: 10px;
-	background: var(--brand);
-	color: var(--ink);
-	font: inherit;
-	font-size: 14px;
-	font-weight: 600;
-	cursor: pointer;
-	transition: background .18s;
+.pu__eco-legal-link {
+	font-size: 12.5px;
+	color: var(--eco-dim);
+	text-decoration: none;
+	transition: color .18s;
 
-	svg {
-		width: 16px;
-		height: 16px;
-		transition: transform .18s;
+	&:hover,
+	&:focus-visible {
+		color: var(--eco-accent);
+		text-decoration: underline;
 	}
+}
 
-	&:hover {
-		background: var(--brand-strong);
-	}
-
-	&:hover svg {
-		transform: translateX(3px);
-	}
+.pu__eco-legal-sep {
+	color: rgba(255, 255, 255, .28);
+	font-size: 12px;
 }
 </style>

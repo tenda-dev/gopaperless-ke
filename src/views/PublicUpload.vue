@@ -6,14 +6,14 @@
 <template>
 	<div class="pu">
 		<PublicUploadHeader @sign-in="gateToLogin" />
-		<PublicUploadHero :signed="signed" @get-started="gateToLogin" />
+		<PublicUploadHero @get-started="gateToLogin" />
 		<PublicUploadStages />
-		<PublicUploadEcosystem @get-started="gateToLogin" />
+		<PublicUploadEcosystem />
 	</div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser } from '@nextcloud/auth'
 import { generateUrl } from '@nextcloud/router'
@@ -26,7 +26,6 @@ import PublicUploadStages from '../components/PublicUploadStages.vue'
 defineOptions({ name: 'PublicUpload' })
 
 const router = useRouter()
-const signed = ref(false)
 
 /**
  * PHP only runs on the full-page load, so a logged-in user who reaches this
@@ -35,17 +34,7 @@ const signed = ref(false)
 onMounted(() => {
 	if (getCurrentUser()) {
 		router.replace({ name: 'requestFiles' })
-		return
 	}
-
-	const reduce = window.matchMedia('(prefers-reduced-motion:reduce)').matches
-	if (reduce) {
-		signed.value = true
-		return
-	}
-	window.setTimeout(() => {
-		signed.value = true
-	}, 900)
 })
 
 /**
@@ -73,6 +62,7 @@ function gateToLogin(): void {
 	--brand: #04d56d;
 	--brand-strong: #03b95e;
 	--brand-wash: #e8fbf1;
+	--brand-tint: #d6f7e6;
 	--brand-ring: rgba(4, 213, 109, .18);
 	--eco-bg: #0f172a;
 	--eco-fg: #e2e8f0;
@@ -85,11 +75,17 @@ function gateToLogin(): void {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
+	// Fill the Nextcloud content pane exactly: min-height lets the flex hero
+	// absorb any slack so the whole surface fits without page scroll, while
+	// still allowing natural growth (→ the pane's own scroll) on short/mobile.
 	min-height: 100%;
+	// The landing IS one rounded surface: round the shell and clip so the
+	// header's top corners and the footer's bottom corners terminate inside it.
+	border-radius: var(--body-container-radius, 16px);
+	overflow: hidden;
 	font-family: var(--tenda-font-family, 'Space Grotesk', -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, sans-serif);
 	color: var(--ink);
 	background: var(--surface);
-	margin-bottom: -60px; // footer overlap
 
 	b {
 		font-weight: 600;
@@ -138,21 +134,6 @@ function gateToLogin(): void {
 @keyframes pu-draw {
 	to {
 		stroke-dashoffset: 0;
-	}
-}
-
-@media (max-width: 860px) {
-	.pu {
-		&__hero-grid {
-			flex-direction: column;
-		}
-
-		&__canvas {
-			order: 2;
-			min-height: 360px;
-			border-inline-start: none;
-			border-top: 1px solid var(--line-soft);
-		}
 	}
 }
 

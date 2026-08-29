@@ -31,6 +31,7 @@
 		<Reminders />
 		<TSA />
 		<Confetti />
+		<PublicUploadLanding />
 		<FreeCredits />
 		<OneTimeSigning />
 		<SponsorshipSettings />
@@ -56,6 +57,7 @@ import CertificateEngine from './CertificateEngine.vue'
 import ConfigureCheck from './ConfigureCheck.vue'
 import CollectMetadata from './CollectMetadata.vue'
 import Confetti from './Confetti.vue'
+import PublicUploadLanding from './PublicUploadLanding.vue'
 import CrlValidation from './CrlValidation.vue'
 import DefaultUserFolder from './DefaultUserFolder.vue'
 import DocMDP from './DocMDP.vue'

@@ -1,3 +1,8 @@
+<!--
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 <template>
 	<div class="stats">
 		<div class="card stat-card" role="button" tabindex="0" aria-label="Total documents" @click="openDocuments([])" @keydown="onCardKey($event, [])">
@@ -56,8 +61,6 @@
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
-
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import {
 	mdiFileDocumentOutline,
@@ -67,7 +70,7 @@ import {
 } from '@mdi/js'
 
 import { FILE_STATUS } from '../../../constants.js'
-import { useFiltersStore } from '../../../store/filters.js'
+import { useDashboardStatusNav } from '../composables/useDashboardStatusNav'
 
 defineProps<{
 	stats: {
@@ -78,31 +81,10 @@ defineProps<{
 	}
 }>()
 
-// Dashboard "Pending" = everything not Draft/Signed; the list's status filter
-// exposes exactly these two canonical values (SIGNING_IN_PROGRESS, also counted
-// as pending by the backend, has no filter option).
-const PENDING_STATUSES = [FILE_STATUS.ABLE_TO_SIGN, FILE_STATUS.PARTIAL_SIGNED]
-
-const router = useRouter()
-const filtersStore = useFiltersStore()
-
-/**
- * Apply the requested status filter before navigating to My Documents.
- * An empty array clears the status filter so Total cannot inherit a previous
- * status selection. `emit: false` avoids a redundant refetch because the
- * destination performs its normal initial fetch.
- */
-function openDocuments(statuses: number[]) {
-	filtersStore.applyStatusFilter(statuses, { emit: false })
-	router.push({ name: 'fileslist' })
-}
-// Provide native-button-like keyboard activation for the card.
-function onCardKey(e: KeyboardEvent, statuses: number[]) {
-	if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-		e.preventDefault()
-		openDocuments(statuses)
-	}
-}
+// Status navigation is shared with the mobile chips (StatsChips) via the
+// composable, so the deep-link behaviour and status mapping live in one place.
+const { openDocuments, onActivateKey: onCardKey, DASHBOARD_STATUS } = useDashboardStatusNav()
+const PENDING_STATUSES = DASHBOARD_STATUS.pending
 </script>
 
 <style scoped>

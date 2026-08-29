@@ -11,7 +11,7 @@
 				<span class="credits-count" :class="countClass">
 				{{ loading ? '—' : remainingUses }}
 				</span>
-			</span>credits
+			</span>certified signatures
 		</span>
     </div>
 

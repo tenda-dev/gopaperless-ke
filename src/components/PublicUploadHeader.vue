@@ -6,7 +6,7 @@
 <template>
 	<header class="pu__bar">
 		<div class="pu__inner pu__bar-row">
-			<LogoWoodmark />
+			<LogoWoodmark :name="'Sign, Seal, Deliver'" />
 
 			<button type="button" class="pu__signin" @click="$emit('signIn')">
 				Have an account? <span>Sign in</span>
@@ -53,4 +53,18 @@ defineEmits<{
 		font-weight: 600;
 	}
 }
+
+@media (max-width: 860px) {
+	.pu__bar-row {
+		padding: 6px var(--pu-pad);
+	}
+
+	// The wordmark size is an inline custom prop on the LogoWoodmark root
+	// (fontSize=24 → --logo-wordmark-size:24px). Override it on mobile; the
+	// !important is required to beat the inline value.
+	.logo-wordmark {
+		--logo-wordmark-size: 20px !important;
+	}
+}
+
 </style>

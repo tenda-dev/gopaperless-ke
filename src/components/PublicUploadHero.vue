@@ -11,66 +11,45 @@
 					Digital Signatures
 				</div>
 				<h1 class="pu__title">
-					Get a document signed
+					Simplify your paperwork
 				</h1>
-				<p class="pu__lede">
-					Upload your document, drag signature fields where they're needed, add your signers, and hit send. That's it — your document is on its way in under 2 minutes.
+				<p class="pu__lede pu__lede--full">
+					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
 				</p>
-
-				<div class="pu__drop">
-					<div class="pu__drop-t">Start with your PDF</div>
-					<div class="pu__drop-h">you'll sign in securely to continue</div>
-
-					<button type="button" class="pu-btn pu-btn--primary" @click="$emit('getStarted')">
-						<svg viewBox="0 0 24 24"><path :d="mdiTrayArrowUp" /></svg>
-						Upload document
-					</button>
-				</div>
+				<p class="pu__lede pu__lede--short">
+					The whole process takes just a couple of minutes.
+				</p>
 			</div>
 
-			<!-- Decorative: animates once on mount. -->
-			<div class="pu__canvas" aria-hidden="true">
-				<div class="pu__stack">
-					<div class="pu__paper-back" />
-					<div class="pu__paper" :class="{ 'is-signed': signed }">
-						<div class="pu__doc-meta">
-							<div class="pu__doc-name">
-								<div class="pu__doc-badge">PDF</div>
-								<div>
-									<div class="pu__doc-t">Service Agreement</div>
-									<div class="pu__doc-p">4 pages · 2 signers</div>
-								</div>
-							</div>
-							<div class="pu__doc-status">{{ signed ? 'SIGNED' : 'DRAFT' }}</div>
-						</div>
-						<div class="pu__lines"><i /><i /><i /><i /></div>
-						<div class="pu__field">
-							<span class="pu__field-label">Signature</span>
-							<span class="pu__field-hint">Sign here</span>
-							<svg class="pu__sig" viewBox="0 0 150 34"><path d="M4 24 C10 6, 16 6, 20 20 S30 34, 36 18 S46 4, 52 22 C56 30, 62 26, 68 18 C74 10, 82 12, 90 20 C98 28, 108 22, 118 14 C126 8, 134 12, 146 20" /></svg>
-						</div>
-						<div class="pu__signed-tag">
-							<svg viewBox="0 0 24 24"><path :d="mdiShieldCheckOutline" /></svg>
-							<span><b>Signed &amp; sealed</b> · verifiable record kept</span>
-						</div>
-					</div>
-				</div>
+			<!-- Real upload entry point (replaces the former decorative illustration).
+			     Horizontal card: big icon tile · label · action affordance — one
+			     button, collapses to a compact bar on mobile. -->
+			<div class="pu__canvas">
+				<button
+					type="button"
+					class="pu__drop"
+					aria-label="Upload document"
+					@click="$emit('getStarted')">
+					<span class="pu__drop-tile">
+						<svg viewBox="0 0 24 24"><path :d="mdiTrayArrowUp" /></svg>
+					</span>
+					<span class="pu__drop-body">
+						<span class="pu__drop-t">Upload your document</span>
+						<span class="pu__drop-h">PDF · you'll sign in securely to continue</span>
+					</span>
+					<span class="pu__drop-go" aria-hidden="true">
+						<svg viewBox="0 0 24 24"><path :d="mdiChevronRight" /></svg>
+					</span>
+				</button>
 			</div>
 		</div>
 	</section>
 </template>
 
 <script setup lang="ts">
-import {
-	mdiTrayArrowUp,
-	mdiShieldCheckOutline,
-} from '@mdi/js'
+import { mdiTrayArrowUp, mdiChevronRight } from '@mdi/js'
 
 defineOptions({ name: 'PublicUploadHero' })
-
-defineProps<{
-	signed: boolean
-}>()
 
 defineEmits<{
 	getStarted: []
@@ -80,11 +59,16 @@ defineEmits<{
 <style scoped lang="scss">
 .pu__hero {
 	width: 100%;
+	flex: 1 1 auto;
+	display: flex;
+	min-height: 240px;
 }
 
 .pu__hero-grid {
+	flex: 1;
 	display: flex;
 	flex-wrap: wrap;
+	align-items: stretch;
 }
 
 .pu__intro {
@@ -92,7 +76,7 @@ defineEmits<{
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	padding: clamp(24px, 3.5vw, 52px) var(--pu-pad);
+	padding: clamp(20px, 2.4vw, 34px) var(--pu-pad);
 }
 
 .pu__kicker {
@@ -114,229 +98,188 @@ defineEmits<{
 }
 
 .pu__lede {
-	margin-bottom: 28px;
+	margin-bottom: 0;
 	max-width: 40ch;
 	font-size: 15.5px;
 	line-height: 1.6;
 	color: var(--slate);
 }
 
-.pu__drop {
-	padding: 22px;
-	text-align: center;
-	border: 1.5px dashed color-mix(in srgb, var(--brand) 40%, transparent);
-	border-radius: 14px;
-	background: var(--brand-wash);
-	transition: border-color .2s, box-shadow .2s;
-
-	&:hover {
-		border-color: var(--brand);
-		box-shadow: 0 0 0 4px var(--brand-ring);
-	}
-}
-
-.pu__drop-t {
-	margin-bottom: 3px;
-	font-weight: 600;
-	font-size: 15px;
-}
-
-.pu__drop-h {
-	margin-bottom: 16px;
-	font-family: var(--mono);
-	font-size: 11.5px;
-	letter-spacing: .02em;
-	color: var(--faint);
+/* On mobile the full lede is redundant with the rail right below the card,
+   so it collapses to just the closing line. */
+.pu__lede--short {
+	display: none;
 }
 
 .pu__canvas {
 	flex: 1 1 400px;
 	display: grid;
 	place-items: center;
-	min-height: 440px;
-	padding: clamp(28px, 4vw, 52px);
+	min-height: 0;
+	padding: clamp(20px, 2.6vw, 34px);
 	border-inline-start: 1px solid var(--line-soft);
 	background: radial-gradient(120% 120% at 70% 10%, #fff 0%, var(--canvas) 60%);
 }
 
-.pu__stack {
-	position: relative;
-	width: min(360px, 82%);
-}
-
-.pu__paper-back {
-	position: absolute;
-	inset: 14px -12px -12px 14px;
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	background: #fff;
-	opacity: .6;
-}
-
-.pu__paper {
-	position: relative;
-	padding: 26px 24px 22px;
-	border: 1px solid var(--line);
-	border-radius: 11px;
-	background: #fff;
-	box-shadow: 0 26px 60px -34px rgba(14, 17, 22, .4);
-}
-
-.pu__doc-meta {
+/* Upload card — horizontal: [ icon tile ] [ label ] [ go ]. The whole card is
+   one button; the go chip echoes the brand action without a second tab stop. */
+.pu__drop {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 20px;
+	gap: 16px;
+	width: min(420px, 100%);
+	padding: 16px;
+	text-align: start;
+	font: inherit;
+	color: inherit;
+	cursor: pointer;
+	border: 1.5px dashed color-mix(in srgb, var(--brand) 40%, transparent);
+	border-radius: 16px;
+	background: var(--brand-wash);
+	transition: border-color .2s, box-shadow .2s, transform .12s;
+
+	&:hover {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 4px var(--brand-ring);
+	}
+
+	&:hover .pu__drop-go {
+		background: var(--brand-strong);
+	}
+
+	&:active {
+		transform: translateY(1px);
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--brand-strong);
+		outline-offset: 2px;
+	}
 }
 
-.pu__doc-name {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-}
-
-.pu__doc-badge {
+.pu__drop-tile {
+	flex: none;
 	display: grid;
 	place-items: center;
-	width: 30px;
-	height: 36px;
-	border: 1px solid #f5d4d4;
-	border-radius: 5px;
-	background: #fdecec;
-	font-family: var(--mono);
-	font-weight: 600;
-	font-size: 8.5px;
-	color: #c0392b;
-}
-
-.pu__doc-t {
-	font-weight: 600;
-	font-size: 13px;
-}
-
-.pu__doc-p {
-	margin-top: 2px;
-	font-family: var(--mono);
-	font-size: 10.5px;
-	color: var(--faint);
-}
-
-.pu__doc-status {
-	font-family: var(--mono);
-	font-size: 10px;
-	font-weight: 600;
-	letter-spacing: .04em;
-	color: var(--faint);
-}
-
-.pu__lines {
-	display: flex;
-	flex-direction: column;
-	gap: 9px;
-	margin-bottom: 26px;
-
-	i {
-		display: block;
-		height: 7px;
-		border-radius: 4px;
-		background: var(--line-soft);
-
-		&:nth-child(1) { width: 100%; }
-		&:nth-child(2) { width: 92%; }
-		&:nth-child(3) { width: 78%; }
-		&:nth-child(4) { width: 88%; }
-	}
-}
-
-.pu__field {
-	position: relative;
-	padding: 12px 14px;
-	border: 1.5px dashed color-mix(in srgb, var(--brand) 55%, transparent);
-	border-radius: 9px;
-	background: var(--brand-wash);
-	transition: background .4s, border-color .4s;
-}
-
-.pu__field-label {
-	position: absolute;
-	top: -8px;
-	inset-inline-start: 12px;
-	padding: 0 6px;
-	background: #fff;
-	font-family: var(--mono);
-	font-size: 9px;
-	font-weight: 600;
-	letter-spacing: .1em;
-	text-transform: uppercase;
-	color: var(--brand-strong);
-}
-
-.pu__field-hint {
-	font-family: var(--mono);
-	font-size: 11px;
-	color: var(--brand-strong);
-	opacity: .75;
-	transition: opacity .3s;
-}
-
-.pu__sig {
-	position: absolute;
-	inset-inline-start: 16px;
-	top: 8px;
-	width: 150px;
-	height: 34px;
-
-	path {
-		fill: none;
-		stroke: var(--ink);
-		stroke-width: 2.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		stroke-dasharray: 520;
-		stroke-dashoffset: 520;
-	}
-}
-
-.pu__signed-tag {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 12px;
-	font-size: 11.5px;
-	color: var(--slate);
-	opacity: 0;
-	transform: translateY(3px);
-	transition: opacity .4s .2s, transform .4s .2s;
+	width: 84px;
+	height: 84px;
+	border-radius: 16px;
+	background: var(--brand-tint);
+	color: var(--ink);
 
 	svg {
-		width: 14px;
-		height: 14px;
-		color: var(--brand-strong);
+		width: 44px;
+		height: 44px;
+		fill: currentColor;
 	}
 }
 
-.pu__paper.is-signed {
-	.pu__field {
-		border-style: solid;
-		border-color: color-mix(in srgb, var(--brand) 35%, transparent);
-		background: #fff;
+.pu__drop-body {
+	flex: 1;
+	min-width: 0;
+}
+
+.pu__drop-t {
+	display: block;
+	font-weight: 600;
+	font-size: 16px;
+	letter-spacing: -.01em;
+}
+
+.pu__drop-h {
+	display: block;
+	margin-top: 3px;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	letter-spacing: .01em;
+	color: var(--faint);
+}
+
+.pu__drop-go {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	background: var(--brand);
+	color: var(--ink);
+	transition: background .2s;
+
+	svg {
+		width: 20px;
+		height: 20px;
+		fill: currentColor;
+	}
+}
+
+/* Mobile — stack the hero; the upload card becomes a compact bar. These rules
+   live HERE (not in PublicUpload.vue) because scoped CSS can't reach a child
+   component's inner elements from the parent. */
+@media (max-width: 860px) {
+	.pu__hero {
+		flex: 0 0 auto;
+		min-height: 0;
 	}
 
-	.pu__field-hint {
-		opacity: 0;
+	.pu__lede--full {
+		display: none;
 	}
 
-	.pu__doc-status {
-		color: var(--brand-strong);
+	.pu__lede--short {
+		display: block;
 	}
 
-	.pu__signed-tag {
-		opacity: 1;
-		transform: none;
+	.pu__hero-grid {
+		flex-direction: column;
 	}
 
-	.pu__sig path {
-		animation: pu-draw 2.1s cubic-bezier(.6, 0, .2, 1) forwards;
+	.pu__intro {
+		flex: 0 0 auto;
+	}
+
+	.pu__canvas {
+		order: 2;
+		flex: 0 0 auto;
+		min-height: 0;
+		padding: 0 var(--pu-pad) clamp(20px, 5vw, 28px);
+		border-inline-start: none;
+		background: none;
+	}
+
+	.pu__drop {
+		width: 100%;
+		gap: 13px;
+		padding: 12px;
+	}
+
+	.pu__drop-tile {
+		width: 56px;
+		height: 56px;
+		border-radius: 12px;
+
+		svg {
+			width: 30px;
+			height: 30px;
+		}
+	}
+
+	.pu__drop-t {
+		font-size: 14.5px;
+	}
+
+	.pu__drop-h {
+		font-size: 11px;
+	}
+
+	.pu__drop-go {
+		width: 36px;
+		height: 36px;
+
+		svg {
+			width: 16px;
+			height: 16px;
+		}
 	}
 }
 </style>
