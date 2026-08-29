@@ -9,8 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
-use libphonenumber\NumberParseException;
-use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\Enum\PaymentCapability;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
@@ -48,9 +46,8 @@ class PaymentInitiationService {
 		private PaymentLifecycleService $lifecycleService,
 		private MobileMoneyService $mobileMoneyService,
 		private CardService $cardService,
-		private PhoneResolutionService $phoneResolutionService,
+		private PhoneMnoResolver $phoneMnoResolver,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
-		private MnoDetectionRegistry $mnoDetectionRegistry,
 		private PaymentCountryResolver $countryResolver,
 		private FxEngineService $fxEngineService,
 		private ProviderAmountNormaliser $providerAmountNormaliser,
@@ -110,12 +107,13 @@ class PaymentInitiationService {
 				throw new RuntimeException('Phone number is required');
 			}
 
-			$this->validatePhoneNumber($phoneNumber);
+			// Override > cache > libphonenumber + MNO detection > fallback.
+			// The resolver owns validity so an active override can rescue a
+			// number libphonenumber would reject; the rail stays with MnoRoutingRegistry.
+			$identity = $this->phoneMnoResolver->resolve($phoneNumber);
+			$region = $identity->region;
 
-			$resolutionDto = $this->phoneResolutionService->resolve($phoneNumber);
-			$region = $resolutionDto->region;
-
-			if (!$resolutionDto->valid || !$region) {
+			if (!$identity->valid || !$region) {
 				throw new RuntimeException('Unable to resolve phone number');
 			}
 
@@ -127,7 +125,7 @@ class PaymentInitiationService {
 				));
 			}
 
-			$e164 = $resolutionDto->e164;
+			$e164 = $identity->e164;
 
 			$countryCtx = $this->countryResolver->resolve($region);
 
@@ -135,13 +133,8 @@ class PaymentInitiationService {
 				throw new RuntimeException('Unsupported country');
 			}
 
-			$detection = $this->mnoDetectionRegistry->resolve(
-				$region,
-				$resolutionDto->national,
-			);
-
-			$finalCarrier = $detection['mno'] ?? $resolutionDto->carrierHint;
-			$finalConfidence = $detection['confidence'];
+			$finalCarrier = $identity->carrier;
+			$finalConfidence = $identity->confidence;
 
 			$route = $this->mnoRoutingRegistry->route(
 				$capability,
@@ -487,29 +480,5 @@ class PaymentInitiationService {
 			payment: $payment,
 			method: $methodEnum,
 		);
-	}
-
-	private function validatePhoneNumber(string $phone): void {
-		$phoneUtil = PhoneNumberUtil::getInstance();
-
-		if (!str_starts_with($phone, '+')) {
-			throw new \InvalidArgumentException(
-				'Phone number must be in international format'
-			);
-		}
-
-		try {
-			$parsed = $phoneUtil->parse($phone, null);
-
-			if (!$phoneUtil->isValidNumber($parsed)) {
-				throw new \InvalidArgumentException(
-					'The provided phone number is not valid.'
-				);
-			}
-		} catch (NumberParseException) {
-			throw new \InvalidArgumentException(
-				'Invalid phone number. Use international format (e.g., +254...)'
-			);
-		}
 	}
 }

@@ -36,6 +36,7 @@ class MobileMoneyChargeService {
 		private PaymentDateTimeHelper $dateTimeHelper,
 		private LoggerInterface $logger,
 		private VerificationDispatcherFactory $verificationDispatcher,
+		private PhoneMnoResolver $phoneMnoResolver,
 	) {
 	}
 
@@ -131,6 +132,18 @@ class MobileMoneyChargeService {
 		$payment->setProviderMetadataObject($meta);
 
 		$this->paymentRepository->update($payment);
+
+		// Memoize the user-confirmed MNO for this phone once the DPO charge has
+		// been dispatched and metadata persisted. MNO identity only (never the
+		// rail); best-effort — rememberResolvedMno never throws into this path.
+		if ($chargeSent && $mno !== '') {
+			$this->phoneMnoResolver->rememberResolvedMno(
+				$payment->getPhoneE164Digits(),
+				$payment->getPhoneRegion(),
+				$payment->getPhoneCountry(),
+				$mno,
+			);
+		}
 
 		try {
 			$this->verificationDispatcher->dispatchVerification($payment->getId());
