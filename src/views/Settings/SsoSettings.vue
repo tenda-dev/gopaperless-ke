@@ -4,15 +4,17 @@
 -->
 <template>
 	<NcSettingsSection
-		:name="t('libresign', 'Public upload landing page')"
-		:description="t('libresign', 'When enabled, logged-out visitors who open GoPaperless land on the public upload page where they can start a document, instead of being sent straight to the login screen.')">
-		<NcCheckboxRadioSwitch type="switch"
+		:name="t('libresign', 'OIDC single sign-on handoff')"
+		:description="t('libresign', 'Enable the public /sso endpoint that redirects visitors to the configured OpenID Connect provider for authentication.')">
+		<NcCheckboxRadioSwitch
+			type="switch"
 			v-model="enabled"
 			@update:modelValue="saveEnabled">
-			{{ t('libresign', 'Show the public upload landing page to logged-out visitors') }}
+			{{ t('libresign', 'Enable OIDC SSO handoff') }}
 		</NcCheckboxRadioSwitch>
 	</NcSettingsSection>
 </template>
+
 <script setup lang="ts">
 import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
@@ -20,16 +22,17 @@ import { ref } from 'vue'
 
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
+
 import type { AdminInitialState } from '../../types'
 
 defineOptions({
-	name: 'PublicUploadLandingSettings',
+	name: 'SsoSettings',
 })
 
-const enabled = ref(loadState<AdminInitialState['public_upload_landing_enabled']>('libresign', 'public_upload_landing_enabled', false))
+const enabled = ref(loadState<AdminInitialState['oidc_sso_handoff_enabled']>('libresign', 'oidc_sso_handoff_enabled', false))
 
 function saveEnabled() {
-	OCP.AppConfig.setValue('libresign', 'public_upload_landing_enabled', enabled.value ? '1' : '0')
+	OCP.AppConfig.setValue('libresign', 'oidc_sso_handoff_enabled', enabled.value ? '1' : '0')
 }
 
 defineExpose({

@@ -97,7 +97,6 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('envelope_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'envelope_enabled', true));
 		$this->initialState->provideInitialState('parallel_workers', $this->appConfig->getValueString(Application::APP_ID, 'parallel_workers', '4'));
 		$this->initialState->provideInitialState('show_confetti_after_signing', $this->appConfig->getValueBool(Application::APP_ID, 'show_confetti_after_signing', true));
-		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
 		$this->initialState->provideInitialState('crl_external_validation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'crl_external_validation_enabled', true));
 		$this->initialState->provideInitialState('ldap_extension_available', function_exists('ldap_connect'));
 		$this->initialState->provideInitialState('appearance_profiles_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'appearance_profiles_enabled', false));
@@ -131,6 +130,18 @@ class Admin implements ISettings {
 		//	FEATURE FLAGS (opt-in "Next" UI rework, default false = legacy)
 		$this->initialState->provideInitialState('files_list_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false));
 		$this->initialState->provideInitialState('visible_elements_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false));
+
+		//	PUBLIC ONBOARDING / LANDING PAGE GATES
+		//	All public-facing onboarding flows are disabled by default and must
+		//	be explicitly enabled by an administrator.
+		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
+		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
+		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
+
+		//	OIDC SSO HANDOFF
+		//	Gate the public /sso handoff endpoint that sends users through
+		//	user_oidc. Disabled by default until the IdP integration is ready.
+		$this->initialState->provideInitialState('oidc_sso_handoff_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'oidc_sso_handoff_enabled', false));
 
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
