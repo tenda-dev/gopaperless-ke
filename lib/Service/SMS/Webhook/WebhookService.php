@@ -236,13 +236,11 @@ final class WebhookService {
 	}
 
 	private function isWebhookOtpEnabled(): bool {
-		$enabled = $this->appConfig->getValueString(
+		$isEnabled = $this->appConfig->getValueBool(
 			Application::APP_ID,
 			self::CONFIG_KEY_WEBHOOK_ENABLED,
-			'false',
+			false,
 		);
-
-		$isEnabled = $enabled === 'true';
 
 		if (!$isEnabled) {
 
