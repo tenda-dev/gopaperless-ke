@@ -31,12 +31,12 @@
 		<Reminders />
 		<TSA />
 		<Confetti />
-		<PublicUploadLanding />
 		<FreeCredits />
 		<OneTimeSigning />
 		<SponsorshipSettings />
 		<ProductPricing />
 		<PublicLanding />
+		<SsoSettings />
 		<CertificateAccess />
 		<FilesListColumns />
 		<FilesListNext />
@@ -58,7 +58,6 @@ import CertificateEngine from './CertificateEngine.vue'
 import ConfigureCheck from './ConfigureCheck.vue'
 import CollectMetadata from './CollectMetadata.vue'
 import Confetti from './Confetti.vue'
-import PublicUploadLanding from './PublicUploadLanding.vue'
 import CrlValidation from './CrlValidation.vue'
 import DefaultUserFolder from './DefaultUserFolder.vue'
 import DocMDP from './DocMDP.vue'
@@ -73,6 +72,7 @@ import OneTimeSigning from './OneTimeSigning.vue'
 import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'
 import PublicLanding from './PublicLanding.vue'
+import SsoSettings from './SsoSettings.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'
 import LegalInformation from './LegalInformation.vue'

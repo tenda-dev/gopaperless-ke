@@ -113,7 +113,6 @@ export type AdminInitialState = {
 	worker_type: WorkerTypeState
 	parallel_workers: string
 	show_confetti_after_signing: boolean
-	public_upload_landing_enabled: boolean
 	crl_external_validation_enabled: boolean
 	ldap_extension_available: boolean
 	envelope_enabled: boolean
@@ -132,6 +131,7 @@ export type AdminInitialState = {
 	public_upload_landing_enabled: boolean
 	public_account_creation_enabled: boolean
 	public_accept_terms_enabled: boolean
+	oidc_sso_handoff_enabled: boolean
 }
 
 export type RuntimeFileSettingsRecord = FileSettings & Partial<SettingsRecord>
