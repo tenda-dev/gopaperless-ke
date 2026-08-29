@@ -28,6 +28,7 @@ use OCA\Libresign\Service\ReminderService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
 use OCA\Libresign\Service\SignatureTextService;
+use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Settings\Admin;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -92,6 +93,7 @@ class AdminController extends AEnvironmentAwareController {
 		private IGroupManager $groupManager,
 		private IUserSession $userSession,
 		private LoggerInterface $logger,
+		private PhoneOverrideAdminService $phoneOverrideAdminService,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -1301,5 +1303,142 @@ class AdminController extends AEnvironmentAwareController {
 			false,
 			$sensitive
 		);
+	}
+
+	/**
+	 * List phone number payment routing overrides.
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{overrides: array<int, array<string, mixed>>}, array{}>
+	 *
+	 * 200: Overrides returned
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/admin/phone-overrides', requirements: ['apiVersion' => '(v1)'])]
+	public function getPhoneOverrides(): DataResponse
+	{
+		return new DataResponse([
+			'overrides' => $this->phoneOverrideAdminService->listAll(),
+		]);
+	}
+
+	/**
+	 * Create a phone number payment routing override.
+	 *
+	 * @return DataResponse
+	 *
+	 * 200: Override created or reactivated
+	 * 400: Invalid input
+	 * 409: Active duplicate
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/phone-overrides', requirements: ['apiVersion' => '(v1)'])]
+	public function createPhoneOverride(
+		string $phone,
+		string $mno,
+		string $provider,
+	): DataResponse {
+		try {
+			$result = $this->phoneOverrideAdminService->createException(
+				$phone,
+				$mno,
+				$provider,
+				$this->userSession->getUser()?->getUID(),
+			);
+
+			if ($result['status'] === 'duplicate') {
+				return new DataResponse(
+					[
+						'error' => 'An override already exists for this phone number.',
+						'override' => $result['override'],
+					],
+					Http::STATUS_CONFLICT
+				);
+			}
+
+			return new DataResponse($result);
+		} catch (\InvalidArgumentException $e) {
+			return new DataResponse(
+				['error' => $e->getMessage()],
+				Http::STATUS_BAD_REQUEST
+			);
+		}
+	}
+
+	/**
+	 * Update a phone number payment routing override.
+	 *
+	 * @return DataResponse
+	 *
+	 * 200: Override updated
+	 * 400: Invalid input
+	 * 404: Override not found
+	 * 409: Phone number already belongs to another override
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'PATCH', url: '/api/{apiVersion}/admin/phone-overrides/{id}', requirements: ['apiVersion' => '(v1)', 'id' => '\d+'])]
+	public function updatePhoneOverride(
+		int $id,
+		?string $phone = null,
+		?string $mno = null,
+		?string $provider = null,
+		?bool $active = null,
+	): DataResponse {
+		try {
+			$result = $this->phoneOverrideAdminService->update(
+				$id,
+				$phone,
+				$mno,
+				$provider,
+				$active,
+			);
+
+			if ($result['status'] === 'duplicate') {
+				return new DataResponse(
+					[
+						'error' => 'An override already exists for this phone number.',
+						'override' => $result['override'],
+					],
+					Http::STATUS_CONFLICT
+				);
+			}
+
+			return new DataResponse($result);
+		} catch (\OCP\AppFramework\Db\DoesNotExistException $e) {
+			return new DataResponse(
+				['error' => 'Phone number override not found.'],
+				Http::STATUS_NOT_FOUND
+			);
+		} catch (\InvalidArgumentException $e) {
+			return new DataResponse(
+				['error' => $e->getMessage()],
+				Http::STATUS_BAD_REQUEST
+			);
+		}
+	}
+
+	/**
+	 * Delete a phone number payment routing override.
+	 *
+	 * @return DataResponse
+	 *
+	 * 200: Override deleted
+	 * 404: Override not found
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'DELETE', url: '/api/{apiVersion}/admin/phone-overrides/{id}', requirements: ['apiVersion' => '(v1)', 'id' => '\d+'])]
+	public function deletePhoneOverride(int $id): DataResponse
+	{
+		try {
+			$this->phoneOverrideAdminService->delete($id);
+
+			return new DataResponse([
+				'status' => 'deleted',
+			]);
+		} catch (\OCP\AppFramework\Db\DoesNotExistException $e) {
+			return new DataResponse(
+				['error' => 'Phone number override not found.'],
+				Http::STATUS_NOT_FOUND
+			);
+		}
 	}
 }

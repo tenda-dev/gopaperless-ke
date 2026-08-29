@@ -208,4 +208,40 @@ final class MnoSuggestionValidatorService {
 			null,
 		);
 	}
+
+	/**
+	 * Reverse of validate(): map a DPO provider/execution key back to the
+	 * canonical MNO identity for a region.
+	 *
+	 * EXACT alias match only (base alias + configured DPO aliases) — never
+	 * fuzzy — so provider-native keys like "selcom_webpay_airtel" do not
+	 * accidentally collapse into a different MNO ("selcom_webpay" = Vodacom).
+	 * Returns the lowercased canonical MNO (e.g. "airtelke" -> "airtel",
+	 * "safaricomstkv2" -> "mpesa"), or null when the key is not recognised.
+	 */
+	public function canonicalMnoForOption(?string $providerKey, ?string $region): ?string {
+		if ($providerKey === null || $region === null) {
+			return null;
+		}
+
+		$providerKey = strtolower(trim($providerKey));
+		$region = strtoupper(trim($region));
+
+		if ($providerKey === '' || !isset(self::DPO_MNO_PROVIDER_MAPPING[$region])) {
+			return null;
+		}
+
+		foreach (self::DPO_MNO_PROVIDER_MAPPING[$region] as $canonicalMno => $dpoAliases) {
+			$aliasSet = array_merge(
+				[strtolower($canonicalMno)],
+				array_map('strtolower', $dpoAliases),
+			);
+
+			if (in_array($providerKey, $aliasSet, true)) {
+				return strtolower($canonicalMno);
+			}
+		}
+
+		return null;
+	}
 }

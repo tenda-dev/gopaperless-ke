@@ -14,12 +14,15 @@ use OCP\AppFramework\Db\Entity;
 /**
  * Authoritative, human-curated phone -> MNO override.
  *
- * Row in the gopaperless_phone_overrides table. First implementation
- * overrides MNO identity only; the payment rail continues to be derived
- * from that identity by MnoRoutingRegistry.
+ * Row in the gopaperless_phone_overrides table. The MNO identifies the
+ * network while provider explicitly controls the payment rail for the
+ * exceptional number.
  *
  * @method void setPhoneE164Digits(string $phoneE164Digits)
  * @method string getPhoneE164Digits()
+ *
+ * @method void setProvider(string $provider)
+ * @method string getProvider()
  *
  * @method void setMno(string $mno)
  * @method string getMno()
@@ -41,6 +44,7 @@ use OCP\AppFramework\Db\Entity;
  */
 class PhoneMnoOverride extends Entity {
 	protected string $phoneE164Digits = '';
+	protected string $provider = '';
 	protected string $mno = '';
 	protected bool $active = true;
 	protected ?string $note = null;
@@ -51,6 +55,7 @@ class PhoneMnoOverride extends Entity {
 	public function __construct() {
 		$this->addType('id', 'integer');
 		$this->addType('phoneE164Digits', 'string');
+		$this->addType('provider', 'string');
 		$this->addType('mno', 'string');
 		$this->addType('active', 'boolean');
 		$this->addType('note', 'string');

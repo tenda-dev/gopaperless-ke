@@ -75,4 +75,43 @@ final class MnoRoutingRegistryTest extends TestCase {
 		self::assertSame(PaymentProvider::DPO, $route->preferredProvider);
 		self::assertSame(PaymentFlowMode::INSTRUCTIONS, $route->mode);
 	}
+
+	public function testSupportsRouteAcceptsDefaultRailAndDpoCrossProvider(): void {
+		self::assertTrue($this->registry->supportsRoute('KE', 'safaricom', PaymentProvider::DARAJA));
+		self::assertTrue($this->registry->supportsRoute('KE', 'safaricom', PaymentProvider::DPO));
+		self::assertTrue($this->registry->supportsRoute('KE', 'airtel', PaymentProvider::DPO));
+	}
+
+	public function testSupportsRouteRejectsDarajaForNonSafaricom(): void {
+		self::assertFalse($this->registry->supportsRoute('KE', 'airtel', PaymentProvider::DARAJA));
+		self::assertFalse($this->registry->supportsRoute('KE', 'not-a-network', PaymentProvider::DPO));
+		self::assertFalse($this->registry->supportsRoute(null, 'safaricom', PaymentProvider::DARAJA));
+	}
+
+	public function testRouteForProviderReturnsDefaultWhenProviderMatches(): void {
+		$route = $this->registry->routeForProvider(
+			PaymentCapability::MOBILE_MONEY, 'kenya', 'KE', 'airtel',
+			PaymentProvider::DPO, ResolutionConfidence::HIGH,
+		);
+		self::assertSame(PaymentProvider::DPO, $route->preferredProvider);
+		self::assertSame('Airtel', $route->mnoKey);
+	}
+
+	public function testRouteForProviderBuildsCoherentDpoRouteForSafaricom(): void {
+		$route = $this->registry->routeForProvider(
+			PaymentCapability::MOBILE_MONEY, 'kenya', 'KE', 'safaricom',
+			PaymentProvider::DPO, ResolutionConfidence::HIGH,
+		);
+		self::assertSame(PaymentProvider::DPO, $route->preferredProvider);
+		self::assertSame('Mpesa', $route->mnoKey, 'keeps the canonical DPO MNO key');
+		self::assertSame(PaymentFlowMode::BOTH, $route->mode, 'DPO mode, not the Daraja STK_PUSH');
+	}
+
+	public function testRouteForProviderThrowsForUnsupportedCombination(): void {
+		$this->expectException(\InvalidArgumentException::class);
+		$this->registry->routeForProvider(
+			PaymentCapability::MOBILE_MONEY, 'kenya', 'KE', 'airtel',
+			PaymentProvider::DARAJA, ResolutionConfidence::HIGH,
+		);
+	}
 }

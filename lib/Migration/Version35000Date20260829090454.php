@@ -44,6 +44,12 @@ class Version35000Date20260829090454 extends SimpleMigrationStep {
 				'length' => 32,
 			]);
 
+			// Explicit payment provider override.
+			$table->addColumn('provider', 'string', [
+				'notnull' => true,
+				'length' => 16,
+			]);
+
 			// Carrier identity, e.g. "safaricom". Fed to MnoRoutingRegistry; never a rail.
 			$table->addColumn('mno', 'string', [
 				'notnull' => true,

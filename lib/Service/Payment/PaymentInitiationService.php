@@ -82,6 +82,7 @@ class PaymentInitiationService {
 		$countryCtx = null;
 		$fxEngineResult = null;
 		$pending = null;
+		$providerOverride = null;
 
 		if (!$userId) {
 			throw new RuntimeException('userId is required');
@@ -110,8 +111,10 @@ class PaymentInitiationService {
 			// Override > cache > libphonenumber + MNO detection > fallback.
 			// The resolver owns validity so an active override can rescue a
 			// number libphonenumber would reject; the rail stays with MnoRoutingRegistry.
-			$identity = $this->phoneMnoResolver->resolve($phoneNumber);
+			$resolution = $this->phoneMnoResolver->resolve($phoneNumber);
+			$identity = $resolution->identity;
 			$region = $identity->region;
+			$providerOverride = $resolution->providerOverride;
 
 			if (!$identity->valid || !$region) {
 				throw new RuntimeException('Unable to resolve phone number');
@@ -136,13 +139,32 @@ class PaymentInitiationService {
 			$finalCarrier = $identity->carrier;
 			$finalConfidence = $identity->confidence;
 
-			$route = $this->mnoRoutingRegistry->route(
-				$capability,
-				$countryCtx->country,
-				$region,
-				$finalCarrier,
-				$finalConfidence
-			);
+			if ($resolution->providerOverride !== null) {
+				// Admin override carries an explicit rail. Derive a COHERENT route
+				// for that provider (mnoKey/mode/limits included) rather than mutating
+				// preferredProvider on a route assembled for a different provider.
+				$route = $this->mnoRoutingRegistry->routeForProvider(
+					$capability,
+					$countryCtx->country,
+					$region,
+					$finalCarrier,
+					$resolution->providerOverride,
+					$finalConfidence
+				);
+
+				$this->logger->info('Using phone provider override', [
+					'provider' => $resolution->providerOverride->value,
+					'carrier' => $finalCarrier,
+				]);
+			} else {
+				$route = $this->mnoRoutingRegistry->route(
+					$capability,
+					$countryCtx->country,
+					$region,
+					$finalCarrier,
+					$finalConfidence
+				);
+			}
 
 			if (!$route->capability) {
 				throw new RuntimeException('Unable to determine payment route');
@@ -177,16 +199,21 @@ class PaymentInitiationService {
 		}
 
 		if (
-			$dto->provider !== null
+			$providerOverride === null
+			&& $dto->provider !== null
 			&& $capability === PaymentCapability::MOBILE_MONEY
 			&& $route->requiresUserSelection()
 		) {
 			$route = $route->withPreferredProvider($dto->provider);
+
 			$this->logger->info('Using frontend provider hint for uncertain route', [
 				'hint' => $dto->provider->value,
 				'route_confidence' => $route->confidence->value,
 			]);
-		} elseif ($dto->provider !== null && $capability === PaymentCapability::MOBILE_MONEY) {
+		} elseif (
+			$dto->provider !== null
+			&& $capability === PaymentCapability::MOBILE_MONEY
+		) {
 			$this->logger->info('Ignoring frontend provider hint; backend route is authoritative', [
 				'hint' => $dto->provider->value,
 				'route_provider' => $route->preferredProvider->value,

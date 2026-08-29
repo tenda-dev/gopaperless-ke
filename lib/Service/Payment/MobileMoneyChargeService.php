@@ -37,6 +37,7 @@ class MobileMoneyChargeService {
 		private LoggerInterface $logger,
 		private VerificationDispatcherFactory $verificationDispatcher,
 		private PhoneMnoResolver $phoneMnoResolver,
+		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
 	) {
 	}
 
@@ -137,12 +138,31 @@ class MobileMoneyChargeService {
 		// been dispatched and metadata persisted. MNO identity only (never the
 		// rail); best-effort — rememberResolvedMno never throws into this path.
 		if ($chargeSent && $mno !== '') {
-			$this->phoneMnoResolver->rememberResolvedMno(
-				$payment->getPhoneE164Digits(),
-				$payment->getPhoneRegion(),
-				$payment->getPhoneCountry(),
+			// $mno is the DPO provider/execution key (e.g. "airtelke"). The
+			// identity cache stores CANONICAL MNO only, so reverse-map it first.
+			// Never write a provider-native key into the canonical cache; if the
+			// key cannot be mapped, skip the write and log the anomaly.
+			$canonicalMno = $this->mnoSuggestionValidatorService->canonicalMnoForOption(
 				$mno,
+				$payment->getPhoneRegion(),
 			);
+
+			if ($canonicalMno !== null) {
+				$this->phoneMnoResolver->rememberResolvedMno(
+					$payment->getPhoneE164Digits(),
+					$payment->getPhoneRegion(),
+					$payment->getPhoneCountry(),
+					$canonicalMno,
+				);
+			} else {
+				$this->logger->warning(
+					'[MobileMoneyCharge] DPO provider key has no canonical MNO mapping; skipping identity cache write',
+					[
+						'providerKey' => $mno,
+						'region' => $payment->getPhoneRegion(),
+					],
+				);
+			}
 		}
 
 		try {

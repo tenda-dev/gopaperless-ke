@@ -32,6 +32,10 @@ use Psr\Log\LoggerInterface;
  * Behavioural contracts for the override > cache > detection > fallback
  * resolution pipeline. Detection, country and routing use the REAL registries
  * so the identity -> route chain is exercised end to end.
+ *
+ * resolve() returns PhoneMnoResolutionDTO { identity, providerOverride }:
+ * identity assertions use ->identity->carrier etc.; the explicit admin rail
+ * uses ->providerOverride. The two must never collapse into one another.
  */
 final class PhoneMnoResolverTest extends TestCase {
 	private PhoneMnoOverrideMapper&MockObject $overrideMapper;
@@ -94,10 +98,11 @@ final class PhoneMnoResolverTest extends TestCase {
 		return $row;
 	}
 
-	private function override(string $mno): PhoneMnoOverride {
+	private function override(string $mno, string $provider = 'daraja'): PhoneMnoOverride {
 		$o = new PhoneMnoOverride();
 		$o->setPhoneE164Digits('+254712345678');
 		$o->setMno($mno);
+		$o->setProvider($provider);
 		$o->setActive(true);
 
 		return $o;
@@ -116,19 +121,21 @@ final class PhoneMnoResolverTest extends TestCase {
 	public function testNormalSafaricomResolvesAndRoutesToDaraja(): void {
 		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '712345678', 'Safaricom'));
 
-		$identity = $this->resolver->resolve('+254712345678');
+		$result = $this->resolver->resolve('+254712345678');
+		$identity = $result->identity;
 
 		self::assertTrue($identity->valid);
 		self::assertSame('mpesa', $identity->carrier);
 		self::assertSame(ResolutionConfidence::HIGH, $identity->confidence);
 		self::assertSame(PhoneMnoResolutionSource::DETECTION, $identity->source);
+		self::assertNull($result->providerOverride, 'detection must not carry a provider override');
 		self::assertSame(PaymentProvider::DARAJA, $this->route($identity->region, $identity->carrier, $identity->confidence));
 	}
 
 	public function testNormalAirtelResolvesAndRoutesToDpo(): void {
 		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '730123456', 'Airtel'));
 
-		$identity = $this->resolver->resolve('+254730123456');
+		$identity = $this->resolver->resolve('+254730123456')->identity;
 
 		self::assertSame('airtel', $identity->carrier);
 		self::assertSame(PaymentProvider::DPO, $this->route($identity->region, $identity->carrier, $identity->confidence));
@@ -141,10 +148,11 @@ final class PhoneMnoResolverTest extends TestCase {
 			$this->cacheRow('mpesa', 'high', PhoneMnoResolver::RESOLVER_VERSION, new \DateTime('2026-08-29T11:58:20+00:00'))
 		);
 
-		$identity = $this->resolver->resolve('+254730123456');
+		$result = $this->resolver->resolve('+254730123456');
 
-		self::assertSame('mpesa', $identity->carrier, 'cache must win over prefix detection');
-		self::assertSame(PhoneMnoResolutionSource::CACHE, $identity->source);
+		self::assertSame('mpesa', $result->identity->carrier, 'cache must win over prefix detection');
+		self::assertSame(PhoneMnoResolutionSource::CACHE, $result->identity->source);
+		self::assertNull($result->providerOverride, 'cache must not carry a provider override');
 	}
 
 	public function testCacheMissPopulatesCache(): void {
@@ -165,7 +173,7 @@ final class PhoneMnoResolverTest extends TestCase {
 			)
 			->willReturn($this->cacheRow('mpesa', 'high', PhoneMnoResolver::RESOLVER_VERSION, new \DateTime()));
 
-		$identity = $this->resolver->resolve('+254712345678');
+		$identity = $this->resolver->resolve('+254712345678')->identity;
 
 		self::assertSame('mpesa', $identity->carrier);
 	}
@@ -177,23 +185,68 @@ final class PhoneMnoResolverTest extends TestCase {
 		);
 		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '730123456', 'Airtel'));
 
-		$identity = $this->resolver->resolve('+254712345678');
+		$identity = $this->resolver->resolve('+254712345678')->identity;
 
 		self::assertSame('safaricom', $identity->carrier);
 		self::assertSame(PhoneMnoResolutionSource::OVERRIDE, $identity->source);
 		self::assertSame(PaymentProvider::DARAJA, $this->route($identity->region, $identity->carrier, $identity->confidence));
 	}
 
+	public function testActiveOverrideBeatsDetection(): void {
+		// Detection would say airtel; the override forces safaricom.
+		$this->overrideMapper->method('findActiveByPhone')->willReturn($this->override('safaricom'));
+		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '730123456', 'Airtel'));
+
+		$identity = $this->resolver->resolve('+254730123456')->identity;
+
+		self::assertSame('safaricom', $identity->carrier);
+		self::assertSame(PhoneMnoResolutionSource::OVERRIDE, $identity->source);
+	}
+
+	public function testInactiveOverrideFallsThroughToDetection(): void {
+		// findActiveByPhone only returns ACTIVE rows; an inactive override => null.
+		$this->overrideMapper->method('findActiveByPhone')->willReturn(null);
+		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '730123456', 'Airtel'));
+
+		$result = $this->resolver->resolve('+254730123456');
+
+		self::assertSame('airtel', $result->identity->carrier);
+		self::assertSame(PhoneMnoResolutionSource::DETECTION, $result->identity->source);
+		self::assertNull($result->providerOverride);
+	}
+
+	public function testExplicitProviderOverrideIsReturned(): void {
+		// Admin: safaricom + DPO (a valid cross-provider combination).
+		$this->overrideMapper->method('findActiveByPhone')->willReturn($this->override('safaricom', 'dpo'));
+		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '712345678', 'Safaricom'));
+
+		$result = $this->resolver->resolve('+254712345678');
+
+		self::assertSame('safaricom', $result->identity->carrier, 'identity stays canonical');
+		self::assertSame(PaymentProvider::DPO, $result->providerOverride, 'explicit rail is surfaced separately');
+	}
+
+	public function testInvalidOverrideProviderYieldsNullProviderOverride(): void {
+		$this->overrideMapper->method('findActiveByPhone')->willReturn($this->override('safaricom', 'bogus'));
+		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '712345678', 'Safaricom'));
+
+		$result = $this->resolver->resolve('+254712345678');
+
+		self::assertTrue($result->identity->valid);
+		self::assertSame('safaricom', $result->identity->carrier);
+		self::assertNull($result->providerOverride, 'unparseable provider must not become a rail');
+	}
+
 	public function testOverrideResolvesNumberDetectionCannotIdentify(): void {
 		// 999xxxxx matches no KE prefix -> detection UNKNOWN, no carrier hint.
 		$this->phoneResolution->method('resolve')->willReturn($this->base('KE', '999999999'));
 
-		$withoutOverride = $this->resolver->resolve('+254999999999');
+		$withoutOverride = $this->resolver->resolve('+254999999999')->identity;
 		self::assertNull($withoutOverride->carrier, 'no override: undetectable number has no carrier');
 		self::assertNotSame(PaymentProvider::DARAJA, $this->route($withoutOverride->region, $withoutOverride->carrier, $withoutOverride->confidence));
 
 		$this->overrideMapper->method('findActiveByPhone')->willReturn($this->override('safaricom'));
-		$withOverride = $this->resolver->resolve('+254999999999');
+		$withOverride = $this->resolver->resolve('+254999999999')->identity;
 
 		self::assertSame('safaricom', $withOverride->carrier);
 		self::assertSame(PaymentProvider::DARAJA, $this->route($withOverride->region, $withOverride->carrier, $withOverride->confidence));
@@ -211,7 +264,7 @@ final class PhoneMnoResolverTest extends TestCase {
 		]);
 		$this->overrideMapper->method('findActiveByPhone')->willReturn($this->override('safaricom'));
 
-		$identity = $this->resolver->resolve('+254112345678');
+		$identity = $this->resolver->resolve('+254112345678')->identity;
 
 		self::assertTrue($identity->valid, 'override must rescue an otherwise-invalid number');
 		self::assertSame('KE', $identity->region);
@@ -226,7 +279,7 @@ final class PhoneMnoResolverTest extends TestCase {
 			$this->cacheRow('mpesa', 'high', PhoneMnoResolver::RESOLVER_VERSION, new \DateTime('2026-08-28T00:00:00+00:00'))
 		);
 
-		$identity = $this->resolver->resolve('+254730123456');
+		$identity = $this->resolver->resolve('+254730123456')->identity;
 
 		self::assertSame('airtel', $identity->carrier, 'stale cache must fall through to detection');
 		self::assertSame(PhoneMnoResolutionSource::DETECTION, $identity->source);
@@ -239,7 +292,7 @@ final class PhoneMnoResolverTest extends TestCase {
 			$this->cacheRow('mpesa', 'high', 'old-version', new \DateTime('2026-08-29T11:59:50+00:00'))
 		);
 
-		$identity = $this->resolver->resolve('+254730123456');
+		$identity = $this->resolver->resolve('+254730123456')->identity;
 
 		self::assertSame('airtel', $identity->carrier, 'version mismatch must fall through to detection');
 		self::assertSame(PhoneMnoResolutionSource::DETECTION, $identity->source);

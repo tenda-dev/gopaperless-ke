@@ -1,11 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 /**
  * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-
 
 namespace OCA\Libresign\Service\Payment;
 
@@ -113,20 +113,30 @@ class PhoneResolutionService {
 	 * number cannot be parsed at all. libphonenumber stays confined to this
 	 * class.
 	 *
+	 * When $defaultRegion is provided, local/national numbers may be parsed
+	 * using that region.
+	 *
 	 * @return array{region: ?string, national: ?string, e164: ?string, carrierHint: ?string}|null
 	 */
-	public function parseLenient(string $rawPhone): ?array {
+	public function parseLenient(string $rawPhone, ?string $defaultRegion = null): ?array {
 		$rawPhone = trim($rawPhone);
 
-		if ($rawPhone === '' || !str_starts_with($rawPhone, '+')) {
+		if ($rawPhone === '') {
 			return null;
 		}
 
 		try {
-			$parsed = $this->phoneUtil->parse($rawPhone, null);
+			$parseRegion = $defaultRegion;
+
+			if (str_starts_with($rawPhone, '+')) {
+				$parseRegion = null;
+			}
+
+			$parsed = $this->phoneUtil->parse($rawPhone, $parseRegion);
 		} catch (NumberParseException $e) {
 			$this->logger->warning('[PhoneResolution] Lenient parse failed', [
 				'input' => $rawPhone,
+				'region' => $defaultRegion,
 				'error' => $e->getMessage(),
 			]);
 
@@ -134,9 +144,13 @@ class PhoneResolutionService {
 		}
 
 		$region = $this->phoneUtil->getRegionCodeForNumber($parsed);
+
 		if ($region === null || $region === '' || $region === 'ZZ') {
-			$region = $this->phoneUtil->getRegionCodeForCountryCode((int)$parsed->getCountryCode());
+			$region = $this->phoneUtil->getRegionCodeForCountryCode(
+				(int)$parsed->getCountryCode()
+			);
 		}
+
 		if ($region === null || $region === '' || $region === 'ZZ') {
 			$region = null;
 		}
@@ -144,7 +158,10 @@ class PhoneResolutionService {
 		$nationalNumber = $parsed->getNationalNumber();
 		$national = $nationalNumber !== null ? (string)$nationalNumber : null;
 
-		$e164 = $this->phoneUtil->format($parsed, PhoneNumberFormat::E164);
+		$e164 = $this->phoneUtil->format(
+			$parsed,
+			PhoneNumberFormat::E164
+		);
 
 		$carrier = $this->carrierMapper->getNameForNumber($parsed, 'en');
 

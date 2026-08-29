@@ -601,6 +601,164 @@ class MnoRoutingRegistry {
 		return array_keys(self::ROUTES);
 	}
 
+	public function supportsMno(string $mno): bool {
+		$mno = strtolower(trim($mno));
+
+		if ($mno === '') {
+			return false;
+		}
+
+		foreach (self::ROUTES as $routes) {
+			foreach ($routes as $route) {
+				if ($route['mnoKey'] === null) {
+					continue;
+				}
+
+				foreach ($route['match'] as $fragment) {
+					if ($fragment === $mno) {
+						return true;
+					}
+				}
+			}
+		}
+
+		return false;
+	}
+
+
+	public function supportedMnosByRegion(): array {
+		$regions = [];
+
+		foreach (self::ROUTES as $region => $routes) {
+			$mnos = [];
+
+			foreach ($routes as $route) {
+				if ($route['mnoKey'] === null) {
+					continue;
+				}
+
+				$mno = strtolower($route['mnoKey']);
+
+				if (!isset($mnos[$mno])) {
+					$mnos[$mno] = [
+						'value' => $mno,
+						'label' => $route['mnoKey'],
+					];
+				}
+			}
+
+			if ($mnos !== []) {
+				$regions[$region] = array_values($mnos);
+			}
+		}
+
+		return $regions;
+	}
+
+	/**
+	 * Whether an (MNO, provider) combination is a routable payment path.
+	 *
+	 * True when the provider is the MNO's default rail, or when the provider
+	 * is DPO and the MNO has a DPO MNO key. Everything else (e.g. Daraja for a
+	 * non-Safaricom MNO) is unsupported. Used to reject invalid admin override
+	 * combinations at save time.
+	 */
+	public function supportsRoute(?string $region, string $mno, PaymentProvider $provider): bool {
+		$matched = $this->matchRoute($region, $mno);
+
+		if ($matched === null) {
+			return false;
+		}
+
+		if ($matched['preferredProvider'] === $provider) {
+			return true;
+		}
+
+		if ($provider === PaymentProvider::DPO && ($matched['mnoKey'] ?? null) !== null) {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Like route(), but for an explicit provider (an admin override).
+	 *
+	 * Returns a COHERENT route for that provider — provider, mode, mnoKey,
+	 * currency and limits are consistent — instead of mutating preferredProvider
+	 * on a route assembled for a different provider. Throws when the (MNO,
+	 * provider) combination is not supported.
+	 *
+	 * @throws \InvalidArgumentException on an unsupported combination
+	 */
+	public function routeForProvider(
+		PaymentCapability $capability,
+		?string $country,
+		?string $region,
+		?string $carrier,
+		PaymentProvider $provider,
+		ResolutionConfidence $confidence = ResolutionConfidence::UNKNOWN,
+	): MnoRoutingResultDTO {
+		$base = $this->route($capability, $country, $region, $carrier, $confidence);
+
+		// Provider already matches the derived route -> already coherent.
+		if ($base->preferredProvider === $provider) {
+			return $base;
+		}
+
+		// DPO can serve any MNO that has a DPO MNO key; rebuild a coherent DPO route.
+		if ($provider === PaymentProvider::DPO && $base->mnoKey !== null) {
+			return $this->build(
+				$base->capability,
+				PaymentProvider::DPO,
+				$base->mnoKey,
+				PaymentFlowMode::BOTH,
+				$base->currency,
+				$base->altCurrency,
+				$base->minAmount,
+				$base->maxAmount,
+				$base->supportsDecimals,
+				$base->confidence,
+				'Provider override: DPO route for ' . ($carrier ?? 'unknown'),
+				$base->country,
+				$base->region,
+			);
+		}
+
+		throw new \InvalidArgumentException(sprintf(
+			'Provider %s is not supported for MNO %s in region %s',
+			$provider->value,
+			$carrier ?? 'unknown',
+			$region ?? 'unknown',
+		));
+	}
+
+	/**
+	 * Return the raw ROUTES entry matched for a region + carrier, or null.
+	 * Mirrors route()'s matching so callers can tell a real match from the
+	 * DPO fallback.
+	 *
+	 * @return array<string, mixed>|null
+	 */
+	private function matchRoute(?string $region, ?string $carrier): ?array {
+		$region = $region ? strtoupper(trim($region)) : null;
+		$carrier = $carrier ? strtolower(trim($carrier)) : null;
+
+		if ($region === null || $carrier === null || !isset(self::ROUTES[$region])) {
+			return null;
+		}
+
+		foreach (self::ROUTES[$region] as $route) {
+			foreach ($route['match'] as $fragment) {
+				if (str_contains($carrier, $fragment)) {
+					return $route;
+				}
+			}
+		}
+
+		return null;
+	}
+
 	/**
 	 * Validate amount using DTO
 	 */

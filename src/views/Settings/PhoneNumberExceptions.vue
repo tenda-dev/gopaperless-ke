@@ -5,11 +5,11 @@
 <template>
 	<NcSettingsSection
 		:name="t('libresign', 'Phone Number Exceptions')"
-		:description="t('libresign', 'Use this when a phone number should be treated as a Safaricom number but automatic network detection cannot identify it correctly. Payments for active exceptions are routed through M-Pesa/Daraja.')">
+		:description="t('libresign', 'Configure payment routing for phone numbers that require an explicit mobile network or payment provider.')">
 		<p class="phone-exceptions__summary">
 			{{ n('libresign', '%n exception configured.', '%n exceptions configured.', overrides.length) }}
 		</p>
-		<NcButton type="secondary" @click="openModal">
+		<NcButton variant="secondary" @click="openModal">
 			{{ t('libresign', 'Manage phone exceptions') }}
 		</NcButton>
 
@@ -21,7 +21,7 @@
 			@update:open="open = $event">
 			<div class="phone-exceptions">
 				<NcNoteCard type="info">
-					{{ t('libresign', 'Every exception below is treated as Safaricom and routed through M-Pesa/Daraja.') }}
+					{{ t('libresign', 'Select the mobile network and payment provider to use when this exception is active.') }}
 				</NcNoteCard>
 
 				<div class="phone-exceptions__add">
@@ -33,16 +33,31 @@
 						:placeholder="t('libresign', '+2547XXXXXXXX')"
 						:error="Boolean(error)"
 						:helper-text="error"
+						@input="updateRegion(phone)"
 						@keydown.enter="addException" />
-					<p class="phone-exceptions__network">
-						{{ t('libresign', 'Network') }}: <strong>{{ t('libresign', 'Safaricom') }}</strong>
-						<span class="phone-exceptions__hint">{{ t('libresign', '(routed via M-Pesa/Daraja)') }}</span>
+					<NcSelect
+						v-model="selectedMno"
+						:options="availableMnos"
+						label="label"
+						:input-label="t('libresign', 'Mobile network')"
+						:clearable="false"
+						:disabled="availableMnos.length === 0" />
+					<p v-if="phone.trim() !== '' && !selectedRegion" class="phone-exceptions__hint">
+						{{ t('libresign', 'Enter a valid international phone number to select a mobile network.') }}
 					</p>
+
+
+					<NcSelect
+						v-model="selectedProvider"
+						:options="overrideOptions.providers"
+						label="label"
+						:input-label="t('libresign', 'Payment provider')"
+						:clearable="false" />
 					<NcButton
-						type="primary"
+						variant="primary"
 						:disabled="submitting || phone.trim() === ''"
 						@click="addException">
-						{{ t('libresign', 'Add Safaricom exception') }}
+						{{ t('libresign', 'Add Phone exception') }}
 					</NcButton>
 				</div>
 
@@ -56,18 +71,42 @@
 								:label="t('libresign', 'Phone number')"
 								:error="Boolean(editError)"
 								:helper-text="editError"
+								@input="updateEditRegion(editPhone)"
 								@keydown.enter="saveEdit(item)" />
-							<NcButton type="primary" :disabled="savingId === item.id" @click="saveEdit(item)">
+
+							<NcSelect
+								v-model="editMno"
+								:options="editAvailableMnos"
+								label="label"
+								:input-label="t('libresign', 'Mobile network')"
+								:clearable="false"
+								:disabled="editAvailableMnos.length === 0" />
+
+							<p v-if="editPhone.trim() !== '' && !editRegion">
+								{{ t('libresign', 'Enter a valid international phone number to select a mobile network.') }}
+							</p>
+
+							<NcSelect
+								v-model="editProvider"
+								:options="overrideOptions.providers"
+								label="label"
+								:input-label="t('libresign', 'Payment provider')"
+								:clearable="false" />
+
+							<NcButton variant="primary" :disabled="savingId === item.id" @click="saveEdit(item)">
 								{{ t('libresign', 'Save') }}
 							</NcButton>
-							<NcButton type="tertiary" @click="cancelEdit">
+
+							<NcButton variant="tertiary" @click="cancelEdit">
 								{{ t('libresign', 'Cancel') }}
 							</NcButton>
 						</template>
 						<template v-else>
 							<div class="phone-exceptions__cell phone-exceptions__cell--phone">
 								<span class="phone-exceptions__number">{{ item.phone }}</span>
-								<span class="phone-exceptions__mno">{{ mnoLabel(item.mno) }}</span>
+								<span class="phone-exceptions__mno">
+									{{ mnoLabel(item.mno) }} · {{ providerLabel(item.provider) }}
+								</span>
 							</div>
 							<NcCheckboxRadioSwitch
 								type="switch"
@@ -77,7 +116,7 @@
 								{{ item.active ? t('libresign', 'Active') : t('libresign', 'Inactive') }}
 							</NcCheckboxRadioSwitch>
 							<NcButton
-								type="tertiary"
+								variant="tertiary"
 								:aria-label="t('libresign', 'Edit')"
 								@click="startEdit(item)">
 								<template #icon>
@@ -85,16 +124,16 @@
 								</template>
 							</NcButton>
 							<template v-if="confirmDeleteId === item.id">
-								<NcButton type="error" :disabled="deletingId === item.id" @click="remove(item)">
+								<NcButton variant="error" :disabled="deletingId === item.id" @click="remove(item)">
 									{{ t('libresign', 'Confirm delete') }}
 								</NcButton>
-								<NcButton type="tertiary" @click="confirmDeleteId = null">
+								<NcButton variant="tertiary" @click="confirmDeleteId = null">
 									{{ t('libresign', 'Cancel') }}
 								</NcButton>
 							</template>
 							<NcButton
 								v-else
-								type="tertiary"
+								variant="tertiary"
 								:aria-label="t('libresign', 'Delete')"
 								@click="confirmDeleteId = item.id">
 								<template #icon>
@@ -107,14 +146,14 @@
 				<NcEmptyContent
 					v-else
 					:name="t('libresign', 'No phone exceptions configured')"
-					:description="t('libresign', 'Add a number above to route it through M-Pesa/Daraja as Safaricom.')" />
+					:description="t('libresign', 'Add a phone number above to configure its payment routing.')" />
 			</div>
 		</NcDialog>
 	</NcSettingsSection>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { loadState } from '@nextcloud/initial-state'
 import { translate as t, translatePlural as n } from '@nextcloud/l10n'
 import axios from '@nextcloud/axios'
@@ -123,6 +162,7 @@ import { mdiPencil, mdiDelete } from '@mdi/js'
 
 import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
+import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -130,16 +170,28 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwit
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import { showError, showSuccess } from '@/services/toast'
+import { resolvePhone } from '@/utils/phoneResolver'
 
 interface PhoneOverride {
 	id: number
 	phone: string
 	mno: string
+	provider: string
 	active: boolean
 	note: string | null
 	createdBy: string | null
 	createdAt: string | null
 	updatedAt: string | null
+}
+
+interface OverrideOption {
+	value: string
+	label: string
+}
+
+interface PhoneOverrideOptions {
+	mnos: Record<string, OverrideOption[]>
+	providers: OverrideOption[]
 }
 
 const BASE_URL = '/apps/libresign/api/v1/admin/phone-overrides'
@@ -152,6 +204,14 @@ const open = ref(false)
 const overrides = ref<PhoneOverride[]>(
 	loadState<PhoneOverride[]>('libresign', 'phone_overrides', []),
 )
+const overrideOptions = loadState<PhoneOverrideOptions>(
+	'libresign',
+	'phone_override_options',
+	{
+		mnos: {},
+		providers: [],
+	},
+)
 const phone = ref('')
 const error = ref('')
 const submitting = ref(false)
@@ -162,6 +222,12 @@ const editError = ref('')
 const savingId = ref<number | null>(null)
 const confirmDeleteId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
+const selectedMno = ref('')
+const selectedProvider = ref('daraja')
+const editMno = ref('safaricom')
+const editProvider = ref('daraja')
+const selectedRegion = ref<string | null>(null)
+const editRegion = ref<string | null>(null)
 
 function ocsError(e: unknown, fallback: string): string {
 	const err = e as { response?: { data?: { ocs?: { data?: { error?: string } } } } }
@@ -179,6 +245,56 @@ function mnoLabel(mno: string): string {
 function idUrl(id: number): string {
 	return generateOcsUrl(`${BASE_URL}/{id}`, { id })
 }
+
+function providerLabel(provider: string): string {
+	return provider === 'daraja'
+		? t('libresign', 'Daraja')
+		: provider === 'dpo'
+			? t('libresign', 'DPO')
+			: provider
+}
+
+function updateRegion(rawPhone: string): void {
+	const resolved = resolvePhone(rawPhone)
+	selectedRegion.value = resolved.region ?? null
+
+	const options = selectedRegion.value
+		? overrideOptions.mnos[selectedRegion.value] ?? []
+		: []
+
+	if (!options.some((option) => option.value === selectedMno.value)) {
+		selectedMno.value = options[0]?.value ?? ''
+	}
+}
+
+function updateEditRegion(rawPhone: string): void {
+	const resolved = resolvePhone(rawPhone)
+	editRegion.value = resolved.region ?? null
+
+	const options = editRegion.value
+		? overrideOptions.mnos[editRegion.value] ?? []
+		: []
+
+	if (!options.some((option) => option.value === editMno.value)) {
+		editMno.value = options[0]?.value ?? ''
+	}
+}
+
+const availableMnos = computed<OverrideOption[]>(() => {
+	if (!selectedRegion.value) {
+		return []
+	}
+
+	return overrideOptions.mnos[selectedRegion.value] ?? []
+})
+
+const editAvailableMnos = computed<OverrideOption[]>(() => {
+	if (!editRegion.value) {
+		return []
+	}
+
+	return overrideOptions.mnos[editRegion.value] ?? []
+})
 
 async function refresh(): Promise<void> {
 	try {
@@ -204,12 +320,16 @@ async function addException(): Promise<void> {
 
 	submitting.value = true
 	try {
-		const { data } = await axios.post(generateOcsUrl(BASE_URL), { phone: value })
+		const { data } = await axios.post(generateOcsUrl(BASE_URL), {
+			phone: value,
+			mno: selectedMno.value,
+			provider: selectedProvider.value,
+		})
 		const status = data?.ocs?.data?.status
 		showSuccess(
 			status === 'reactivated'
 				? t('libresign', 'Phone exception reactivated')
-				: t('libresign', 'Safaricom exception added'),
+				: t('libresign', 'Phone exception added'),
 		)
 		phone.value = ''
 		await refresh()
@@ -229,13 +349,21 @@ async function addException(): Promise<void> {
 function startEdit(item: PhoneOverride): void {
 	editingId.value = item.id
 	editPhone.value = item.phone
+	editMno.value = item.mno
+	editProvider.value = item.provider
 	editError.value = ''
 	confirmDeleteId.value = null
+
+	const resolved = resolvePhone(item.phone)
+	editRegion.value = resolved.region ?? null
 }
 
 function cancelEdit(): void {
 	editingId.value = null
 	editPhone.value = ''
+	editMno.value = 'safaricom'
+	editProvider.value = 'daraja'
+	editRegion.value = null
 	editError.value = ''
 }
 
@@ -249,7 +377,7 @@ async function saveEdit(item: PhoneOverride): Promise<void> {
 
 	savingId.value = item.id
 	try {
-		await axios.patch(idUrl(item.id), { phone: value })
+		await axios.patch(idUrl(item.id), { phone: value, mno: editMno.value, provider: editProvider.value })
 		showSuccess(t('libresign', 'Phone exception updated'))
 		cancelEdit()
 		await refresh()
