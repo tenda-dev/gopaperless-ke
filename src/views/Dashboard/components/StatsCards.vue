@@ -105,7 +105,6 @@ const PENDING_STATUSES = DASHBOARD_STATUS.pending
 	background: white;
 	border-radius: 12px;
 	border: 1px solid var(--color-border);
-	padding: 16px;
 
 	display: flex;
 	align-items: center;

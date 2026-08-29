@@ -150,15 +150,13 @@ onMounted(async () => {
 
 <style lang="scss" scoped>
 .entitlement-card {
-	padding: 20px 22px;
+	padding: 18px;
 	position: relative;
 	overflow: hidden;
 	min-height: 184px;
 	display: flex;
 	align-items: flex-start;
 	gap: 14px;
-
-	padding: 18px;
 	border-radius: 12px;
 
 	background:
