@@ -55,4 +55,61 @@ class PhoneMnoOverrideMapper extends QBMapper {
 			return null;
 		}
 	}
+
+	/**
+	 * All overrides, newest first. Admin listing only.
+	 *
+	 * @return PhoneMnoOverride[]
+	 */
+	public function findAll(): array {
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('o.*')
+			->from($this->getTableName(), 'o')
+			->orderBy('o.created_at', 'DESC');
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Look up an override by normalized phone key REGARDLESS of active state.
+	 * Used for duplicate handling (offer reactivation of an inactive row).
+	 */
+	public function findByPhone(string $phoneE164Digits): ?PhoneMnoOverride {
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('o.*')
+			->from($this->getTableName(), 'o')
+			->where(
+				$qb->expr()->eq(
+					'o.phone_e164_digits',
+					$qb->createNamedParameter($phoneE164Digits)
+				)
+			)
+			->setMaxResults(1);
+
+		try {
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException) {
+			return null;
+		}
+	}
+
+	/**
+	 * @throws DoesNotExistException
+	 */
+	public function findById(int $id): PhoneMnoOverride {
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('o.*')
+			->from($this->getTableName(), 'o')
+			->where(
+				$qb->expr()->eq(
+					'o.id',
+					$qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)
+				)
+			);
+
+		return $this->findEntity($qb);
+	}
 }

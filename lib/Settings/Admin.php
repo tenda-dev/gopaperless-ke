@@ -16,6 +16,7 @@ use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -43,6 +44,7 @@ class Admin implements ISettings {
 		private FooterService $footerService,
 		private DocMdpConfigService $docMdpConfigService,
 		private SignatureProfileService $signatureProfileService,
+		private PhoneOverrideAdminService $phoneOverrideAdminService,
 	) {
 	}
 	#[\Override]
@@ -164,6 +166,9 @@ class Admin implements ISettings {
 
 		//	GOPAPERLESS CALLBACK CONFIG
 		$this->initialState->provideInitialState('gopaperless_callback_base_url', $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', ''));
+
+		//	PHONE NUMBER EXCEPTIONS (admin-managed Safaricom overrides)
+		$this->initialState->provideInitialState('phone_overrides', $this->phoneOverrideAdminService->listAll());
 
 		// PAYMENT VERIFICATION DRIVER SETTINGS
 		$this->initialState->provideInitialState('payment_verification_dispatcher', $this->getPaymentVerificationDispatcherInitialState());
