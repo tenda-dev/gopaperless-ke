@@ -129,6 +129,9 @@ export type AdminInitialState = {
 	files_list_show_signers: boolean
 	files_list_next_enabled: boolean
 	visible_elements_next_enabled: boolean
+	public_upload_landing_enabled: boolean
+	public_account_creation_enabled: boolean
+	public_accept_terms_enabled: boolean
 }
 
 export type RuntimeFileSettingsRecord = FileSettings & Partial<SettingsRecord>

@@ -132,6 +132,13 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('files_list_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'files_list_next_enabled', false));
 		$this->initialState->provideInitialState('visible_elements_next_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'visible_elements_next_enabled', false));
 
+		//	PUBLIC ONBOARDING / LANDING PAGE GATES
+		//	All public-facing onboarding flows are disabled by default and must
+		//	be explicitly enabled by an administrator.
+		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
+		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
+		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
+
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');
