@@ -33,12 +33,12 @@ class SsoController extends Controller {
 			$this->userSession->logout();
 		}
 
+		$redirectUrl ??= $this->urlGenerator->linkToRoute('libresign.page.index');
+
 		$params = [
 			'providerId' => $providerId,
+			'redirectUrl' => $redirectUrl,
 		];
-		if ($redirectUrl !== null) {
-			$params['redirectUrl'] = $redirectUrl;
-		}
 
 		return new RedirectResponse($this->urlGenerator->linkToRoute('user_oidc.login.login', $params));
 	}

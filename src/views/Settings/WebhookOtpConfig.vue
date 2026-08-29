@@ -3,9 +3,9 @@
 		<div v-if="emailIdentifyMethodEnabled">
 			<p>
 				<NcCheckboxRadioSwitch
-					v-model="webhookOtpEnabled"
 					type="switch"
-					@update:modelValue="
+					:checked.sync="webhookOtpEnabled"
+					@update:checked="
 						toggleSetting(
 							'webhook_otp_enabled',
 							webhookOtpEnabled

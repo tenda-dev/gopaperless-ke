@@ -42,10 +42,24 @@ final class SsoControllerTest extends TestCase {
 
 	public function testNormalHandoffKeepsTheCurrentSession(): void {
 		$this->userSession->expects(self::never())->method('logout');
-		$this->urlGenerator->method('linkToRoute')
-			->with('user_oidc.login.login', ['providerId' => 2])
-			->willReturn('/apps/user_oidc/login/2');
+		$this->urlGenerator->expects(self::exactly(2))
+			->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.page.index') {
+					self::assertSame([], $params);
+					return '/apps/libresign/';
+				}
 
-		$this->controller->handoff(2);
+				self::assertSame('user_oidc.login.login', $route);
+				self::assertSame([
+					'providerId' => 2,
+					'redirectUrl' => '/apps/libresign/',
+				], $params);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F';
+			});
+
+		$response = $this->controller->handoff(2);
+
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F', $response->getRedirectURL());
 	}
 }
