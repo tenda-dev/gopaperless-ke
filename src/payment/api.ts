@@ -46,7 +46,7 @@ export async function startPayment(
 	const { data } = await axios.post(
 		generateOcsUrl(`${BASE}/start`),
 		payload,
-		{ timeout: 10000 }
+		{ timeout: 15000 }
 	)
 
 	const res = data?.ocs?.data?.result
@@ -90,7 +90,7 @@ export async function chargeMobilePayment({
 			mno,
 			country: mnoCountry,
 		},
-		{ timeout: 10000 }
+		{ timeout: 17000 }
 	)
 
 	const res = data?.ocs?.data?.result
@@ -124,7 +124,7 @@ export async function getPaymentStatus(
 
 	const { data } = await axios.get(
 		generateOcsUrl(`${BASE}/status?providerReference=${reference}`),
-		{ timeout: 10000 }
+		{ timeout: 15000 }
 	)
 
 	const res = data?.ocs?.data
@@ -151,7 +151,7 @@ export async function verifyPayment(
 
 	const { data } = await axios.get(
 		generateOcsUrl(`${BASE}/verify?providerReference=${reference}`),
-		{ timeout: 10000 }
+		{ timeout: 17000 }
 	)
 
 	const res = data?.ocs?.data
@@ -205,7 +205,7 @@ export async function queryDarajaPayment(
 	const { data } = await axios.post(
 		generateOcsUrl(`${BASE}/daraja/query`),
 		{ reference },
-		{ timeout: 10000 }
+		{ timeout: 15000 }
 	)
 
 	const res = data?.ocs?.data

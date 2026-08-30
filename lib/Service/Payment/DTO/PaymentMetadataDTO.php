@@ -22,6 +22,7 @@ final class PaymentMetadataDTO {
 		public readonly SelectedMnoDTO $selected,
 		public readonly SuggestedMnoDTO $suggested,
 		public readonly SelectionDTO $selection,
+		public readonly AutoChargeDTO $autoCharge,
 		public readonly ?string $confidence,
 		/**
 		 * Indicates whether provider-side charge initiation
@@ -57,6 +58,7 @@ final class PaymentMetadataDTO {
 			'selected' => $this->selected->toArray(),
 			'suggested' => $this->suggested->toArray(),
 			'selection' => $this->selection->toArray(),
+			'autoCharge' => $this->autoCharge->toArray(),
 			'confidence' => $this->confidence,
 			'alreadyCharged' => $this->alreadyCharged,
 			'instructions' => $this->instructions,
@@ -121,6 +123,12 @@ final class PaymentMetadataDTO {
 					: []
 			),
 
+			autoCharge: AutoChargeDTO::fromArray(
+				is_array($data['autoCharge'] ?? null)
+					? $data['autoCharge']
+					: []
+			),
+
 			confidence: is_string(
 				$data['confidence'] ?? null
 			)
@@ -176,6 +184,7 @@ final class PaymentMetadataDTO {
 		?SelectedMnoDTO $selected = null,
 		?SuggestedMnoDTO $suggested = null,
 		?SelectionDTO $selection = null,
+		?AutoChargeDTO $autoCharge = null,
 		?string $confidence = null,
 		?bool $alreadyCharged = null,
 		?string $instructions = null,
@@ -194,6 +203,7 @@ final class PaymentMetadataDTO {
 			selected: $selected ?? $this->selected,
 			suggested: $suggested ?? $this->suggested,
 			selection: $selection ?? $this->selection,
+			autoCharge: $autoCharge ?? $this->autoCharge,
 			confidence: $confidence ?? $this->confidence,
 			alreadyCharged: $alreadyCharged ?? $this->alreadyCharged,
 			instructions: $instructions ?? $this->instructions,

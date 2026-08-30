@@ -23,9 +23,12 @@ use OCA\Libresign\Service\Payment\DTO\PhoneMnoResolutionDTO;
 use Psr\Log\LoggerInterface;
 
 /**
- * Resolves a phone number to an MNO identity, applying:
+ * Resolves a phone number to an MNO identity and optional authoritative
+ * provider override
  *
- *   active override > valid cache > libphonenumber + MNO detection > fallback
+ * Resolution precedence:
+ *
+ * active override > verified cache > valid cache > detection > fallback
  *
  * MNO identity and payment provider remain separate concerns.
  *
@@ -110,6 +113,7 @@ class PhoneMnoResolver {
 			return new PhoneMnoResolutionDTO(
 				identity: $identity,
 				providerOverride: $this->providerFromOverride($override),
+				providerMnoKey: $override->getProviderMnoKey(),
 			);
 		}
 
@@ -124,17 +128,23 @@ class PhoneMnoResolver {
 		// 2. CACHE — valid, fresh, matching resolver version.
 		$cached = $this->readFreshCache($key);
 		if ($cached !== null && $cached->getMno() !== null && $cached->getMno() !== '') {
+			$providerOverride = $this->providerFromCache($cached);
+
 			return new PhoneMnoResolutionDTO(
 				identity: new PhoneMnoIdentityDTO(
 					valid: true,
 					e164: $base->e164,
 					national: $base->national,
-					region: $base->region,
+					region: $cached->getRegion(),
 					country: $cached->getCountry(),
-					carrier: $cached->getMno(),
+					mno: $cached->getMno(),
+					carrierHint: $cached->getCarrierHint(),
 					confidence: $this->confidenceFromString($cached->getConfidence()),
 					source: PhoneMnoResolutionSource::CACHE,
+					verified: $cached->getVerified(),
 				),
+				providerOverride: $providerOverride,
+				providerMnoKey: $cached->getProviderMnoKey(),
 			);
 		}
 
@@ -149,7 +159,6 @@ class PhoneMnoResolver {
 		/** @var ResolutionConfidence $confidence */
 		$confidence = $detection['confidence'];
 
-		$carrier = $detectedMno ?? $base->carrierHint;
 
 		// Write-through ONLY for confident, concrete detections. Ambiguous /
 		// unknown results are never negative-cached: those go through the DPO
@@ -162,6 +171,8 @@ class PhoneMnoResolver {
 				$this->countryFor($base->region),
 				$detectedMno,
 				$base->carrierHint,
+				null,
+				null,
 				$confidence,
 			);
 		}
@@ -173,7 +184,8 @@ class PhoneMnoResolver {
 				national: $base->national,
 				region: $base->region,
 				country: $this->countryFor($base->region),
-				carrier: $carrier,
+				mno: $detectedMno,
+				carrierHint: $base->carrierHint,
 				confidence: $confidence,
 				source: PhoneMnoResolutionSource::DETECTION,
 			),
@@ -192,11 +204,47 @@ class PhoneMnoResolver {
 		?string $region,
 		?string $country,
 		?string $mno,
+		?string $providerMnoKey = null,
+		PaymentProvider $provider = PaymentProvider::DPO,
 		ResolutionConfidence $confidence = ResolutionConfidence::HIGH,
 	): void {
 		$key = self::normalizePhoneKey($phone);
 
 		if ($key === null || $mno === null || trim($mno) === '') {
+			return;
+		}
+
+		$providerMnoKey = $providerMnoKey !== null && trim($providerMnoKey) !== ''
+			? trim($providerMnoKey)
+			: null;
+
+		$existing = $this->readFreshCache($key);
+
+		if (
+			$existing?->getVerified()
+			&& !$this->isSameVerifiedRoutingIdentity(
+				$existing,
+				$mno,
+				$country,
+				$providerMnoKey,
+				$provider,
+			)
+		) {
+			$this->logger->warning(
+				'[PhoneMnoResolver] Skipping cache write for conflicting verified routing identity',
+				[
+					'phone' => $key,
+					'existing_mno' => $existing->getMno(),
+					'new_mno' => $mno,
+					'existing_country' => $existing->getCountry(),
+					'new_country' => $country,
+					'existing_provider' => $existing->getProvider(),
+					'new_provider' => $provider->value,
+					'existing_provider_mno_key' => $existing->getProviderMnoKey(),
+					'new_provider_mno_key' => $providerMnoKey,
+				],
+			);
+
 			return;
 		}
 
@@ -206,6 +254,8 @@ class PhoneMnoResolver {
 			$country,
 			strtolower(trim($mno)),
 			null,
+			$provider,
+			$providerMnoKey,
 			$confidence,
 		);
 	}
@@ -261,7 +311,8 @@ class PhoneMnoResolver {
 			national: $national,
 			region: $region,
 			country: $this->countryFor($region),
-			carrier: $override->getMno(),
+			mno: $override->getMno(),
+			carrierHint: null,
 			confidence: ResolutionConfidence::HIGH,
 			source: PhoneMnoResolutionSource::OVERRIDE,
 		);
@@ -273,6 +324,28 @@ class PhoneMnoResolver {
 		} catch (\ValueError) {
 			$this->logger->warning('[PhoneMnoResolver] Invalid override provider', [
 				'provider' => $override->getProvider(),
+			]);
+
+			return null;
+		}
+	}
+
+	private function providerFromCache(PhoneMnoCache $cache): ?PaymentProvider {
+		if (!$cache->getVerified()) {
+			return null;
+		}
+
+		$provider = $cache->getProvider();
+
+		if ($provider === null || trim($provider) === '') {
+			return null;
+		}
+
+		try {
+			return PaymentProvider::from($provider);
+		} catch (\ValueError) {
+			$this->logger->warning('[PhoneMnoResolver] Invalid verified cache provider', [
+				'provider' => $provider,
 			]);
 
 			return null;
@@ -330,7 +403,10 @@ class PhoneMnoResolver {
 		?string $country,
 		string $mno,
 		?string $carrierHint,
+		?PaymentProvider $provider,
+		?string $providerMnoKey,
 		ResolutionConfidence $confidence,
+		bool $verified = false,
 	): void {
 		try {
 			$this->cacheMapper->store(
@@ -342,12 +418,28 @@ class PhoneMnoResolver {
 				$confidence->value,
 				self::RESOLVER_VERSION,
 				$this->dateTimeHelper->nowImmutable(),
+				$provider?->value,
+				$providerMnoKey,
+				verified: $verified,
 			);
 		} catch (\Throwable $e) {
 			$this->logger->warning('[PhoneMnoResolver] cache write failed', [
 				'error' => $e->getMessage(),
 			]);
 		}
+	}
+
+	private function isSameVerifiedRoutingIdentity(
+		PhoneMnoCache $existing,
+		string $mno,
+		?string $country,
+		?string $providerMnoKey,
+		PaymentProvider $provider,
+	): bool {
+		return strtolower(trim((string)$existing->getMno())) === strtolower(trim($mno))
+			&& strtolower(trim((string)$existing->getCountry())) === strtolower(trim((string)$country))
+			&& strtolower(trim((string)$existing->getProvider())) === $provider->value
+			&& strtolower(trim((string)$existing->getProviderMnoKey())) === strtolower(trim((string)$providerMnoKey));
 	}
 
 	private function countryFor(?string $region): ?string {

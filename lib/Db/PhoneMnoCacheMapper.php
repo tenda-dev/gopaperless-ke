@@ -63,6 +63,9 @@ class PhoneMnoCacheMapper extends QBMapper {
 		string $confidence,
 		string $resolverVersion,
 		\DateTimeInterface $now,
+		?string $provider,
+		?string $providerMnoKey,
+		?bool $verified = false
 	): PhoneMnoCache {
 		$timestamp = $now instanceof \DateTime
 			? $now
@@ -79,6 +82,9 @@ class PhoneMnoCacheMapper extends QBMapper {
 			$existing->setResolverVersion($resolverVersion);
 			$existing->setResolvedAt($timestamp);
 			$existing->setUpdatedAt($timestamp);
+			$existing->setProvider($provider);
+			$existing->setProviderMnoKey($providerMnoKey);
+			$existing->setVerified($verified);
 
 			return $this->update($existing);
 		}
@@ -94,7 +100,9 @@ class PhoneMnoCacheMapper extends QBMapper {
 		$entity->setResolvedAt($timestamp);
 		$entity->setCreatedAt($timestamp);
 		$entity->setUpdatedAt($timestamp);
-
+		$entity->setProvider($provider);
+		$entity->setProviderMnoKey($providerMnoKey);
+		$entity->setVerified($verified);
 		return $this->insert($entity);
 	}
 }

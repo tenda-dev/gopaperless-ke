@@ -26,9 +26,14 @@ final class PhoneMnoIdentityDTO {
 		public readonly ?string $national,
 		public readonly ?string $region,
 		public readonly ?string $country,
-		public readonly ?string $carrier,
+		 // Canonical payment MNO identity.
+        public readonly ?string $mno,
+
+        // Raw/normalised carrier information from the phone resolver.
+        public readonly ?string $carrierHint,
 		public readonly ResolutionConfidence $confidence,
 		public readonly PhoneMnoResolutionSource $source,
+		public readonly bool $verified = false,
 	) {
 	}
 
@@ -39,9 +44,11 @@ final class PhoneMnoIdentityDTO {
 			national: null,
 			region: null,
 			country: null,
-			carrier: null,
+			mno: null,
+			carrierHint: null,
 			confidence: ResolutionConfidence::UNKNOWN,
 			source: PhoneMnoResolutionSource::NONE,
+			verified: false,
 		);
 	}
 }

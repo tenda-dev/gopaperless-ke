@@ -610,14 +610,11 @@ class MnoRoutingRegistry {
 
 		foreach (self::ROUTES as $routes) {
 			foreach ($routes as $route) {
-				if ($route['mnoKey'] === null) {
-					continue;
-				}
-
-				foreach ($route['match'] as $fragment) {
-					if ($fragment === $mno) {
-						return true;
-					}
+				if (
+					$route['mnoKey'] !== null
+					&& strtolower($route['mnoKey']) === $mno
+				) {
+					return true;
 				}
 			}
 		}
@@ -731,6 +728,110 @@ class MnoRoutingRegistry {
 			$carrier ?? 'unknown',
 			$region ?? 'unknown',
 		));
+	}
+
+
+	/**
+	 * Build a coherent route from an explicit canonical MNO and provider.
+	 *
+	 * Unlike routeForProvider(), this uses the canonical MNO directly instead
+	 * of deriving it from a carrier hint.
+	 *
+	 * @throws \InvalidArgumentException on an unsupported region or route.
+	 */
+	public function routeForMno(
+		PaymentCapability $capability,
+		?string $country,
+		?string $region,
+		string $mno,
+		PaymentProvider $provider,
+		ResolutionConfidence $confidence = ResolutionConfidence::HIGH,
+	): MnoRoutingResultDTO {
+		if ($capability === PaymentCapability::CARD) {
+			return $this->route(
+				$capability,
+				$country,
+				$region,
+				null,
+				$confidence,
+			);
+		}
+
+		$region = $region ? strtoupper(trim($region)) : null;
+		$mno = strtolower(trim($mno));
+
+		if ($region === null || !isset(self::ROUTES[$region])) {
+			throw new \InvalidArgumentException(sprintf(
+				'Unsupported region %s',
+				$region ?? 'unknown',
+			));
+		}
+
+		foreach (self::ROUTES[$region] as $route) {
+			if (
+				$route['mnoKey'] !== null
+				&& strtolower($route['mnoKey']) === $mno
+			) {
+				if (
+					$route['preferredProvider'] === $provider
+					|| (
+						$provider === PaymentProvider::DPO
+						&& $route['mnoKey'] !== null
+					)
+				) {
+					return $this->build(
+						$route['capability'],
+						$provider,
+						$route['mnoKey'],
+						$provider === PaymentProvider::DPO
+							? PaymentFlowMode::BOTH
+							: $route['mode'],
+						$route['currency'] ?? null,
+						$route['altCurrency'] ?? null,
+						$route['minAmount'] ?? null,
+						$route['maxAmount'] ?? null,
+						$route['supportsDecimals'] ?? null,
+						$confidence,
+						'Explicit MNO/provider route',
+						$country,
+						$region,
+					);
+				}
+
+				break;
+			}
+		}
+
+		throw new \InvalidArgumentException(sprintf(
+			'Provider %s is not supported for MNO %s in region %s',
+			$provider->value,
+			$mno,
+			$region,
+		));
+	}
+
+	/**
+	 * Resolve the canonical MNO key for a provider route.
+	 *
+	 * Uses the same carrier matching as route() and returns the
+	 * canonical mnoKey for the matched provider.
+	 */
+	public function mnoKeyForProvider(
+		?string $region,
+		?string $carrier,
+		PaymentProvider $provider,
+	): ?string {
+		$route = $this->matchRoute($region, $carrier);
+
+		if ($route === null || $route['mnoKey'] === null) {
+			return null;
+		}
+
+		if ($route['preferredProvider'] !== $provider) {
+			return null;
+		}
+
+		return $route['mnoKey'];
 	}
 
 	/**

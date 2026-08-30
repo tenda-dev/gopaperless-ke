@@ -15,6 +15,7 @@ final class PhoneMnoResolutionDTO {
 	public function __construct(
 		public readonly PhoneMnoIdentityDTO $identity,
 		public readonly ?PaymentProvider $providerOverride = null,
+		public readonly ?string $providerMnoKey = null,
 	) {
 	}
 }

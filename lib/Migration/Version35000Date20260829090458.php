@@ -52,7 +52,22 @@ class Version35000Date20260829090458 extends SimpleMigrationStep {
 				'length' => 32,
 			]);
 
-			// Detected MNO identity. Never the payment rail (DPO/Daraja).
+			$table->addColumn('provider', 'string', [
+				'notnull' => false,
+				'length' => 16,
+			]);
+
+			$table->addColumn('provider_mno_key', 'string', [
+				'notnull' => false,
+				'length' => 32,
+			]);
+
+			$table->addColumn('verified', 'boolean', [
+				'notnull' => true,
+				'default' => false,
+			]);
+
+			// Canonical MNO identity. Never a provider-native execution key.
 			$table->addColumn('mno', 'string', [
 				'notnull' => false,
 				'length' => 32,

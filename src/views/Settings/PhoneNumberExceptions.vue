@@ -55,7 +55,7 @@
 						:clearable="false" />
 					<NcButton
 						variant="primary"
-						:disabled="submitting || phone.trim() === ''"
+						:disabled="submitting || !selectedRegion || !selectedMno || phone.trim() === ''"
 						@click="addException">
 						{{ t('libresign', 'Add Phone exception') }}
 					</NcButton>
@@ -82,7 +82,7 @@
 								:clearable="false"
 								:disabled="editAvailableMnos.length === 0" />
 
-							<p v-if="editPhone.trim() !== '' && !editRegion">
+							<p v-if="editPhone.trim() !== '' && !editRegion" class="phone-exceptions__hint">
 								{{ t('libresign', 'Enter a valid international phone number to select a mobile network.') }}
 							</p>
 
@@ -93,7 +93,10 @@
 								:input-label="t('libresign', 'Payment provider')"
 								:clearable="false" />
 
-							<NcButton variant="primary" :disabled="savingId === item.id" @click="saveEdit(item)">
+							<NcButton
+								variant="primary"
+								:disabled="savingId === item.id || !editRegion || !editMno"
+								@click="saveEdit(item)">
 								{{ t('libresign', 'Save') }}
 							</NcButton>
 
@@ -332,6 +335,8 @@ async function addException(): Promise<void> {
 				: t('libresign', 'Phone exception added'),
 		)
 		phone.value = ''
+		selectedRegion.value = null
+		selectedMno.value = ''
 		await refresh()
 	} catch (e) {
 		if (statusOf(e) === 409) {

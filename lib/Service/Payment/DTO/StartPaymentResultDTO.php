@@ -23,11 +23,12 @@ final class StartPaymentResultDTO {
 		public readonly string $reference,
 		public readonly PaymentProvider $provider,
 		public readonly PaymentFlow $flow,
-		public readonly PaymentMethod $method,
+		public readonly ?PaymentMethod $method,
 		public readonly ?string $redirectUrl,
 		public readonly ?string $mno,
 		public readonly ?string $country,
 		public readonly bool $alreadyCharged,
+		public readonly ?AutoChargeDTO $autoCharge,
 		public readonly ProviderExecutionState $providerExecutionState,
 		public readonly ?SelectedMnoDTO $selected,
 		public readonly ?string $confidence,
@@ -54,12 +55,13 @@ final class StartPaymentResultDTO {
 			'reference' => $this->reference,
 			'provider' => $this->provider->value,
 			'flow' => $this->flow->value,
-			'method' => $this->method->value,
+			'method' => $this->method?->value,
 			'redirectUrl' => $this->redirectUrl,
 			'mno' => $this->mno,
 			'country' => $this->country,
 			'providerExecutionState' => $this->providerExecutionState->value,
 			'alreadyCharged' => $this->alreadyCharged,
+			'autoCharge' => $this->autoCharge?->toArray(),
 			'selected' => (
 				$this->selected
 				&& $this->selected->mno

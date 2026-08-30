@@ -24,6 +24,9 @@ use OCP\AppFramework\Db\Entity;
  * @method void setProvider(string $provider)
  * @method string getProvider()
  *
+ * @method void setProviderMnoKey(?string $providerMnoKey)
+ * @method ?string getProviderMnoKey()
+ *
  * @method void setMno(string $mno)
  * @method string getMno()
  *
@@ -46,6 +49,7 @@ class PhoneMnoOverride extends Entity {
 	protected string $phoneE164Digits = '';
 	protected string $provider = '';
 	protected string $mno = '';
+	protected ?string $providerMnoKey = null;
 	protected bool $active = true;
 	protected ?string $note = null;
 	protected ?string $createdBy = null;
@@ -56,6 +60,7 @@ class PhoneMnoOverride extends Entity {
 		$this->addType('id', 'integer');
 		$this->addType('phoneE164Digits', 'string');
 		$this->addType('provider', 'string');
+		$this->addType('providerMnoKey', 'string');
 		$this->addType('mno', 'string');
 		$this->addType('active', 'boolean');
 		$this->addType('note', 'string');

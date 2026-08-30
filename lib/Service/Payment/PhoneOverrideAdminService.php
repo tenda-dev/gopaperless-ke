@@ -32,6 +32,7 @@ class PhoneOverrideAdminService {
 		private PaymentDateTimeHelper $dateTimeHelper,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
 		private PhoneResolutionService $phoneResolutionService,
+		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
 	) {
 	}
 
@@ -64,7 +65,15 @@ class PhoneOverrideAdminService {
 		$mno = $this->normalizeMnoOrThrow($mno);
 		$provider = $this->normalizeProviderOrThrow($provider);
 		$key = $this->normalizeOrThrow($rawPhone);
-		$this->assertSupportedCombination($mno, $provider, $this->regionFor($rawPhone));
+		$region = $this->regionFor($rawPhone);
+		$this->assertSupportedCombination($mno, $provider, $region);
+
+		$providerMnoKey = $this->providerMnoKeyFor(
+			$mno,
+			$provider,
+			$region,
+		);
+
 		$now = $this->now();
 
 		$existing = $this->overrideMapper->findByPhone($key);
@@ -78,6 +87,7 @@ class PhoneOverrideAdminService {
 
 			$existing->setMno($mno);
 			$existing->setProvider($provider);
+			$existing->setProviderMnoKey($providerMnoKey);
 			$existing->setActive(true);
 			$existing->setUpdatedAt($now);
 
@@ -95,6 +105,7 @@ class PhoneOverrideAdminService {
 		$entity->setPhoneE164Digits($key);
 		$entity->setMno($mno);
 		$entity->setProvider($provider);
+		$entity->setProviderMnoKey($providerMnoKey);
 		$entity->setActive(true);
 		$entity->setNote(self::DEFAULT_NOTE);
 
@@ -179,10 +190,20 @@ class PhoneOverrideAdminService {
 		// Re-validate the combination when a routing input changed (skip pure
 		// active toggles so deactivation is never blocked).
 		if ($rawPhone !== null || $mno !== null || $provider !== null) {
+			$region = $this->regionFor($entity->getPhoneE164Digits());
+
 			$this->assertSupportedCombination(
 				$entity->getMno(),
 				$entity->getProvider(),
-				$this->regionFor($entity->getPhoneE164Digits()),
+				$region,
+			);
+
+			$entity->setProviderMnoKey(
+				$this->providerMnoKeyFor(
+					$entity->getMno(),
+					$entity->getProvider(),
+					$region,
+				)
 			);
 		}
 
@@ -264,6 +285,29 @@ class PhoneOverrideAdminService {
 		return $mno;
 	}
 
+	private function providerMnoKeyFor(
+		string $mno,
+		string $provider,
+		?string $region,
+	): ?string {
+		$paymentProvider = PaymentProvider::from($provider);
+
+		if ($paymentProvider !== PaymentProvider::DPO) {
+			return null;
+		}
+
+		$providerMnoKey = $this->mnoSuggestionValidatorService
+			->providerMnoKeyForCanonical($mno, $region);
+
+		if ($providerMnoKey === null) {
+			throw new \InvalidArgumentException(
+				'No provider MNO key is configured for this network in this region.'
+			);
+		}
+
+		return $providerMnoKey;
+	}
+
 	private function normalizeProviderOrThrow(string $provider): string {
 		$provider = strtolower(trim($provider));
 
@@ -285,6 +329,7 @@ class PhoneOverrideAdminService {
 			'phone' => $override->getPhoneE164Digits(),
 			'mno' => $override->getMno(),
 			'provider' => $override->getProvider(),
+			'providerMnoKey' => $override->getProviderMnoKey(),
 			'active' => $override->getActive(),
 			'note' => $override->getNote(),
 			'createdBy' => $override->getCreatedBy(),

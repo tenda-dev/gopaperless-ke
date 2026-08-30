@@ -170,10 +170,10 @@ final class MnoSuggestionValidatorService {
 			}
 
 			$exactMatch = isset($aliasSet[$optionProvider]);
-			$fuzzyMatch = str_contains($optionProvider, $baseAlias)
-				|| str_contains($baseAlias, $optionProvider);
 
-			if ($exactMatch || $fuzzyMatch) {
+			// Provider-native keys can overlap by prefix (e.g. selcom_webpay and
+			// selcom_webpay_airtel), so matching must remain exact within the region mapping.
+			if ($exactMatch) {
 				/**
 				 * Suggested MNO is supported by DPO for this region.
 				 * Return the provider string exactly as DPO returned it
@@ -240,6 +240,40 @@ final class MnoSuggestionValidatorService {
 			if (in_array($providerKey, $aliasSet, true)) {
 				return strtolower($canonicalMno);
 			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Resolve a canonical MNO to its provider-native DPO MNO key.
+	 *
+	 * Returns null when the MNO or region is unsupported or has no DPO key.
+	 *
+	 * @param string|null $mno Canonical MNO identity.
+	 * @param string|null $region ISO 3166-1 alpha-2 region code.
+	 */
+	public function providerMnoKeyForCanonical(
+		?string $mno,
+		?string $region,
+	): ?string {
+		if ($mno === null || $region === null) {
+			return null;
+		}
+
+		$mno = strtolower(trim($mno));
+		$region = strtoupper(trim($region));
+
+		if ($mno === '' || !isset(self::DPO_MNO_PROVIDER_MAPPING[$region])) {
+			return null;
+		}
+
+		foreach (self::DPO_MNO_PROVIDER_MAPPING[$region] as $canonicalMno => $dpoAliases) {
+			if (strtolower($canonicalMno) !== $mno) {
+				continue;
+			}
+
+			return $dpoAliases[0] ?? null;
 		}
 
 		return null;

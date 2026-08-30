@@ -9,15 +9,16 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Db;
 
+use OCA\Libresign\Enum\ResolutionConfidence;
 use OCP\AppFramework\Db\Entity;
 
 /**
- * Memoized phone -> MNO resolution metadata.
+ * Memoized phone -> MNO resolution and verified payment routing metadata.
  *
  * Row in the gopaperless_phone_mno_cache table. This is an optimization
- * layer only: it caches MNO IDENTITY (carrier), never the selected payment
- * provider/rail. If routing rules change, a cached carrier automatically
- * routes under the new rule because the rail is re-derived at runtime.
+ * layer that caches canonical MNO identity and, when verified, the payment
+ * provider successfully used for that phone number together with the
+ * provider-native MNO execution identifier.
  *
  * @method void setPhoneE164Digits(string $phoneE164Digits)
  * @method string getPhoneE164Digits()
@@ -27,6 +28,15 @@ use OCP\AppFramework\Db\Entity;
  *
  * @method void setCountry(?string $country)
  * @method ?string getCountry()
+ *
+ * @method void setProvider(?string $provider)
+ * @method ?string getProvider()
+ *
+ * @method void setProviderMnoKey(?string $providerMnoKey)
+ * @method ?string getProviderMnoKey()
+ *
+ * @method void setVerified(bool $verified)
+ * @method bool getVerified()
  *
  * @method void setMno(?string $mno)
  * @method ?string getMno()
@@ -53,9 +63,12 @@ class PhoneMnoCache extends Entity {
 	protected string $phoneE164Digits = '';
 	protected ?string $region = null;
 	protected ?string $country = null;
+	protected ?string $provider = null;
+	protected ?string $providerMnoKey = null;
 	protected ?string $mno = null;
 	protected ?string $carrierHint = null;
-	protected string $confidence = 'unknown';
+	protected string $confidence = ResolutionConfidence::UNKNOWN->value;
+	protected bool $verified = false;
 	protected string $resolverVersion = '';
 	protected ?\DateTime $resolvedAt = null;
 	protected ?\DateTime $createdAt = null;
@@ -67,8 +80,11 @@ class PhoneMnoCache extends Entity {
 		$this->addType('region', 'string');
 		$this->addType('country', 'string');
 		$this->addType('mno', 'string');
+		$this->addType('provider', 'string');
+		$this->addType('providerMnoKey', 'string');
 		$this->addType('carrierHint', 'string');
 		$this->addType('confidence', 'string');
+		$this->addType('verified', 'boolean');
 		$this->addType('resolverVersion', 'string');
 		$this->addType('resolvedAt', 'datetime');
 		$this->addType('createdAt', 'datetime');

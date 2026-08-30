@@ -50,6 +50,12 @@ class Version35000Date20260829090454 extends SimpleMigrationStep {
 				'length' => 16,
 			]);
 
+			// Provider specific mno key (e.g. "airtelke") for the override.
+			$table->addColumn('provider_mno_key', 'string', [
+				'notnull' => false,
+				'length' => 32,
+			]);
+
 			// Carrier identity, e.g. "safaricom". Fed to MnoRoutingRegistry; never a rail.
 			$table->addColumn('mno', 'string', [
 				'notnull' => true,

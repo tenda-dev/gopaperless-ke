@@ -1011,16 +1011,17 @@ async function handleMobilePayment() {
 		return
 	}
 
-	/**
-	 * MOBILE PAYMENT PHASE 1
-	 *
-	 * Creates or initiates a payment session.
-	 *
-	 * Depending on backend routing strategy this may:
-	 * - immediately dispatch provider execution
-	 * - require explicit MNO confirmation
-	 * - create a resumable payment reference
-	 */
+   /**
+	* MOBILE PAYMENT PHASE 1
+	*
+	* Creates or initiates a payment session.
+	*
+	* Depending on backend routing strategy this may:
+	* - already dispatch provider execution
+	* - return a verified auto-charge instruction
+	* - require explicit MNO confirmation
+	* - create a resumable payment reference
+	*/
 	if (!payment.activeReference.value) {
 
 		payment.state.value = 'initiating'
@@ -1200,6 +1201,56 @@ async function handleMobilePayment() {
 			default:
 				mnoDetection.state = 'requires-selection'
 				break
+		}
+
+		if (response.autoCharge?.enabled) {
+			// Auto-charge requires the provider-native execution key.
+			// autoCharge.mno is the canonical MNO identity and must not be
+			// sent to the provider charge endpoint.
+			const mno = response.autoCharge?.providerMnoKey
+			const country = response.autoCharge?.country
+            const reference = payment.activeReference.value
+			const phoneNumber =
+				mobilePaymentContext.value?.phoneNumber ??
+				normalisedPhone.value
+
+			const isSignRequest = (payment.paymentPurpose.value ?? props.paymentPurpose) === 'sign_request'
+
+			if (isSignRequest && (!props.signRequestId || !effectiveSignUuid.value)) return
+
+			if (
+				mno &&
+				country &&
+				reference &&
+				phoneNumber
+			) {
+				mnoDetection.selected = {
+					provider: mno,
+					country: country,
+				}
+				mnoDetection.state = 'selected'
+                const signRequestId = props.signRequestId ?? 0
+				const signUuid = effectiveSignUuid.value ?? ''
+
+				await payment.chargeExistingReference(
+					{
+						reference:
+						payment.activeReference.value,
+						phoneNumber,
+						mno: mnoDetection.selected.provider,
+						mnoCountry: mnoDetection.selected.country,
+						signRequestId,
+						signUuid,
+					},
+					(status) => {
+						if (status === 'FAILED' || status === 'CANCELLED') {
+							handleTerminalReset()
+						}
+					}
+				)
+
+			    return
+			}
 		}
 
 		/**

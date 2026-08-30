@@ -27,6 +27,7 @@ use OCA\Libresign\Service\Payment\DTO\SelectionDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\SuggestedMnoDTO;
+use OCA\Libresign\Service\Payment\DTO\AutoChargeDTO;
 use OCA\Libresign\Service\Product\ProductService;
 use Psr\Log\LoggerInterface;
 use Ramsey\Uuid\Uuid;
@@ -83,6 +84,7 @@ class PaymentInitiationService {
 		$fxEngineResult = null;
 		$pending = null;
 		$providerOverride = null;
+		$autoCharge = new AutoChargeDTO(false);
 
 		if (!$userId) {
 			throw new RuntimeException('userId is required');
@@ -120,6 +122,16 @@ class PaymentInitiationService {
 				throw new RuntimeException('Unable to resolve phone number');
 			}
 
+			$autoCharge = new AutoChargeDTO(
+				enabled: $identity->verified
+					&& $providerOverride === PaymentProvider::DPO
+					&& $resolution->providerMnoKey !== null,
+				provider: $providerOverride?->value,
+				mno: $identity->mno,
+				country: $identity->country,
+				providerMnoKey: $resolution->providerMnoKey,
+			);
+
 			if (!$this->mnoRoutingRegistry->supportsRegion($region)) {
 				throw new RuntimeException(sprintf(
 					'Unsupported region: %s. Supported regions: %s',
@@ -136,25 +148,32 @@ class PaymentInitiationService {
 				throw new RuntimeException('Unsupported country');
 			}
 
-			$finalCarrier = $identity->carrier;
+			$finalCarrier = $identity->carrierHint;
 			$finalConfidence = $identity->confidence;
 
 			if ($resolution->providerOverride !== null) {
-				// Admin override carries an explicit rail. Derive a COHERENT route
+				// Admin override carries an explicit rail. We have to derive a COHERENT route
 				// for that provider (mnoKey/mode/limits included) rather than mutating
 				// preferredProvider on a route assembled for a different provider.
-				$route = $this->mnoRoutingRegistry->routeForProvider(
+				if ($identity->mno === null || $identity->mno === '') {
+					throw new RuntimeException(
+						'Unable to determine canonical MNO for provider override'
+					);
+				}
+
+				$route = $this->mnoRoutingRegistry->routeForMno(
 					$capability,
 					$countryCtx->country,
 					$region,
-					$finalCarrier,
+					$identity->mno,
 					$resolution->providerOverride,
-					$finalConfidence
+					$finalConfidence,
 				);
 
 				$this->logger->info('Using phone provider override', [
 					'provider' => $resolution->providerOverride->value,
-					'carrier' => $finalCarrier,
+					'mno' => $identity->mno,
+					'provider_mno_key' => $resolution->providerMnoKey,
 				]);
 			} else {
 				$route = $this->mnoRoutingRegistry->route(
@@ -174,6 +193,7 @@ class PaymentInitiationService {
 				'confidenceBreakdown' => $finalConfidence,
 				'carrier' => $finalCarrier,
 				'region' => $region,
+				'verified' => $identity->verified,
 			];
 
 			$this->logger->info('Mobile money routing result', [
@@ -230,6 +250,7 @@ class PaymentInitiationService {
 			'route_provider' => $route?->preferredProvider?->value ?? null,
 			'route_confidence' => $route?->confidence?->value ?? null,
 			'route_mno_key' => $route?->mnoKey ?? null,
+			'autoCharge' => $autoCharge->toArray(),
 		]);
 
 		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
@@ -491,6 +512,7 @@ class PaymentInitiationService {
 			selection: $selection,
 			confidence: $metaPayload['confidence'] ?? $route->confidence->value,
 			alreadyCharged: $res->providerExecutionState->hasExecutionStarted(),
+			autoCharge: $autoCharge,
 			instructions: $metaPayload['instructions'] ?? null,
 			context: $ctxMetadata,
 			providerExecutionState: $res->providerExecutionState,
