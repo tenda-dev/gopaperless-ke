@@ -132,6 +132,7 @@ export type AdminInitialState = {
 	public_account_creation_enabled: boolean
 	public_accept_terms_enabled: boolean
 	oidc_sso_handoff_enabled: boolean
+	phone_mno_routing_v2_enabled: boolean
 }
 
 export type RuntimeFileSettingsRecord = FileSettings & Partial<SettingsRecord>
