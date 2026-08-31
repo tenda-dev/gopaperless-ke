@@ -110,9 +110,18 @@ class PhoneMnoResolver {
 				);
 			}
 
+			$provider = $this->providerFromOverride($override);
+
 			return new PhoneMnoResolutionDTO(
-				identity: $identity,
-				providerOverride: $this->providerFromOverride($override),
+				identity: $identity->withVerified(
+					$this->isVerifiedOverrideMatch(
+						$key,
+						$override,
+						$provider,
+						$identity->country,
+					),
+				),
+				providerOverride: $provider,
 				providerMnoKey: $override->getProviderMnoKey(),
 			);
 		}
@@ -342,7 +351,7 @@ class PhoneMnoResolver {
 		}
 
 		try {
-			return PaymentProvider::from($provider);
+			$providerEnum = PaymentProvider::from($provider);
 		} catch (\ValueError) {
 			$this->logger->warning('[PhoneMnoResolver] Invalid verified cache provider', [
 				'provider' => $provider,
@@ -350,6 +359,16 @@ class PhoneMnoResolver {
 
 			return null;
 		}
+
+		if (
+			$providerEnum === PaymentProvider::DPO
+			&& $cache->getProviderMnoKey() !== null
+			&& trim($cache->getProviderMnoKey()) !== ''
+		) {
+			return $providerEnum;
+		}
+
+		return null;
 	}
 
 	private function safeResolve(string $rawPhone): ?PaymentPhoneResolutionDTO {
@@ -440,6 +459,31 @@ class PhoneMnoResolver {
 			&& strtolower(trim((string)$existing->getCountry())) === strtolower(trim((string)$country))
 			&& strtolower(trim((string)$existing->getProvider())) === $provider->value
 			&& strtolower(trim((string)$existing->getProviderMnoKey())) === strtolower(trim((string)$providerMnoKey));
+	}
+
+	private function isVerifiedOverrideMatch(
+		string $key,
+		PhoneMnoOverride $override,
+		?PaymentProvider $provider,
+		?string $country,
+	): bool {
+		if ($provider === null) {
+			return false;
+		}
+
+		$cache = $this->readFreshCache($key);
+
+		if ($cache === null || !$cache->getVerified()) {
+			return false;
+		}
+
+		return $this->isSameVerifiedRoutingIdentity(
+			$cache,
+			$override->getMno(),
+			$country,
+			$override->getProviderMnoKey(),
+			$provider,
+		);
 	}
 
 	private function countryFor(?string $region): ?string {

@@ -51,4 +51,19 @@ final class PhoneMnoIdentityDTO {
 			verified: false,
 		);
 	}
+
+	public function withVerified(bool $verified): self {
+        return new self(
+            valid: $this->valid,
+            e164: $this->e164,
+            national: $this->national,
+            region: $this->region,
+            country: $this->country,
+            mno: $this->mno,
+            carrierHint: $this->carrierHint,
+            confidence: $this->confidence,
+            source: $this->source,
+            verified: $verified,
+        );
+    }
 }

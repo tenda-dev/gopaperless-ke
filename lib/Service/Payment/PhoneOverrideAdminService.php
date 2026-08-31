@@ -14,6 +14,7 @@ use OCA\Libresign\Db\PhoneMnoOverrideMapper;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\DB\Exception as DbException;
+use Psr\Log\LoggerInterface;
 
 /**
  * Admin-facing management of phone-number payment routing exceptions.
@@ -33,6 +34,7 @@ class PhoneOverrideAdminService {
 		private MnoRoutingRegistry $mnoRoutingRegistry,
 		private PhoneResolutionService $phoneResolutionService,
 		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -191,6 +193,17 @@ class PhoneOverrideAdminService {
 		// active toggles so deactivation is never blocked).
 		if ($rawPhone !== null || $mno !== null || $provider !== null) {
 			$region = $this->regionFor($entity->getPhoneE164Digits());
+
+			$this->logger->debug('[PhoneOverrideAdmin] Validating override route', [
+				'mno' => $entity->getMno(),
+				'provider' => $entity->getProvider(),
+				'region' => $region,
+				'supportsRoute' => $this->mnoRoutingRegistry->supportsRoute(
+					$region,
+					$entity->getMno(),
+					PaymentProvider::from($entity->getProvider()),
+				),
+			]);
 
 			$this->assertSupportedCombination(
 				$entity->getMno(),

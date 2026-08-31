@@ -140,15 +140,15 @@ class PhoneMnoVerificationService {
 		?string $region,
 	): ?string {
 		if ($provider === PaymentProvider::DARAJA) {
-			$carrier = $metadata->context['carrier'] ?? null;
+			$mno = $metadata->autoCharge->mno ?? null;
 
-			if (!is_string($carrier) || trim($carrier) === '') {
+			if (!is_string($mno) || trim($mno) === '') {
 				return null;
 			}
 
 			return $this->mnoRoutingRegistry->mnoKeyForProvider(
 				$region,
-				$carrier,
+				$mno,
 				$provider,
 			);
 		}
