@@ -17,13 +17,14 @@ use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Payment\MnoRoutingRegistry;
-use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
+use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IAppConfig;
+use OCP\IConfig;
 use OCP\Settings\ISettings;
 use OCP\Util;
 
@@ -41,6 +42,7 @@ class Admin implements ISettings {
 		private CertificateEngineFactory $certificateEngineFactory,
 		private CertificatePolicyService $certificatePolicyService,
 		private IAppConfig $appConfig,
+		private IConfig $config,
 		private SignatureTextService $signatureTextService,
 		private SignatureBackgroundService $signatureBackgroundService,
 		private FooterService $footerService,
@@ -171,12 +173,14 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('gopaperless_callback_base_url', $this->appConfig->getValueString(Application::APP_ID, 'gopaperless_callback_base_url', ''));
 
 		//	PHONE NUMBER EXCEPTIONS (admin-managed Safaricom overrides)
+		$this->initialState->provideInitialState('phone_mno_routing_v2_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'phone_mno_routing_v2_enabled', false));
 		$this->initialState->provideInitialState('phone_overrides', $this->phoneOverrideAdminService->listAll());
+		$this->initialState->provideInitialState('default_phone_region', $this->config->getSystemValueString('default_phone_region', 'KE'));
 
 		$this->initialState->provideInitialState('phone_override_options', [
 			'mnos' => $this->mnoRoutingRegistry->supportedMnosByRegion(),
 			'providers' => array_map(
-				fn(PaymentProvider $provider): array => [
+				fn (PaymentProvider $provider): array => [
 					'value' => $provider->value,
 					'label' => match ($provider) {
 						PaymentProvider::DPO => 'DPO',

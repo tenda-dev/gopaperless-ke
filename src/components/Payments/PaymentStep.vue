@@ -405,7 +405,9 @@ import {
 } from '@/payment'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
+import { loadState } from '@nextcloud/initial-state'
 import { resolvePhone, formatAsYouType } from '@/utils/phoneResolver'
+import type { SupportedRegion } from '@/utils/phoneResolver'
 import { normaliseRegion } from '@/utils/mobileMoney'
 import '@/style/global.scss'
 import PaymentRouteSummary from './PaymentRouteSummary.vue'
@@ -458,6 +460,7 @@ const effectiveSignUuid = computed(() => resolvedSignUuid.value ?? props.signUui
 // ─────────────────────────────────────────────────────────────
 
 const selectedMethod = ref<PaymentMethod>('mobile')
+const defaultPhoneRegion = loadState<SupportedRegion>('libresign', 'default_phone_region', 'KE')
 const phoneFocused = ref(false)
 const phoneInputRef = ref<HTMLInputElement | null>(null)
 const phoneInput = ref('')
@@ -870,7 +873,7 @@ watch(phoneInput, (val) => {
 		return
 	}
 
-	const res = resolvePhone(formatted)
+	const res = resolvePhone(formatted, defaultPhoneRegion)
 
 	resolution.value = res
 
@@ -1617,6 +1620,7 @@ function hydratePaymentState(
 
 		const resolved = resolvePhone(
 			hydratedPayment.phoneNumber,
+			defaultPhoneRegion,
 		)
 
 		resolution.value = resolved
@@ -1633,6 +1637,7 @@ function hydratePaymentState(
 
 			const resolved = resolvePhone(
 				hydratedPayment.phoneNumber,
+				defaultPhoneRegion,
 			)
 
 			resolution.value = resolved

@@ -43,7 +43,7 @@
 		<VisibleElementsNext />
 		<SmsOtpConfig />
 		<WebhookOtpConfig />
-		<PhoneNumberExceptions />
+		<PhoneNumberExceptions v-if="phoneMnoRoutingV2Enabled" />
 		<DarajaConfig />
 		<DpoPaymentConfig />
 		<PaymentVerificationDispatcherConfig />
@@ -96,6 +96,7 @@ import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerific
 import WebhookOtpConfig from './WebhookOtpConfig.vue'
 
 const appearanceProfilesEnabled = loadState('libresign', 'appearance_profiles_enabled', false)
+const phoneMnoRoutingV2Enabled = loadState('libresign', 'phone_mno_routing_v2_enabled', false)
 const SignatureProfileSettings = defineAsyncComponent(() => import('./SignatureProfile/SignatureProfileSettings.vue'))
 
 defineOptions({

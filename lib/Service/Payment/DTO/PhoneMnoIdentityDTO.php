@@ -26,11 +26,10 @@ final class PhoneMnoIdentityDTO {
 		public readonly ?string $national,
 		public readonly ?string $region,
 		public readonly ?string $country,
-		 // Canonical payment MNO identity.
-        public readonly ?string $mno,
-
-        // Raw/normalised carrier information from the phone resolver.
-        public readonly ?string $carrierHint,
+		// Canonical payment MNO identity.
+		public readonly ?string $mno,
+		// Raw/normalised carrier information from the phone resolver.
+		public readonly ?string $carrierHint,
 		public readonly ResolutionConfidence $confidence,
 		public readonly PhoneMnoResolutionSource $source,
 		public readonly bool $verified = false,
@@ -53,17 +52,17 @@ final class PhoneMnoIdentityDTO {
 	}
 
 	public function withVerified(bool $verified): self {
-        return new self(
-            valid: $this->valid,
-            e164: $this->e164,
-            national: $this->national,
-            region: $this->region,
-            country: $this->country,
-            mno: $this->mno,
-            carrierHint: $this->carrierHint,
-            confidence: $this->confidence,
-            source: $this->source,
-            verified: $verified,
-        );
-    }
+		return new self(
+			valid: $this->valid,
+			e164: $this->e164,
+			national: $this->national,
+			region: $this->region,
+			country: $this->country,
+			mno: $this->mno,
+			carrierHint: $this->carrierHint,
+			confidence: $this->confidence,
+			source: $this->source,
+			verified: $verified,
+		);
+	}
 }

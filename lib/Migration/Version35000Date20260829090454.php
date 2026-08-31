@@ -16,7 +16,9 @@ use OCP\Migration\SimpleMigrationStep;
 use Override;
 
 /**
- * FIXME Auto-generated migration step: Please modify to your needs!
+ * Create the gopaperless_phone_overrides table.
+ *
+ * Stores admin-configured phone-number payment routing exceptions.
  */
 class Version35000Date20260829090454 extends SimpleMigrationStep {
 

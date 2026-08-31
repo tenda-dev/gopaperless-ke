@@ -11,34 +11,25 @@ namespace OCA\Libresign\Service\Payment;
 
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\PhoneMnoCache;
-use OCA\Libresign\Db\PhoneMnoCacheMapper;
-use OCA\Libresign\Db\PhoneMnoOverride;
-use OCA\Libresign\Db\PhoneMnoOverrideMapper;
 use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PhoneMnoResolutionSource;
 use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Payment\DTO\PaymentPhoneResolutionDTO;
 use OCA\Libresign\Service\Payment\DTO\PhoneMnoIdentityDTO;
 use OCA\Libresign\Service\Payment\DTO\PhoneMnoResolutionDTO;
+use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
  * Resolves a phone number to an MNO identity and optional authoritative
- * provider override
+ * provider override.
  *
- * Resolution precedence:
+ * Resolution precedence when v2 is enabled:
  *
  * active override > verified cache > valid cache > detection > fallback
  *
- * MNO identity and payment provider remain separate concerns.
- *
- * A phone override may additionally provide an explicit payment provider.
- * When present, the caller may use that provider instead of the provider
- * selected by MnoRoutingRegistry.
- *
- * The override lookup runs on a deterministic normalized key BEFORE any
- * libphonenumber validity gate, so an override can rescue a number that
- * libphonenumber would otherwise reject.
+ * When v2 is disabled, the resolver falls back to detection only and never
+ * reads or writes the override/cache tables.
  */
 class PhoneMnoResolver {
 	/**
@@ -48,29 +39,19 @@ class PhoneMnoResolver {
 	 */
 	public const RESOLVER_VERSION = '1';
 
-	/** Default cache TTL. Numbering plans move slowly; override via app config. */
-	private const DEFAULT_TTL_SECONDS = 2592000; // 30 days
-
-	private const TTL_CONFIG_KEY = 'phone_mno_cache_ttl_seconds';
-
 	public function __construct(
-		private PhoneMnoOverrideMapper $overrideMapper,
-		private PhoneMnoCacheMapper $cacheMapper,
+		private PhoneMnoCacheService $cacheService,
+		private PhoneMnoOverrideResolver $overrideResolver,
 		private PhoneResolutionService $phoneResolutionService,
 		private MnoDetectionRegistry $mnoDetectionRegistry,
 		private PaymentCountryResolver $countryResolver,
-		private PaymentDateTimeHelper $dateTimeHelper,
-		private \OCP\IAppConfig $appConfig,
+		private IAppConfig $appConfig,
 		private LoggerInterface $logger,
 	) {
 	}
 
 	/**
 	 * Deterministic, library-free normalization used as the override/cache key.
-	 *
-	 * Produces the same representation stored in Payment::phoneE164Digits
-	 * (leading '+' followed by digits), and works even when libphonenumber
-	 * rejects the number.
 	 */
 	public static function normalizePhoneKey(?string $raw): ?string {
 		if ($raw === null) {
@@ -86,10 +67,6 @@ class PhoneMnoResolver {
 		return '+' . $digits;
 	}
 
-	/**
-	 * Resolve a raw phone number to an MNO identity and optional provider
-	 * override.
-	 */
 	public function resolve(string $rawPhone): PhoneMnoResolutionDTO {
 		$key = self::normalizePhoneKey($rawPhone);
 
@@ -99,26 +76,28 @@ class PhoneMnoResolver {
 			);
 		}
 
-		// 1. OVERRIDE — authoritative, consulted before any validity gate.
-		$override = $this->findOverride($key);
+		if (!$this->isV2Enabled()) {
+			return $this->resolveLegacy($rawPhone);
+		}
+
+		$override = $this->overrideResolver->findOverride($key);
 		if ($override !== null) {
-			$identity = $this->buildOverrideIdentity($rawPhone, $key, $override);
+			$identity = $this->overrideResolver->buildOverrideIdentity($rawPhone, $key, $override);
 
 			if (!$identity->valid) {
-				return new PhoneMnoResolutionDTO(
-					identity: $identity,
-				);
+				return new PhoneMnoResolutionDTO(identity: $identity);
 			}
 
-			$provider = $this->providerFromOverride($override);
+			$provider = $this->overrideResolver->providerFromOverride($override);
 
 			return new PhoneMnoResolutionDTO(
 				identity: $identity->withVerified(
-					$this->isVerifiedOverrideMatch(
+					$this->overrideResolver->isVerifiedOverrideMatch(
 						$key,
 						$override,
 						$provider,
 						$identity->country,
+						self::RESOLVER_VERSION,
 					),
 				),
 				providerOverride: $provider,
@@ -126,7 +105,6 @@ class PhoneMnoResolver {
 			);
 		}
 
-		// Base (strict) libphonenumber resolution for the normal paths.
 		$base = $this->safeResolve($rawPhone);
 		if ($base === null || !$base->valid || !$base->region) {
 			return new PhoneMnoResolutionDTO(
@@ -134,11 +112,8 @@ class PhoneMnoResolver {
 			);
 		}
 
-		// 2. CACHE — valid, fresh, matching resolver version.
-		$cached = $this->readFreshCache($key);
+		$cached = $this->cacheService->readFreshCache($key, self::RESOLVER_VERSION);
 		if ($cached !== null && $cached->getMno() !== null && $cached->getMno() !== '') {
-			$providerOverride = $this->providerFromCache($cached);
-
 			return new PhoneMnoResolutionDTO(
 				identity: new PhoneMnoIdentityDTO(
 					valid: true,
@@ -152,29 +127,21 @@ class PhoneMnoResolver {
 					source: PhoneMnoResolutionSource::CACHE,
 					verified: $cached->getVerified(),
 				),
-				providerOverride: $providerOverride,
+				providerOverride: $this->providerFromCache($cached),
 				providerMnoKey: $cached->getProviderMnoKey(),
 			);
 		}
 
-		// 3. DETECTION — existing libphonenumber carrier hint + MNO registry.
 		$detection = $this->mnoDetectionRegistry->resolve(
 			$base->region,
 			(string)$base->national,
 		);
 
 		$detectedMno = $detection['mno'] ?? null;
-
-		/** @var ResolutionConfidence $confidence */
 		$confidence = $detection['confidence'];
 
-
-		// Write-through ONLY for confident, concrete detections. Ambiguous /
-		// unknown results are never negative-cached: those go through the DPO
-		// selection flow and are memoized from the user-confirmed MNO in
-		// MobileMoneyChargeService (see rememberResolvedMno).
 		if ($detectedMno !== null && $confidence === ResolutionConfidence::HIGH) {
-			$this->writeCache(
+			$this->cacheService->writeCache(
 				$key,
 				$base->region,
 				$this->countryFor($base->region),
@@ -182,6 +149,7 @@ class PhoneMnoResolver {
 				$base->carrierHint,
 				null,
 				null,
+				self::RESOLVER_VERSION,
 				$confidence,
 			);
 		}
@@ -203,10 +171,6 @@ class PhoneMnoResolver {
 
 	/**
 	 * Memoize a user-CONFIRMED MNO for a phone number.
-	 *
-	 * Called from the DPO deferred-charge step once the charge has been sent
-	 * and payment metadata persisted. Best-effort: never throws into the
-	 * money-moving path.
 	 */
 	public function rememberResolvedMno(
 		?string $phone,
@@ -217,6 +181,10 @@ class PhoneMnoResolver {
 		PaymentProvider $provider = PaymentProvider::DPO,
 		ResolutionConfidence $confidence = ResolutionConfidence::HIGH,
 	): void {
+		if (!$this->isV2Enabled()) {
+			return;
+		}
+
 		$key = self::normalizePhoneKey($phone);
 
 		if ($key === null || $mno === null || trim($mno) === '') {
@@ -227,11 +195,11 @@ class PhoneMnoResolver {
 			? trim($providerMnoKey)
 			: null;
 
-		$existing = $this->readFreshCache($key);
+		$existing = $this->cacheService->readFreshCache($key, self::RESOLVER_VERSION);
 
 		if (
 			$existing?->getVerified()
-			&& !$this->isSameVerifiedRoutingIdentity(
+			&& !$this->cacheService->isSameVerifiedRoutingIdentity(
 				$existing,
 				$mno,
 				$country,
@@ -257,7 +225,7 @@ class PhoneMnoResolver {
 			return;
 		}
 
-		$this->writeCache(
+		$this->cacheService->writeCache(
 			$key,
 			$region,
 			$country,
@@ -265,76 +233,47 @@ class PhoneMnoResolver {
 			null,
 			$provider,
 			$providerMnoKey,
+			self::RESOLVER_VERSION,
 			$confidence,
+			true,
 		);
 	}
 
-	private function findOverride(string $key): ?PhoneMnoOverride {
-		try {
-			return $this->overrideMapper->findActiveByPhone($key);
-		} catch (\Throwable $e) {
-			$this->logger->error('[PhoneMnoResolver] override lookup failed', [
-				'error' => $e->getMessage(),
-			]);
-
-			return null;
-		}
-	}
-
-	private function buildOverrideIdentity(
-		string $rawPhone,
-		string $key,
-		PhoneMnoOverride $override,
-	): PhoneMnoIdentityDTO {
-		$region = null;
-		$national = null;
-		$e164 = null;
-
+	private function resolveLegacy(string $rawPhone): PhoneMnoResolutionDTO {
 		$base = $this->safeResolve($rawPhone);
 
-		if ($base !== null && $base->valid && $base->region) {
-			$region = $base->region;
-			$national = $base->national;
-			$e164 = $base->e164;
-		} else {
-			// Rescue: libphonenumber rejected the number but it may still be
-			// parseable enough to recover geo. This is what lets an override
-			// pull an otherwise-invalid number back into the routing flow.
-			$lenient = $this->phoneResolutionService->parseLenient($rawPhone);
-
-			if ($lenient !== null) {
-				$region = $lenient['region'];
-				$national = $lenient['national'];
-				$e164 = $lenient['e164'] ?? $key;
-			}
+		if ($base === null || !$base->valid || !$base->region) {
+			return new PhoneMnoResolutionDTO(
+				identity: PhoneMnoIdentityDTO::invalid(),
+			);
 		}
 
-		if ($region === null) {
-			// No usable region even with the override — cannot route safely.
-			return PhoneMnoIdentityDTO::invalid();
-		}
+		$detection = $this->mnoDetectionRegistry->resolve(
+			$base->region,
+			(string)$base->national,
+		);
 
-		return new PhoneMnoIdentityDTO(
-			valid: true,
-			e164: $e164 ?? $key,
-			national: $national,
-			region: $region,
-			country: $this->countryFor($region),
-			mno: $override->getMno(),
-			carrierHint: null,
-			confidence: ResolutionConfidence::HIGH,
-			source: PhoneMnoResolutionSource::OVERRIDE,
+		return new PhoneMnoResolutionDTO(
+			identity: new PhoneMnoIdentityDTO(
+				valid: true,
+				e164: $base->e164,
+				national: $base->national,
+				region: $base->region,
+				country: $this->countryFor($base->region),
+				mno: $detection['mno'] ?? null,
+				carrierHint: $base->carrierHint,
+				confidence: $detection['confidence'],
+				source: PhoneMnoResolutionSource::DETECTION,
+			),
 		);
 	}
 
-	private function providerFromOverride(PhoneMnoOverride $override): ?PaymentProvider {
+	private function safeResolve(string $rawPhone): ?PaymentPhoneResolutionDTO {
 		try {
-			return PaymentProvider::from($override->getProvider());
-		} catch (\ValueError) {
-			$this->logger->warning('[PhoneMnoResolver] Invalid override provider', [
-				'provider' => $override->getProvider(),
-			]);
+			$dto = $this->phoneResolutionService->resolve($rawPhone);
 
+			return $dto->valid ? $dto : null;
+		} catch (\Throwable $e) {
 			return null;
 		}
 	}
@@ -371,121 +310,6 @@ class PhoneMnoResolver {
 		return null;
 	}
 
-	private function safeResolve(string $rawPhone): ?PaymentPhoneResolutionDTO {
-		try {
-			$dto = $this->phoneResolutionService->resolve($rawPhone);
-
-			return $dto->valid ? $dto : null;
-		} catch (\Throwable $e) {
-			// resolve() enforces a DTO invariant that throws on invalid input;
-			// treat any failure here as "unresolved" and let callers fall back.
-			return null;
-		}
-	}
-
-	private function readFreshCache(string $key): ?PhoneMnoCache {
-		try {
-			$row = $this->cacheMapper->findByPhone($key);
-		} catch (\Throwable $e) {
-			return null;
-		}
-
-		if ($row === null) {
-			return null;
-		}
-
-		// Resolver-version mismatch = miss.
-		if ($row->getResolverVersion() !== self::RESOLVER_VERSION) {
-			return null;
-		}
-
-		$resolvedAt = $row->getResolvedAt();
-
-		if (!$resolvedAt instanceof \DateTimeInterface) {
-			return null;
-		}
-
-		$age = $this->dateTimeHelper->nowImmutable()->getTimestamp()
-			- $resolvedAt->getTimestamp();
-
-		// Stale TTL = miss.
-		if ($age > $this->ttlSeconds()) {
-			return null;
-		}
-
-		return $row;
-	}
-
-	private function writeCache(
-		string $key,
-		?string $region,
-		?string $country,
-		string $mno,
-		?string $carrierHint,
-		?PaymentProvider $provider,
-		?string $providerMnoKey,
-		ResolutionConfidence $confidence,
-		bool $verified = false,
-	): void {
-		try {
-			$this->cacheMapper->store(
-				$key,
-				$region,
-				$country,
-				$mno,
-				$carrierHint,
-				$confidence->value,
-				self::RESOLVER_VERSION,
-				$this->dateTimeHelper->nowImmutable(),
-				$provider?->value,
-				$providerMnoKey,
-				verified: $verified,
-			);
-		} catch (\Throwable $e) {
-			$this->logger->warning('[PhoneMnoResolver] cache write failed', [
-				'error' => $e->getMessage(),
-			]);
-		}
-	}
-
-	private function isSameVerifiedRoutingIdentity(
-		PhoneMnoCache $existing,
-		string $mno,
-		?string $country,
-		?string $providerMnoKey,
-		PaymentProvider $provider,
-	): bool {
-		return strtolower(trim((string)$existing->getMno())) === strtolower(trim($mno))
-			&& strtolower(trim((string)$existing->getCountry())) === strtolower(trim((string)$country))
-			&& strtolower(trim((string)$existing->getProvider())) === $provider->value
-			&& strtolower(trim((string)$existing->getProviderMnoKey())) === strtolower(trim((string)$providerMnoKey));
-	}
-
-	private function isVerifiedOverrideMatch(
-		string $key,
-		PhoneMnoOverride $override,
-		?PaymentProvider $provider,
-		?string $country,
-	): bool {
-		if ($provider === null) {
-			return false;
-		}
-
-		$cache = $this->readFreshCache($key);
-
-		if ($cache === null || !$cache->getVerified()) {
-			return false;
-		}
-
-		return $this->isSameVerifiedRoutingIdentity(
-			$cache,
-			$override->getMno(),
-			$country,
-			$override->getProviderMnoKey(),
-			$provider,
-		);
-	}
-
 	private function countryFor(?string $region): ?string {
 		if ($region === null) {
 			return null;
@@ -505,11 +329,11 @@ class PhoneMnoResolver {
 			?? ResolutionConfidence::UNKNOWN;
 	}
 
-	private function ttlSeconds(): int {
-		return $this->appConfig->getValueInt(
+	private function isV2Enabled(): bool {
+		return $this->appConfig->getValueBool(
 			Application::APP_ID,
-			self::TTL_CONFIG_KEY,
-			self::DEFAULT_TTL_SECONDS,
+			'phone_mno_routing_v2_enabled',
+			false,
 		);
 	}
 }

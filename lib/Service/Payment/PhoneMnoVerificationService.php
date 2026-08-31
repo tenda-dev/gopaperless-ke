@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\Payment;
 use OCA\Libresign\Db\PhoneMnoCacheMapper;
 use OCA\Libresign\Enum\PaymentMethod;
@@ -16,6 +17,7 @@ use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Enum\ResolutionConfidence;
 use OCA\Libresign\Service\Payment\DTO\PaymentMetadataDTO;
+use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 class PhoneMnoVerificationService {
@@ -24,6 +26,7 @@ class PhoneMnoVerificationService {
 		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
 		private LoggerInterface $logger,
+		private IAppConfig $appConfig,
 	) {
 	}
 
@@ -35,6 +38,10 @@ class PhoneMnoVerificationService {
 	 * cache must never affect the payment or entitlement lifecycle.
 	 */
 	public function verify(Payment $payment): void {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'phone_mno_routing_v2_enabled', false)) {
+			return;
+		}
+
 		if ($payment->getPaymentStatus() !== PaymentStatus::PAID) {
 			return;
 		}
@@ -103,7 +110,7 @@ class PhoneMnoVerificationService {
 				region: $region,
 				country: $country,
 				mno: $mno,
-			    carrierHint: $carrier,
+				carrierHint: $carrier,
 				confidence: ResolutionConfidence::HIGH->value,
 				resolverVersion:PhoneMnoResolver::RESOLVER_VERSION,
 				now: new \DateTimeImmutable(),

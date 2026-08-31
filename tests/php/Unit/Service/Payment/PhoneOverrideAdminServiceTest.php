@@ -11,12 +11,14 @@ namespace OCA\Libresign\Tests\Unit\Service\Payment;
 use OCA\Libresign\Db\PhoneMnoOverride;
 use OCA\Libresign\Db\PhoneMnoOverrideMapper;
 use OCA\Libresign\Service\Payment\MnoRoutingRegistry;
+use OCA\Libresign\Service\Payment\MnoSuggestionValidatorService;
 use OCA\Libresign\Service\Payment\PaymentDateTimeHelper;
 use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Service\Payment\PhoneResolutionService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\AppFramework\Db\DoesNotExistException;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 
 /**
  * Uses the REAL MnoRoutingRegistry so supportsMno()/supportsRoute() validation
@@ -26,6 +28,8 @@ final class PhoneOverrideAdminServiceTest extends TestCase {
 	private PhoneMnoOverrideMapper&MockObject $mapper;
 	private PaymentDateTimeHelper&MockObject $dateTimeHelper;
 	private PhoneResolutionService&MockObject $phoneResolution;
+	private MnoSuggestionValidatorService&MockObject $mnoSuggestionValidator;
+	private LoggerInterface&MockObject $logger;
 	private PhoneOverrideAdminService $service;
 
 	public function setUp(): void {
@@ -33,6 +37,8 @@ final class PhoneOverrideAdminServiceTest extends TestCase {
 		$this->mapper = $this->createMock(PhoneMnoOverrideMapper::class);
 		$this->dateTimeHelper = $this->createMock(PaymentDateTimeHelper::class);
 		$this->phoneResolution = $this->createMock(PhoneResolutionService::class);
+		$this->mnoSuggestionValidator = $this->createMock(MnoSuggestionValidatorService::class);
+		$this->logger = $this->createMock(LoggerInterface::class);
 
 		$this->dateTimeHelper->method('nowImmutable')
 			->willReturn(new \DateTimeImmutable('2026-08-29T12:00:00+00:00'));
@@ -49,6 +55,8 @@ final class PhoneOverrideAdminServiceTest extends TestCase {
 			$this->dateTimeHelper,
 			new MnoRoutingRegistry(),
 			$this->phoneResolution,
+			$this->mnoSuggestionValidator,
+			$this->logger,
 		);
 	}
 

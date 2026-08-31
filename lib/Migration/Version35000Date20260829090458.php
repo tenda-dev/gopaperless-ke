@@ -15,7 +15,12 @@ use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 use Override;
 
-
+/**
+ * Create the gopaperless_phone_mno_cache table.
+ *
+ * Caches resolved and verified phone/MNO identities to avoid repeated
+ * libphonenumber and carrier detection work.
+ */
 class Version35000Date20260829090458 extends SimpleMigrationStep {
 
 	/**

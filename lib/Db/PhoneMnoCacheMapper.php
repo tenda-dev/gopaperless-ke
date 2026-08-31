@@ -65,7 +65,7 @@ class PhoneMnoCacheMapper extends QBMapper {
 		\DateTimeInterface $now,
 		?string $provider,
 		?string $providerMnoKey,
-		?bool $verified = false
+		?bool $verified = false,
 	): PhoneMnoCache {
 		$timestamp = $now instanceof \DateTime
 			? $now

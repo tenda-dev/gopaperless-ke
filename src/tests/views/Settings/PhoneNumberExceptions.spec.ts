@@ -58,18 +58,47 @@ const stubs = {
 	},
 }
 
+const OVERRIDE_OPTIONS = {
+	mnos: {
+		KE: [{ value: 'safaricom', label: 'Safaricom' }],
+	},
+	providers: [
+		{ value: 'daraja', label: 'Daraja' },
+		{ value: 'dpo', label: 'DPO' },
+	],
+}
+
+const OVERRIDE = {
+	id: 1,
+	phone: '+254712345678',
+	mno: 'safaricom',
+	provider: 'daraja',
+	active: true,
+	note: null,
+	createdBy: null,
+	createdAt: null,
+	updatedAt: null,
+}
+
 function createWrapper() {
 	return mount(PhoneNumberExceptions, { global: { stubs } })
 }
 
-const OVERRIDE = { id: 1, phone: '+254712345678', mno: 'safaricom', active: true, note: null, createdBy: null, createdAt: null, updatedAt: null }
-
 describe('PhoneNumberExceptions.vue', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
-		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) =>
-			key === 'phone_overrides' ? [] : fallback,
-		)
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'phone_overrides') {
+				return []
+			}
+			if (key === 'phone_override_options') {
+				return OVERRIDE_OPTIONS
+			}
+			if (key === 'default_phone_region') {
+				return 'KE'
+			}
+			return fallback
+		})
 		getMock.mockResolvedValue({ data: { ocs: { data: { overrides: [OVERRIDE] } } } })
 	})
 
@@ -98,10 +127,16 @@ describe('PhoneNumberExceptions.vue', () => {
 		postMock.mockResolvedValue({ data: { ocs: { data: { status: 'created' } } } })
 		const wrapper = createWrapper()
 		wrapper.vm.phone = '+254712345678'
+		// Wait for the watcher to populate region, MNO and provider defaults.
+		await new Promise((resolve) => setTimeout(resolve, 0))
 
 		await wrapper.vm.addException()
 
-		expect(postMock).toHaveBeenCalledWith('/apps/libresign/api/v1/admin/phone-overrides', { phone: '+254712345678' })
+		expect(postMock).toHaveBeenCalledWith('/apps/libresign/api/v1/admin/phone-overrides', {
+			phone: '+254712345678',
+			mno: 'safaricom',
+			provider: 'daraja',
+		})
 		expect(showSuccessMock).toHaveBeenCalled()
 		expect(getMock).toHaveBeenCalled()
 	})
@@ -110,7 +145,10 @@ describe('PhoneNumberExceptions.vue', () => {
 		postMock.mockRejectedValue({ response: { status: 409 } })
 		const wrapper = createWrapper()
 		wrapper.vm.phone = '+254712345678'
+		await new Promise((resolve) => setTimeout(resolve, 0))
+
 		await wrapper.vm.addException()
+
 		expect(showErrorMock).toHaveBeenCalled()
 	})
 
@@ -131,10 +169,15 @@ describe('PhoneNumberExceptions.vue', () => {
 		wrapper.vm.startEdit(OVERRIDE)
 		expect(wrapper.vm.editingId).toBe(1)
 		wrapper.vm.editPhone = '+254799000111'
+		await new Promise((resolve) => setTimeout(resolve, 0))
 
 		await wrapper.vm.saveEdit(OVERRIDE)
 
-		expect(patchMock).toHaveBeenCalledWith('/apps/libresign/api/v1/admin/phone-overrides/1', { phone: '+254799000111' })
+		expect(patchMock).toHaveBeenCalledWith('/apps/libresign/api/v1/admin/phone-overrides/1', {
+			phone: '+254799000111',
+			mno: 'safaricom',
+			provider: 'daraja',
+		})
 		expect(showSuccessMock).toHaveBeenCalled()
 		expect(getMock).toHaveBeenCalled()
 	})
