@@ -35,6 +35,7 @@ class PaymentFinalizerService {
 		private LoggerInterface $logger,
 		private PaymentDateTimeHelper $dateTimeHelper,
 		private ExtendedAccountService $extendedAccountService,
+		private PhoneMnoVerificationService $phoneMnoVerificationService,
 	) {
 	}
 
@@ -95,6 +96,8 @@ class PaymentFinalizerService {
 					$payment->getProductUses(),
 				),
 			};
+
+			$this->phoneMnoVerificationService->verify($payment);
 
 			$this->db->commit();
 

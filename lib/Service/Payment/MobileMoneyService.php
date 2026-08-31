@@ -150,7 +150,7 @@ final class MobileMoneyService {
 		 * HARD GUARD — Check if mno and country are present (required for charge)
 		 * If missing → fail immediately with actionable message (no provider call)
 		 */
-		if (!$dto->mno || !$dto->country || !$dto->phone) {
+		if (!$dto->providerMnoKey || !$dto->country || !$dto->phone) {
 			return new MobileMoneyResultDTO(
 				providerExecutionState: ProviderExecutionState::INVALID_REQUEST,
 				providerReference: $dto->providerReference,

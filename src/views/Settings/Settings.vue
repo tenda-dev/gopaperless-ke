@@ -43,6 +43,7 @@
 		<VisibleElementsNext />
 		<SmsOtpConfig />
 		<WebhookOtpConfig />
+		<PhoneMnoRoutingV2Settings />
 		<DarajaConfig />
 		<DpoPaymentConfig />
 		<PaymentVerificationDispatcherConfig />
@@ -89,6 +90,7 @@ import TSA from './TSA.vue'
 import Validation from './Validation.vue'
 import SmsOtpConfig from './SmsOtpConfig.vue'
 import DarajaConfig from "@/views/Settings/DarajaConfig.vue";
+import PhoneMnoRoutingV2Settings from './PhoneMnoRoutingV2Settings.vue'
 import DpoPaymentConfig from "@/views/Settings/DpoPaymentConfig.vue";
 import PaymentVerificationDispatcherConfig from "@/views/Settings/PaymentVerificationDispatcherConfig.vue";
 import WebhookOtpConfig from './WebhookOtpConfig.vue'

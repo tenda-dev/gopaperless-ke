@@ -63,6 +63,14 @@ export interface SelectedMno {
 	country: string
 }
 
+export interface AutoCharge {
+	enabled: boolean
+	provider: string | null
+	providerMnoKey: string | null
+	mno: string | null
+	country: string | null
+}
+
 export interface PaymentResponse {
   updatedAt?: string;
   paymentId?: number;
@@ -75,6 +83,7 @@ export interface PaymentResponse {
   method: PaymentMethod;
   redirectUrl?: string;
   alreadyCharged?: boolean;
+  autoCharge?: AutoCharge;
   instructions?: string;
   message?: string;
   confidence?: PaymentConfidence;

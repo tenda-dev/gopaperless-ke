@@ -104,7 +104,7 @@ export function normalisePhone(
  */
 export function resolvePhone(
   input: string,
-  defaultCountry: SupportedRegion = 'KE'
+  defaultCountry?: SupportedRegion
 ): PhoneResolution {
   try {
     const parsed = parsePhoneNumberFromString(input, defaultCountry as CountryCode)

@@ -113,7 +113,7 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 			$response = $this->dpo->chargeTokenMobile(
 				$payload->providerReference,
 				$payload->phone,
-				strtolower($payload->mno),
+				strtolower($payload->providerMnoKey),
 				strtolower($payload->country)
 			);
 

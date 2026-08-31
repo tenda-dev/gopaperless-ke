@@ -36,6 +36,8 @@ class MobileMoneyChargeService {
 		private PaymentDateTimeHelper $dateTimeHelper,
 		private LoggerInterface $logger,
 		private VerificationDispatcherFactory $verificationDispatcher,
+		private PhoneMnoResolver $phoneMnoResolver,
+		private MnoSuggestionValidatorService $mnoSuggestionValidatorService,
 	) {
 	}
 
@@ -54,6 +56,18 @@ class MobileMoneyChargeService {
 		if ($payment->getPaymentStatus() !== PaymentStatus::PENDING) {
 			return $this->responseFactory->buildExistingPaymentResponse($payment);
 		}
+
+		$paymentPhone = $payment->getPhoneE164Digits();
+
+		if ($paymentPhone === null || $paymentPhone === '') {
+			throw new RuntimeException('Payment phone number is missing');
+		}
+
+		if ($phone !== $paymentPhone) {
+			throw new RuntimeException('Phone number does not match payment');
+		}
+
+		$phone = $paymentPhone;
 
 		$meta = $payment->getProviderMetadataObject();
 
@@ -78,24 +92,24 @@ class MobileMoneyChargeService {
 		$hasOptions = !empty($options);
 		$requiresSelection = $selection->required;
 
-		$mno = null;
+		$providerMnoKey = null;
 		$country = null;
 
 		if ($inputMno && $inputCountry) {
-			$mno = strtolower($inputMno);
+			$providerMnoKey = strtolower($inputMno);
 			$country = strtolower($inputCountry);
 		} else {
-			$mno = strtolower($suggested->mno ?? '');
+			$providerMnoKey = strtolower($suggested->mno ?? '');
 			$country = strtolower($suggested->country ?? '');
 		}
 
 		if ($hasOptions) {
-			$this->validateOptionsSelection($options, $mno, $country);
-		} elseif (!$mno || !$country) {
+			$this->validateOptionsSelection($options, $providerMnoKey, $country);
+		} elseif (!$providerMnoKey || !$country) {
 			throw new RuntimeException('Missing MNO selection');
 		}
 
-		$selected = new SelectedMnoDTO($mno, $country);
+		$selected = new SelectedMnoDTO($providerMnoKey, $country);
 
 		$amount = $this->amountResolver->toMajorUnits(
 			$displayAmountMinor,
@@ -106,7 +120,7 @@ class MobileMoneyChargeService {
 			new MobileMoneyChargeDTO(
 				providerReference: $reference,
 				phone: $phone,
-				mno: $mno,
+				providerMnoKey: $providerMnoKey,
 				country: $country,
 				amount: $amount,
 				currency: $displayCurrency,
@@ -131,6 +145,41 @@ class MobileMoneyChargeService {
 		$payment->setProviderMetadataObject($meta);
 
 		$this->paymentRepository->update($payment);
+
+		// Memoize the user-confirmed MNO for this phone once the DPO charge has
+		// been dispatched and payment metadata persisted. The cache stores the
+		// canonical MNO identity separately from the provider-native MNO key.
+		// Best-effort — rememberResolvedMno never throws into this path.
+		if ($chargeSent && $providerMnoKey !== '') {
+			// $providerMnoKey is the DPO provider/execution key (e.g. "airtelke").
+			// The identity cache stores the canonical MNO separately from the
+			// provider-native key, so reverse-map it before writing the cache.
+			//
+			// Never write a provider-native key into the canonical MNO field.
+			// If the key cannot be mapped, skip the write and log the anomaly.
+			$canonicalMno = $this->mnoSuggestionValidatorService->canonicalMnoForOption(
+				$providerMnoKey,
+				$payment->getPhoneRegion(),
+			);
+
+			if ($canonicalMno !== null) {
+				$this->phoneMnoResolver->rememberResolvedMno(
+					$payment->getPhoneE164Digits(),
+					$payment->getPhoneRegion(),
+					$payment->getPhoneCountry(),
+					$canonicalMno,
+					$providerMnoKey,
+				);
+			} else {
+				$this->logger->warning(
+					'[MobileMoneyCharge] DPO provider key has no canonical MNO mapping; skipping identity cache write',
+					[
+						'providerKey' => $providerMnoKey,
+						'region' => $payment->getPhoneRegion(),
+					],
+				);
+			}
+		}
 
 		try {
 			$this->verificationDispatcher->dispatchVerification($payment->getId());
@@ -182,7 +231,7 @@ class MobileMoneyChargeService {
 	/**
 	 * Specific for deferred charge step in this case (DPO)
 	 */
-	private function validateOptionsSelection(array $options, string $mno, string $country): void {
+	private function validateOptionsSelection(array $options, string $providerMnoKey, string $country): void {
 		foreach ($options as $option) {
 			$optionMno = is_string($option['provider'] ?? null)
 				? strtolower($option['provider'])
@@ -193,7 +242,7 @@ class MobileMoneyChargeService {
 				: null;
 
 			if (
-				$optionMno === strtolower($mno)
+				$optionMno === strtolower($providerMnoKey)
 				&& $optionCountry === strtolower($country)
 			) {
 				return;

@@ -9,8 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Payment;
 
-use libphonenumber\NumberParseException;
-use libphonenumber\PhoneNumberUtil;
 use OCA\Libresign\Enum\PaymentCapability;
 use OCA\Libresign\Enum\PaymentMethod;
 use OCA\Libresign\Enum\PaymentProvider;
@@ -18,6 +16,7 @@ use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Enum\ProviderExecutionState;
 use OCA\Libresign\Enum\ResolutionConfidence;
+use OCA\Libresign\Service\Payment\DTO\AutoChargeDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentPayloadDTO;
 use OCA\Libresign\Service\Payment\DTO\CardPaymentResultDTO;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
@@ -48,9 +47,8 @@ class PaymentInitiationService {
 		private PaymentLifecycleService $lifecycleService,
 		private MobileMoneyService $mobileMoneyService,
 		private CardService $cardService,
-		private PhoneResolutionService $phoneResolutionService,
+		private PhoneMnoResolver $phoneMnoResolver,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
-		private MnoDetectionRegistry $mnoDetectionRegistry,
 		private PaymentCountryResolver $countryResolver,
 		private FxEngineService $fxEngineService,
 		private ProviderAmountNormaliser $providerAmountNormaliser,
@@ -85,6 +83,8 @@ class PaymentInitiationService {
 		$countryCtx = null;
 		$fxEngineResult = null;
 		$pending = null;
+		$providerOverride = null;
+		$autoCharge = new AutoChargeDTO(false);
 
 		if (!$userId) {
 			throw new RuntimeException('userId is required');
@@ -110,14 +110,27 @@ class PaymentInitiationService {
 				throw new RuntimeException('Phone number is required');
 			}
 
-			$this->validatePhoneNumber($phoneNumber);
+			// Override > cache > libphonenumber + MNO detection > fallback.
+			// The resolver owns validity so an active override can rescue a
+			// number libphonenumber would reject; the rail stays with MnoRoutingRegistry.
+			$resolution = $this->phoneMnoResolver->resolve($phoneNumber);
+			$identity = $resolution->identity;
+			$region = $identity->region;
+			$providerOverride = $resolution->providerOverride;
 
-			$resolutionDto = $this->phoneResolutionService->resolve($phoneNumber);
-			$region = $resolutionDto->region;
-
-			if (!$resolutionDto->valid || !$region) {
+			if (!$identity->valid || !$region) {
 				throw new RuntimeException('Unable to resolve phone number');
 			}
+
+			$autoCharge = new AutoChargeDTO(
+				enabled: $identity->verified
+					&& $providerOverride === PaymentProvider::DPO
+					&& $resolution->providerMnoKey !== null,
+				provider: $providerOverride?->value,
+				mno: $identity->mno,
+				country: $identity->country,
+				providerMnoKey: $resolution->providerMnoKey,
+			);
 
 			if (!$this->mnoRoutingRegistry->supportsRegion($region)) {
 				throw new RuntimeException(sprintf(
@@ -127,7 +140,7 @@ class PaymentInitiationService {
 				));
 			}
 
-			$e164 = $resolutionDto->e164;
+			$e164 = $identity->e164;
 
 			$countryCtx = $this->countryResolver->resolve($region);
 
@@ -135,21 +148,42 @@ class PaymentInitiationService {
 				throw new RuntimeException('Unsupported country');
 			}
 
-			$detection = $this->mnoDetectionRegistry->resolve(
-				$region,
-				$resolutionDto->national,
-			);
+			$finalCarrier = $identity->carrierHint;
+			$finalConfidence = $identity->confidence;
 
-			$finalCarrier = $detection['mno'] ?? $resolutionDto->carrierHint;
-			$finalConfidence = $detection['confidence'];
+			if ($resolution->providerOverride !== null) {
+				// Admin override carries an explicit rail. We have to derive a COHERENT route
+				// for that provider (mnoKey/mode/limits included) rather than mutating
+				// preferredProvider on a route assembled for a different provider.
+				if ($identity->mno === null || $identity->mno === '') {
+					throw new RuntimeException(
+						'Unable to determine canonical MNO for provider override'
+					);
+				}
 
-			$route = $this->mnoRoutingRegistry->route(
-				$capability,
-				$countryCtx->country,
-				$region,
-				$finalCarrier,
-				$finalConfidence
-			);
+				$route = $this->mnoRoutingRegistry->routeForMno(
+					$capability,
+					$countryCtx->country,
+					$region,
+					$identity->mno,
+					$resolution->providerOverride,
+					$finalConfidence,
+				);
+
+				$this->logger->info('Using phone provider override', [
+					'provider' => $resolution->providerOverride->value,
+					'mno' => $identity->mno,
+					'provider_mno_key' => $resolution->providerMnoKey,
+				]);
+			} else {
+				$route = $this->mnoRoutingRegistry->route(
+					$capability,
+					$countryCtx->country,
+					$region,
+					$finalCarrier,
+					$finalConfidence
+				);
+			}
 
 			if (!$route->capability) {
 				throw new RuntimeException('Unable to determine payment route');
@@ -159,6 +193,7 @@ class PaymentInitiationService {
 				'confidenceBreakdown' => $finalConfidence,
 				'carrier' => $finalCarrier,
 				'region' => $region,
+				'verified' => $identity->verified,
 			];
 
 			$this->logger->info('Mobile money routing result', [
@@ -184,16 +219,21 @@ class PaymentInitiationService {
 		}
 
 		if (
-			$dto->provider !== null
+			$providerOverride === null
+			&& $dto->provider !== null
 			&& $capability === PaymentCapability::MOBILE_MONEY
 			&& $route->requiresUserSelection()
 		) {
 			$route = $route->withPreferredProvider($dto->provider);
+
 			$this->logger->info('Using frontend provider hint for uncertain route', [
 				'hint' => $dto->provider->value,
 				'route_confidence' => $route->confidence->value,
 			]);
-		} elseif ($dto->provider !== null && $capability === PaymentCapability::MOBILE_MONEY) {
+		} elseif (
+			$dto->provider !== null
+			&& $capability === PaymentCapability::MOBILE_MONEY
+		) {
 			$this->logger->info('Ignoring frontend provider hint; backend route is authoritative', [
 				'hint' => $dto->provider->value,
 				'route_provider' => $route->preferredProvider->value,
@@ -210,6 +250,7 @@ class PaymentInitiationService {
 			'route_provider' => $route?->preferredProvider?->value ?? null,
 			'route_confidence' => $route?->confidence?->value ?? null,
 			'route_mno_key' => $route?->mnoKey ?? null,
+			'autoCharge' => $autoCharge->toArray(),
 		]);
 
 		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
@@ -471,6 +512,7 @@ class PaymentInitiationService {
 			selection: $selection,
 			confidence: $metaPayload['confidence'] ?? $route->confidence->value,
 			alreadyCharged: $res->providerExecutionState->hasExecutionStarted(),
+			autoCharge: $autoCharge,
 			instructions: $metaPayload['instructions'] ?? null,
 			context: $ctxMetadata,
 			providerExecutionState: $res->providerExecutionState,
@@ -487,29 +529,5 @@ class PaymentInitiationService {
 			payment: $payment,
 			method: $methodEnum,
 		);
-	}
-
-	private function validatePhoneNumber(string $phone): void {
-		$phoneUtil = PhoneNumberUtil::getInstance();
-
-		if (!str_starts_with($phone, '+')) {
-			throw new \InvalidArgumentException(
-				'Phone number must be in international format'
-			);
-		}
-
-		try {
-			$parsed = $phoneUtil->parse($phone, null);
-
-			if (!$phoneUtil->isValidNumber($parsed)) {
-				throw new \InvalidArgumentException(
-					'The provided phone number is not valid.'
-				);
-			}
-		} catch (NumberParseException) {
-			throw new \InvalidArgumentException(
-				'Invalid phone number. Use international format (e.g., +254...)'
-			);
-		}
 	}
 }

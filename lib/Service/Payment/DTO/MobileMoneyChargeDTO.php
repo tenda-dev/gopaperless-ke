@@ -18,7 +18,7 @@ final class MobileMoneyChargeDTO {
 		// Normalized phone (E.164 digits, no +)
 		public readonly string $phone,
 		// REQUIRED for DPO execution
-		public readonly string $mno,
+		public readonly string $providerMnoKey,
 		public readonly string $country,
 		// Amount context (important for audit + future providers)
 		public readonly float $amount,
@@ -36,8 +36,8 @@ final class MobileMoneyChargeDTO {
 			throw new InvalidArgumentException('phone is required');
 		}
 
-		if ($this->mno === '') {
-			throw new InvalidArgumentException('mno is required for charge');
+		if ($this->providerMnoKey === '') {
+			throw new InvalidArgumentException('providerMnoKey is required for charge');
 		}
 
 		if ($this->country === '') {

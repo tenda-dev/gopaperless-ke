@@ -1,11 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 /**
  * SPDX-FileCopyrightText: 2025 LibreCode coop and contributors
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-
 
 namespace OCA\Libresign\Service\Payment;
 
@@ -102,6 +102,75 @@ class PhoneResolutionService {
 
 			return $this->invalid();
 		}
+	}
+
+	/**
+	 * Best-effort parse for override RESCUE only.
+	 *
+	 * Unlike resolve(), this does NOT require isValidNumber(): it recovers
+	 * region / national / E.164 for a parseable-but-invalid number so an
+	 * override can pull it back into the routing flow. Returns null when the
+	 * number cannot be parsed at all. libphonenumber stays confined to this
+	 * class.
+	 *
+	 * When $defaultRegion is provided, local/national numbers may be parsed
+	 * using that region.
+	 *
+	 * @return array{region: ?string, national: ?string, e164: ?string, carrierHint: ?string}|null
+	 */
+	public function parseLenient(string $rawPhone, ?string $defaultRegion = null): ?array {
+		$rawPhone = trim($rawPhone);
+
+		if ($rawPhone === '') {
+			return null;
+		}
+
+		try {
+			$parseRegion = $defaultRegion;
+
+			if (str_starts_with($rawPhone, '+')) {
+				$parseRegion = null;
+			}
+
+			$parsed = $this->phoneUtil->parse($rawPhone, $parseRegion);
+		} catch (NumberParseException $e) {
+			$this->logger->warning('[PhoneResolution] Lenient parse failed', [
+				'input' => $rawPhone,
+				'region' => $defaultRegion,
+				'error' => $e->getMessage(),
+			]);
+
+			return null;
+		}
+
+		$region = $this->phoneUtil->getRegionCodeForNumber($parsed);
+
+		if ($region === null || $region === '' || $region === 'ZZ') {
+			$region = $this->phoneUtil->getRegionCodeForCountryCode(
+				(int)$parsed->getCountryCode()
+			);
+		}
+
+		if ($region === null || $region === '' || $region === 'ZZ') {
+			$region = null;
+		}
+
+		$nationalNumber = $parsed->getNationalNumber();
+		$national = $nationalNumber !== null ? (string)$nationalNumber : null;
+
+		$e164 = $this->phoneUtil->format(
+			$parsed,
+			PhoneNumberFormat::E164
+		);
+
+		$carrier = $this->carrierMapper->getNameForNumber($parsed, 'en');
+
+		return [
+			'region' => $region,
+			'national' => $national,
+			'e164' => $e164,
+			'carrierHint' => $carrier !== '' ? $carrier : null,
+		];
 	}
 
 	private function invalid(): PaymentPhoneResolutionDTO {
