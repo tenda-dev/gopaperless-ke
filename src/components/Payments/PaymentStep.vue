@@ -1393,6 +1393,7 @@ async function handleCardPayment() {
 			userId: user.value?.uid,
 			productCode: props.productCode,
 			redirectUrl: payment.buildPaymentRedirectUrl(),
+			returnUrl: payment.buildPaymentReturnUrl(),
 			quantity: props.quantity,
 			purpose: payment.paymentPurpose.value ?? 'sign_request'
 	    },

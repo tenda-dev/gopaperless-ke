@@ -44,6 +44,7 @@ final class PaymentMetadataDTO {
 		public readonly array $context = [],
 		// for extra data like region, carrier
 		public readonly ?array $providerError = null,
+		public readonly ?string $returnUrl = null,
 	) {
 	}
 
@@ -66,6 +67,7 @@ final class PaymentMetadataDTO {
 			'providerPayload' => $this->providerPayload->toArray(),
 			'context' => $this->context,
 			'providerError' => $this->providerError,
+			'returnUrl' => $this->returnUrl,
 		];
 	}
 
@@ -170,6 +172,12 @@ final class PaymentMetadataDTO {
 			)
 				? $data['providerError']
 				: null,
+
+			returnUrl: is_string(
+				$data['returnUrl'] ?? null
+			)
+				? $data['returnUrl']
+				: null,
 		);
 	}
 
@@ -192,6 +200,7 @@ final class PaymentMetadataDTO {
 		?ProviderPayloadDTO $providerPayload = null,
 		?array $context = null,
 		?array $providerError = null,
+		?string $returnUrl = null,
 	): self {
 		return new self(
 			updatedAt: $updatedAt ?? $this->updatedAt,
@@ -211,6 +220,7 @@ final class PaymentMetadataDTO {
 			providerPayload: $providerPayload ?? $this->providerPayload,
 			context: $context ?? $this->context,
 			providerError: $providerError ?? $this->providerError,
+			returnUrl: $returnUrl ?? $this->returnUrl,
 		);
 	}
 

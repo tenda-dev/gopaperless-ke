@@ -22,7 +22,7 @@ class StartPaymentDTO {
 		public ?int $signRequestId,
 		// Defines business intent of payment
 		public PaymentPurpose $purpose,
-		// Only necessary for card payments
+		// Payment provider callback/redirect URL
 		public ?string $redirectUrl,
 		public string $userId,
 		// provider hint
@@ -34,6 +34,8 @@ class StartPaymentDTO {
 		public ?string $callbackUrl = null,
 		public ?string $paymentAttemptId = null,
 		public ?string $phoneNumber = null,
+		// Where the user should be returned after payment verification
+		public ?string $returnUrl = null,
 	) {
 	}
 }

@@ -131,6 +131,11 @@ export interface VerifyPaymentResponse {
 	 * Used after redirect flows to route the user back to the correct document.
 	 */
 	signRequestUuid?: string;
+	/**
+	 * Original application URL to return the user to
+	 * after payment verification.
+	 */
+	returnUrl?: string;
 }
 
 export type SupportedRegion = 'KE' | 'TZ' | 'UG' | 'RW' | 'MW' | 'ZM' | 'ZW'
@@ -175,6 +180,13 @@ export interface StartPaymentPayload {
 	 * Backend may ignore this for mobile flows.
 	 */
 	redirectUrl?: string | null
+
+	/**
+	 * Used for redirect/card payment flows.
+	 * Where user will return after payment is completed or cancelled.
+	 * Backend may ignore this for mobile flows.
+	 */
+	returnUrl?: string | null
 
 	/**
 	 * Optional client-generated attempt lineage identifier.

@@ -19,89 +19,94 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
 import { verifyPayment } from '@/payment/api'
-import { getPaymentFromUrl, clearPaymentParamsFromUrl } from '@/payment/helpers'
+import {
+	getPaymentFromUrl,
+	clearPaymentParamsFromUrl,
+} from '@/payment/helpers'
 
 import { notifySuccess, notifyError } from '@/services/toast'
 import { usePaymentContextStore } from '@/store/paymentContext'
-
-const router = useRouter()
 
 const status = ref<'loading' | 'error'>('loading')
 
 let hasRun = false
 
+/**
+ * Only allow redirects to the same application origin.
+ *
+ * The payment return URL is persisted by the backend and should
+ * normally be an internal application URL/path.
+ */
+function redirectToReturnUrl(returnUrl: string | undefined) {
+	if (!returnUrl) {
+		window.location.replace('/')
+		return
+	}
+
+	try {
+		const url = new URL(returnUrl, window.location.origin)
+
+		if (url.origin !== window.location.origin) {
+			throw new Error('Invalid payment return URL')
+		}
+
+		window.location.replace(
+			`${url.pathname}${url.search}${url.hash}`
+		)
+	} catch (err) {
+		console.warn('[PaymentReturn] Invalid return URL', err)
+		window.location.replace('/')
+	}
+}
+
 onMounted(async () => {
 	if (hasRun) return
 	hasRun = true
-	const { transactionToken, signUuid } = getPaymentFromUrl()
+
+	const { transactionToken } = getPaymentFromUrl()
 
 	const paymentContextStore = usePaymentContextStore()
 	paymentContextStore.reset()
 
-	// The callback URL is the authoritative source for which document
-	// the payment belongs to. signUuid/PnrID/CompanyRef all point to the
-	// sign request UUID that DPO was given for this payment.
-	const resolvedSignUuid = signUuid || null
-
-	// Invalid return
-	if (!transactionToken || !resolvedSignUuid) {
+	if (!transactionToken) {
 		clearPaymentParamsFromUrl()
 
-		notifyError({ message: 'Invalid payment return', important: true })
-		router.replace({ name: 'DefaultPageErrorExternal' })
+		notifyError({
+			message: 'Invalid payment return',
+			important: true,
+		})
+
+		window.location.replace('/')
 		return
 	}
-
-
-	// Fallback to the URL value; will be overwritten with the backend's canonical UUID after verification.
-	let targetSignUuid = resolvedSignUuid
 
 	try {
 		const res = await verifyPayment(transactionToken)
 
-		// Prefer the backend's canonical sign request UUID if provided.
-		// This protects us if the provider ever omits or mislabels the URL param.
-		targetSignUuid = res.signRequestUuid || resolvedSignUuid
+		clearPaymentParamsFromUrl()
 
 		if (res.status === 'SUCCESS') {
 			notifySuccess({
 				message: 'Payment successful',
 			})
 
-			clearPaymentParamsFromUrl()
-
-			// Redirect back with retry flag
-			router.replace({
-				name: 'SignPDF',
-				params: {
-					uuid: targetSignUuid
-				},
-				query: { retrySign: 'true' },
-			})
+			redirectToReturnUrl(res.returnUrl)
 
 			return
 		}
 
-		// Failed
 		status.value = 'error'
-		clearPaymentParamsFromUrl()
+
 		notifyError({
 			message: 'Payment failed',
 			important: true,
 		})
 
-		router.replace({
-			name: 'SignPDF',
-			params: {
-				uuid: targetSignUuid
-			},
-			query: { paymentFailed: 'true' },
-		})
+		redirectToReturnUrl(res.returnUrl)
 
 	} catch (err) {
 		status.value = 'error'
@@ -111,17 +116,9 @@ onMounted(async () => {
 			important: true,
 		})
 
-		// Clean URL
 		clearPaymentParamsFromUrl()
 
-		router.replace({
-			name: 'SignPDF',
-			params: {
-				uuid: targetSignUuid
-			},
-			query: { paymentFailed: 'true' },
-		})
-
+		redirectToReturnUrl(undefined)
 	}
 })
 </script>

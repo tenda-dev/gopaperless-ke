@@ -76,6 +76,7 @@ class PaymentInitiationService {
 		$method = $dto->paymentMethod;
 		$paymentPurpose = PaymentPurpose::tryFrom($dto->purpose->value) ?? PaymentPurpose::SIGN_REQUEST;
 		$quantity = $dto->quantity;
+		$returnUrl = $dto->returnUrl;
 
 		$e164 = null;
 		$route = null;
@@ -520,6 +521,7 @@ class PaymentInitiationService {
 				$metaPayload['providerPayload'] ?? []
 			),
 			providerError: null,
+			returnUrl: $res instanceof CardPaymentResultDTO ? $res->redirectUrl : null,
 		);
 
 		$payment->setProviderMetadataObject($metadata);
