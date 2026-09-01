@@ -3,9 +3,9 @@
 		<div v-if="emailIdentifyMethodEnabled">
 			<p>
 				<NcCheckboxRadioSwitch
+					v-model="webhookOtpEnabled"
 					type="switch"
-					:checked.sync="webhookOtpEnabled"
-					@update:checked="
+					@update:modelValue="
 						toggleSetting(
 							'webhook_otp_enabled',
 							webhookOtpEnabled
@@ -131,10 +131,12 @@ export default {
 				''
 			),
 
-			webhookOtpSharedSecret: loadState(
+			webhookOtpSharedSecret: '',
+
+			webhookOtpSharedSecretSet: loadState(
 				'libresign',
-				'webhook_otp_shared_secret',
-				''
+				'webhook_otp_shared_secret_set',
+				false
 			),
 		}
 	},
@@ -150,11 +152,13 @@ export default {
 			)
 		},
 
+		// A boolean is serialised as JSON true/false and rejected with 400 by
+		// the app config endpoint, which expects a string.
 		toggleSetting(setting, value) {
 			OCP.AppConfig.setValue(
 				'libresign',
 				setting,
-				value
+				value ? '1' : '0'
 			)
 		},
 	},
