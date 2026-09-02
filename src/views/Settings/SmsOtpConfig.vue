@@ -2,8 +2,8 @@
 	<NcSettingsSection :name="name" :description="description">
 		<div v-if="emailIdentifyMethodEnabled">
 			<p>
-				<NcCheckboxRadioSwitch type="switch" :checked.sync="smsOtpEnabled"
-					@update:checked="toggleSetting('sms_otp_enabled', smsOtpEnabled)">
+				<NcCheckboxRadioSwitch type="switch" v-model="smsOtpEnabled"
+					@update:modelValue="toggleSetting('sms_otp_enabled', smsOtpEnabled)">
 					{{ t('libresign', 'Enable SMS OTP') }}
 				</NcCheckboxRadioSwitch>
 			</p>
@@ -111,7 +111,7 @@ export default {
 			OCP.AppConfig.setValue(
 				'libresign',
 				setting,
-				value ? true : false
+				value ? '1' : '0'
 			)
 		},
 	},
