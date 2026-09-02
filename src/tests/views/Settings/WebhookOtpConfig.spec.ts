@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createL10nMock } from '../../testHelpers/l10n.js'
 import { mount } from '@vue/test-utils'
 
@@ -26,23 +26,64 @@ beforeAll(async () => {
 	;({ default: WebhookOtpConfig } = await import('../../../views/Settings/WebhookOtpConfig.vue'))
 })
 
+const NcCheckboxRadioSwitchStub = {
+	name: 'NcCheckboxRadioSwitch',
+	props: {
+		modelValue: {
+			type: Boolean,
+			default: false,
+		},
+		type: String,
+	},
+	emits: ['update:modelValue'],
+	template: '<button role="switch" :aria-checked="String(modelValue)" @click="$emit(\'update:modelValue\', !modelValue)"><slot /></button>',
+}
+
+const NcPasswordFieldStub = {
+	name: 'NcPasswordField',
+	props: {
+		label: String,
+		placeholder: String,
+		modelValue: String,
+	},
+	template: '<input class="password-field" :placeholder="placeholder" />',
+}
+
 function createWrapper() {
 	return mount(WebhookOtpConfig as never, {
 		global: {
 			stubs: {
 				NcSettingsSection: { template: '<div><slot /></div>' },
-				NcCheckboxRadioSwitch: { template: '<div><slot /></div>' },
+				NcCheckboxRadioSwitch: NcCheckboxRadioSwitchStub,
 				NcTextField: true,
-				NcPasswordField: true,
+				NcPasswordField: NcPasswordFieldStub,
 			},
 		},
 	})
 }
 
+function mockLoadState(overrides: Record<string, unknown> = {}) {
+	const state: Record<string, unknown> = {
+		identify_methods: [{ name: 'email', enabled: true }],
+		webhook_otp_enabled: false,
+		webhook_otp_url: '',
+		webhook_otp_shared_secret_set: false,
+		...overrides,
+	}
+
+	loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+		return Object.prototype.hasOwnProperty.call(state, key) ? state[key] : fallback
+	})
+}
+
 describe('WebhookOtpConfig', () => {
 	beforeEach(() => {
-		loadStateMock.mockReset()
-		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => fallback)
+		vi.clearAllMocks()
+		mockLoadState()
+	})
+
+	afterEach(() => {
+		vi.unstubAllGlobals()
 	})
 
 	// A raw JS boolean is sent as JSON true/false by OCP.AppConfig (axios) and the
@@ -58,5 +99,33 @@ describe('WebhookOtpConfig', () => {
 
 		vm.toggleSetting('webhook_otp_enabled', false)
 		expect(setValueMock).toHaveBeenLastCalledWith('libresign', 'webhook_otp_enabled', '0')
+	})
+
+	it('persists through the switch binding when toggled', async () => {
+		const setValueMock = vi.fn()
+		vi.stubGlobal('OCP', { AppConfig: { setValue: setValueMock } })
+
+		const wrapper = createWrapper()
+		const switchBtn = wrapper.findComponent(NcCheckboxRadioSwitchStub)
+
+		await switchBtn.trigger('click')
+		expect(setValueMock).toHaveBeenLastCalledWith('libresign', 'webhook_otp_enabled', '1')
+
+		await switchBtn.trigger('click')
+		expect(setValueMock).toHaveBeenLastCalledWith('libresign', 'webhook_otp_enabled', '0')
+	})
+
+	it('shows the shared-secret placeholder when a secret is already set', () => {
+		mockLoadState({ webhook_otp_shared_secret_set: true })
+
+		const wrapper = createWrapper()
+
+		expect(wrapper.find('.password-field').attributes('placeholder')).toBe('Shared secret is already set')
+	})
+
+	it('shows the empty shared-secret placeholder when no secret is set', () => {
+		const wrapper = createWrapper()
+
+		expect(wrapper.find('.password-field').attributes('placeholder')).toBe('Webhook shared secret')
 	})
 })
