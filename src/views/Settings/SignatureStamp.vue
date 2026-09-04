@@ -173,6 +173,57 @@
 					</template>
 				</NcButton>
 			</div>
+			<div class="settings-section__row">
+				<NcCheckboxRadioSwitch v-model="signatureMinimumEnabled"
+					type="switch"
+					name="signature_minimum_enabled"
+					:aria-label="t('libresign', 'Enforce minimum signature size')"
+					@update:modelValue="saveTemplate">
+					{{ t('libresign', 'Enforce minimum signature size') }}
+				</NcCheckboxRadioSwitch>
+			</div>
+			<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
+				<NcTextField v-model="signatureMinimumWidth"
+					:label="t('libresign', 'Minimum signature width')"
+					:placeholder="t('libresign', 'Minimum signature width')"
+					type="number"
+					:min="1"
+					:max="800"
+					:step="0.01"
+					:spellcheck="false"
+					:success="dislaySuccessTemplate"
+					@keydown.enter="saveTemplate"
+					@blur="saveTemplate" />
+				<NcButton v-if="displayResetSignatureMinimumWidth"
+					variant="tertiary"
+					:aria-label="t('libresign', 'Reset to default')"
+					@click="resetSignatureMinimumWidth">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
+					</template>
+				</NcButton>
+			</div>
+			<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
+				<NcTextField v-model="signatureMinimumHeight"
+					:label="t('libresign', 'Minimum signature height')"
+					:placeholder="t('libresign', 'Minimum signature height')"
+					type="number"
+					:min="1"
+					:max="800"
+					:step="0.01"
+					:spellcheck="false"
+					:success="dislaySuccessTemplate"
+					@keydown.enter="saveTemplate"
+					@blur="saveTemplate" />
+				<NcButton v-if="displayResetSignatureMinimumHeight"
+					variant="tertiary"
+					:aria-label="t('libresign', 'Reset to default')"
+					@click="resetSignatureMinimumHeight">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
+					</template>
+				</NcButton>
+			</div>
 		</div>
 		<fieldset class="settings-section__row settings-section__row_bar">
 			<legend>{{ t('libresign', 'Background image') }}</legend>
@@ -392,9 +443,14 @@ const defaultTemplateFontSize = ref<number>(getNumberState('default_template_fon
 const defaultSignatureFontSize = ref<number>(getNumberState('default_signature_font_size'))
 const defaultSignatureWidth = ref<number>(getNumberState('default_signature_width'))
 const defaultSignatureHeight = ref<number>(getNumberState('default_signature_height'))
+const defaultSignatureMinimumWidth = ref<number>(getNumberState('default_signature_minimum_width'))
+const defaultSignatureMinimumHeight = ref<number>(getNumberState('default_signature_minimum_height'))
 const signatureTextTemplate = ref(getStringState('signature_text_template'))
 const signatureWidth = ref<number>(getNumberState('signature_width'))
 const signatureHeight = ref<number>(getNumberState('signature_height'))
+const signatureMinimumEnabled = ref<boolean>(loadState<boolean>('libresign', 'signature_minimum_enabled', false))
+const signatureMinimumWidth = ref<number>(getNumberState('signature_minimum_width', 220))
+const signatureMinimumHeight = ref<number>(getNumberState('signature_minimum_height', 70))
 const signatureFontSize = ref<number>(getNumberState('signature_font_size'))
 const templateFontSize = ref<number>(getNumberState('template_font_size'))
 const isSignatureImageLoaded = ref(false)
@@ -434,6 +490,8 @@ const displayResetTemplateFontSize = computed(() => templateFontSize.value !== d
 const dislayResetSignatureFontSize = computed(() => signatureFontSize.value !== defaultSignatureFontSize.value)
 const displayResetSignatureWidth = computed(() => signatureWidth.value !== defaultSignatureWidth.value)
 const displayResetSignatureHeight = computed(() => signatureHeight.value !== defaultSignatureHeight.value)
+const displayResetSignatureMinimumWidth = computed(() => signatureMinimumWidth.value !== defaultSignatureMinimumWidth.value)
+const displayResetSignatureMinimumHeight = computed(() => signatureMinimumHeight.value !== defaultSignatureMinimumHeight.value)
 const parsedWithLineBreak = computed(() => String(parsed.value ?? '').replace(/\n/g, '<br>'))
 const previewSignatureImageWidth = computed(() => (renderMode.value === 'GRAPHIC_ONLY' || !parsedWithLineBreak.value)
 	? signatureWidth.value
@@ -614,6 +672,9 @@ async function saveTemplate() {
 		signatureWidth: signatureWidth.value,
 		signatureHeight: signatureHeight.value,
 		renderMode: renderMode.value,
+		signatureMinimumWidth: signatureMinimumWidth.value,
+		signatureMinimumHeight: signatureMinimumHeight.value,
+		signatureMinimumEnabled: signatureMinimumEnabled.value,
 	})
 		.then(({ data }) => {
 			parsed.value = data.ocs.data.parsed
@@ -671,6 +732,16 @@ async function resetSignatureHeight() {
 	await saveTemplate()
 }
 
+async function resetSignatureMinimumWidth() {
+	signatureMinimumWidth.value = defaultSignatureMinimumWidth.value
+	await saveTemplate()
+}
+
+async function resetSignatureMinimumHeight() {
+	signatureMinimumHeight.value = defaultSignatureMinimumHeight.value
+	await saveTemplate()
+}
+
 watch(signatureImageUrl, () => {
 	isSignatureImageLoaded.value = false
 })
@@ -709,9 +780,14 @@ defineExpose({
 	defaultSignatureFontSize,
 	defaultSignatureWidth,
 	defaultSignatureHeight,
+	defaultSignatureMinimumWidth,
+	defaultSignatureMinimumHeight,
 	signatureTextTemplate,
 	signatureWidth,
 	signatureHeight,
+	signatureMinimumEnabled,
+	signatureMinimumWidth,
+	signatureMinimumHeight,
 	signatureFontSize,
 	templateFontSize,
 	isSignatureImageLoaded,
@@ -736,6 +812,8 @@ defineExpose({
 	dislayResetSignatureFontSize,
 	displayResetSignatureWidth,
 	displayResetSignatureHeight,
+	displayResetSignatureMinimumWidth,
+	displayResetSignatureMinimumHeight,
 	previewSignatureImageWidth,
 	previewSignatureImageHeight,
 	signatureImageUrl,
@@ -762,6 +840,8 @@ defineExpose({
 	resetSignatureFontSize,
 	resetSignatureWidth,
 	resetSignatureHeight,
+	resetSignatureMinimumWidth,
+	resetSignatureMinimumHeight,
 	saveTemplate,
 })
 </script>

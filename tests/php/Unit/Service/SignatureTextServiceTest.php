@@ -290,6 +290,73 @@ final class SignatureTextServiceTest extends \OCA\Libresign\Tests\Unit\TestCase 
 		$this->assertEquals(SignatureTextService::DEFAULT_SIGNATURE_HEIGHT, $class->getFullSignatureHeight());
 	}
 
+	#[DataProvider('providerInvalidMinimumSignatureDimensions')]
+	public function testSaveShouldRejectInvalidMinimumSignatureDimensions(float $signatureMinimumWidth, float $signatureMinimumHeight): void {
+		$this->expectException(LibresignException::class);
+
+		$this->getClass()->save(
+			template: 'valid',
+			signatureMinimumWidth: $signatureMinimumWidth,
+			signatureMinimumHeight: $signatureMinimumHeight,
+		);
+	}
+
+	public static function providerInvalidMinimumSignatureDimensions(): array {
+		return [
+			'zero width' => [0.0, 100.0],
+			'fractional width below minimum' => [0.9999, 100.0],
+			'negative width' => [-1.0, 100.0],
+			'zero height' => [220.0, 0.0],
+			'fractional height below minimum' => [220.0, 0.9999],
+			'negative height' => [220.0, -1.0],
+			'both dimensions zero' => [0.0, 0.0],
+			'both dimensions negative' => [-1.0, -1.0],
+		];
+	}
+
+	public function testSavePersistsConfiguredMinimumSignatureDimensions(): void {
+		$class = $this->getClass();
+		$class->save(
+			template: 'valid',
+			signatureMinimumWidth: 180.0,
+			signatureMinimumHeight: 50.0,
+		);
+
+		$this->assertSame(180.0, $class->getMinimumSignatureWidth());
+		$this->assertSame(50.0, $class->getMinimumSignatureHeight());
+	}
+
+	public function testSavePersistsMinimumSignatureEnabledFlag(): void {
+		$class = $this->getClass();
+		$class->save(
+			template: 'valid',
+			signatureMinimumEnabled: true,
+		);
+
+		$this->assertTrue($class->getMinimumSignatureEnabled());
+	}
+
+	public function testGetMinimumSignatureEnabledDefaultsToDisabled(): void {
+		$this->assertFalse($this->getClass()->getMinimumSignatureEnabled());
+	}
+
+	public function testGetMinimumSignatureDimensionsFallsBackToDefaultsWhenNotConfigured(): void {
+		$class = $this->getClass();
+
+		$this->assertEquals(SignatureTextService::MINIMUM_SIGNATURE_WIDTH, $class->getMinimumSignatureWidth());
+		$this->assertEquals(SignatureTextService::MINIMUM_SIGNATURE_HEIGHT, $class->getMinimumSignatureHeight());
+	}
+
+	public function testGetMinimumSignatureDimensionsShouldFallbackToDefaultsWhenConfigIsInvalid(): void {
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_minimum_width', 0.0);
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_minimum_height', -1.0);
+
+		$class = $this->getClass();
+
+		$this->assertEquals(SignatureTextService::MINIMUM_SIGNATURE_WIDTH, $class->getMinimumSignatureWidth());
+		$this->assertEquals(SignatureTextService::MINIMUM_SIGNATURE_HEIGHT, $class->getMinimumSignatureHeight());
+	}
+
 	public function testStampOverrideAppliesToTemplateAndFontSizesAndRenderMode(): void {
 		$this->appConfig->setValueString(Application::APP_ID, 'signature_text_template', 'Global template');
 		$this->appConfig->setValueFloat(Application::APP_ID, 'template_font_size', 8.0);

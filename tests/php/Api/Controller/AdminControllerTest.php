@@ -399,4 +399,84 @@ final class AdminControllerTest extends ApiTestCase {
 		$this->assertSame(['valid-group'], array_keys($stored));
 		$this->assertFalse($stored['valid-group']['footer']);
 	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSignatureTextSavePersistsConfiguredMinimumSignatureDimensions(): void {
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/signature-text')
+			->withMethod('POST')
+			->withRequestBody([
+				'template' => 'Signed with LibreSign',
+				'signatureMinimumWidth' => 180,
+				'signatureMinimumHeight' => 50,
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$appConfig = Server::get(IAppConfig::class);
+		$this->assertSame(180.0, $appConfig->getValueFloat(Application::APP_ID, 'signature_minimum_width'));
+		$this->assertSame(50.0, $appConfig->getValueFloat(Application::APP_ID, 'signature_minimum_height'));
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSignatureTextSaveWithoutMinimumDimensionsRemainsBackwardsCompatible(): void {
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/signature-text')
+			->withMethod('POST')
+			->withRequestBody([
+				'template' => 'Signed with LibreSign',
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$appConfig = Server::get(IAppConfig::class);
+		$this->assertSame(220.0, $appConfig->getValueFloat(Application::APP_ID, 'signature_minimum_width'));
+		$this->assertSame(70.0, $appConfig->getValueFloat(Application::APP_ID, 'signature_minimum_height'));
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testSignatureTextSavePersistsMinimumSignatureEnabledFlag(): void {
+		$this->createAccount('admintest', 'password', 'admin');
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('admintest:password'),
+				'Content-Type' => 'application/json',
+				'OCS-APIRequest' => 'true',
+			])
+			->withPath('/api/v1/admin/signature-text')
+			->withMethod('POST')
+			->withRequestBody([
+				'template' => 'Signed with LibreSign',
+				'signatureMinimumEnabled' => true,
+			])
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+
+		$appConfig = Server::get(IAppConfig::class);
+		$this->assertTrue($appConfig->getValueBool(Application::APP_ID, 'signature_minimum_enabled'));
+	}
 }

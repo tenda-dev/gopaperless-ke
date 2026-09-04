@@ -23,6 +23,7 @@ class FileElementService {
 		private FileMapper $fileMapper,
 		private FileElementMapper $fileElementMapper,
 		private ITimeFactory $timeFactory,
+		private SignatureTextService $signatureTextService,
 	) {
 	}
 
@@ -55,6 +56,12 @@ class FileElementService {
 			throw new \InvalidArgumentException('File not found for visible element');
 		}
 		$coordinates = $this->translateCoordinatesToInternalNotation($properties, $file);
+
+		if (($properties['type'] ?? null) === 'signature'
+			&& $this->signatureTextService->getMinimumSignatureEnabled()) {
+			$coordinates = $this->enforceMinimumSignatureDimensions($coordinates, $file);
+		}
+
 		$fileElement->setSignRequestId($properties['signRequestId']);
 		$fileElement->setType($properties['type']);
 		$fileElement->setPage($coordinates['page']);
@@ -188,5 +195,63 @@ class FileElementService {
 			];
 		}
 		return $result;
+	}
+
+	/**
+	 * Enforces minimum signature dimensions while keeping the element on the page.
+	 */
+	private function enforceMinimumSignatureDimensions(array $coordinates, File $file): array {
+		// Use integer coordinates to match FileElement persistence.
+		$minimumWidth = (int)ceil($this->signatureTextService->getMinimumSignatureWidth());
+		$minimumHeight = (int)ceil($this->signatureTextService->getMinimumSignatureHeight());
+
+		$dimension = $file->getMetadata()['d'][$coordinates['page'] - 1];
+		$pageWidth = (int)floor((float)$dimension['w']);
+		$pageHeight = (int)floor((float)$dimension['h']);
+
+		$llx = (int)$coordinates['llx'];
+		$lly = (int)$coordinates['lly'];
+		$urx = (int)$coordinates['urx'];
+		$ury = (int)$coordinates['ury'];
+
+		// Width: preserve the left edge and expand to the right.
+		if (($urx - $llx) < $minimumWidth) {
+			$urx = $llx + $minimumWidth;
+
+			if ($urx > $pageWidth) {
+				// Keep the right edge on the page; shift left only as needed.
+				$urx = $pageWidth;
+				$llx = $urx - $minimumWidth;
+
+				if ($llx < 0) {
+					// Minimum width exceeds the page; constrain to page bounds.
+					$llx = 0;
+					$urx = $pageWidth;
+				}
+			}
+		}
+
+		// Height: preserve the visual top edge and expand downward.
+		if (($ury - $lly) < $minimumHeight) {
+			$lly = $ury - $minimumHeight;
+
+			if ($lly < 0) {
+				// Keep the bottom edge on the page; shift up only as needed.
+				$lly = 0;
+				$ury = $minimumHeight;
+
+				if ($ury > $pageHeight) {
+					// Minimum height exceeds the page; constrain to page bounds.
+					$ury = $pageHeight;
+				}
+			}
+		}
+
+		$coordinates['llx'] = $llx;
+		$coordinates['lly'] = $lly;
+		$coordinates['urx'] = $urx;
+		$coordinates['ury'] = $ury;
+
+		return $coordinates;
 	}
 }

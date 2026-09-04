@@ -69,6 +69,8 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('config_path', $this->appConfig->getValueString(Application::APP_ID, 'config_path'));
 		$this->initialState->provideInitialState('default_signature_font_size', SignatureTextService::SIGNATURE_DEFAULT_FONT_SIZE);
 		$this->initialState->provideInitialState('default_signature_height', SignatureTextService::DEFAULT_SIGNATURE_HEIGHT);
+		$this->initialState->provideInitialState('default_signature_minimum_height', SignatureTextService::MINIMUM_SIGNATURE_HEIGHT);
+		$this->initialState->provideInitialState('default_signature_minimum_width', SignatureTextService::MINIMUM_SIGNATURE_WIDTH);
 		$this->initialState->provideInitialState('default_signature_text_template', $this->signatureTextService->getDefaultTemplate());
 		$this->initialState->provideInitialState('default_signature_width', SignatureTextService::DEFAULT_SIGNATURE_WIDTH);
 		$this->initialState->provideInitialState('default_template_font_size', $this->signatureTextService->getDefaultTemplateFontSize());
@@ -78,6 +80,9 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('signature_background_type', $this->signatureBackgroundService->getSignatureBackgroundType());
 		$this->initialState->provideInitialState('signature_font_size', $this->signatureTextService->getSignatureFontSize());
 		$this->initialState->provideInitialState('signature_height', $this->signatureTextService->getFullSignatureHeight());
+		$this->initialState->provideInitialState('signature_minimum_enabled', $this->signatureTextService->getMinimumSignatureEnabled());
+		$this->initialState->provideInitialState('signature_minimum_height', $this->signatureTextService->getMinimumSignatureHeight());
+		$this->initialState->provideInitialState('signature_minimum_width', $this->signatureTextService->getMinimumSignatureWidth());
 		$this->initialState->provideInitialState('signature_preview_zoom_level', $this->appConfig->getValueFloat(Application::APP_ID, 'signature_preview_zoom_level', 100));
 		$this->initialState->provideInitialState('footer_preview_zoom_level', $this->appConfig->getValueFloat(Application::APP_ID, 'footer_preview_zoom_level', 100));
 		$this->initialState->provideInitialState('footer_preview_width', $this->appConfig->getValueInt(Application::APP_ID, 'footer_preview_width', 595));
