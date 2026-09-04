@@ -22,6 +22,7 @@ use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
+use OCA\Libresign\Service\TermsOfServiceService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IAppConfig;
@@ -41,6 +42,7 @@ final class PageControllerTest extends TestCase {
 	private FileService&MockObject $fileService;
 	private SignFileService&MockObject $signFileService;
 	private SignerElementsService&MockObject $signerElementsService;
+	private TermsOfServiceService&MockObject $termsOfServiceService;
 	private IUser&MockObject $currentUser;
 	private PageController $controller;
 
@@ -87,6 +89,7 @@ final class PageControllerTest extends TestCase {
 		$this->signerElementsService = $this->createMock(SignerElementsService::class);
 		$this->signerElementsService->method('getElementsFromSessionAsArray')->willReturn([]);
 		$this->signerElementsService->method('getUserElements')->willReturn([]);
+		$this->termsOfServiceService = $this->createMock(TermsOfServiceService::class);
 
 		$this->controller = new PageController(
 			request: $this->request,
@@ -116,6 +119,7 @@ final class PageControllerTest extends TestCase {
 			docMdpConfigService: $this->createConfiguredMock(ConfigService::class, [
 				'getConfig' => [],
 			]),
+			termsOfServiceService: $this->termsOfServiceService,
 		);
 	}
 
@@ -128,6 +132,16 @@ final class PageControllerTest extends TestCase {
 		$response = $this->controller->index();
 
 		self::assertStringContainsString("worker-src 'self'", $response->getContentSecurityPolicy()->buildPolicy());
+	}
+
+	public function testIndexFPathRendersTermsBeforeLoadingTheMainApp(): void {
+		$this->termsOfServiceService->expects(self::once())
+			->method('hasPendingTerms')
+			->willReturn(true);
+
+		$response = $this->controller->indexFPath('filelist/sign');
+
+		self::assertSame('main', $response->getTemplateName());
 	}
 
 	public function testIndexRedirectsAnonymousToLoginWhenLandingDisabled(): void {
