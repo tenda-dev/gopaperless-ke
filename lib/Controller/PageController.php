@@ -27,6 +27,7 @@ use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
+use OCA\Libresign\Service\TermsOfServiceService;
 use OCA\Viewer\Event\LoadViewer;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -74,6 +75,7 @@ class PageController extends AEnvironmentPageAwareController {
 		private IEventDispatcher $eventDispatcher,
 		private IURLGenerator $urlGenerator,
 		private ConfigService $docMdpConfigService,
+		private TermsOfServiceService $termsOfServiceService,
 	) {
 		parent::__construct(
 			request: $request,
@@ -120,6 +122,10 @@ class PageController extends AEnvironmentPageAwareController {
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>
 	 */
 	private function renderMainApp(): TemplateResponse {
+		if ($this->termsOfServiceService->hasPendingTerms()) {
+			return new TemplateResponse(Application::APP_ID, 'main');
+		}
+
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 		$this->initialState->provideInitialState('filters', $this->accountService->getConfigFilters($this->userSession->getUser()));
 		$this->initialState->provideInitialState('sorting', $this->accountService->getConfigSorting($this->userSession->getUser()));
