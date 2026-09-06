@@ -1,43 +1,43 @@
 Feature: search
-  Scenario: Search account by specific user
+  # SECURITY REGRESSION TEST (privacy/enumeration fix):
+  # Previously, this endpoint let ANY authenticated requester discover ANY
+  # other account on the instance, with no relationship between them
+  # (searcher has never shared a document with the target). That generic
+  # directory search (Nextcloud core's UserPlugin, dispatched via
+  # IShare::TYPE_USER) has been removed from ShareTypeResolver. An unrelated
+  # account must no longer be discoverable this way, by exact OR partial
+  # username. NOT executed against a live instance in this change — verify
+  # in CI before relying on it.
+  Scenario: Search account by specific unrelated user returns nothing
     Given as user "admin"
     And user "search-signer1" exists
     And user "search-signer2" exists
     When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=search-signer1"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
-      | key                          | value                      |
-      | (jq).ocs.data\|length        | 1                          |
-      | (jq).ocs.data[0].identify    | search-signer1             |
-      | (jq).ocs.data[0].isNoUser    | false                      |
-      | (jq).ocs.data[0].displayName | search-signer1-displayname |
-      | (jq).ocs.data[0].subname     | search-signer1             |
-      | (jq).ocs.data[0].iconName    | account                    |
-      | (jq).ocs.data[0].method      | account                    |
+      | key                   | value |
+      | (jq).ocs.data\|length | 0     |
 
-  Scenario: Search account by multiple users
+  Scenario: Search account by multiple unrelated users returns nothing
     Given as user "admin"
     And user "search-signer1" exists
     And user "search-signer2" exists
     When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=search-signer"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
-      | key                          | value                      |
-      | (jq).ocs.data\|length        | 2                          |
-      | (jq).ocs.data[0].identify    | search-signer1             |
-      | (jq).ocs.data[0].isNoUser    | false                      |
-      | (jq).ocs.data[0].displayName | search-signer1-displayname |
-      | (jq).ocs.data[0].subname     | search-signer1             |
-      | (jq).ocs.data[0].iconName    | account                    |
-      | (jq).ocs.data[0].method      | account                    |
-      | (jq).ocs.data[1].identify    | search-signer2             |
-      | (jq).ocs.data[1].isNoUser    | false                      |
-      | (jq).ocs.data[1].displayName | search-signer2-displayname |
-      | (jq).ocs.data[1].subname     | search-signer2             |
-      | (jq).ocs.data[1].iconName    | account                    |
-      | (jq).ocs.data[1].method      | account                    |
+      | key                   | value |
+      | (jq).ocs.data\|length | 0     |
 
 
+  # NOTE: originally the searcher stayed "admin" while searching for a
+  # DIFFERENT account ("can-find-myself") — despite the scenario's title,
+  # that was actually an unrelated-user generic-search test, not a genuine
+  # self-search test, and it only passed because of the now-removed
+  # IShare::TYPE_USER directory search. Corrected here so the searcher and
+  # the target are the same user, which is what "self-identification"
+  # (a required-preserved workflow) actually means; this path goes through
+  # ResultEnricher::addHerselfAccount, which is untouched by this change.
+  # NOT executed against a live instance in this change — verify in CI.
   Scenario: Search account by herself with partial name search
     Given as user "admin"
     And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
@@ -45,7 +45,8 @@ Feature: search
     And user "can-find-myself" exists
     And run the command "group:adduser admin can-find-myself" with result code 0
     And set the email of user "can-find-myself" to "my@email.tld"
-    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=can-"
+    When as user "can-find-myself"
+    And sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=can-"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
       | key                          | value                       |
@@ -119,7 +120,26 @@ Feature: search
       | (jq).ocs.data[0].iconName    | email           |
       | (jq).ocs.data[0].method      | email           |
 
-  Scenario: Search account returns acceptsEmailNotifications true when user accepts email
+  # SECURITY REGRESSION TEST (privacy/enumeration fix):
+  # These three scenarios previously found an UNRELATED account (admin has
+  # no relationship with "notification-*") by exact username, via the same
+  # now-removed generic directory search as the scenarios above. That
+  # specific query shape (bare username, no prior relationship, no exact
+  # email) is no longer expected to return a result — see "Search account by
+  # specific unrelated user returns nothing" above for why.
+  #
+  # The acceptsEmailNotifications computation itself
+  # (ResultEnricher::addEmailNotificationPreference) is NOT changed by this
+  # fix and still runs for any 'account'-method result, however it is
+  # obtained (known signer, exact-email resolution, or self). Re-covering it
+  # end-to-end needs a scenario built around one of those reachable paths
+  # (e.g. exact-email lookup with the email identify method enabled, or a
+  # known-signer scenario) — deliberately NOT authored here since it could
+  # not be verified by an actual test run in this environment; left as a
+  # follow-up rather than guessed at. In the meantime these three scenarios
+  # only assert the enumeration protection holds for this query shape.
+  # NOT executed against a live instance in this change — verify in CI.
+  Scenario: Search account for an unrelated user by exact username returns nothing (was: acceptsEmailNotifications true)
     Given as user "admin"
     And user "notification-enabled" exists
     And set the email of user "notification-enabled" to "enabled@test.com"
@@ -130,13 +150,10 @@ Feature: search
     When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=notification-enabled"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
-      | key                                         | value                |
-      | (jq).ocs.data\|length                       | 1                    |
-      | (jq).ocs.data[0].identify                   | notification-enabled |
-      | (jq).ocs.data[0].method                     | account              |
-      | (jq).ocs.data[0].acceptsEmailNotifications  | true                 |
+      | key                   | value |
+      | (jq).ocs.data\|length | 0     |
 
-  Scenario: Search account returns acceptsEmailNotifications false when user disabled email
+  Scenario: Search account for an unrelated user by exact username returns nothing (was: acceptsEmailNotifications false, user disabled)
     Given as user "admin"
     And user "notification-disabled" exists
     And set the email of user "notification-disabled" to "disabled@test.com"
@@ -147,13 +164,10 @@ Feature: search
     When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=notification-disabled"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
-      | key                                         | value                 |
-      | (jq).ocs.data\|length                       | 1                     |
-      | (jq).ocs.data[0].identify                   | notification-disabled |
-      | (jq).ocs.data[0].method                     | account               |
-      | (jq).ocs.data[0].acceptsEmailNotifications  | false                 |
+      | key                   | value |
+      | (jq).ocs.data\|length | 0     |
 
-  Scenario: Search account returns acceptsEmailNotifications false when global setting disabled
+  Scenario: Search account for an unrelated user by exact username returns nothing (was: acceptsEmailNotifications false, global setting disabled)
     Given as user "admin"
     And user "notification-global-off" exists
     And set the email of user "notification-global-off" to "globaloff@test.com"
@@ -164,8 +178,5 @@ Feature: search
     When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=notification-global-off"
     Then the response should have a status code 200
     And the response should be a JSON array with the following mandatory values
-      | key                                         | value                    |
-      | (jq).ocs.data\|length                       | 1                        |
-      | (jq).ocs.data[0].identify                   | notification-global-off  |
-      | (jq).ocs.data[0].method                     | account                  |
-      | (jq).ocs.data[0].acceptsEmailNotifications  | false                    |
+      | key                   | value |
+      | (jq).ocs.data\|length | 0     |

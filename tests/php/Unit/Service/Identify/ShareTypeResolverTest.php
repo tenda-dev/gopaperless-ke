@@ -94,14 +94,13 @@ class ShareTypeResolverTest extends TestCase {
 					...$phoneShareTypes,
 				],
 			],
-			'account enabled adds account type only' => [
+			'account enabled no longer adds generic TYPE_USER discovery (privacy fix)' => [
 				'account',
 				true,
 				true,
 				0,
 				1,
 				[
-					IShare::TYPE_USER,
 					SignerPlugin::TYPE_SIGNER,
 				],
 			],
@@ -136,7 +135,7 @@ class ShareTypeResolverTest extends TestCase {
 					SignerPlugin::TYPE_SIGNER,
 				],
 			],
-			'all enabled includes email account signer and phone' => [
+			'all enabled includes email signer and phone but no generic TYPE_USER discovery (privacy fix)' => [
 				'all',
 				true,
 				true,
@@ -144,7 +143,6 @@ class ShareTypeResolverTest extends TestCase {
 				1,
 				[
 					IShare::TYPE_EMAIL,
-					IShare::TYPE_USER,
 					SignerPlugin::TYPE_SIGNER,
 					...$phoneShareTypes,
 				],
@@ -168,7 +166,6 @@ class ShareTypeResolverTest extends TestCase {
 				1,
 				[
 					IShare::TYPE_EMAIL,
-					IShare::TYPE_USER,
 					SignerPlugin::TYPE_SIGNER,
 					...$phoneShareTypes,
 				],

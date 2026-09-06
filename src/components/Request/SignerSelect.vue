@@ -204,6 +204,10 @@ function getOptionIcon(slotProps?: OptionPayload) {
 	return iconKey ? iconMap[iconKey] : ''
 }
 
+// UX optimisation only. The backend remains authoritative;
+// this avoids unnecessary requests for short queries.
+const MIN_SEARCH_LENGTH = 3
+
 async function _asyncFind(search: string) {
 	search = search.trim()
 
@@ -221,7 +225,7 @@ async function _asyncFind(search: string) {
 		search = normalized
 	}
 
-	if (!search) {
+	if (search.length < MIN_SEARCH_LENGTH) {
 		options.value = []
 		loading.value = false
 		return

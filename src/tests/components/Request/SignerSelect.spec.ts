@@ -155,7 +155,17 @@ describe('SignerSelect.vue', () => {
 		expect(wrapper.vm.loading).toBe(false)
 	})
 
-	it('ignores stale async response when a newer search was triggered', async () => {
+	it('does not call the API for a search below the minimum length (UX guard, not a security boundary)', async () => {
+		const wrapper = createWrapper({ method: 'account' })
+
+		await wrapper.vm._asyncFind('ab')
+
+		expect(axiosGetMock).not.toHaveBeenCalled()
+		expect(wrapper.vm.options).toEqual([])
+		expect(wrapper.vm.loading).toBe(false)
+	})
+
+		it('ignores stale async response when a newer search was triggered', async () => {
 		const wrapper = createWrapper({ method: 'account' })
 		let resolveFirst: ((value: any) => void) | undefined
 		let resolveSecond: ((value: any) => void) | undefined
@@ -169,8 +179,11 @@ describe('SignerSelect.vue', () => {
 			}))
 
 
-		const firstCall = wrapper.vm._asyncFind('a')
-		const secondCall = wrapper.vm._asyncFind('ab')
+		// Both queries must meet the component's minimum search length (mirrors
+		// the backend's defence-in-depth minimum) or _asyncFind returns early
+		// without calling the API, which would defeat this test's purpose.
+		const firstCall = wrapper.vm._asyncFind('abc')
+		const secondCall = wrapper.vm._asyncFind('abcd')
 
 		resolveSecond?.({
 			data: {
