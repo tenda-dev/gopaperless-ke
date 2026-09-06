@@ -174,7 +174,7 @@ export function usePayment() {
 
 	function buildPaymentReturnUrl(): string {
 		return new URL(
-			router.currentRoute.value.fullPath,
+			router.resolve(router.currentRoute.value.fullPath).href,
 			window.location.origin
 		).toString()
 	}
