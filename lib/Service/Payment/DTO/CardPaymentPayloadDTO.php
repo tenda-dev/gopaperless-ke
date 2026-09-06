@@ -21,6 +21,10 @@ final class CardPaymentPayloadDTO {
 		// Required for redirect flows
 		public readonly string $redirectUrl,
 		public readonly ?string $callbackUrl = null,
+		// Absolute, client-facing URL of the application page the customer
+		// started payment from. Used as the destination when returning the
+		// customer from the payment flow.
+		public readonly ?string $returnUrl = null,
 		// Future-safe metadata
 		public readonly array $meta = [],
 	) {
@@ -57,6 +61,7 @@ final class CardPaymentPayloadDTO {
 			'email' => $this->email,
 			'redirectUrl' => $this->redirectUrl,
 			'callbackUrl' => $this->callbackUrl,
+			'returnUrl' => $this->returnUrl,
 			'meta' => $this->meta,
 		];
 	}

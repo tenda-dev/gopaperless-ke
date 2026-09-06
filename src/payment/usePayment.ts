@@ -173,9 +173,10 @@ export function usePayment() {
 	}
 
 	function buildPaymentReturnUrl(): string {
-		return window.location.pathname
-			+ window.location.search
-			+ window.location.hash
+		return new URL(
+			router.currentRoute.value.fullPath,
+			window.location.origin
+		).toString()
 	}
 
 	const state = ref<PaymentState>('idle')
