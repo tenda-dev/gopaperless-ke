@@ -173,57 +173,6 @@
 					</template>
 				</NcButton>
 			</div>
-			<div class="settings-section__row">
-				<NcCheckboxRadioSwitch v-model="signatureMinimumEnabled"
-					type="switch"
-					name="signature_minimum_enabled"
-					:aria-label="t('libresign', 'Enforce minimum signature size')"
-					@update:modelValue="saveTemplate">
-					{{ t('libresign', 'Enforce minimum signature size') }}
-				</NcCheckboxRadioSwitch>
-			</div>
-			<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
-				<NcTextField v-model="signatureMinimumWidth"
-					:label="t('libresign', 'Minimum signature width')"
-					:placeholder="t('libresign', 'Minimum signature width')"
-					type="number"
-					:min="1"
-					:max="800"
-					:step="0.01"
-					:spellcheck="false"
-					:success="dislaySuccessTemplate"
-					@keydown.enter="saveTemplate"
-					@blur="saveTemplate" />
-				<NcButton v-if="displayResetSignatureMinimumWidth"
-					variant="tertiary"
-					:aria-label="t('libresign', 'Reset to default')"
-					@click="resetSignatureMinimumWidth">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
-					</template>
-				</NcButton>
-			</div>
-			<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
-				<NcTextField v-model="signatureMinimumHeight"
-					:label="t('libresign', 'Minimum signature height')"
-					:placeholder="t('libresign', 'Minimum signature height')"
-					type="number"
-					:min="1"
-					:max="800"
-					:step="0.01"
-					:spellcheck="false"
-					:success="dislaySuccessTemplate"
-					@keydown.enter="saveTemplate"
-					@blur="saveTemplate" />
-				<NcButton v-if="displayResetSignatureMinimumHeight"
-					variant="tertiary"
-					:aria-label="t('libresign', 'Reset to default')"
-					@click="resetSignatureMinimumHeight">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
-					</template>
-				</NcButton>
-			</div>
 		</div>
 		<fieldset class="settings-section__row settings-section__row_bar">
 			<legend>{{ t('libresign', 'Background image') }}</legend>
@@ -371,6 +320,61 @@
 				</div>
 			</div>
 		</NcDialog>
+	</NcSettingsSection>
+	<NcSettingsSection v-if="displayPreview"
+		:name="t('libresign', 'Minimum signature size')"
+		:description="t('libresign', 'Configure the minimum dimensions allowed for signature elements when signing. These settings do not affect the signature stamp preview.')">
+		<div class="settings-section__row">
+			<NcCheckboxRadioSwitch v-model="signatureMinimumEnabled"
+				type="switch"
+				name="signature_minimum_enabled"
+				:aria-label="t('libresign', 'Enforce minimum signature size')"
+				@update:modelValue="saveTemplate">
+				{{ t('libresign', 'Enforce minimum signature size') }}
+			</NcCheckboxRadioSwitch>
+		</div>
+		<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
+			<NcTextField v-model="signatureMinimumWidth"
+				:label="t('libresign', 'Minimum signature width')"
+				:placeholder="t('libresign', 'Minimum signature width')"
+				type="number"
+				:min="1"
+				:max="800"
+				:step="0.01"
+				:spellcheck="false"
+				:success="dislaySuccessTemplate"
+				@keydown.enter="saveTemplate"
+				@blur="saveTemplate" />
+			<NcButton v-if="displayResetSignatureMinimumWidth"
+				variant="tertiary"
+				:aria-label="t('libresign', 'Reset to default')"
+				@click="resetSignatureMinimumWidth">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
+				</template>
+			</NcButton>
+		</div>
+		<div v-if="signatureMinimumEnabled" class="settings-section__row_dimension">
+			<NcTextField v-model="signatureMinimumHeight"
+				:label="t('libresign', 'Minimum signature height')"
+				:placeholder="t('libresign', 'Minimum signature height')"
+				type="number"
+				:min="1"
+				:max="800"
+				:step="0.01"
+				:spellcheck="false"
+				:success="dislaySuccessTemplate"
+				@keydown.enter="saveTemplate"
+				@blur="saveTemplate" />
+			<NcButton v-if="displayResetSignatureMinimumHeight"
+				variant="tertiary"
+				:aria-label="t('libresign', 'Reset to default')"
+				@click="resetSignatureMinimumHeight">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiUndoVariant" :size="20" />
+				</template>
+			</NcButton>
+		</div>
 	</NcSettingsSection>
 </template>
 <script setup lang="ts">
