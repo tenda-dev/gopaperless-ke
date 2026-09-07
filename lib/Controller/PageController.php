@@ -20,6 +20,7 @@ use OCA\Libresign\Middleware\Attribute\RequireSignRequestUuid;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\DocMdp\ConfigService;
 use OCA\Libresign\Service\File\FileListService;
+use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
@@ -69,6 +70,7 @@ class PageController extends AEnvironmentPageAwareController {
 		private FileListService $fileListService,
 		private FileMapper $fileMapper,
 		private SignRequestMapper $signRequestMapper,
+		private FileAccessService $fileAccessService,
 		private LoggerInterface $logger,
 		private ValidateHelper $validateHelper,
 		private IEventDispatcher $eventDispatcher,
@@ -305,18 +307,18 @@ class PageController extends AEnvironmentPageAwareController {
 				$this->fileService->setSignRequest($signRequest);
 			}
 
-			$this->initialState->provideInitialState('file_info',
-				$this->fileService
-					->setIdentifyMethodId($this->sessionService->getIdentifyMethodId())
-					->setHost($this->request->getServerHost())
-					->setMe($this->userSession->getUser())
-					->showVisibleElements()
-					->showSigners()
-					->showSettings()
-					->showMessages()
-					->showValidateFile()
-					->toArray()
-			);
+			$fileInfo = $this->fileService
+				->setIdentifyMethodId($this->sessionService->getIdentifyMethodId())
+				->setHost($this->request->getServerHost())
+				->setMe($this->userSession->getUser())
+				->showVisibleElements()
+				->showSigners()
+				->showSettings()
+				->showMessages()
+				->showValidateFile()
+				->toArray();
+			$fileInfo['canViewDocument'] = $this->canViewValidationDocument((int)($fileInfo['id'] ?? 0));
+			$this->initialState->provideInitialState('file_info', $fileInfo);
 		} elseif (preg_match('/sign\/(?<uuid>[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/', $path, $matches)) {
 			try {
 				$signRequest = $this->signFileService->getSignRequestByUuid($matches['uuid']);
@@ -552,12 +554,37 @@ class PageController extends AEnvironmentPageAwareController {
 	#[FrontpageRoute(verb: 'GET', url: '/p/pdf/{uuid}')]
 	public function getPdf($uuid) {
 		try {
+			if ($this->appConfig->getValueBool(Application::APP_ID, 'restrict_validation_document_access', false)) {
+				$libresignFile = $this->fileMapper->getByUuid($uuid);
+				if (!$this->fileAccessService->userCanViewFileById($libresignFile->getId())) {
+					throw new LibresignException(json_encode([
+						'action' => JSActions::ACTION_DO_NOTHING,
+						'title' => $this->l10n->t('Access denied'),
+						'errors' => [['message' => $this->l10n->t('You do not have permission to view this document')]],
+					]), Http::STATUS_FORBIDDEN);
+				}
+			}
 			$file = $this->accountService->getPdfByUuid($uuid);
 		} catch (DoesNotExistException) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
 
 		return new FileDisplayResponse($file, Http::STATUS_OK, ['Content-Type' => $file->getMimeType()]);
+	}
+
+	/**
+	 * Check whether the current user can view the validation document.
+	 *
+	 * Used to control the visibility of the "View document" action.
+	 */
+	private function canViewValidationDocument(int $fileId): bool {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'restrict_validation_document_access', false)) {
+			return true;
+		}
+		if ($fileId <= 0) {
+			return false;
+		}
+		return $this->fileAccessService->userCanViewFileById($fileId);
 	}
 
 	/**
@@ -730,17 +757,17 @@ class PageController extends AEnvironmentPageAwareController {
 
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
 
-		$this->initialState->provideInitialState('file_info',
-			$this->fileService
-				->setIdentifyMethodId($this->sessionService->getIdentifyMethodId())
-				->setHost($this->request->getServerHost())
-				->showVisibleElements()
-				->showSigners()
-				->showSettings()
-				->showMessages()
-				->showValidateFile()
-				->toArray()
-		);
+		$fileInfo = $this->fileService
+			->setIdentifyMethodId($this->sessionService->getIdentifyMethodId())
+			->setHost($this->request->getServerHost())
+			->showVisibleElements()
+			->showSigners()
+			->showSettings()
+			->showMessages()
+			->showValidateFile()
+			->toArray();
+		$fileInfo['canViewDocument'] = $this->canViewValidationDocument((int)($fileInfo['id'] ?? 0));
+		$this->initialState->provideInitialState('file_info', $fileInfo);
 
 		Util::addScript(Application::APP_ID, 'libresign-validation');
 		if (class_exists(LoadViewer::class)) {

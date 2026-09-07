@@ -59,4 +59,28 @@ class FileAccessService {
 			return false;
 		}
 	}
+
+	/**
+	 * Check whether a user can view a file's validation document.
+	 *
+	 * Access is granted to the file owner or an existing signer.
+	 */
+	public function userCanViewFileById(int $fileId, ?IUser $user = null): bool {
+		$user = $this->resolveUser($user);
+		if (!$user) {
+			return false;
+		}
+
+		try {
+			$file = $this->fileMapper->getById($fileId);
+
+			if ($file->getUserId() === $user->getUID()) {
+				return true;
+			}
+
+			return $this->signFileService->findExistingSignRequestForUser($file, $user) !== null;
+		} catch (\Exception) {
+			return false;
+		}
+	}
 }

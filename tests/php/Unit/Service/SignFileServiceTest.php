@@ -2319,6 +2319,204 @@ final class SignFileServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 		$this->assertSame($signRequest, $result);
 	}
+
+	public static function providerFindExistingSignRequestForUserIdentifyMethod(): array {
+		return [
+			'email matches uid' => [
+				IdentifyMethodService::IDENTIFY_EMAIL,
+				'user-1',
+				'user-1',
+				'user-1@example.test',
+				true,
+			],
+			'email matches address' => [
+				IdentifyMethodService::IDENTIFY_EMAIL,
+				'user-1@example.test',
+				'user-1',
+				'user-1@example.test',
+				true,
+			],
+			'account matches uid' => [
+				IdentifyMethodService::IDENTIFY_ACCOUNT,
+				'user-1',
+				'user-1',
+				'user-1@example.test',
+				true,
+			],
+			'no match' => [
+				IdentifyMethodService::IDENTIFY_EMAIL,
+				'other@example.test',
+				'user-1',
+				'user-1@example.test',
+				false,
+			],
+		];
+	}
+
+	#[DataProvider('providerFindExistingSignRequestForUserIdentifyMethod')]
+	public function testFindExistingSignRequestForUserMatchesByIdentifyMethod(
+		string $identifierKey,
+		string $identifierValue,
+		string $userId,
+		string $userEmail,
+		bool $expectMatch,
+	): void {
+		$service = $this->getService();
+
+		$file = new File();
+		$file->setId(10);
+		$file->setNodeType('file');
+
+		$user = $this->createMock(\OCP\IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$user->method('getEMailAddress')->willReturn($userEmail);
+
+		$signRequest = new SignRequest();
+		$signRequest->setId(101);
+		$signRequest->setFileId(10);
+
+		$identifyMethod = new IdentifyMethod();
+		$identifyMethod->setIdentifierKey($identifierKey);
+		$identifyMethod->setIdentifierValue($identifierValue);
+
+		// Non-mutating: none of the signing/approval machinery is touched.
+		$this->validateHelper->expects($this->never())->method('fileCanBeSigned');
+		$this->validateHelper->expects($this->never())->method('userCanApproveValidationDocuments');
+		$this->idDocsMapper->expects($this->never())->method('getByFileId');
+		$this->signRequestService->expects($this->never())->method('createOrUpdateSignRequest');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('getByFileId')
+			->with(10)
+			->willReturn([$signRequest]);
+		$this->identifyMethodMapper->method('getIdentifyMethodsFromSignRequestId')
+			->with(101)
+			->willReturn([$identifyMethod]);
+
+		$result = $service->findExistingSignRequestForUser($file, $user);
+
+		if ($expectMatch) {
+			$this->assertSame($signRequest, $result);
+		} else {
+			$this->assertNull($result);
+		}
+	}
+
+	public function testFindExistingSignRequestForUserReturnsNullForUnrelatedUser(): void {
+		$service = $this->getService();
+
+		$file = new File();
+		$file->setId(10);
+		$file->setNodeType('file');
+
+		$user = $this->createMock(\OCP\IUser::class);
+		$user->method('getUID')->willReturn('outsider');
+		$user->method('getEMailAddress')->willReturn('outsider@example.test');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('getByFileId')
+			->with(10)
+			->willReturn([]);
+
+		$this->validateHelper->expects($this->never())->method('fileCanBeSigned');
+		$this->signRequestService->expects($this->never())->method('createOrUpdateSignRequest');
+
+		$this->assertNull($service->findExistingSignRequestForUser($file, $user));
+	}
+
+	public function testFindExistingSignRequestForUserWorksForAlreadySignedFile(): void {
+		$service = $this->getService();
+
+		// A fully signed file would make getSignRequestToSign() throw via
+		// fileCanBeSigned(). findExistingSignRequestForUser() must keep
+		// working here, since this is the normal state of a document by
+		// the time its validation page is viewed.
+		$file = new File();
+		$file->setId(10);
+		$file->setNodeType('file');
+		$file->setStatus(FileStatus::SIGNED->value);
+
+		$user = $this->createMock(\OCP\IUser::class);
+		$user->method('getUID')->willReturn('signer-1');
+		$user->method('getEMailAddress')->willReturn('signer-1@example.test');
+
+		$signRequest = new SignRequest();
+		$signRequest->setId(101);
+		$signRequest->setFileId(10);
+
+		$identifyMethod = new IdentifyMethod();
+		$identifyMethod->setIdentifierKey(IdentifyMethodService::IDENTIFY_ACCOUNT);
+		$identifyMethod->setIdentifierValue('signer-1');
+
+		$this->validateHelper->expects($this->never())->method('fileCanBeSigned');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('getByFileId')
+			->with(10)
+			->willReturn([$signRequest]);
+		$this->identifyMethodMapper->method('getIdentifyMethodsFromSignRequestId')
+			->with(101)
+			->willReturn([$identifyMethod]);
+
+		$this->assertSame($signRequest, $service->findExistingSignRequestForUser($file, $user));
+	}
+
+	public function testFindExistingSignRequestForUserChecksChildSignRequestsForEnvelope(): void {
+		$service = $this->getService();
+
+		$envelope = new File();
+		$envelope->setId(1);
+		$envelope->setNodeType('envelope');
+
+		$child1 = new File();
+		$child1->setId(2);
+		$child2 = new File();
+		$child2->setId(3);
+
+		$childSignRequest1 = new SignRequest();
+		$childSignRequest1->setId(20);
+		$childSignRequest1->setFileId(2);
+
+		$childSignRequest2 = new SignRequest();
+		$childSignRequest2->setId(21);
+		$childSignRequest2->setFileId(3);
+
+		$user = $this->createMock(\OCP\IUser::class);
+		$user->method('getUID')->willReturn('signer-2');
+		$user->method('getEMailAddress')->willReturn('signer-2@example.test');
+
+		$identifyMethodOther = new IdentifyMethod();
+		$identifyMethodOther->setIdentifierKey(IdentifyMethodService::IDENTIFY_ACCOUNT);
+		$identifyMethodOther->setIdentifierValue('someone-else');
+
+		$identifyMethodMatch = new IdentifyMethod();
+		$identifyMethodMatch->setIdentifierKey(IdentifyMethodService::IDENTIFY_ACCOUNT);
+		$identifyMethodMatch->setIdentifierValue('signer-2');
+
+		$this->fileMapper->expects($this->once())
+			->method('getChildrenFiles')
+			->with(1)
+			->willReturn([$child1, $child2]);
+
+		$this->signRequestMapper->method('getByFileId')
+			->willReturnMap([
+				[2, [$childSignRequest1]],
+				[3, [$childSignRequest2]],
+			]);
+		$this->identifyMethodMapper->method('getIdentifyMethodsFromSignRequestId')
+			->willReturnMap([
+				[20, [$identifyMethodOther]],
+				[21, [$identifyMethodMatch]],
+			]);
+
+		$this->validateHelper->expects($this->never())->method('fileCanBeSigned');
+		$this->signRequestService->expects($this->never())->method('createOrUpdateSignRequest');
+
+		$result = $service->findExistingSignRequestForUser($envelope, $user);
+
+		$this->assertSame($childSignRequest2, $result);
+	}
+
 	public function testGetSignRequestsToSignForStandaloneFile(): void {
 		$service = $this->getService();
 

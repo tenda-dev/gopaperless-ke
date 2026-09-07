@@ -1317,6 +1317,23 @@ class SignFileService {
 		return null;
 	}
 
+	/**
+	 * Find an existing sign request for a user and file.
+	 *
+	 * For envelopes, child file sign requests are also checked.
+	 */
+	public function findExistingSignRequestForUser(FileEntity $file, IUser $user): ?SignRequestEntity {
+		if ($file->isEnvelope()) {
+			$signRequests = [];
+			foreach ($this->fileMapper->getChildrenFiles($file->getId()) as $childFile) {
+				$signRequests = array_merge($signRequests, $this->signRequestMapper->getByFileId($childFile->getId()));
+			}
+		} else {
+			$signRequests = $this->signRequestMapper->getByFileId($file->getId());
+		}
+		return $this->findSignRequestByIdentifyMethod($signRequests, $user);
+	}
+
 	public function getSignRequestToSign(FileEntity $libresignFile, ?string $signRequestUuid, ?IUser $user): SignRequestEntity {
 		$this->validateHelper->fileCanBeSigned($libresignFile);
 		try {

@@ -11,11 +11,14 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Controller\PageController;
 use OCA\Libresign\Db\File as FileEntity;
+use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
+use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\DocMdp\ConfigService;
 use OCA\Libresign\Service\File\FileListService;
+use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestSignatureService;
@@ -23,6 +26,9 @@ use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Tests\Unit\TestCase;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\FileDisplayResponse;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IAppConfig;
 use OCP\IInitialStateService;
@@ -42,6 +48,8 @@ final class PageControllerTest extends TestCase {
 	private SignFileService&MockObject $signFileService;
 	private SignerElementsService&MockObject $signerElementsService;
 	private IUser&MockObject $currentUser;
+	private FileMapper&MockObject $fileMapper;
+	private FileAccessService&MockObject $fileAccessService;
 	private PageController $controller;
 
 	public function setUp(): void {
@@ -88,6 +96,12 @@ final class PageControllerTest extends TestCase {
 		$this->signerElementsService->method('getElementsFromSessionAsArray')->willReturn([]);
 		$this->signerElementsService->method('getUserElements')->willReturn([]);
 
+		$this->fileMapper = $this->createMock(FileMapper::class);
+		$this->fileAccessService = $this->createMock(FileAccessService::class);
+
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
+
 		$this->controller = new PageController(
 			request: $this->request,
 			userSession: $this->userSession,
@@ -100,15 +114,16 @@ final class PageControllerTest extends TestCase {
 			signFileService: $this->signFileService,
 			requestSignatureService: \OCP\Server::get(RequestSignatureService::class),
 			signerElementsService: $this->signerElementsService,
-			l10n: $this->createMock(IL10N::class),
+			l10n: $l10n,
 			identifyMethodService: $this->createConfiguredMock(IdentifyMethodService::class, [
 				'getIdentifyMethodsSettings' => [],
 			]),
 			appConfig: \OCP\Server::get(IAppConfig::class),
 			fileService: $this->fileService,
 			fileListService: \OCP\Server::get(FileListService::class),
-			fileMapper: \OCP\Server::get(\OCA\Libresign\Db\FileMapper::class),
+			fileMapper: $this->fileMapper,
 			signRequestMapper: \OCP\Server::get(\OCA\Libresign\Db\SignRequestMapper::class),
+			fileAccessService: $this->fileAccessService,
 			logger: \OCP\Server::get(LoggerInterface::class),
 			validateHelper: $this->createMock(ValidateHelper::class),
 			eventDispatcher: $this->createMock(IEventDispatcher::class),
@@ -178,5 +193,141 @@ final class PageControllerTest extends TestCase {
 		$response = $this->controller->sign('sign-uuid');
 
 		self::assertStringContainsString("worker-src 'self'", $response->getContentSecurityPolicy()->buildPolicy());
+	}
+
+	public function testGetPdfReturnsFileWhenRestrictionSettingDisabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', false);
+
+		$node = $this->createMock(\OCP\Files\File::class);
+		$node->method('getMimeType')->willReturn('application/pdf');
+		$this->accountService->method('getPdfByUuid')->with('file-uuid')->willReturn($node);
+
+		$this->fileMapper->expects($this->never())->method('getByUuid');
+		$this->fileAccessService->expects($this->never())->method('userCanViewFileById');
+
+		$response = $this->controller->getPdf('file-uuid');
+
+		self::assertInstanceOf(FileDisplayResponse::class, $response);
+	}
+
+	public function testGetPdfAllowsOwnerWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$libresignFile = new FileEntity();
+		$libresignFile->setId(5);
+		$this->fileMapper->method('getByUuid')->with('file-uuid')->willReturn($libresignFile);
+
+		$this->fileAccessService->method('userCanViewFileById')->with(5)->willReturn(true);
+
+		$node = $this->createMock(\OCP\Files\File::class);
+		$node->method('getMimeType')->willReturn('application/pdf');
+		$this->accountService->method('getPdfByUuid')->with('file-uuid')->willReturn($node);
+
+		$response = $this->controller->getPdf('file-uuid');
+
+		self::assertInstanceOf(FileDisplayResponse::class, $response);
+	}
+
+	public function testGetPdfDeniesUnrelatedAuthenticatedUserWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$libresignFile = new FileEntity();
+		$libresignFile->setId(5);
+		$this->fileMapper->method('getByUuid')->with('file-uuid')->willReturn($libresignFile);
+
+		$this->fileAccessService->method('userCanViewFileById')->with(5)->willReturn(false);
+
+		// getPdf() must reach and enforce the denial via the existing
+		// LibresignException flow (caught by InjectionMiddleware::afterException()
+		// and rendered as the existing unauthorized/error page) rather than
+		// returning a bare DataResponse, so the PDF is never served either way.
+		$this->accountService->expects($this->never())->method('getPdfByUuid');
+
+		try {
+			$this->controller->getPdf('file-uuid');
+			self::fail('Expected a LibresignException to be thrown for an unauthorized request.');
+		} catch (LibresignException $e) {
+			self::assertSame(Http::STATUS_FORBIDDEN, $e->getCode());
+			$payload = json_decode($e->getMessage(), true);
+			self::assertSame('Access denied', $payload['title']);
+			self::assertSame('You do not have permission to view this document', $payload['errors'][0]['message']);
+		}
+	}
+
+	public function testGetPdfDeniesUnauthenticatedVisitorWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+		$this->setUserLoggedIn(false);
+
+		$libresignFile = new FileEntity();
+		$libresignFile->setId(5);
+		$this->fileMapper->method('getByUuid')->with('file-uuid')->willReturn($libresignFile);
+
+		// FileAccessService resolves the current user from IUserSession itself when
+		// no user is passed; with nobody logged in it returns false. The controller
+		// does not pass a user explicitly, so this simulates that path via the mock.
+		$this->fileAccessService->method('userCanViewFileById')->with(5)->willReturn(false);
+
+		$this->accountService->expects($this->never())->method('getPdfByUuid');
+
+		try {
+			$this->controller->getPdf('file-uuid');
+			self::fail('Expected a LibresignException to be thrown for an unauthorized request.');
+		} catch (LibresignException $e) {
+			self::assertSame(Http::STATUS_FORBIDDEN, $e->getCode());
+			$payload = json_decode($e->getMessage(), true);
+			self::assertSame('Access denied', $payload['title']);
+			self::assertSame('You do not have permission to view this document', $payload['errors'][0]['message']);
+		}
+	}
+
+	public function testGetPdfReturnsNotFoundForUnknownUuidWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$this->fileMapper->method('getByUuid')->with('missing-uuid')
+			->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException('not found'));
+
+		$this->fileAccessService->expects($this->never())->method('userCanViewFileById');
+		$this->accountService->expects($this->never())->method('getPdfByUuid');
+
+		$response = $this->controller->getPdf('missing-uuid');
+
+		self::assertInstanceOf(DataResponse::class, $response);
+		self::assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+	}
+
+	public function testCanViewValidationDocumentReturnsTrueWhenRestrictionSettingDisabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', false);
+
+		$this->fileAccessService->expects($this->never())->method('userCanViewFileById');
+
+		$result = self::invokePrivate($this->controller, 'canViewValidationDocument', [5]);
+
+		self::assertTrue($result);
+	}
+
+	public function testCanViewValidationDocumentUsesUserCanViewFileByIdWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$this->fileAccessService->expects($this->once())
+			->method('userCanViewFileById')
+			->with(5)
+			->willReturn(true);
+
+		$result = self::invokePrivate($this->controller, 'canViewValidationDocument', [5]);
+
+		self::assertTrue($result);
+	}
+
+	public function testCanViewValidationDocumentDeniesUnauthorizedUserWhenRestrictionSettingEnabled(): void {
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$this->fileAccessService->expects($this->once())
+			->method('userCanViewFileById')
+			->with(5)
+			->willReturn(false);
+
+		$result = self::invokePrivate($this->controller, 'canViewValidationDocument', [5]);
+
+		self::assertFalse($result);
 	}
 }

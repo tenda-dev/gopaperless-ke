@@ -60,7 +60,12 @@ export type FileListItemRecord = ApiComponents['schemas']['FileListItem']
 export type SignerDetailRecord = ApiComponents['schemas']['SignerDetail']
 export type SignerSummaryRecord = ApiComponents['schemas']['SignerSummary']
 export type ValidatedChildFileRecord = ApiComponents['schemas']['ValidatedChildFile']
-export type LoadedValidationDocument = ValidationFileRecord
+export type LoadedValidationDocument = ValidationFileRecord & {
+   /**
+	* Whether the current session can view the document's PDF.
+	*/
+	canViewDocument?: boolean
+}
 export type LoadedValidationFileDocument = LoadedValidationDocument & {
 	nodeType: 'file'
 }

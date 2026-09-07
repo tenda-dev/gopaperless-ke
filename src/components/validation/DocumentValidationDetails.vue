@@ -38,7 +38,7 @@
 		</ul>
 		<div class="info-document">
 			<NcRichText v-if="legalInformation" class="legal-information" :text="legalInformation" :use-markdown="true" />
-			<NcButton v-if="document.uuid" variant="primary" @click="viewDocument">
+			<NcButton v-if="document.uuid && canViewDocument" variant="primary" @click="viewDocument">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiEye" :size="20" />
 				</template>
@@ -98,6 +98,9 @@ const size = computed(() => {
 
 const documentStatus = computed(() => getStatusLabel(document.value.status))
 
+// The PDF endpoint remains the authorisation boundary.
+const canViewDocument = computed(() => (document.value as { canViewDocument?: boolean }).canViewDocument !== false)
+
 async function viewDocument() {
 	if (!document.value.uuid || !document.value.name || typeof document.value.nodeId !== 'number') {
 		return
@@ -113,6 +116,7 @@ async function viewDocument() {
 defineExpose({
 	documentStatus,
 	size,
+	canViewDocument,
 	viewDocument,
 })
 </script>
