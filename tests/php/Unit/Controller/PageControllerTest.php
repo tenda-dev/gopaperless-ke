@@ -13,6 +13,7 @@ use OCA\Libresign\Controller\PageController;
 use OCA\Libresign\Db\File as FileEntity;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
+use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
@@ -26,6 +27,7 @@ use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Tests\Unit\TestCase;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\FileDisplayResponse;
@@ -131,6 +133,7 @@ final class PageControllerTest extends TestCase {
 			docMdpConfigService: $this->createConfiguredMock(ConfigService::class, [
 				'getConfig' => [],
 			]),
+			appManager: \OCP\Server::get(IAppManager::class),
 		);
 	}
 
@@ -173,6 +176,131 @@ final class PageControllerTest extends TestCase {
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertStringContainsString('login', $response->getRedirectURL());
+	}
+
+	/**
+	 * Builds a PageController with fully controllable IAppManager, IURLGenerator
+	 * and IInitialStateService, so the public_upload_oidc_login_url tests below
+	 * don't depend on whether `user_oidc` happens to be installed/enabled in
+	 * whatever Nextcloud instance these tests run against.
+	 *
+	 * @param array<string, mixed> $providedInitialState Captured by reference: filled with every provideInitialState() key => value pushed during the call.
+	 */
+	private function buildControllerWithMocks(
+		IAppManager&MockObject $appManager,
+		IURLGenerator&MockObject $urlGenerator,
+		array &$providedInitialState,
+	): PageController {
+		$initialStateService = $this->createMock(IInitialStateService::class);
+		$initialStateService->method('provideInitialState')
+			->willReturnCallback(function (string $appName, string $key, mixed $data) use (&$providedInitialState): void {
+				$providedInitialState[$key] = $data;
+			});
+
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
+
+		return new PageController(
+			request: $this->request,
+			userSession: $this->userSession,
+			sessionService: $this->createMock(SessionService::class),
+			initialState: new \OC\AppFramework\Services\InitialState($initialStateService, Application::APP_ID),
+			accountService: $this->accountService,
+			signFileService: $this->signFileService,
+			requestSignatureService: \OCP\Server::get(RequestSignatureService::class),
+			signerElementsService: $this->signerElementsService,
+			l10n: $l10n,
+			identifyMethodService: $this->createConfiguredMock(IdentifyMethodService::class, [
+				'getIdentifyMethodsSettings' => [],
+			]),
+			appConfig: \OCP\Server::get(IAppConfig::class),
+			fileService: $this->fileService,
+			fileListService: \OCP\Server::get(FileListService::class),
+			fileMapper: $this->fileMapper,
+			signRequestMapper: \OCP\Server::get(SignRequestMapper::class),
+			fileAccessService: $this->fileAccessService,
+			logger: \OCP\Server::get(LoggerInterface::class),
+			validateHelper: $this->createMock(ValidateHelper::class),
+			eventDispatcher: $this->createMock(IEventDispatcher::class),
+			urlGenerator: $urlGenerator,
+			docMdpConfigService: $this->createConfiguredMock(ConfigService::class, [
+				'getConfig' => [],
+			]),
+			appManager: $appManager,
+		);
+	}
+
+	public function testPublicUploadOidcLoginUrlIsEmptyWhenProviderUnconfigured(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', true);
+		self::getMockAppConfig()->setValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0);
+
+		$appManager = $this->createMock(IAppManager::class);
+		$appManager->expects(self::never())->method('isEnabledForUser');
+		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$urlGenerator->expects(self::never())->method('linkToRoute')->with('user_oidc.login.login');
+
+		$provided = [];
+		$controller = $this->buildControllerWithMocks($appManager, $urlGenerator, $provided);
+
+		$controller->publicUpload();
+
+		self::assertArrayHasKey('public_upload_oidc_login_url', $provided);
+		self::assertSame('', $provided['public_upload_oidc_login_url']);
+	}
+
+	public function testPublicUploadOidcLoginUrlIsEmptyWhenUserOidcIsNotEnabled(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', true);
+		self::getMockAppConfig()->setValueInt(Application::APP_ID, 'public_upload_login_provider_id', 2);
+
+		$appManager = $this->createMock(IAppManager::class);
+		$appManager->method('isEnabledForUser')->with('user_oidc')->willReturn(false);
+		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$urlGenerator->expects(self::never())->method('linkToRoute')->with('user_oidc.login.login');
+
+		$provided = [];
+		$controller = $this->buildControllerWithMocks($appManager, $urlGenerator, $provided);
+
+		$controller->publicUpload();
+
+		self::assertArrayHasKey('public_upload_oidc_login_url', $provided);
+		self::assertSame('', $provided['public_upload_oidc_login_url']);
+	}
+
+	public function testPublicUploadExposesOidcLoginUrlWhenProviderConfiguredAndUserOidcEnabled(): void {
+		$this->setUserLoggedIn(false);
+		self::getMockAppConfig()->setValueBool(Application::APP_ID, 'public_upload_landing_enabled', true);
+		self::getMockAppConfig()->setValueInt(Application::APP_ID, 'public_upload_login_provider_id', 2);
+
+		$appManager = $this->createMock(IAppManager::class);
+		$appManager->method('isEnabledForUser')->with('user_oidc')->willReturn(true);
+
+		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$urlGenerator->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.page.indexFPath') {
+					self::assertSame(['path' => 'request'], $params);
+					return '/apps/libresign/f/request';
+				}
+				self::assertSame('user_oidc.login.login', $route);
+				self::assertSame([
+					'providerId' => 2,
+					'redirectUrl' => '/apps/libresign/f/request',
+				], $params);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest';
+			});
+
+		$provided = [];
+		$controller = $this->buildControllerWithMocks($appManager, $urlGenerator, $provided);
+
+		$controller->publicUpload();
+
+		self::assertArrayHasKey('public_upload_oidc_login_url', $provided);
+		self::assertSame(
+			'/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest',
+			$provided['public_upload_oidc_login_url'],
+		);
 	}
 
 	public function testPublicSignAllowsSelfWorkerSrcDomain(): void {

@@ -29,6 +29,7 @@ use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Viewer\Event\LoadViewer;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
@@ -76,6 +77,7 @@ class PageController extends AEnvironmentPageAwareController {
 		private IEventDispatcher $eventDispatcher,
 		private IURLGenerator $urlGenerator,
 		private ConfigService $docMdpConfigService,
+		private IAppManager $appManager,
 	) {
 		parent::__construct(
 			request: $request,
@@ -192,6 +194,7 @@ class PageController extends AEnvironmentPageAwareController {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
 		}
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
+		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
@@ -211,6 +214,29 @@ class PageController extends AEnvironmentPageAwareController {
 		$response->setContentSecurityPolicy($policy);
 
 		return $response;
+	}
+
+	/**
+	 * Build the login URL for the Public Upload landing page's "Sign in" /
+	 * "Get started" gate when an administrator has configured a User OIDC
+	 * provider as the login destination.
+	 *
+	 * Returns an empty string when no User OIDC provider is configured
+	 * (provider id 0, the default) or when the `user_oidc` app is not enabled,
+	 * allowing the caller to fall back to the existing Nextcloud `/login` flow.
+	 */
+	private function getPublicUploadOidcLoginUrl(): string {
+		$providerId = $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0);
+		if ($providerId <= 0) {
+			return '';
+		}
+		if (!$this->appManager->isEnabledForUser('user_oidc')) {
+			return '';
+		}
+		return $this->urlGenerator->linkToRoute('user_oidc.login.login', [
+			'providerId' => $providerId,
+			'redirectUrl' => $this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
+		]);
 	}
 
 	/**

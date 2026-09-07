@@ -13,6 +13,7 @@ use OCA\Libresign\Handler\CertificateEngine\CertificateEngineFactory;
 use OCA\Libresign\Service\CertificatePolicyService;
 use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
+use OCA\Libresign\Service\UserOidcProviderService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureTextService;
@@ -35,6 +36,7 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private SignatureBackgroundService&MockObject $signatureBackgroundService;
 	private FooterService&MockObject $footerService;
 	private DocMdpConfigService&MockObject $docMdpConfigService;
+	private UserOidcProviderService&MockObject $userOidcProviderService;
 	public function setUp(): void {
 		$this->initialState = $this->createMock(IInitialState::class);
 		$this->identifyMethodService = $this->createMock(IdentifyMethodService::class);
@@ -45,6 +47,7 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->signatureBackgroundService = $this->createMock(SignatureBackgroundService::class);
 		$this->footerService = $this->createMock(FooterService::class);
 		$this->docMdpConfigService = $this->createMock(DocMdpConfigService::class);
+		$this->userOidcProviderService = $this->createMock(UserOidcProviderService::class);
 		$this->admin = new Admin(
 			$this->initialState,
 			$this->identifyMethodService,
@@ -55,6 +58,7 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			$this->signatureBackgroundService,
 			$this->footerService,
 			$this->docMdpConfigService,
+			$this->userOidcProviderService,
 		);
 	}
 
@@ -132,5 +136,50 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->assertFalse($provided['files_list_next_enabled']);
 		$this->assertArrayHasKey('visible_elements_next_enabled', $provided);
 		$this->assertFalse($provided['visible_elements_next_enabled']);
+	}
+
+	public function testGetFormProvidesPublicUploadOidcProviderIdInitialState(): void {
+		$provided = [];
+		$this->initialState
+			->method('provideInitialState')
+			->willReturnCallback(function (string $key, mixed $value) use (&$provided): void {
+				$provided[$key] = $value;
+			});
+
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\IEngineHandler::class);
+		$engine->method('getName')->willReturn('JSignPdf');
+		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
+		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
+		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getTemplate')->willReturn('');
+		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
+		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
+		$this->footerService->method('getTemplateVariablesMetadata')->willReturn([]);
+		$this->footerService->method('getTemplate')->willReturn('');
+		$this->footerService->method('isDefaultTemplate')->willReturn(true);
+		$this->docMdpConfigService->method('getConfig')->willReturn([]);
+		$this->userOidcProviderService->method('getAvailableProviders')->willReturn([
+			['id' => 2, 'label' => 'GoPaperless OIDC'],
+		]);
+
+		$this->admin->getForm();
+
+		// Unconfigured by default (0); independent of oidc_sso_handoff_enabled.
+		$this->assertArrayHasKey('public_upload_login_provider_id', $provided);
+		$this->assertSame(0, $provided['public_upload_login_provider_id']);
+		$this->assertArrayHasKey('oidc_sso_handoff_enabled', $provided);
+		$this->assertFalse($provided['oidc_sso_handoff_enabled']);
+
+		// The dropdown's option list comes straight from the discovery
+		// service -- the admin never types a provider id.
+		$this->assertArrayHasKey('user_oidc_providers', $provided);
+		$this->assertSame([
+			['id' => 2, 'label' => 'GoPaperless OIDC'],
+		], $provided['user_oidc_providers']);
 	}
 }

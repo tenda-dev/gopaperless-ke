@@ -30,6 +30,26 @@ const NcCheckboxRadioSwitchStub = {
 	template: '<button role="switch" :aria-checked="String(modelValue)" @click="$emit(\'update:modelValue\', !modelValue)"><slot /></button>',
 }
 
+const NcSelectStub = {
+	name: 'NcSelect',
+	props: {
+		modelValue: {
+			type: Object,
+			default: null,
+		},
+		options: {
+			type: Array,
+			default: () => [],
+		},
+	},
+	emits: ['update:model-value'],
+	template: `<select
+		:value="modelValue ? modelValue.id : ''"
+		@change="$emit('update:model-value', options.find(o => String(o.id) === $event.target.value) ?? null)">
+		<option v-for="option in options" :key="option.id" :value="option.id">{{ option.label }}</option>
+	</select>`,
+}
+
 const OCP = {
 	AppConfig: {
 		setValue: vi.fn(),
@@ -44,6 +64,7 @@ function createWrapper() {
 			stubs: {
 				NcSettingsSection: { template: '<div><slot /></div>' },
 				NcCheckboxRadioSwitch: NcCheckboxRadioSwitchStub,
+				NcSelect: NcSelectStub,
 			},
 		},
 	})
@@ -61,6 +82,90 @@ describe('PublicLanding.vue', () => {
 		expect(wrapper.vm.uploadLandingEnabled).toBe(false)
 		expect(wrapper.vm.accountCreationEnabled).toBe(false)
 		expect(wrapper.vm.acceptTermsEnabled).toBe(false)
+	})
+
+	it('defaults to the Nextcloud Login option when no provider is configured and none are discovered', () => {
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.oidcProviderOptions).toEqual([{ id: 0, label: 'Nextcloud Login' }])
+		expect(wrapper.vm.selectedOidcProvider).toEqual({ id: 0, label: 'Nextcloud Login' })
+	})
+
+	it('lists discovered User OIDC providers alongside Nextcloud Login', () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'user_oidc_providers') {
+				return [
+					{ id: 2, label: 'GoPaperless OIDC' },
+					{ id: 5, label: 'Microsoft Entra ID' },
+				]
+			}
+			return fallback
+		})
+
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.oidcProviderOptions).toEqual([
+			{ id: 0, label: 'Nextcloud Login' },
+			{ id: 2, label: 'GoPaperless OIDC' },
+			{ id: 5, label: 'Microsoft Entra ID' },
+		])
+	})
+
+	it('preselects the currently configured provider by id', () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'user_oidc_providers') {
+				return [
+					{ id: 2, label: 'GoPaperless OIDC' },
+					{ id: 5, label: 'Microsoft Entra ID' },
+				]
+			}
+			if (key === 'public_upload_login_provider_id') return 5
+			return fallback
+		})
+
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.selectedOidcProvider).toEqual({ id: 5, label: 'Microsoft Entra ID' })
+	})
+
+	it('falls back to Nextcloud Login when the configured provider id is no longer in the discovered list', () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'user_oidc_providers') {
+				return [{ id: 2, label: 'GoPaperless OIDC' }]
+			}
+			if (key === 'public_upload_login_provider_id') return 99
+			return fallback
+		})
+
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.selectedOidcProvider).toEqual({ id: 0, label: 'Nextcloud Login' })
+	})
+
+	it('saves the selected provider id when a provider is chosen', async () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'user_oidc_providers') {
+				return [{ id: 2, label: 'GoPaperless OIDC' }]
+			}
+			return fallback
+		})
+
+		const wrapper = createWrapper()
+		const select = wrapper.findComponent(NcSelectStub)
+
+		await select.vm.$emit('update:model-value', { id: 2, label: 'GoPaperless OIDC' })
+
+		expect(OCP.AppConfig.setValue).toHaveBeenCalledWith('libresign', 'public_upload_login_provider_id', '2')
+		expect(wrapper.vm.selectedOidcProvider).toEqual({ id: 2, label: 'GoPaperless OIDC' })
+	})
+
+	it('saves provider id 0 when Nextcloud Login is chosen', async () => {
+		const wrapper = createWrapper()
+		const select = wrapper.findComponent(NcSelectStub)
+
+		await select.vm.$emit('update:model-value', { id: 0, label: 'Nextcloud Login' })
+
+		expect(OCP.AppConfig.setValue).toHaveBeenCalledWith('libresign', 'public_upload_login_provider_id', '0')
 	})
 
 	it('loads enabled flags from initial state', () => {

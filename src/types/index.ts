@@ -136,6 +136,8 @@ export type AdminInitialState = {
 	public_upload_landing_enabled: boolean
 	public_account_creation_enabled: boolean
 	public_accept_terms_enabled: boolean
+	public_upload_login_provider_id: number
+	user_oidc_providers: Array<{ id: number, label: string }>
 	oidc_sso_handoff_enabled: boolean
 	phone_mno_routing_v2_enabled: boolean
 }

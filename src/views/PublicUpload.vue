@@ -16,6 +16,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser } from '@nextcloud/auth'
+import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
 
 import PublicUploadEcosystem from '../components/PublicUploadEcosystem.vue'
@@ -38,10 +39,20 @@ onMounted(() => {
 })
 
 /**
- * We gate before any file bytes: any action sends the visitor to the Nextcloud login
- * page, which returns them to the authenticated upload/request view.
+ * Server-built login destination for the configured User OIDC provider.
+ * Empty when Public Upload uses the default Nextcloud login.
+ */
+const oidcLoginUrl = loadState<string>('libresign', 'public_upload_oidc_login_url', '')
+
+/**
+ * We gate before any file bytes: any action sends the visitor to a login
+ * destination, which returns them to the authenticated upload/request view.
  */
 function gateToLogin(): void {
+	if (oidcLoginUrl) {
+		window.location.href = oidcLoginUrl
+		return
+	}
 	// redirect_url must be a server-relative path: Nextcloud prepends the host itself
 	const target = generateUrl('/apps/libresign/f/request')
 	window.location.href = generateUrl('/login') + '?redirect_url=' + encodeURIComponent(target)

@@ -18,6 +18,7 @@ use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Payment\MnoRoutingRegistry;
 use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
+use OCA\Libresign\Service\UserOidcProviderService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
@@ -50,6 +51,7 @@ class Admin implements ISettings {
 		private SignatureProfileService $signatureProfileService,
 		private PhoneOverrideAdminService $phoneOverrideAdminService,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
+		private UserOidcProviderService $userOidcProviderService,
 	) {
 	}
 	#[\Override]
@@ -149,6 +151,11 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
 		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
 		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
+		// Public Upload login destination; provider id 0 keeps the default Nextcloud login.
+		// Independent of the separate OIDC SSO handoff feature.
+		$this->initialState->provideInitialState('public_upload_login_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0));
+		// Discovered User OIDC providers for the admin login-destination selector.
+		$this->initialState->provideInitialState('user_oidc_providers', $this->userOidcProviderService->getAvailableProviders());
 
 		//	OIDC SSO HANDOFF
 		//	Gate the public /sso handoff endpoint that sends users through

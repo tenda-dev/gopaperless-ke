@@ -22,6 +22,12 @@ vi.mock('@nextcloud/router', () => ({
 	generateUrl: vi.fn((path: string) => path),
 }))
 
+const loadStateMock = vi.fn()
+
+vi.mock('@nextcloud/initial-state', () => ({
+	loadState: (...args: unknown[]) => loadStateMock(...args),
+}))
+
 vi.mock('vue-router', async () => {
 	const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
 	return {
@@ -35,6 +41,8 @@ vi.mock('vue-router', async () => {
 describe('PublicUpload', () => {
 	beforeEach(() => {
 		replaceMock.mockReset()
+		loadStateMock.mockReset()
+		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
 		Object.defineProperty(window, 'matchMedia', {
 			writable: true,
 			value: vi.fn().mockImplementation((query: string) => ({
@@ -53,7 +61,7 @@ describe('PublicUpload', () => {
 		expect(wrapper.findComponent(PublicUploadEcosystem).exists()).toBe(true)
 	})
 
-	it('navigates to login when get-started is emitted', () => {
+	it('navigates to login when get-started is emitted and no OIDC provider is configured', () => {
 		const hrefSetter = vi.fn()
 		Object.defineProperty(window.location, 'href', {
 			configurable: true,
@@ -64,5 +72,45 @@ describe('PublicUpload', () => {
 		wrapper.findComponent(PublicUploadHero).vm.$emit('get-started')
 
 		expect(hrefSetter).toHaveBeenCalledWith('/login?redirect_url=%2Fapps%2Flibresign%2Ff%2Frequest')
+	})
+
+	it('navigates to the configured OIDC login URL when get-started is emitted', () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'public_upload_oidc_login_url') {
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest'
+			}
+			return fallback
+		})
+
+		const hrefSetter = vi.fn()
+		Object.defineProperty(window.location, 'href', {
+			configurable: true,
+			set: hrefSetter,
+		})
+
+		const wrapper = shallowMount(PublicUpload)
+		wrapper.findComponent(PublicUploadHero).vm.$emit('get-started')
+
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest')
+	})
+
+	it('navigates to the configured OIDC login URL when sign-in is emitted', () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+			if (key === 'public_upload_oidc_login_url') {
+				return '/apps/user_oidc/login/1?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest'
+			}
+			return fallback
+		})
+
+		const hrefSetter = vi.fn()
+		Object.defineProperty(window.location, 'href', {
+			configurable: true,
+			set: hrefSetter,
+		})
+
+		const wrapper = shallowMount(PublicUpload)
+		wrapper.findComponent(PublicUploadHeader).vm.$emit('sign-in')
+
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/user_oidc/login/1?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest')
 	})
 })
