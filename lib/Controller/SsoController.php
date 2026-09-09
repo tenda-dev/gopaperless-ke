@@ -1,5 +1,9 @@
 <?php
 
+// CI-baseline probe: no functional change. Forces the PHPUnit/Behat matrix to
+// run against custom/stable34 so pre-existing failures can be separated from
+// PR-caused ones. Safe to close unmerged.
+
 declare(strict_types=1);
 
 namespace OCA\Libresign\Controller;
