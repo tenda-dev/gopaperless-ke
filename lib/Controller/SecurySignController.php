@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+/**
+ * SPDX-FileCopyrightText: 2026 Tenda World
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
@@ -20,7 +25,14 @@ use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 class SecurySignController extends Controller {
-	public function __construct(IRequest $request, private SecurySignService $signa, private ISession $session, private IUserSession $users, private IURLGenerator $urls, private LoggerInterface $logger) {
+	public function __construct(
+		IRequest $request,
+		private SecurySignService $signa,
+		private ISession $session,
+		private IUserSession $users,
+		private IURLGenerator $urls,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
 

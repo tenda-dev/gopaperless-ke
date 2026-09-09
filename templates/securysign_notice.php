@@ -1,6 +1,11 @@
 <?php
 
 /**
+ * SPDX-FileCopyrightText: 2026 Tenda World
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/**
  * Rendered inside Nextcloud's guest layout, so it inherits the instance logo,
  * theme colour and footer without shipping any CSS of its own. Every path out of
  * the gate lands here, and every one of them offers something to click — a dead

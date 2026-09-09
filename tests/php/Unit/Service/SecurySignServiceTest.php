@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+/**
+ * SPDX-FileCopyrightText: 2026 Tenda World
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 namespace OCA\Libresign\Tests\Unit\Service;
 
 use OCA\Libresign\Service\SecurySignService;
@@ -13,12 +18,12 @@ use OCP\IConfig;
 use OCP\IServerContainer;
 use OCP\ISession;
 use OCP\IUserSession;
-use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 final class SecurySignServiceTest extends TestCase {
 	public function testReturnPathsCannotEscapeTheAppOrRestartAuthentication(): void {
-		foreach ([null, '//evil.test', '/apps/libresign/../settings', '/apps/libresign/%2e%2e/settings', '/apps/libresign/%252e%252e/settings', '/apps/libresign/\\evil.test', '/apps/libresign/sso', '/apps/libresign/securysign/return', "https://evil.test", "/apps/libresign/f/\nfoo"] as $path) {
+		foreach ([null, '//evil.test', '/apps/libresign/../settings', '/apps/libresign/%2e%2e/settings', '/apps/libresign/%252e%252e/settings', '/apps/libresign/\\evil.test', '/apps/libresign/sso', '/apps/libresign/securysign/return', 'https://evil.test', "/apps/libresign/f/\nfoo"] as $path) {
 			self::assertSame('/apps/libresign/', SecurySignService::returnPath($path));
 		}
 		self::assertSame('/apps/libresign/f/document?tab=sign', SecurySignService::returnPath('/apps/libresign/f/document?tab=sign'));
@@ -29,7 +34,9 @@ final class SecurySignServiceTest extends TestCase {
 		$config->method('getValueInt')->willReturn(2);
 		$session = $this->createMock(ISession::class);
 		$provider = null;
-		$session->method('get')->willReturnCallback(static function () use (&$provider) { return $provider; });
+		$session->method('get')->willReturnCallback(static function () use (&$provider) {
+			return $provider;
+		});
 		$users = $this->createMock(IUserSession::class);
 		$users->method('isLoggedIn')->willReturn(true);
 		$service = new SecurySignService($config, $this->createMock(IConfig::class), $session, $users, $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
@@ -43,7 +50,9 @@ final class SecurySignServiceTest extends TestCase {
 	public function testTheOnboardingTargetComesFromOccOrTheSystemValue(): void {
 		$fromOcc = '';
 		$appConfig = $this->createMock(IAppConfig::class);
-		$appConfig->method('getValueString')->willReturnCallback(static function () use (&$fromOcc) { return $fromOcc; });
+		$appConfig->method('getValueString')->willReturnCallback(static function () use (&$fromOcc) {
+			return $fromOcc;
+		});
 		$system = $this->createMock(IConfig::class);
 		$system->method('getSystemValueString')->willReturn('https://staging.tendaworld.com');
 		$service = new SecurySignService($appConfig, $system, $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
@@ -118,14 +127,27 @@ final class SecurySignServiceTest extends TestCase {
 		$users->method('isLoggedIn')->willReturn(true);
 
 		$token = new class {
-			public function isExpired(): bool { return false; }
-			public function getProviderId(): int { return 1; }
-			public function getAccessToken(): string { return 'at'; }
+			public function isExpired(): bool {
+				return false;
+			}
+			public function getProviderId(): int {
+				return 1;
+			}
+			public function getAccessToken(): string {
+				return 'at';
+			}
 		};
 		$tokens = new class($token) {
-			public function __construct(private object $token) {}
-			public function getToken(): object { return $this->token; }
-			public function decodeIdToken(object $t): array { return ['iss' => 'https://idp.test/realms/signa', 'sub' => 'google-1']; }
+			public function __construct(
+				private object $token,
+			) {
+			}
+			public function getToken(): object {
+				return $this->token;
+			}
+			public function decodeIdToken(object $t): array {
+				return ['iss' => 'https://idp.test/realms/signa', 'sub' => 'google-1'];
+			}
 		};
 		$container = $test->createMock(IServerContainer::class);
 		$container->method('get')->willReturn($tokens);

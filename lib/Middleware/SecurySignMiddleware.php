@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+/**
+ * SPDX-FileCopyrightText: 2026 Tenda World
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 namespace OCA\Libresign\Middleware;
 
 use OCA\Libresign\AppInfo\Application;
@@ -20,7 +25,12 @@ use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
 
 class SecurySignMiddleware extends Middleware {
-	public function __construct(private SecurySignService $signa, private IRequest $request, private IURLGenerator $urls, private LoggerInterface $logger) {
+	public function __construct(
+		private SecurySignService $signa,
+		private IRequest $request,
+		private IURLGenerator $urls,
+		private LoggerInterface $logger,
+	) {
 	}
 
 	/**
