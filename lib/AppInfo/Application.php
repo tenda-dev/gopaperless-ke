@@ -25,6 +25,7 @@ use OCA\Libresign\Listener\RevokeClickToSignCertificateListener;
 use OCA\Libresign\Listener\SignedCallbackListener;
 use OCA\Libresign\Listener\SmsNotifyListener;
 use OCA\Libresign\Listener\TwofactorGatewayListener;
+use OCA\Libresign\Listener\UserCreatedListener;
 use OCA\Libresign\Listener\UserDeletedListener;
 use OCA\Libresign\Middleware\GlobalInjectionMiddleware;
 use OCA\Libresign\Middleware\InjectionMiddleware;
@@ -36,6 +37,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
+use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
 
 /**
@@ -58,6 +60,7 @@ class Application extends App implements IBootstrap {
 	public function register(IRegistrationContext $context): void {
 		$context->registerMiddleWare(GlobalInjectionMiddleware::class, true);
 		$context->registerMiddleWare(InjectionMiddleware::class);
+		$context->registerMiddleWare(\OCA\Libresign\Middleware\SecurySignMiddleware::class);
 		$context->registerCapability(Capabilities::class);
 
 		$context->registerNotifierService(Notifier::class);
@@ -96,6 +99,7 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(SendSignNotificationEvent::class, TwofactorGatewayListener::class);
 		$context->registerEventListener(SignedEvent::class, TwofactorGatewayListener::class);
 
+		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
 
 		$context->registerDashboardWidget(PendingSignaturesWidget::class);
