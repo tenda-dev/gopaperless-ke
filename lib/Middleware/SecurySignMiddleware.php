@@ -11,6 +11,7 @@ namespace OCA\Libresign\Middleware;
 
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Controller\PageController;
+use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Service\SecurySignService;
@@ -43,6 +44,15 @@ class SecurySignMiddleware extends Middleware {
 	public function beforeController(Controller $controller, string $methodName): void {
 		if (!$this->signa->applies()) {
 			return;
+		}
+
+		// SecurySign owns the visible signature. Refusing the three endpoints that
+		// change one is what makes that real: hiding a button in the Vue leaves the
+		// API able to replace the card that goes on a document. Reads are
+		// untouched, so the mirrored signature still renders everywhere.
+		if ($controller instanceof SignatureElementsController
+			&& in_array($methodName, ['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'], true)) {
+			throw new LibresignException('Your signature is managed in SecurySign and cannot be changed here.', Http::STATUS_FORBIDDEN);
 		}
 
 		if (!$controller instanceof SignFileController
@@ -89,7 +99,7 @@ class SecurySignMiddleware extends Middleware {
 			}
 			return $this->notice(
 				'SecurySign is not responding',
-				'We could not reach the service that holds your certificate. Your documents and any payment are safe. Please try again in a moment.',
+				'We could not reach the service that holds your certificate and signature. Your documents and any payment are safe. Please try again in a moment.',
 				503,
 				'Try again',
 				SecurySignService::returnPath($this->request->getRequestUri()),
