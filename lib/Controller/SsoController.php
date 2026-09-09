@@ -7,6 +7,7 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UseSession;
@@ -41,7 +42,9 @@ class SsoController extends Controller {
 			$this->userSession->logout();
 		}
 
-		$redirectUrl = $this->getSafeRedirectUrl($redirectUrl);
+		$redirectUrl = $this->urlGenerator->linkToRoute('libresign.sso.complete', [
+			'redirectUrl' => $this->getSafeRedirectUrl($redirectUrl),
+		]);
 
 		$params = [
 			'providerId' => $providerId,
@@ -52,28 +55,41 @@ class SsoController extends Controller {
 	}
 
 	/**
+	 * Where user_oidc lands after the login. It sanitises the target a second
+	 * time, on the way back in, because the value has been round-tripped
+	 * through another app by then.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/sso/complete')]
+	public function complete(?string $redirectUrl = null): RedirectResponse {
+		return new RedirectResponse($this->getSafeRedirectUrl($redirectUrl));
+	}
+
+	/**
 	 * Ensure the client-supplied redirect target stays within this LibreSign
 	 * instance. Only same-origin absolute URLs or app-relative paths under
 	 * /apps/libresign/ are accepted; everything else falls back to the app root.
+	 *
+	 * The default is built only when it is actually needed. linkToRoute() is
+	 * counted by the controller tests, and computing it eagerly made every call
+	 * one route lookup heavier than expected.
 	 */
 	private function getSafeRedirectUrl(?string $redirectUrl): string {
-		$default = $this->urlGenerator->linkToRoute('libresign.page.index');
+		if ($redirectUrl !== null && $redirectUrl !== '') {
+			// Relative app path
+			if (str_starts_with($redirectUrl, self::ALLOWED_REDIRECT_PATH_PREFIX)) {
+				return $redirectUrl;
+			}
 
-		if ($redirectUrl === null || $redirectUrl === '') {
-			return $default;
+			// Same-origin absolute URL
+			$baseUrl = $this->urlGenerator->getBaseUrl();
+			if (str_starts_with($redirectUrl, $baseUrl . self::ALLOWED_REDIRECT_PATH_PREFIX)) {
+				return $redirectUrl;
+			}
 		}
 
-		// Relative app path
-		if (str_starts_with($redirectUrl, self::ALLOWED_REDIRECT_PATH_PREFIX)) {
-			return $redirectUrl;
-		}
-
-		// Same-origin absolute URL
-		$baseUrl = $this->urlGenerator->getBaseUrl();
-		if (str_starts_with($redirectUrl, $baseUrl . self::ALLOWED_REDIRECT_PATH_PREFIX)) {
-			return $redirectUrl;
-		}
-
-		return $default;
+		return $this->urlGenerator->linkToRoute('libresign.page.index');
 	}
 }
