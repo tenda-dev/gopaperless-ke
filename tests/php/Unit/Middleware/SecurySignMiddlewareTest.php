@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Tests\Unit\Middleware;
 
 use OCA\Libresign\Controller\PageController;
+use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Middleware\SecurySignMiddleware;
@@ -47,7 +48,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 
 	public function testAnUnpreparedUserIsSentIntoOnboardingWithTheirTaskAttached(): void {
 		$this->signa->method('applies')->willReturn(true);
-		$this->signa->method('isReady')->willReturn(false);
+		$this->signa->method('readiness')->willReturn(null);
 
 		$response = $this->middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
@@ -60,7 +61,9 @@ final class SecurySignMiddlewareTest extends TestCase {
 
 	public function testAPreparedUserAndAnEmailPasswordUserBothSeeTheAppUnchanged(): void {
 		$this->signa->method('applies')->willReturnOnConsecutiveCalls(true, false);
-		$this->signa->method('isReady')->willReturn(true);
+		$this->signa->method('readiness')->willReturn(['certificateId' => '7', 'imagePngBase64' => 'cGVuZw==']);
+		// A prepared user still gets their SecurySign card mirrored locally.
+		$this->signa->expects(self::once())->method('syncVisibleSignature')->with(['certificateId' => '7', 'imagePngBase64' => 'cGVuZw==']);
 		$page = $this->page();
 
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
@@ -69,7 +72,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 
 	public function testAnOutageDoesNotSilentlyLetTheUserThrough(): void {
 		$this->signa->method('applies')->willReturn(true);
-		$this->signa->method('isReady')->willThrowException(new \RuntimeException('down', 503));
+		$this->signa->method('readiness')->willThrowException(new \RuntimeException('down', 503));
 
 		$response = $this->middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
@@ -132,7 +135,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 			$signa = $this->createMock(SecurySignService::class);
 			$signa->method('applies')->willReturn(true);
 			$signa->method('providerId')->willReturn(2);
-			$signa->method('isReady')->willThrowException(new \RuntimeException('upstream said no', $thrown));
+			$signa->method('readiness')->willThrowException(new \RuntimeException('upstream said no', $thrown));
 			$urls = $this->createMock(IURLGenerator::class);
 			$urls->method('linkToRoute')->willReturnCallback(
 				static fn (string $route, array $params = []): string => '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
@@ -154,5 +157,35 @@ final class SecurySignMiddlewareTest extends TestCase {
 			}
 			self::assertSame('/apps/dashboard/', $params['secondaryUrl']);
 		}
+	}
+	/**
+	 * SecurySign owns the card, so the endpoints that would replace it are
+	 * refused. Hiding the button in the Vue would leave the API open, and the API
+	 * is what actually decides what lands on a document. Reads stay open: the
+	 * mirrored signature has to render.
+	 */
+	public function testTheSignatureCannotBeReplacedThroughTheApi(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$controller = $this->createMock(SignatureElementsController::class);
+
+		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
+			try {
+				$this->middleware->beforeController($controller, $method);
+				self::fail($method . ' was allowed');
+			} catch (LibresignException $e) {
+				self::assertSame(403, $e->getCode());
+				self::assertStringContainsString('SecurySign', $e->getMessage());
+			}
+		}
+
+		// Reading them must still work, or the mirrored card cannot be shown.
+		$this->middleware->beforeController($controller, 'getSignatureElements');
+		$this->middleware->beforeController($controller, 'getSignatureElementPreview');
+
+		// And an email/password user keeps full control of their own signature.
+		$other = $this->createMock(SecurySignService::class);
+		$other->method('applies')->willReturn(false);
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$middleware->beforeController($controller, 'createSignatureElement');
 	}
 }
