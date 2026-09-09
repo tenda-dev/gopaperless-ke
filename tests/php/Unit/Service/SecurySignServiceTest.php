@@ -75,6 +75,34 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertFalse(SecurySignService::isCurrent(['validFrom_time_t' => 'soon', 'validTo_time_t' => 'later']));
 	}
 
+	public function testTheVisibleSignatureMustBelongToTheActiveCertificate(): void {
+		$pem = self::selfSignedPem();
+		$png = base64_encode("\x89PNG\r\n\x1a\n" . 'body');
+		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
+
+		self::assertTrue($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png]));
+		// A card left over from a previous certificate must not count as canonical.
+		self::assertFalse($this->readiness($certificate, ['certificateId' => 6, 'imagePngBase64' => $png]));
+		// No card captured yet: onboarding, not an outage.
+		self::assertFalse($this->readiness($certificate, null));
+
+		$this->expectException(\RuntimeException::class);
+		$this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => base64_encode('<html>')]);
+	}
+
+	/**
+	 * @param array<string, mixed> $certificate
+	 * @param array<string, mixed>|null $signature
+	 */
+	private function readiness(array $certificate, ?array $signature): bool {
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+		$service->method('request')->willReturnCallback(
+			static fn (string $path) => str_starts_with($path, 'pki/') ? $certificate : $signature,
+		);
+		return $service->isReady();
+	}
+
 	private static function selfSignedPem(): string {
 		$key = @openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
 		$csr = $key ? @openssl_csr_new(['commonName' => 'SecurySign Test'], $key, ['digest_alg' => 'sha256']) : false;
@@ -161,7 +189,7 @@ final class SecurySignServiceTest extends TestCase {
 			self::assertStringContainsString('pki/certificates/me', $e->getMessage());
 		}
 
-		self::assertNull(self::serviceAnswering(404)->request('pki/certificates/me', true));
+		self::assertNull(self::serviceAnswering(404)->request('signature/visible', true));
 		self::assertSame(['status' => 'none'], self::serviceAnswering(200, '{"status":"none"}')->request('pki/certificates/me'));
 	}
 	public function testClaimNamesNeverLeakValues(): void {
@@ -174,15 +202,29 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertStringContainsString('opaque', SecurySignService::claimNames('not-a-jwt'));
 		self::assertStringContainsString('unreadable', SecurySignService::claimNames('a.!!!.c'));
 	}
-	public function testACurrentCertificateIsWhatMakesAUserReady(): void {
+	public function testReadinessCarriesTheCardSoTheCallerNeedNotAskTwice(): void {
+		$pem = self::selfSignedPem();
+		$png = base64_encode("\x89PNG\r\n\x1a\n" . 'body');
 		$service = $this->getMockBuilder(SecurySignService::class)
 			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
-		$service->method('request')->willReturn([
-			'status' => 'active',
-			'credentialId' => 'c1',
-			'certificate' => ['certificateId' => 7, 'certificatePem' => self::selfSignedPem()],
-		]);
+		$service->method('request')->willReturnCallback(static fn (string $path) => $path === 'pki/certificates/me'
+			? ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]]
+			: ['certificateId' => 7, 'imagePngBase64' => $png]);
 
+		$readiness = $service->readiness();
+
+		self::assertNotNull($readiness);
+		self::assertSame('7', $readiness['certificateId'], 'the id is normalised to a string for comparison');
+		self::assertSame($png, $readiness['imagePngBase64']);
 		self::assertTrue($service->isReady());
+	}
+
+	public function testAnUnpreparedUserGetsNullRatherThanAnEmptyCard(): void {
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+		$service->method('request')->willReturn(['status' => 'none']);
+
+		self::assertNull($service->readiness());
+		self::assertFalse($service->isReady());
 	}
 }

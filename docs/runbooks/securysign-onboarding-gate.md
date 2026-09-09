@@ -16,7 +16,7 @@ links and legacy accounts never see it and keep the local signing engine.
 | Signing API gate (`/api/v1/sign/...`) | code complete, unit tested |
 | `force=1` handoff replacing a different local account | code complete, unit tested |
 | Website payment and enrolment continuation | code complete, script tested |
-| Importing the SecurySign visible signature | separate change, `feature/securysign-signature-import` |
+| Importing the SecurySign visible signature | code complete, unit tested |
 | Signing with the user's own SecurySign certificate | **not built.** See "The upstream blocker" |
 
 Nothing is enabled until `securysign_provider_id` is set to a positive value.
@@ -69,9 +69,9 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
 ## The journey
 
 1. An OIDC user opens any LibreSign page. `SecurySignMiddleware::afterController`
-   asks SecurySign whether they hold a certificate.
-2. Ready (active and inside its validity window) means the page renders
-   untouched.
+   asks SecurySign for the certificate and the visible signature card.
+2. Ready (certificate active, inside its validity window, card bound to that
+   `certificateId`) means the page renders untouched.
 3. Not ready sends the user to `/apps/libresign/securysign/onboard?returnTo=...`,
    which mints a one-hour nonce in the Nextcloud session bound to the uid and the
    OIDC `sub`, then hands off to `<tendaworld>/onboarding/gopaperless?state=&subject=`.
@@ -113,6 +113,78 @@ local account stayed on that account. `SsoController::handoff()` logs the local
 session out first, then enters `user_oidc`, then returns through
 `/apps/libresign/sso/complete`, which sanitises the redirect a second time
 before sending the user on.
+
+## The visible signature
+
+**SecurySign does not compose a card.** Probed 2026-09-06 against live:
+`/api/signature/visible` returned a 366x137 PNG of handwriting and nothing else,
+and `/download` is the same bytes with tEXt chunks added. Signa's own
+`RP_VISIBLE_SIGNATURES_USER_GUIDE` says it implements "a user-created PNG
+signature image", and that PAdES appearance placement is "not yet implemented"
+in the Java service. The website's profile panel had its plate and detail rows
+deleted on the belief that Signa composited them in; it does not.
+
+GoPaperless stores that handwriting **unchanged**. The account, issuer and
+validity lines are added at signing time by LibreSign's own signature text
+template, which already ships variables for all of them. An earlier pass here
+composited a card with GD instead; that duplicated a feature the app has, so it
+was deleted.
+
+### The template
+
+Set through `SignatureTextService::save()`, stored in app config
+`signature_text_template`, rendered by Twig at signing time:
+
+```
+Account : {{SignerEmail}}
+Issuer : {{IssuerCommonName}}
+Date of Issue : {{CertificateValidFrom|date("j M Y")}}
+Expiry Date : {{CertificateValidTo|date("j M Y")}}
+```
+
+Three things about `save()` that are not obvious:
+
+- It runs **`strip_tags()`**. Only `<br>` and `</p>` survive, as newlines. A
+  `<table>` collapses into one run-on line — which is what happened first.
+- The QR is **not** drawn by the template. `save()` regex-matches the submitted
+  text for `{{ qrcode }}` or a base64 `<img>`, sets `signature_stamp_has_qrcode`,
+  and then strips the tag. `JSignPdfHandler::createQrOnlyBackground()` composites
+  the QR onto the stamp from the document's validation URL. So submit the
+  `<img src="data:image/png;base64,{{ qrcode }}">` form: it sets the flag and
+  leaves no placeholder behind. A bare `{{ qrcode }}` would survive stripping and
+  render a base64 blob as visible text.
+- `signature_render_mode` must stay `GRAPHIC_AND_DESCRIPTION`, or the handwriting
+  is dropped in favour of text alone.
+
+### The fields describe the signing certificate, not the PDC
+
+`SignFileService::buildBaseSignatureParams()` fills `IssuerCommonName`,
+`CertificateValidFrom` and `CertificateValidTo` from `readCertificate()` — the
+certificate that **actually signs**, which today is LibreSign's local one. So the
+stamp currently reads "GoPaperless Local", not SecurySign, and the dates are the
+local certificate's. That is accurate rather than aspirational, and it only
+becomes the SecurySign PDC when the upstream blocker below is cleared.
+
+### Mirroring
+
+`readiness()` returns the handwriting and the certificate facts in the pair of
+calls the gate already makes; the middleware hands that to
+`syncVisibleSignature()`, which writes it as a LibreSign signature element
+stamped with `metadata.securysign_certificate_id` and `metadata.securysign_card`
+(`SecurySignService::CARD_VERSION`). A later page load does nothing while both
+match; a renewed certificate replaces the element, and **bumping `CARD_VERSION`
+re-imports for everyone**. Failures are logged and swallowed.
+
+`JSignPdfHandler` stamps the element image into the PDF
+(`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the
+template text plus the QR are what land on the page.
+
+Editing is refused at the endpoints that mutate — `createSignatureElement`,
+`patchSignatureElement`, `deleteSignatureElement` return 403 while the gate
+applies. Reads stay open. Do **not** wire this to
+`SignerElementsService::canCreateSignature()`: false there means "no graphic
+signature at all", which hides the Signatures view and makes `SignFileService`
+drop user images from the PDF entirely.
 
 ## When the gate cannot answer
 
@@ -216,16 +288,19 @@ has to whitelist both loopback redirect URIs,
 `http://localhost/apps/user_oidc/code` and `http://localhost:3100/callback`.
 Neither is something this app can set.
 
-The scope stays `openid signa-basic`. `GET /api/pki/certificates/me`
-authenticates on the bearer token alone: `requireAuth()` in Signa's
-`AuthFunctions.php` checks introspection, not scopes.
+The scope stays `openid signa-basic`. `GET /api/pki/certificates/me` and
+`GET /api/signature/visible` both authenticate on the bearer token alone —
+`requireAuth()` in Signa's `AuthFunctions.php` checks introspection, not scopes.
+`signa-visible-signature` only governs the reference claims Keycloak exposes
+through userinfo, which this gate never reads.
 
 What the three states look like when you drive it:
 
 | Signa state | What you should see |
 |---|---|
 | No certificate | `certificates/me` answers `{"status":"none"}`, any LibreSign page redirects to `/onboarding/gopaperless` on the website |
-| Certificate, active and inside its dates | the page renders and nothing happens |
+| Certificate, no card | certificate parses and is current, `signature/visible` 404s, same redirect |
+| Both, card bound to the active `certificateId` | the page renders and nothing happens |
 
 A brand-new Google account that has never touched Signa resolves there as user
 id `0`, which returns `{"status":"none"}` rather than an error, so it lands in
