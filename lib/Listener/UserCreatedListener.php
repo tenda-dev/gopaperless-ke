@@ -8,7 +8,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Listener;
 
-use OCA\Libresign\AppInfo\Application;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -62,7 +61,7 @@ class UserCreatedListener implements IEventListener {
 		if (!$user->getUID()) {
 			return;
 		}
-		if ($this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0) <= 0) {
+		if ((int)trim($this->appConfig->getAppValueString('securysign_provider_id', '0')) <= 0) {
 			return;
 		}
 

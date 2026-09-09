@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Tests\Unit\Listener;
 
-use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Listener\UserCreatedListener;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\EventDispatcher\Event;
@@ -41,7 +40,7 @@ final class UserCreatedListenerTest extends TestCase {
 
 	public function testIgnoresUnrelatedEvents(): void {
 		$this->appConfig->expects($this->never())
-			->method('getValueInt');
+			->method('getAppValueString');
 		$this->groupManager->expects($this->never())
 			->method('get');
 
@@ -49,9 +48,9 @@ final class UserCreatedListenerTest extends TestCase {
 	}
 
 	public function testDoesNothingWhileSecurySignIsDisabled(): void {
-		$this->appConfig->method('getValueInt')
-			->with(Application::APP_ID, 'securysign_provider_id', 0)
-			->willReturn(0);
+		$this->appConfig->method('getAppValueString')
+			->with('securysign_provider_id', '0')
+			->willReturn('0');
 		$this->groupManager->expects($this->never())
 			->method('get');
 		$this->groupManager->expects($this->never())
@@ -117,9 +116,8 @@ final class UserCreatedListenerTest extends TestCase {
 	}
 
 	private function flagEnabled(): void {
-		$this->appConfig->method('getValueInt')
-			->with(Application::APP_ID, 'securysign_provider_id', 0)
-			->willReturn(1);
+		$this->appConfig->method('getAppValueString')
+			->willReturnCallback(static fn (string $key, string $default): string => $key === 'securysign_provider_id' ? '1' : $default);
 	}
 
 	private function newUserCreatedEvent(string $uid): UserCreatedEvent {
