@@ -61,7 +61,7 @@ class DpoPaymentService {
 	 * @param string $redirectUrl
 	 * @param string|null $currency
 	 * @param string|null $backUrl Absolute customer return URL used when
-                            leaving the DPO hosted payment page.
+	 *                             leaving the DPO hosted payment page.
 	 * @return array
 	 * @throws Throwable
 	 */
