@@ -12,6 +12,7 @@ import { getRootUrl, generateUrl } from '@nextcloud/router'
 import { initialActionCode } from '../helpers/ActionMapping'
 import { isExternal } from '../helpers/isExternal'
 import { selectAction } from '../helpers/SelectAction'
+import { DPO_PAYMENT_RETURN_PARAMS } from '../payment/constants'
 
 /**
  * Generate Vue Router base url
@@ -252,6 +253,30 @@ const router: Router = createRouter({
 router.beforeEach((to, from, next) => {
 	const actionElement = document.querySelector('#initial-state-libresign-action')
 	let action
+
+	// DPO appends payment response parameters to browser redirect URLs.
+	// PaymentReturn consumes them; other routes should not retain them.
+	if (to.name !== 'PaymentReturn') {
+		const query = { ...to.query }
+		let hasDpoParams = false
+
+		for (const param of DPO_PAYMENT_RETURN_PARAMS) {
+			if (param in query) {
+				delete query[param]
+				hasDpoParams = true
+			}
+		}
+
+		if (hasDpoParams) {
+			next({
+				path: to.path,
+				query,
+				hash: to.hash,
+			})
+			return
+		}
+	}
+
 	if (actionElement) {
 		const actionValue = loadState('libresign', 'action', 0)
 		initialActionCode.value = actionValue

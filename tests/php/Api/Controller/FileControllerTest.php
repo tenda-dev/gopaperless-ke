@@ -224,4 +224,131 @@ final class FileControllerTest extends ApiTestCase {
 
 		$this->assertRequest();
 	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testValidateCanViewDocumentDefaultsToTrueWhenRestrictionDisabled(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->createAccount('nonsigner', 'password');
+		$this->getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', false);
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('nonsigner:password'),
+			])
+			->withPath('/api/v1/file/validate/uuid/' . $file->getUuid());
+
+		$response = $this->assertRequest();
+		$body = json_decode($response->getBody()->getContents(), true);
+		$this->assertTrue($body['ocs']['data']['canViewDocument'], 'canViewDocument must default to true when the restriction is disabled');
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testValidateCanViewDocumentFalseForUnauthorizedUserWhenRestrictionEnabled(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->createAccount('nonsigner', 'password');
+		$this->getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('nonsigner:password'),
+			])
+			->withPath('/api/v1/file/validate/uuid/' . $file->getUuid());
+
+		$response = $this->assertRequest();
+		$body = json_decode($response->getBody()->getContents(), true);
+		$this->assertFalse($body['ocs']['data']['canViewDocument'], 'A non-owner, non-signer must not be authorized to view the document');
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testValidateCanViewDocumentTrueForOwnerWhenRestrictionEnabled(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('owner:password'),
+			])
+			->withPath('/api/v1/file/validate/uuid/' . $file->getUuid());
+
+		$response = $this->assertRequest();
+		$body = json_decode($response->getBody()->getContents(), true);
+		$this->assertTrue($body['ocs']['data']['canViewDocument'], 'The file owner must remain authorized to view the document');
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testValidateCanViewDocumentTrueForSignerWhenRestrictionEnabled(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->createAccount('signer', 'password');
+		$this->getMockAppConfig()->setValueBool(Application::APP_ID, 'restrict_validation_document_access', true);
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('signer:password'),
+			])
+			->withPath('/api/v1/file/validate/uuid/' . $file->getUuid());
+
+		$response = $this->assertRequest();
+		$body = json_decode($response->getBody()->getContents(), true);
+		$this->assertTrue($body['ocs']['data']['canViewDocument'], 'An existing signer must remain authorized to view the document');
+	}
 }

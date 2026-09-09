@@ -179,6 +179,21 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 			throw new RuntimeException('Redirect URL host not allowed');
 		}
 
+		if ($payload->returnUrl === null || $payload->returnUrl === '') {
+			throw new RuntimeException('Return URL is required for card payments');
+		}
+
+		$returnHost = parse_url($payload->returnUrl, PHP_URL_HOST);
+		if (!$returnHost || !in_array($returnHost, $allowedHosts, true)) {
+			throw new RuntimeException('Return URL host not allowed');
+		}
+
+		// DPO appends its own query parameters (e.g. TransactionToken,
+		// CompanyRef) onto BackURL. A fragment would swallow those
+		// parameters instead of them landing in the query string, so it's
+		// dropped here -- BackURL-only, the persisted returnUrl is untouched.
+		$backUrl = explode('#', $payload->returnUrl, 2)[0];
+
 		$result = $this->dpo->createToken(
 			$payload->email,
 			$payload->amount,
@@ -186,7 +201,8 @@ final class DpoProvider implements IMobileMoneyProvider, ICardProvider, IVerifia
 			$payload->currency,
 			'card',
 			'CC',
-			null
+			null,
+			backUrl: $backUrl,
 		);
 
 		return new CardPaymentResultDTO(

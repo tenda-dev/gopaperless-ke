@@ -1393,6 +1393,7 @@ async function handleCardPayment() {
 			userId: user.value?.uid,
 			productCode: props.productCode,
 			redirectUrl: payment.buildPaymentRedirectUrl(),
+			returnUrl: payment.buildPaymentReturnUrl(),
 			quantity: props.quantity,
 			purpose: payment.paymentPurpose.value ?? 'sign_request'
 	    },
@@ -1410,17 +1411,28 @@ async function handleCardPayment() {
  */
 async function retryPayment() {
 	try {
+		const paymentMethod = selectedMethod.value === 'card' ? 'card' : 'mobile'
+		const isCardPaymentMethod = paymentMethod === 'card'
+		let redirectUrl: string | null = null
+		let returnUrl: string | null = null
+
+		if (isCardPaymentMethod) {
+			redirectUrl = payment.buildPaymentRedirectUrl()
+			returnUrl = payment.buildPaymentReturnUrl()
+		}
 		const payRes = await payment.startPayment(
 			{
 				signRequestId: props.signRequestId,
 				signUuid: effectiveSignUuid.value ?? undefined,
-				paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
+				paymentMethod,
 				phoneNumber: normalisedPhone.value || undefined,
 				userEmail: user.value?.emailAddress,
 				userId: user.value?.uid,
 				productCode: props.productCode,
 				quantity: props.quantity,
-				purpose: payment.paymentPurpose.value ?? 'sign_request'
+				purpose: payment.paymentPurpose.value ?? 'sign_request',
+				redirectUrl,
+				returnUrl,
 			},
 			(status) => {  // ← onTerminal callback
 				if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()

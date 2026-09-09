@@ -10,8 +10,10 @@ namespace OCA\Libresign\Tests\Unit\Service;
 
 use OCA\Libresign\Db\File as FileEntity;
 use OCA\Libresign\Db\FileMapper;
+use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\SignFileService;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -68,6 +70,121 @@ final class FileAccessServiceTest extends TestCase {
 		}
 
 		$this->assertSame($expected, $this->service->{$method}($identifier, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsTrueForOwner(): void {
+		$user = $this->mockUser('owner');
+		$file = $this->createFileEntity(ownerId: 'owner');
+
+		$this->fileMapper->expects($this->once())
+			->method('getById')
+			->with(10)
+			->willReturn($file);
+		$this->signFileService->expects($this->never())->method('getSignRequestToSign');
+		$this->signFileService->expects($this->never())->method('findExistingSignRequestForUser');
+
+		$this->assertTrue($this->service->userCanViewFileById(10, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsTrueForExistingInternalSigner(): void {
+		$user = $this->mockUser('signer-1');
+		$file = $this->createFileEntity(ownerId: 'owner');
+		$signRequest = $this->createMock(SignRequestEntity::class);
+
+		$this->fileMapper->method('getById')->with(20)->willReturn($file);
+		$this->signFileService->expects($this->never())->method('getSignRequestToSign');
+		$this->signFileService->expects($this->once())
+			->method('findExistingSignRequestForUser')
+			->with($file, $user)
+			->willReturn($signRequest);
+
+		$this->assertTrue($this->service->userCanViewFileById(20, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsTrueForMatchingEmailSigner(): void {
+		// From FileAccessService's perspective a matching email signer is
+		// indistinguishable from any other resolved sign request: the
+		// email-vs-account matching itself lives in
+		// SignFileService::findExistingSignRequestForUser(), which this
+		// mock stands in for.
+		$user = $this->mockUser('user-1');
+		$file = $this->createFileEntity(ownerId: 'owner');
+		$signRequest = $this->createMock(SignRequestEntity::class);
+
+		$this->fileMapper->method('getById')->with(21)->willReturn($file);
+		$this->signFileService->expects($this->once())
+			->method('findExistingSignRequestForUser')
+			->with($file, $user)
+			->willReturn($signRequest);
+
+		$this->assertTrue($this->service->userCanViewFileById(21, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsFalseForUnrelatedAuthenticatedUser(): void {
+		$user = $this->mockUser('outsider');
+		$file = $this->createFileEntity(ownerId: 'owner');
+
+		$this->fileMapper->method('getById')->with(30)->willReturn($file);
+		$this->signFileService->expects($this->never())->method('getSignRequestToSign');
+		$this->signFileService->expects($this->once())
+			->method('findExistingSignRequestForUser')
+			->with($file, $user)
+			->willReturn(null);
+
+		$this->assertFalse($this->service->userCanViewFileById(30, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsFalseForUnauthenticatedUser(): void {
+		$this->userSession->expects($this->once())
+			->method('getUser')
+			->willReturn(null);
+		$this->fileMapper->expects($this->never())->method('getById');
+
+		$this->assertFalse($this->service->userCanViewFileById(40));
+	}
+
+	public function testUserCanViewFileByIdReturnsTrueForFullySignedFileWithExistingSigner(): void {
+		// findExistingSignRequestForUser() is the read-only lookup that
+		// works regardless of file status; this asserts userCanViewFileById()
+		// relies on it (and not on getSignRequestToSign(), which would throw
+		// for an already-signed file).
+		$user = $this->mockUser('signer-1');
+		$file = $this->createFileEntity(ownerId: 'owner');
+		$signRequest = $this->createMock(SignRequestEntity::class);
+
+		$this->fileMapper->method('getById')->with(50)->willReturn($file);
+		$this->signFileService->expects($this->never())->method('getSignRequestToSign');
+		$this->signFileService->expects($this->once())
+			->method('findExistingSignRequestForUser')
+			->with($file, $user)
+			->willReturn($signRequest);
+
+		$this->assertTrue($this->service->userCanViewFileById(50, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsFalseForMissingFile(): void {
+		$user = $this->mockUser('someone');
+
+		$this->fileMapper->expects($this->once())
+			->method('getById')
+			->with(60)
+			->willThrowException(new DoesNotExistException('not found'));
+		$this->signFileService->expects($this->never())->method('findExistingSignRequestForUser');
+
+		$this->assertFalse($this->service->userCanViewFileById(60, $user));
+	}
+
+	public function testUserCanViewFileByIdReturnsFalseWhenAuthorizationLookupThrows(): void {
+		$user = $this->mockUser('someone');
+		$file = $this->createFileEntity(ownerId: 'owner');
+
+		$this->fileMapper->method('getById')->with(70)->willReturn($file);
+		$this->signFileService->expects($this->once())
+			->method('findExistingSignRequestForUser')
+			->with($file, $user)
+			->willThrowException(new \RuntimeException('lookup failed'));
+
+		$this->assertFalse($this->service->userCanViewFileById(70, $user));
 	}
 
 	#[DataProvider('provideMissingUserScenarios')]

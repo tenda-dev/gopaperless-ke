@@ -5,6 +5,20 @@
 <template>
 	<NcSettingsSection
 		:name="t('libresign', 'Validation URL')">
+		<h3 class="document-access__heading">
+			{{ t('libresign', 'Validation document access') }}
+		</h3>
+		<p>
+			<NcCheckboxRadioSwitch type="switch"
+				v-model="restrictValidationDocumentAccess"
+				@update:model-value="onRestrictValidationDocumentAccessChange">
+				{{ t('libresign', 'Restrict validation document access') }}
+			</NcCheckboxRadioSwitch>
+		</p>
+		<p class="document-access__hint">
+			{{ t('libresign', 'Limit access to the signed document to the file owner and signers, whether or not they have signed the document yet. Unauthorized users are denied access to the document and its PDF.') }}
+		</p>
+		<hr>
 		<p>
 			<NcCheckboxRadioSwitch type="switch"
 				v-model="makeValidationUrlPrivate"
@@ -89,6 +103,7 @@ const isDefaultFooterTemplateState = loadState('libresign', 'footer_template_is_
 
 const paternValidadeUrl = ref('https://validador.librecode.coop/')
 const makeValidationUrlPrivate = ref(false)
+const restrictValidationDocumentAccess = ref(false)
 const url = ref<string | null>(null)
 const addFooter = ref(true)
 const writeQrcodeOnFooter = ref(true)
@@ -116,6 +131,7 @@ function validationUrlEnter() {
 async function getData() {
 	await Promise.all([
 		getMakeValidationUrlPrivate(),
+		getRestrictValidationDocumentAccess(),
 		getAddFooterData(),
 		getWriteQrcodeOnFooter(),
 		getValidationUrlData(),
@@ -126,6 +142,11 @@ async function getData() {
 async function getMakeValidationUrlPrivate() {
 	const response = await axios.get(generateOcsUrl('/apps/provisioning_api/api/v1/config/apps/libresign/make_validation_url_private')) as SettingsResponse
 	makeValidationUrlPrivate.value = parseBooleanSetting(response.data?.ocs?.data?.data)
+}
+
+async function getRestrictValidationDocumentAccess() {
+	const response = await axios.get(generateOcsUrl('/apps/provisioning_api/api/v1/config/apps/libresign/restrict_validation_document_access')) as SettingsResponse
+	restrictValidationDocumentAccess.value = parseBooleanSetting(response.data?.ocs?.data?.data)
 }
 
 async function getAddFooterData() {
@@ -169,6 +190,10 @@ async function onMakeValidationUrlPrivateChange(value: boolean) {
 	await toggleSetting('make_validation_url_private', value)
 }
 
+async function onRestrictValidationDocumentAccessChange(value: boolean) {
+	await toggleSetting('restrict_validation_document_access', value)
+}
+
 async function onAddFooterChange(value: boolean) {
 	await toggleSetting('add_footer', value)
 }
@@ -203,6 +228,7 @@ defineExpose({
 	t,
 	paternValidadeUrl,
 	makeValidationUrlPrivate,
+	restrictValidationDocumentAccess,
 	url,
 	addFooter,
 	writeQrcodeOnFooter,
@@ -214,6 +240,7 @@ defineExpose({
 	validationUrlEnter,
 	getData,
 	getMakeValidationUrlPrivate,
+	getRestrictValidationDocumentAccess,
 	getAddFooterData,
 	getWriteQrcodeOnFooter,
 	getValidationUrlData,
@@ -222,6 +249,7 @@ defineExpose({
 	saveValidationiUrl,
 	toggleSetting,
 	onMakeValidationUrlPrivateChange,
+	onRestrictValidationDocumentAccessChange,
 	onAddFooterChange,
 	onWriteQrcodeOnFooterChange,
 	onCustomizeFooterChange,
@@ -232,5 +260,15 @@ defineExpose({
 <style lang="scss" scoped>
 input {
 	width: 100%;
+}
+
+.document-access__heading {
+	margin: 0 0 4px;
+	font-size: 16px;
+	font-weight: bold;
+}
+
+.document-access__hint {
+	color: var(--color-text-maxcontrast);
 }
 </style>

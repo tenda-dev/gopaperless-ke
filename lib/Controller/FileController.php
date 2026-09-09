@@ -22,6 +22,7 @@ use OCA\Libresign\Middleware\Attribute\RequireManager;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\File\FileListService;
 use OCA\Libresign\Service\File\SettingsLoader;
+use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SessionService;
@@ -38,6 +39,7 @@ use OCP\AppFramework\Http\RedirectResponse;
 use OCP\Files\File;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\IAppConfig;
 use OCP\IL10N;
 use OCP\IPreview;
 use OCP\IRequest;
@@ -65,6 +67,7 @@ use Psr\Log\LoggerInterface;
 class FileController extends AEnvironmentAwareController {
 	public function __construct(
 		IRequest $request,
+		private IAppConfig $appConfig,
 		private IL10N $l10n,
 		private LoggerInterface $logger,
 		private IUserSession $userSession,
@@ -80,6 +83,7 @@ class FileController extends AEnvironmentAwareController {
 		private ValidateHelper $validateHelper,
 		private SettingsLoader $settingsLoader,
 		private IURLGenerator $urlGenerator,
+		private FileAccessService $fileAccessService,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -250,6 +254,7 @@ class FileController extends AEnvironmentAwareController {
 				->showMessages($showMessages)
 				->showValidateFile($showValidateFile)
 				->toArray();
+			$return['canViewDocument'] = $this->canViewValidationDocument((int)($return['id'] ?? 0));
 			$statusCode = Http::STATUS_OK;
 		} catch (LibresignException $e) {
 			$message = $this->l10n->t($e->getMessage());
@@ -269,6 +274,22 @@ class FileController extends AEnvironmentAwareController {
 		}
 
 		return new DataResponse($return, $statusCode);
+	}
+
+	/**
+	 * Check whether the current user can view the validation document.
+	 *
+	 * When document access restriction is enabled, only the file owner or
+	 * an existing signer can view the document.
+	 */
+	private function canViewValidationDocument(int $fileId): bool {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'restrict_validation_document_access', false)) {
+			return true;
+		}
+		if ($fileId <= 0) {
+			return false;
+		}
+		return $this->fileAccessService->userCanViewFileById($fileId);
 	}
 
 	/**

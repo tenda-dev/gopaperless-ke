@@ -141,9 +141,12 @@ export async function getPaymentStatus(
  * Step 4: Verify Payment (REDIRECT ONLY)
  * =========================================================
  *
- * Used ONLY after redirect flow (card payments)
+ * Verifies/reconciles the payment with the provider.
+ * Used for:
+ * - redirect flows (DPO card)
+ * - DPO mobile reconciliation
  *
- * DO NOT use this for mobile flows
+ * Returns the authoritative payment status.
  */
 export async function verifyPayment(
 	reference: string

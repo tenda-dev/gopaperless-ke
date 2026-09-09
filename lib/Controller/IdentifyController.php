@@ -24,6 +24,7 @@ use OCA\Libresign\Service\Identify\SignerSearchContext;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Collaboration\Collaborators\ISearch;
 use OCP\IRequest;
@@ -62,13 +63,15 @@ class IdentifyController extends AEnvironmentAwareController {
 	 */
 	#[NoAdminRequired]
 	#[RequireManager]
+	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/identify-account/search', requirements: ['apiVersion' => '(v1)'])]
 	public function search(string $search = '', string $method = '', int $page = 1, int $limit = 25): DataResponse {
 		$rawSearch = $search;
 		$search = $this->searchNormalizer->normalize($search, $method);
 
-		// Only search for string larger than a minimum length
-		if (strlen($search) < 1) {
+		// Defence in depth only. The primary privacy boundary is the
+		// removal of generic account discovery in ShareTypeResolver.
+		if (strlen($search) < 3) {
 			return new DataResponse([]);
 		}
 

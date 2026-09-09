@@ -76,6 +76,7 @@ class PaymentInitiationService {
 		$method = $dto->paymentMethod;
 		$paymentPurpose = PaymentPurpose::tryFrom($dto->purpose->value) ?? PaymentPurpose::SIGN_REQUEST;
 		$quantity = $dto->quantity;
+		$returnUrl = $dto->returnUrl;
 
 		$e164 = null;
 		$route = null;
@@ -207,6 +208,10 @@ class PaymentInitiationService {
 		if ($capability === PaymentCapability::CARD) {
 			if (!$redirectUrl || !filter_var($redirectUrl, FILTER_VALIDATE_URL)) {
 				throw new RuntimeException('Valid redirect URL required');
+			}
+
+			if (!$returnUrl || !filter_var($returnUrl, FILTER_VALIDATE_URL)) {
+				throw new RuntimeException('Valid return URL required');
 			}
 
 			$route = $this->mnoRoutingRegistry->route(
@@ -422,6 +427,7 @@ class PaymentInitiationService {
 						email: $userEmail,
 						redirectUrl: $redirectUrl,
 						callbackUrl: $callbackUrl,
+						returnUrl: $returnUrl,
 					)
 				),
 
@@ -520,6 +526,8 @@ class PaymentInitiationService {
 				$metaPayload['providerPayload'] ?? []
 			),
 			providerError: null,
+			// Originating application page the customer started from.
+			returnUrl: $returnUrl,
 		);
 
 		$payment->setProviderMetadataObject($metadata);

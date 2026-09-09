@@ -49,9 +49,13 @@ vi.mock('@nextcloud/initial-state', () => ({
 			default_signature_font_size: 18,
 			default_signature_width: 180,
 			default_signature_height: 90,
+			default_signature_minimum_width: 220,
+			default_signature_minimum_height: 70,
 			signature_text_template: 'Signed by {{ signerName }}',
 			signature_width: 180,
 			signature_height: 90,
+			signature_minimum_width: 220,
+			signature_minimum_height: 70,
 			signature_font_size: 18,
 			template_font_size: 10,
 			signature_preview_zoom_level: 100,
@@ -266,6 +270,9 @@ describe('SignatureStamp.vue', () => {
 			signatureWidth: 180,
 			signatureHeight: 90,
 			renderMode: 'GRAPHIC_AND_DESCRIPTION',
+			signatureMinimumWidth: 220,
+			signatureMinimumHeight: 70,
+			signatureMinimumEnabled: false,
 		})
 		expect(wrapper.vm.parsed).toBe('<p>Updated</p>')
 		expect(wrapper.vm.templateFontSize).toBe(12)
@@ -315,6 +322,79 @@ describe('SignatureStamp.vue', () => {
 		expect(wrapper.vm.renderMode).toBe('GRAPHIC_AND_DESCRIPTION')
 		expect(wrapper.vm.signatureWidth).toBe(180)
 		expect(wrapper.vm.signatureHeight).toBe(90)
+	})
+
+	it('loads minimum signature dimensions from initial state', () => {
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.signatureMinimumWidth).toBe(220)
+		expect(wrapper.vm.signatureMinimumHeight).toBe(70)
+	})
+
+	it('defaults the minimum signature toggle to off and hides its fields', () => {
+		const wrapper = createWrapper()
+
+		expect(wrapper.vm.signatureMinimumEnabled).toBe(false)
+
+		const textFields = wrapper.findAllComponents({ name: 'NcTextField' })
+		expect(textFields.find(c => c.props('label') === 'Minimum signature width')).toBeUndefined()
+		expect(textFields.find(c => c.props('label') === 'Minimum signature height')).toBeUndefined()
+	})
+
+	it('renders minimum signature dimension fields when the toggle is on', async () => {
+		const wrapper = createWrapper()
+		wrapper.vm.signatureMinimumEnabled = true
+		await wrapper.vm.$nextTick()
+
+		const textFields = wrapper.findAllComponents({ name: 'NcTextField' })
+		const minWidthField = textFields.find(c => c.props('label') === 'Minimum signature width')
+		const minHeightField = textFields.find(c => c.props('label') === 'Minimum signature height')
+
+		expect(minWidthField).toBeDefined()
+		expect(minHeightField).toBeDefined()
+	})
+
+	it('renders the enforce-minimum toggle', () => {
+		const wrapper = createWrapper()
+		expect(wrapper.text()).toContain('Enforce minimum signature size')
+	})
+
+	it('carries the enabled toggle in the save payload when switched on', async () => {
+		const wrapper = createWrapper()
+		wrapper.vm.signatureMinimumEnabled = true
+
+		await wrapper.vm.saveTemplate()
+		await flushPromises()
+
+		expect(axiosPostMock).toHaveBeenCalledWith('/ocs/v2.php/apps/libresign/api/v1/admin/signature-text', expect.objectContaining({
+			signatureMinimumEnabled: true,
+		}))
+	})
+
+	it('resets minimum signature dimensions back to defaults', async () => {
+		const wrapper = createWrapper()
+		wrapper.vm.signatureMinimumWidth = 300
+		wrapper.vm.signatureMinimumHeight = 120
+
+		await wrapper.vm.resetSignatureMinimumWidth()
+		await wrapper.vm.resetSignatureMinimumHeight()
+
+		expect(wrapper.vm.signatureMinimumWidth).toBe(220)
+		expect(wrapper.vm.signatureMinimumHeight).toBe(70)
+	})
+
+	it('includes minimum signature dimensions in the save payload', async () => {
+		const wrapper = createWrapper()
+		wrapper.vm.signatureMinimumWidth = 250
+		wrapper.vm.signatureMinimumHeight = 100
+
+		await wrapper.vm.saveTemplate()
+		await flushPromises()
+
+		expect(axiosPostMock).toHaveBeenCalledWith('/ocs/v2.php/apps/libresign/api/v1/admin/signature-text', expect.objectContaining({
+			signatureMinimumWidth: 250,
+			signatureMinimumHeight: 100,
+		}))
 	})
 
 	it('regression: signature dimension fields bind min="1" matching the backend SIGNATURE_DIMENSION_MINIMUM', () => {

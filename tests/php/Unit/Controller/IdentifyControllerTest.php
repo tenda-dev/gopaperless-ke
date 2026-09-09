@@ -122,11 +122,33 @@ class IdentifyControllerTest extends TestCase {
 			->with('whatsapp')
 			->willReturn($expectedShareTypes);
 
-		$response = $this->controller->search('a', 'whatsapp');
+		$response = $this->controller->search('abc', 'whatsapp');
 		$shareTypes = $this->collaboratorSearch->lastSearchCall['shareTypes'];
 
 		$this->assertSame($expectedShareTypes, $shareTypes);
 		$this->assertSame([], $response->getData());
+	}
+
+	/**
+	 * @dataProvider tooShortSearchProvider
+	 */
+	public function testSearchBelowMinimumLengthReturnsEmptyWithoutDispatching(string $search): void {
+		$this->shareTypeResolver
+			->expects($this->never())
+			->method('resolve');
+
+		$response = $this->controller->search($search, 'all');
+
+		$this->assertSame([], $response->getData());
+		$this->assertSame([], $this->collaboratorSearch->lastSearchCall);
+	}
+
+	public static function tooShortSearchProvider(): array {
+		return [
+			'empty' => [''],
+			'one character' => ['a'],
+			'two characters' => ['ab'],
+		];
 	}
 
 	public function testSearchWithEmailMethodRequestsEmailShareTypeAndNotUserShareType(): void {
@@ -141,7 +163,7 @@ class IdentifyControllerTest extends TestCase {
 			->with('email')
 			->willReturn($expectedShareTypes);
 
-		$response = $this->controller->search('a', 'email');
+		$response = $this->controller->search('abc', 'email');
 		$shareTypes = $this->collaboratorSearch->lastSearchCall['shareTypes'];
 
 		$this->assertSame($expectedShareTypes, $shareTypes);

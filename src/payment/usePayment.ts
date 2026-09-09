@@ -172,6 +172,13 @@ export function usePayment() {
 		}
 	}
 
+	function buildPaymentReturnUrl(): string {
+		return new URL(
+			router.resolve(router.currentRoute.value.fullPath).href,
+			window.location.origin
+		).toString()
+	}
+
 	const state = ref<PaymentState>('idle')
 	const activeReference = ref<string | null>(null)
 	const alreadyCharged = ref<boolean>(false)
@@ -890,6 +897,7 @@ export function usePayment() {
 		alreadyCharged,
 		useMockPayments,
 		buildPaymentRedirectUrl,
+		buildPaymentReturnUrl,
 		provider,
 		providerLocked,
 		lockPaymentProvider,

@@ -74,23 +74,23 @@ class ShareTypeResolver {
 			}
 
 			// Include existing account users in email searches.
+			//
+			// Do not add IShare::TYPE_USER here. It dispatches Nextcloud's
+			// generic UserPlugin, which performs unscoped fuzzy account discovery.
+			// Existing accounts are resolved by EmailAccountPlugin using exact email.
 			$accountSettings = $this->identifyAccountMethod->getSettings();
 			$accountEnabled = $accountSettings['enabled'];
-
-			if ($accountEnabled) {
-				$shareTypes[] = IShare::TYPE_USER;
-			}
 		}
 
 		// Only add account share types explicitly if not already added
 		// through the unified email search behaviour.
+		//
+		// Do not add IShare::TYPE_USER here. Generic account search would
+		// expose unscoped directory results. Account lookups are limited to
+		// self and requester-scoped known signers.
 		if ($includeAccount && !$includeEmail) {
 			$settings = $this->identifyAccountMethod->getSettings();
 			$accountEnabled = $settings['enabled'];
-
-			if ($accountEnabled) {
-				$shareTypes[] = IShare::TYPE_USER;
-			}
 		}
 
 		$shareTypes[] = SignerPlugin::TYPE_SIGNER;

@@ -70,4 +70,35 @@ describe('DefaultPageError', () => {
 		expect(wrapper.find('.title').text()).toBe('An error occurred')
 		expect(wrapper.find('.nc-note-card').text()).toContain('Something went wrong')
 	})
+
+	it('renders an optional server-provided "title" instead of the generic "An error occurred" heading, without changing how the error message itself is presented', () => {
+		loadState.mockImplementation((app, key, defaultValue) => {
+			if (app === 'libresign' && key === 'errors') {
+				return [{ message: 'You do not have permission to view this document' }]
+			}
+			if (app === 'libresign' && key === 'title') {
+				return 'Access denied'
+			}
+			return defaultValue
+		})
+
+		const wrapper = mount(DefaultPageError)
+
+		expect(wrapper.find('.title').text()).toBe('Access denied')
+		expect(wrapper.find('.description').text()).toBe('')
+		expect(wrapper.find('.nc-note-card').text()).toContain('You do not have permission to view this document')
+	})
+
+	it('ignores an empty "title" and preserves the existing "Page not found" behaviour', () => {
+		loadState.mockImplementation((app, key, defaultValue) => {
+			if (app === 'libresign' && key === 'title') return ''
+			return defaultValue
+		})
+
+		const wrapper = mount(DefaultPageError)
+
+		expect(wrapper.find('.title').text()).toBe('Page not found')
+		expect(wrapper.find('.description').text()).toContain('Sorry but the page you are looking for')
+		expect(wrapper.find('.nc-note-card').exists()).toBe(false)
+	})
 })

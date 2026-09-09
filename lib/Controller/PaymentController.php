@@ -74,6 +74,7 @@ class PaymentController extends AEnvironmentAwareController {
 		?string $paymentMethod,
 		?string $purpose,
 		?int $quantity,
+		?string $returnUrl,
 	): DataResponse {
 
 		try {
@@ -147,6 +148,7 @@ class PaymentController extends AEnvironmentAwareController {
 				phoneNumber: $phoneNumber,
 				purpose: $purposeEnum,
 				quantity: $quantity ?? 1,
+				returnUrl: $returnUrl
 			);
 
 			$result = $this->paymentService->startPayment($dto);
@@ -208,6 +210,7 @@ class PaymentController extends AEnvironmentAwareController {
 			'status' => $this->paymentService->mapPaymentStatus($status),
 			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 			'signRequestUuid' => $signRequestUuid,
+			'returnUrl' => $payment->getProviderMetadataObject()->returnUrl,
 		], Http::STATUS_OK);
 	}
 

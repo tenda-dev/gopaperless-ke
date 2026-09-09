@@ -461,6 +461,9 @@ class AdminController extends AEnvironmentAwareController {
 	 * @param float $signatureWidth Signature box width, minimum 1
 	 * @param float $signatureHeight Signature box height, minimum 1
 	 * @param string $renderMode Signature render mode
+	 * @param float $signatureMinimumWidth Minimum signature box width enforced on persistence, minimum 1
+	 * @param float $signatureMinimumHeight Minimum signature box height enforced on persistence, minimum 1
+	 * @param bool $signatureMinimumEnabled Whether the configured minimum signature dimensions are enforced on persistence
 	 * @return DataResponse<Http::STATUS_OK, LibresignSignatureTextSettingsResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>
 	 *
 	 * 200: OK
@@ -478,6 +481,12 @@ class AdminController extends AEnvironmentAwareController {
 		/** @todo openapi package don't evaluate SignatureTextService::DEFAULT_SIGNATURE_HEIGHT */
 		float $signatureHeight = 100,
 		string $renderMode = 'GRAPHIC_AND_DESCRIPTION',
+		/** @todo openapi package don't evaluate SignatureTextService::MINIMUM_SIGNATURE_WIDTH */
+		float $signatureMinimumWidth = 220,
+		/** @todo openapi package don't evaluate SignatureTextService::MINIMUM_SIGNATURE_HEIGHT */
+		float $signatureMinimumHeight = 70,
+		/** @todo openapi package don't evaluate SignatureTextService::MINIMUM_SIGNATURE_ENABLED */
+		bool $signatureMinimumEnabled = false,
 	): DataResponse {
 		try {
 			$return = $this->signatureTextService->save(
@@ -487,6 +496,9 @@ class AdminController extends AEnvironmentAwareController {
 				$signatureWidth,
 				$signatureHeight,
 				$renderMode,
+				$signatureMinimumWidth,
+				$signatureMinimumHeight,
+				$signatureMinimumEnabled,
 			);
 			return new DataResponse(
 				$return,

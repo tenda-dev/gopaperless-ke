@@ -60,7 +60,12 @@ export type FileListItemRecord = ApiComponents['schemas']['FileListItem']
 export type SignerDetailRecord = ApiComponents['schemas']['SignerDetail']
 export type SignerSummaryRecord = ApiComponents['schemas']['SignerSummary']
 export type ValidatedChildFileRecord = ApiComponents['schemas']['ValidatedChildFile']
-export type LoadedValidationDocument = ValidationFileRecord
+export type LoadedValidationDocument = ValidationFileRecord & {
+   /**
+	* Whether the current session can view the document's PDF.
+	*/
+	canViewDocument?: boolean
+}
 export type LoadedValidationFileDocument = LoadedValidationDocument & {
 	nodeType: 'file'
 }
@@ -131,6 +136,8 @@ export type AdminInitialState = {
 	public_upload_landing_enabled: boolean
 	public_account_creation_enabled: boolean
 	public_accept_terms_enabled: boolean
+	public_upload_login_provider_id: number
+	user_oidc_providers: Array<{ id: number, label: string }>
 	oidc_sso_handoff_enabled: boolean
 	phone_mno_routing_v2_enabled: boolean
 }

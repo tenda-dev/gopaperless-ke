@@ -158,4 +158,79 @@ final class DpoPaymentServiceTest extends TestCase {
 		self::assertStringContainsString('<MNO>mpesa&amp;co</MNO>', $capturedXml);
 		self::assertStringContainsString('<MNOcountry>kenya&quot;Inject</MNOcountry>', $capturedXml);
 	}
+
+	/**
+	 * DPO's BackURL is a customer-browser redirect (cancel/back-out of the
+	 * hosted payment page), not a server callback -- see the corrected
+	 * audit. Card payments pass an explicit $backUrl (the app's own
+	 * originating page) so a cancelled payment lands back in the app
+	 * instead of on the internal webhook route.
+	 */
+	public function testCreateTokenUsesExplicitBackUrlWhenProvided(): void {
+		$capturedXml = null;
+
+		$client = $this->givenSuccessfulDpoResponse(
+			'<API3G><Result>000</Result><ResultExplanation>OK</ResultExplanation><TransToken>TOKEN-123</TransToken></API3G>'
+		);
+		$client->expects($this->once())
+			->method('post')
+			->with(
+				$this->equalTo('https://dummy.dpo.api/'),
+				$this->callback(function (array $options) use (&$capturedXml): bool {
+					$capturedXml = $options['body'];
+					return true;
+				})
+			);
+
+		$this->service->createToken(
+			userEmail: 'user@example.com',
+			amount: 10.0,
+			redirectUrl: 'https://app.example.com/f/payment/return',
+			currency: 'KES',
+			backUrl: 'https://app.example.com/f/sign/abc-123?retrySign=true',
+		);
+
+		self::assertNotNull($capturedXml);
+		self::assertStringContainsString(
+			'<BackURL>https://app.example.com/f/sign/abc-123?retrySign=true</BackURL>',
+			$capturedXml
+		);
+		self::assertStringNotContainsString('/apps/libresign/payment/webhook/dpo', $capturedXml);
+	}
+
+	/**
+	 * Callers that don't pass $backUrl (e.g. mobile money, which has no
+	 * human-facing page to send the customer back to) must NOT get any
+	 * fallback BackURL -- BackURL is a customer-browser redirect, and
+	 * DPO's separate pushPayments server callback is configured entirely
+	 * in DPO's merchant portal, not derived here.
+	 */
+	public function testCreateTokenOmitsBackUrlTagWhenNotProvided(): void {
+		$capturedXml = null;
+
+		$client = $this->givenSuccessfulDpoResponse(
+			'<API3G><Result>000</Result><ResultExplanation>OK</ResultExplanation><TransToken>TOKEN-123</TransToken></API3G>'
+		);
+		$client->expects($this->once())
+			->method('post')
+			->with(
+				$this->equalTo('https://dummy.dpo.api/'),
+				$this->callback(function (array $options) use (&$capturedXml): bool {
+					$capturedXml = $options['body'];
+					return true;
+				})
+			);
+
+		$this->service->createToken(
+			userEmail: 'user@example.com',
+			amount: 10.0,
+			redirectUrl: 'https://app.example.com/f/payment/return',
+			currency: 'KES',
+		);
+
+		self::assertNotNull($capturedXml);
+		self::assertStringNotContainsString('<BackURL>', $capturedXml);
+		self::assertStringNotContainsString('/apps/libresign/payment/webhook/dpo', $capturedXml);
+		self::assertStringNotContainsString('callback.example', $capturedXml);
+	}
 }

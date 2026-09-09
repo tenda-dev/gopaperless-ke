@@ -21,6 +21,7 @@ use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
+use OCA\Libresign\Service\UserOidcProviderService;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IAppConfig;
@@ -50,6 +51,7 @@ class Admin implements ISettings {
 		private SignatureProfileService $signatureProfileService,
 		private PhoneOverrideAdminService $phoneOverrideAdminService,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
+		private UserOidcProviderService $userOidcProviderService,
 	) {
 	}
 	#[\Override]
@@ -69,6 +71,8 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('config_path', $this->appConfig->getValueString(Application::APP_ID, 'config_path'));
 		$this->initialState->provideInitialState('default_signature_font_size', SignatureTextService::SIGNATURE_DEFAULT_FONT_SIZE);
 		$this->initialState->provideInitialState('default_signature_height', SignatureTextService::DEFAULT_SIGNATURE_HEIGHT);
+		$this->initialState->provideInitialState('default_signature_minimum_height', SignatureTextService::MINIMUM_SIGNATURE_HEIGHT);
+		$this->initialState->provideInitialState('default_signature_minimum_width', SignatureTextService::MINIMUM_SIGNATURE_WIDTH);
 		$this->initialState->provideInitialState('default_signature_text_template', $this->signatureTextService->getDefaultTemplate());
 		$this->initialState->provideInitialState('default_signature_width', SignatureTextService::DEFAULT_SIGNATURE_WIDTH);
 		$this->initialState->provideInitialState('default_template_font_size', $this->signatureTextService->getDefaultTemplateFontSize());
@@ -78,6 +82,9 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('signature_background_type', $this->signatureBackgroundService->getSignatureBackgroundType());
 		$this->initialState->provideInitialState('signature_font_size', $this->signatureTextService->getSignatureFontSize());
 		$this->initialState->provideInitialState('signature_height', $this->signatureTextService->getFullSignatureHeight());
+		$this->initialState->provideInitialState('signature_minimum_enabled', $this->signatureTextService->getMinimumSignatureEnabled());
+		$this->initialState->provideInitialState('signature_minimum_height', $this->signatureTextService->getMinimumSignatureHeight());
+		$this->initialState->provideInitialState('signature_minimum_width', $this->signatureTextService->getMinimumSignatureWidth());
 		$this->initialState->provideInitialState('signature_preview_zoom_level', $this->appConfig->getValueFloat(Application::APP_ID, 'signature_preview_zoom_level', 100));
 		$this->initialState->provideInitialState('footer_preview_zoom_level', $this->appConfig->getValueFloat(Application::APP_ID, 'footer_preview_zoom_level', 100));
 		$this->initialState->provideInitialState('footer_preview_width', $this->appConfig->getValueInt(Application::APP_ID, 'footer_preview_width', 595));
@@ -144,6 +151,11 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
 		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
 		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
+		// Public Upload login destination; provider id 0 keeps the default Nextcloud login.
+		// Independent of the separate OIDC SSO handoff feature.
+		$this->initialState->provideInitialState('public_upload_login_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0));
+		// Discovered User OIDC providers for the admin login-destination selector.
+		$this->initialState->provideInitialState('user_oidc_providers', $this->userOidcProviderService->getAvailableProviders());
 
 		//	OIDC SSO HANDOFF
 		//	Gate the public /sso handoff endpoint that sends users through

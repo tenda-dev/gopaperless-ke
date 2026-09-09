@@ -42,6 +42,9 @@ class SignatureTextService {
 	public const FRONT_SIZE_MAX = 30;
 	public const DEFAULT_SIGNATURE_WIDTH = 350;
 	public const DEFAULT_SIGNATURE_HEIGHT = 100;
+	public const MINIMUM_SIGNATURE_WIDTH = 220;
+	public const MINIMUM_SIGNATURE_HEIGHT = 70;
+	public const MINIMUM_SIGNATURE_ENABLED = false;
 	private const QRCODE_SIZE = 100;
 	// Per-document stamp overrides; null means "follow the global config".
 	private ?SignatureStamp $stampOverride = null;
@@ -67,6 +70,9 @@ class SignatureTextService {
 		float $signatureWidth = self::DEFAULT_SIGNATURE_WIDTH,
 		float $signatureHeight = self::DEFAULT_SIGNATURE_HEIGHT,
 		string $renderMode = SignerElementsService::RENDER_MODE_DEFAULT,
+		float $signatureMinimumWidth = self::MINIMUM_SIGNATURE_WIDTH,
+		float $signatureMinimumHeight = self::MINIMUM_SIGNATURE_HEIGHT,
+		bool $signatureMinimumEnabled = self::MINIMUM_SIGNATURE_ENABLED,
 	): array {
 		if ($templateFontSize > self::FRONT_SIZE_MAX || $templateFontSize < self::FONT_SIZE_MINIMUM) {
 			// TRANSLATORS This message refers to the font size used in the text
@@ -94,6 +100,19 @@ class SignatureTextService {
 			// PDF. "Width" and "height" are its pixel dimensions. %.0f is the
 			// minimum allowed value for each dimension.
 			throw new LibresignException($this->l10n->t('Invalid signature box size. Width and height must be at least %.0f.', [self::SIGNATURE_DIMENSION_MINIMUM]));
+		}
+		if (
+			!is_finite($signatureMinimumWidth)
+			|| !is_finite($signatureMinimumHeight)
+			|| $signatureMinimumWidth < self::SIGNATURE_DIMENSION_MINIMUM
+			|| $signatureMinimumHeight < self::SIGNATURE_DIMENSION_MINIMUM
+		) {
+			// TRANSLATORS This message is shown when the minimum signature box size
+			// configured by the admin is invalid. The minimum signature box size is
+			// the smallest width/height a SIGNATURE element will be allowed to keep
+			// once persisted; undersized elements are silently expanded up to it.
+			// %.0f is the minimum allowed value for each dimension.
+			throw new LibresignException($this->l10n->t('Invalid minimum signature box size. Width and height must be at least %.0f.', [self::SIGNATURE_DIMENSION_MINIMUM]));
 		}
 		$hasQrCode = (bool)preg_match('/\{\{\s*qrcode\s*\}\}|<img[^>]+src=["\']data:image\/png;base64,/i', $template);
 		$this->appConfig->setValueBool(Application::APP_ID, 'signature_stamp_has_qrcode', $hasQrCode);
@@ -123,6 +142,9 @@ class SignatureTextService {
 		$this->appConfig->setValueFloat(Application::APP_ID, 'template_font_size', $templateFontSize);
 		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_font_size', $signatureFontSize);
 		$this->appConfig->setValueString(Application::APP_ID, 'signature_render_mode', $renderMode);
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_minimum_width', $signatureMinimumWidth);
+		$this->appConfig->setValueFloat(Application::APP_ID, 'signature_minimum_height', $signatureMinimumHeight);
+		$this->appConfig->setValueBool(Application::APP_ID, 'signature_minimum_enabled', $signatureMinimumEnabled);
 		return $this->parse($template);
 	}
 
@@ -517,6 +539,18 @@ class SignatureTextService {
 
 	public function getFullSignatureHeight(): float {
 		return $this->getSanitizedDimension('signature_height', self::DEFAULT_SIGNATURE_HEIGHT);
+	}
+
+	public function getMinimumSignatureWidth(): float {
+		return $this->getSanitizedDimension('signature_minimum_width', self::MINIMUM_SIGNATURE_WIDTH);
+	}
+
+	public function getMinimumSignatureHeight(): float {
+		return $this->getSanitizedDimension('signature_minimum_height', self::MINIMUM_SIGNATURE_HEIGHT);
+	}
+
+	public function getMinimumSignatureEnabled(): bool {
+		return $this->appConfig->getValueBool(Application::APP_ID, 'signature_minimum_enabled', self::MINIMUM_SIGNATURE_ENABLED);
 	}
 
 	public function getSignatureWidth(): float {

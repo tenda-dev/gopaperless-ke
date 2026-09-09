@@ -34,7 +34,6 @@ use Throwable;
  * - Amounts are passed in MAJOR units (e.g. 80.00)
  */
 class DpoPaymentService {
-	private const DPO_WEBHOOK_PATH = '/apps/libresign/payment/webhook/dpo';
 	private string $defaultCurrency = 'KES';
 	private IClientService $clientService;
 	private LoggerInterface $logger;
@@ -61,6 +60,8 @@ class DpoPaymentService {
 	 * @param float $amount
 	 * @param string $redirectUrl
 	 * @param string|null $currency
+	 * @param string|null $backUrl Absolute customer return URL used when
+	 *                             leaving the DPO hosted payment page.
 	 * @return array
 	 * @throws Throwable
 	 */
@@ -73,6 +74,7 @@ class DpoPaymentService {
 		?string $defaultPayment = null,
 		?string $defaultPaymentCountry = null,
 		?string $defaultPaymentMno = null,
+		?string $backUrl = null,
 	): array {
 
 		$config = $this->getConfig();
@@ -80,28 +82,21 @@ class DpoPaymentService {
 		$companyToken = $this->escapeXml($config['companyToken']);
 		$serviceId = $this->escapeXml($config['serviceId']);
 		$paymentUrl = $config['paymentUrl'];
-		$callbackBaseUrl = $config['callbackBaseUrl'];
-		$callbackUrl = null;
 		$redirectXml = '';
-
-		if (!$callbackBaseUrl) {
-			throw new RuntimeException('DPO callbackBaseUrl is not configured');
-		}
+		$backUrlXml = '';
 
 		/**
 		 * Block tabs not relevant to user on DPO payment page
 		 */
 		$blockPaymentXml = $this->buildBlockPaymentXml($method ?? 'card');
 
-		/**
-		 * Apply callback base URL (important for DPO routing)
-		 */
-		if ($callbackBaseUrl) {
-			$callbackUrl = rtrim($callbackBaseUrl ?? '', '/') . self::DPO_WEBHOOK_PATH;
+		if ($backUrl !== null && $backUrl !== '') {
+			$escapedBackUrl = $this->escapeXml($backUrl);
+			$backUrlXml = "<BackURL>{$escapedBackUrl}</BackURL>";
 		}
 
 		/**
-		 * RedirectURL is user-facing.
+		 * RedirectURL is the customer destination after the DPO payment flow.
 		 * Card payments require it.
 		 * Mobile money flows may omit it.
 		 */
@@ -142,7 +137,6 @@ class DpoPaymentService {
 		$escapedAmount = $this->escapeXml((string)$amount);
 		$escapedCurrency = $this->escapeXml($currency);
 		$escapedEmail = $this->escapeXml($userEmail);
-		$escapedCallbackUrl = $this->escapeXml($callbackUrl);
 
 		$serviceDate = date('Y/m/d H:i');
 		$escapedServiceDate = $this->escapeXml($serviceDate);
@@ -150,9 +144,10 @@ class DpoPaymentService {
 		/**
 		 * XML REQUEST BODY
 		 *
-		 * NOTE:
-		 * - BackURL = server callback
-		 * - RedirectURL = user redirect
+		 * RedirectURL and BackURL are customer-browser redirects.
+		 * RedirectURL is used after the payment flow, while BackURL is used
+		 * when the customer leaves the hosted payment page via DPO's back
+		 * navigation.
 		 */
 		$xml = "
 		<API3G>
@@ -167,7 +162,7 @@ class DpoPaymentService {
 				<customerEmail>{$escapedEmail}</customerEmail>
 
 				{$redirectXml}
-				<BackURL>{$escapedCallbackUrl}</BackURL>
+				{$backUrlXml}
 
 				{$defaultPaymentXml}
 				{$defaultPaymentCountryXml}

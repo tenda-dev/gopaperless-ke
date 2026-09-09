@@ -66,9 +66,17 @@ const errors = computed<ErrorRow[]>(() => {
 	return []
 })
 
-const title = computed(() => (errors.value.length
-	? t('libresign', 'An error occurred')
-	: t('libresign', 'Page not found')))
+// Use a server-provided title when available; otherwise fall back to
+// the generic error or page-not-found title.
+const title = computed(() => {
+	const overrideTitle = loadState<string>('libresign', 'title', '')
+	if (overrideTitle) {
+		return overrideTitle
+	}
+	return errors.value.length
+		? t('libresign', 'An error occurred')
+		: t('libresign', 'Page not found')
+})
 
 const description = computed(() => (errors.value.length
 	? ''
