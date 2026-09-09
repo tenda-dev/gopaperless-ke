@@ -34,6 +34,12 @@ use Psr\Log\LoggerInterface;
  * Never grants `admin`. The group is created if it does not exist, so a fresh
  * instance provisions correctly without anyone remembering to make it first.
  *
+ * Only active while the SecurySign integration is enabled
+ * (`securysign_provider_id` > 0): the auto-grouping exists to unstick fresh
+ * OIDC accounts for the onboarding gate, and an instance without SecurySign
+ * keeps the stock upstream behaviour (§6.2 — authorization-affecting changes
+ * stay behind the feature flag).
+ *
  * @template-implements IEventListener<UserCreatedEvent>
  */
 class UserCreatedListener implements IEventListener {
@@ -54,6 +60,9 @@ class UserCreatedListener implements IEventListener {
 		}
 		$user = $event->getUser();
 		if (!$user->getUID()) {
+			return;
+		}
+		if ($this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0) <= 0) {
 			return;
 		}
 
