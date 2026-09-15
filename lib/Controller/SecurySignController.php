@@ -47,7 +47,7 @@ class SecurySignController extends Controller {
 		}
 		try {
 			$identity = $this->signa->identity();
-			if ($this->signa->isReady()) {
+			if ($this->signa->isReady(true)) {
 				return new RedirectResponse($path);
 			}
 			$state = bin2hex(random_bytes(32));
@@ -76,7 +76,7 @@ class SecurySignController extends Controller {
 				|| $pending['sub'] !== $this->signa->identity()['sub']) {
 				return $this->failure();
 			}
-			if (!$this->signa->isReady()) {
+			if (!$this->signa->isReady(true)) {
 				return $this->failure();
 			}
 			$this->session->remove('libresign.securysign.onboarding');

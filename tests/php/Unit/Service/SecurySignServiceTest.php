@@ -66,10 +66,24 @@ final class SecurySignServiceTest extends TestCase {
 	}
 
 	public function testMissingCertificateIsDifferentFromAnOutage(): void {
-		$service = $this->getMockBuilder(SecurySignService::class)->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturn(null);
+		$constructor = [
+			$this->createMock(IAppConfig::class),
+			$this->createMock(IConfig::class),
+			$session,
+			$this->createMock(IUserSession::class),
+			$this->createMock(IServerContainer::class),
+			$this->createMock(IClientService::class),
+			$this->createMock(LoggerInterface::class),
+		];
+		$identity = ['sub' => 'google-oauth2|1', 'issuer' => 'https://idp.test/realms/signa', 'accessToken' => 'at'];
+		$service = $this->getMockBuilder(SecurySignService::class)->setConstructorArgs($constructor)->onlyMethods(['identity', 'request'])->getMock();
+		$service->method('identity')->willReturn($identity);
 		$service->method('request')->willReturn(['status' => 'none']);
 		self::assertFalse($service->isReady());
-		$service = $this->getMockBuilder(SecurySignService::class)->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+		$service = $this->getMockBuilder(SecurySignService::class)->setConstructorArgs($constructor)->onlyMethods(['identity', 'request'])->getMock();
+		$service->method('identity')->willReturn($identity);
 		$service->method('request')->willReturn(['error' => 'unavailable']);
 		$this->expectException(\RuntimeException::class);
 		$service->isReady();
@@ -197,8 +211,23 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertStringContainsString('unreadable', SecurySignService::claimNames('a.!!!.c'));
 	}
 	public function testACurrentCertificateIsWhatMakesAUserReady(): void {
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturn(null);
 		$service = $this->getMockBuilder(SecurySignService::class)
-			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+			->setConstructorArgs([
+				$this->createMock(IAppConfig::class),
+				$this->createMock(IConfig::class),
+				$session,
+				$this->createMock(IUserSession::class),
+				$this->createMock(IServerContainer::class),
+				$this->createMock(IClientService::class),
+				$this->createMock(LoggerInterface::class),
+			])->onlyMethods(['identity', 'request'])->getMock();
+		$service->method('identity')->willReturn([
+			'sub' => 'google-oauth2|1',
+			'issuer' => 'https://idp.test/realms/signa',
+			'accessToken' => 'at',
+		]);
 		$service->method('request')->willReturn([
 			'status' => 'active',
 			'credentialId' => 'c1',
@@ -206,5 +235,39 @@ final class SecurySignServiceTest extends TestCase {
 		]);
 
 		self::assertTrue($service->isReady());
+	}
+
+	public function testReadinessIsCachedPerIdentityUntilForcedToRefresh(): void {
+		$session = $this->createMock(ISession::class);
+		$cache = null;
+		$session->method('get')->willReturnCallback(static function () use (&$cache) {
+			return $cache;
+		});
+		$session->method('set')->willReturnCallback(static function (string $key, array $value) use (&$cache): void {
+			$cache = $value;
+		});
+
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->setConstructorArgs([
+				$this->createMock(IAppConfig::class),
+				$this->createMock(IConfig::class),
+				$session,
+				$this->createMock(IUserSession::class),
+				$this->createMock(IServerContainer::class),
+				$this->createMock(IClientService::class),
+				$this->createMock(LoggerInterface::class),
+			])->onlyMethods(['identity', 'request'])->getMock();
+		$service->method('identity')->willReturn([
+			'sub' => 'google-oauth2|1',
+			'issuer' => 'https://idp.test/realms/signa',
+			'accessToken' => 'at',
+		]);
+		$service->expects(self::exactly(2))->method('request')->willReturn([
+			'status' => 'none',
+		]);
+
+		self::assertFalse($service->isReady());
+		self::assertFalse($service->isReady());
+		self::assertFalse($service->isReady(true));
 	}
 }

@@ -50,7 +50,7 @@ class SecurySignMiddleware extends Middleware {
 			return;
 		}
 		try {
-			$ready = $this->signa->isReady();
+			$ready = $this->signa->isReady(true);
 		} catch (\Throwable $e) {
 			$this->logger->error('SecurySign readiness check failed before signing', ['exception' => $e]);
 			throw new LibresignException('SecurySign is unavailable, so we cannot sign right now. Please retry shortly.', Http::STATUS_SERVICE_UNAVAILABLE);

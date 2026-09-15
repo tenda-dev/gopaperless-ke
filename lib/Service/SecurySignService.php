@@ -19,6 +19,10 @@ use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 class SecurySignService {
+	private const READINESS_CACHE_KEY = 'libresign.securysign.readiness';
+	private const READY_CACHE_TTL = 300;
+	private const NOT_READY_CACHE_TTL = 60;
+
 	public function __construct(
 		private IAppConfig $config,
 		private IConfig $systemConfig,
@@ -59,8 +63,8 @@ class SecurySignService {
 		return ['sub' => $claims['sub'], 'issuer' => $issuer, 'accessToken' => $token->getAccessToken()];
 	}
 
-	public function request(string $path, bool $allowMissing = false): ?array {
-		$identity = $this->identity();
+	public function request(string $path, bool $allowMissing = false, ?array $identity = null): ?array {
+		$identity ??= $this->identity();
 		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
 		$response = $this->http->newClient()->get($base . '/api/' . $path, [
 			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
@@ -101,14 +105,27 @@ class SecurySignService {
 	/**
 	 * Whether SecurySign holds a certificate this user can sign with.
 	 *
-	 * `none` is the ordinary answer for someone who has never enrolled and means
-	 * "send them to onboarding". Anything else unexpected is an outage and
-	 * throws, because silently treating a broken response as "not ready" would
-	 * march a paid-up user back through payment.
+	 * A session keeps a ready answer for five minutes and a missing-certificate
+	 * answer for one minute. The caller can force a fresh answer after onboarding
+	 * or before signing. Anything unexpected is an outage and throws, because
+	 * silently treating a broken response as "not ready" would send a paid user
+	 * back through payment.
 	 */
-	public function isReady(): bool {
-		$certificate = $this->request('pki/certificates/me');
+	public function isReady(bool $forceRefresh = false): bool {
+		$identity = $this->identity();
+		$cacheKey = hash('sha256', $identity['issuer'] . "\0" . $identity['sub']);
+		$cached = $this->session->get(self::READINESS_CACHE_KEY);
+		if (!$forceRefresh && is_array($cached)
+			&& ($cached['identity'] ?? null) === $cacheKey
+			&& is_bool($cached['ready'] ?? null)
+			&& is_int($cached['expires'] ?? null)
+			&& $cached['expires'] > time()) {
+			return $cached['ready'];
+		}
+
+		$certificate = $this->request('pki/certificates/me', false, $identity);
 		if (($certificate['status'] ?? null) === 'none') {
+			$this->cacheReadiness($cacheKey, false);
 			return false;
 		}
 		if (($certificate['status'] ?? null) !== 'active' || !is_array($certificate['certificate'] ?? null)) {
@@ -119,7 +136,17 @@ class SecurySignService {
 		if ($parsed === false || empty($certificate['credentialId']) || empty($leaf['certificateId'])) {
 			throw new \RuntimeException('SecurySign returned an invalid certificate.', 503);
 		}
-		return self::isCurrent($parsed);
+		$ready = self::isCurrent($parsed);
+		$this->cacheReadiness($cacheKey, $ready);
+		return $ready;
+	}
+
+	private function cacheReadiness(string $identity, bool $ready): void {
+		$this->session->set(self::READINESS_CACHE_KEY, [
+			'identity' => $identity,
+			'ready' => $ready,
+			'expires' => time() + ($ready ? self::READY_CACHE_TTL : self::NOT_READY_CACHE_TTL),
+		]);
 	}
 
 	/**

@@ -69,7 +69,9 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
 ## The journey
 
 1. An OIDC user opens any LibreSign page. `SecurySignMiddleware::afterController`
-   asks SecurySign whether they hold a certificate.
+   reads their cached certificate readiness. GoPaperless calls SecurySign when
+   that result is missing or stale, then caches a ready answer for five minutes
+   and a missing-certificate answer for one minute.
 2. Ready (active and inside its validity window) means the page renders
    untouched.
 3. Not ready sends the user to `/apps/libresign/securysign/onboard?returnTo=...`,
@@ -84,7 +86,7 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    payment logic is duplicated.
 6. Once both are in place it redirects to
    `<gopaperless>/apps/libresign/securysign/return?state=<nonce>`, which verifies
-   nonce, expiry, uid and `sub`, re-reads readiness, then drops the nonce and
+   nonce, expiry, uid and `sub`, forces a fresh readiness check, then drops the nonce and
    returns the user to the exact page from step 3.
 
 Failures are loud. An outage anywhere returns 503 with the payment retained,
