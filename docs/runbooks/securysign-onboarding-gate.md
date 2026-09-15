@@ -69,9 +69,9 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
 ## The journey
 
 1. An OIDC user opens any LibreSign page. `SecurySignMiddleware::afterController`
-   reads their cached certificate readiness. GoPaperless calls SecurySign when
-   that result is missing or stale, then caches a ready answer for five minutes
-   and a missing-certificate answer for one minute.
+   reads their cached certificate readiness. GoPaperless calls SecurySign once
+   for that signed-in session, then reuses the result until logout or an explicit
+   fresh check.
 2. Ready (active and inside its validity window) means the page renders
    untouched.
 3. Not ready sends the user to `/apps/libresign/securysign/onboard?returnTo=...`,

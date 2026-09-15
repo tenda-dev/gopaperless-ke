@@ -20,8 +20,6 @@ use Psr\Log\LoggerInterface;
 
 class SecurySignService {
 	private const READINESS_CACHE_KEY = 'libresign.securysign.readiness';
-	private const READY_CACHE_TTL = 300;
-	private const NOT_READY_CACHE_TTL = 60;
 
 	public function __construct(
 		private IAppConfig $config,
@@ -105,11 +103,10 @@ class SecurySignService {
 	/**
 	 * Whether SecurySign holds a certificate this user can sign with.
 	 *
-	 * A session keeps a ready answer for five minutes and a missing-certificate
-	 * answer for one minute. The caller can force a fresh answer after onboarding
-	 * or before signing. Anything unexpected is an outage and throws, because
-	 * silently treating a broken response as "not ready" would send a paid user
-	 * back through payment.
+	 * The session keeps its answer until logout. The caller can force a fresh
+	 * answer after onboarding or before signing. Anything unexpected is an outage
+	 * and throws, because silently treating a broken response as "not ready"
+	 * would send a paid user back through payment.
 	 */
 	public function isReady(bool $forceRefresh = false): bool {
 		$identity = $this->identity();
@@ -117,9 +114,7 @@ class SecurySignService {
 		$cached = $this->session->get(self::READINESS_CACHE_KEY);
 		if (!$forceRefresh && is_array($cached)
 			&& ($cached['identity'] ?? null) === $cacheKey
-			&& is_bool($cached['ready'] ?? null)
-			&& is_int($cached['expires'] ?? null)
-			&& $cached['expires'] > time()) {
+			&& is_bool($cached['ready'] ?? null)) {
 			return $cached['ready'];
 		}
 
@@ -145,7 +140,6 @@ class SecurySignService {
 		$this->session->set(self::READINESS_CACHE_KEY, [
 			'identity' => $identity,
 			'ready' => $ready,
-			'expires' => time() + ($ready ? self::READY_CACHE_TTL : self::NOT_READY_CACHE_TTL),
 		]);
 	}
 
