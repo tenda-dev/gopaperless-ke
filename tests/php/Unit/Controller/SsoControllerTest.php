@@ -2,10 +2,16 @@
 
 declare(strict_types=1);
 
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 namespace OCA\Libresign\Tests\Unit\Controller;
 
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Controller\SsoController;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\IAppConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
@@ -53,91 +59,157 @@ final class SsoControllerTest extends TestCase {
 		$this->expectSsoEnabled();
 		$this->userSession->method('isLoggedIn')->willReturn(true);
 		$this->userSession->expects(self::once())->method('logout');
-		$this->urlGenerator->method('linkToRoute')
-			->with('user_oidc.login.login', [
-				'providerId' => 2,
-				'redirectUrl' => '/apps/libresign/f/',
-			])
-			->willReturn('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2F');
+		$this->urlGenerator->expects(self::exactly(2))
+			->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => '/apps/libresign/f/'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2Ff%2F';
+				}
+
+				self::assertSame('user_oidc.login.login', $route);
+				self::assertSame([
+					'providerId' => 2,
+					'redirectUrl' => '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2Ff%2F',
+				], $params);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
+			});
 
 		$response = $this->controller->handoff(2, 1, '/apps/libresign/f/');
 
-		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2F', $response->getRedirectURL());
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
 	}
 
 	public function testNormalHandoffKeepsTheCurrentSession(): void {
 		$this->expectSsoEnabled();
 		$this->userSession->expects(self::never())->method('logout');
-		$this->urlGenerator->expects(self::exactly(2))
+		$this->urlGenerator->expects(self::exactly(3))
 			->method('linkToRoute')
 			->willReturnCallback(function (string $route, array $params = []): string {
 				if ($route === 'libresign.page.index') {
 					self::assertSame([], $params);
 					return '/apps/libresign/';
 				}
-
-				self::assertSame('user_oidc.login.login', $route);
-				self::assertSame([
-					'providerId' => 2,
-					'redirectUrl' => '/apps/libresign/',
-				], $params);
-				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F';
-			});
-
-		$response = $this->controller->handoff(2);
-
-		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F', $response->getRedirectURL());
-	}
-
-	public function testExternalRedirectUrlIsSanitized(): void {
-		$this->expectSsoEnabled();
-		$this->userSession->expects(self::never())->method('logout');
-		$this->urlGenerator->expects(self::exactly(2))
-			->method('linkToRoute')
-			->willReturnCallback(function (string $route, array $params = []): string {
-				if ($route === 'libresign.page.index') {
-					return '/apps/libresign/';
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => '/apps/libresign/'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2F';
 				}
 
 				self::assertSame('user_oidc.login.login', $route);
 				self::assertSame([
 					'providerId' => 2,
-					'redirectUrl' => '/apps/libresign/',
+					'redirectUrl' => '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2F',
 				], $params);
-				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F';
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
+			});
+
+		$response = $this->controller->handoff(2);
+
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
+	}
+
+	public function testHandoffCarriesTheRedirectThroughComplete(): void {
+		$this->expectSsoEnabled();
+		$this->urlGenerator->expects(self::exactly(2))
+			->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => '/apps/libresign/f/request'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest';
+				}
+
+				self::assertSame('user_oidc.login.login', $route);
+				self::assertSame([
+					'providerId' => 2,
+					'redirectUrl' => '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest',
+				], $params);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
+			});
+
+		$response = $this->controller->handoff(2, 0, '/apps/libresign/f/request');
+
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
+	}
+
+	public function testExternalRedirectUrlIsSanitized(): void {
+		$this->expectSsoEnabled();
+		$this->userSession->expects(self::never())->method('logout');
+		$this->urlGenerator->expects(self::exactly(3))
+			->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.page.index') {
+					return '/apps/libresign/';
+				}
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => '/apps/libresign/'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2F';
+				}
+
+				self::assertSame('user_oidc.login.login', $route);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
 			});
 
 		$response = $this->controller->handoff(2, 0, 'https://attacker.example.com/callback');
 
-		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2F', $response->getRedirectURL());
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
 	}
 
 	public function testProtocolRelativeRedirectUrlIsSanitized(): void {
 		$this->expectSsoEnabled();
 		$this->userSession->expects(self::never())->method('logout');
-		$this->urlGenerator->expects(self::once())
+		$this->urlGenerator->expects(self::exactly(3))
 			->method('linkToRoute')
-			->with('libresign.page.index')
-			->willReturn('/apps/libresign/');
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.page.index') {
+					return '/apps/libresign/';
+				}
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => '/apps/libresign/'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2F';
+				}
+
+				self::assertSame('user_oidc.login.login', $route);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
+			});
 
 		$response = $this->controller->handoff(2, 0, '//attacker.example.com/apps/libresign/');
 
-		self::assertSame('/apps/libresign/', $response->getRedirectURL());
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
 	}
 
 	public function testAbsoluteSameOriginRedirectUrlIsAllowed(): void {
 		$this->expectSsoEnabled();
 		$this->userSession->expects(self::never())->method('logout');
 		$this->urlGenerator->method('getBaseUrl')->willReturn('https://signa.example.com');
-		$this->urlGenerator->method('linkToRoute')
-			->with('user_oidc.login.login', [
-				'providerId' => 2,
-				'redirectUrl' => 'https://signa.example.com/apps/libresign/f/request',
-			])
-			->willReturn('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest');
+		$this->urlGenerator->expects(self::exactly(2))
+			->method('linkToRoute')
+			->willReturnCallback(function (string $route, array $params = []): string {
+				if ($route === 'libresign.sso.complete') {
+					self::assertSame(['redirectUrl' => 'https://signa.example.com/apps/libresign/f/request'], $params);
+					return '/apps/libresign/sso/complete?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest';
+				}
+
+				self::assertSame('user_oidc.login.login', $route);
+				return '/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete';
+			});
 
 		$response = $this->controller->handoff(2, 0, 'https://signa.example.com/apps/libresign/f/request');
 
-		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest', $response->getRedirectURL());
+		self::assertSame('/apps/user_oidc/login/2?redirectUrl=%2Fapps%2Flibresign%2Fsso%2Fcomplete', $response->getRedirectURL());
+	}
+
+	public function testCompleteRedirectsToTheRequestedPage(): void {
+		$response = $this->controller->complete('/apps/libresign/f/request');
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertSame('/apps/libresign/f/request', $response->getRedirectURL());
+	}
+
+	public function testCompleteSanitizesAnExternalRedirect(): void {
+		$this->urlGenerator->method('linkToRoute')->willReturn('/apps/libresign/');
+
+		$response = $this->controller->complete('https://attacker.example.com/callback');
+
+		self::assertSame('/apps/libresign/', $response->getRedirectURL());
 	}
 }
