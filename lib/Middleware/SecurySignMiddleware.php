@@ -50,8 +50,13 @@ class SecurySignMiddleware extends Middleware {
 		// change one is what makes that real: hiding a button in the Vue leaves the
 		// API able to replace the card that goes on a document. Reads are
 		// untouched, so the mirrored signature still renders everywhere.
+		//
+		// Only while a mirrored signature is actually there. With none, LibreSign's
+		// own signature module is the fallback, or an import that failed would
+		// leave the user unable to sign and unable to do anything about it.
 		if ($controller instanceof SignatureElementsController
-			&& in_array($methodName, ['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'], true)) {
+			&& in_array($methodName, ['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'], true)
+			&& $this->signa->hasMirroredSignature()) {
 			throw new LibresignException('Your signature is managed in SecurySign and cannot be changed here.', Http::STATUS_FORBIDDEN);
 		}
 

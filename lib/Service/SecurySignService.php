@@ -256,6 +256,36 @@ class SecurySignService {
 	}
 
 	/**
+	 * Whether this user already has a signature mirrored from SecurySign.
+	 *
+	 * While one is there, SecurySign owns it and LibreSign's own signature module
+	 * stays shut. With none, the import has either not run yet or has failed, and
+	 * refusing the module as well would leave the user told to draw a signature
+	 * they are not allowed to draw. The next successful import replaces whatever
+	 * they drew, so the fallback cannot outlive the outage that caused it.
+	 *
+	 * An unreadable mapper answers false, which opens the module rather than
+	 * locking the user out. That is the recoverable side of the choice.
+	 */
+	public function hasMirroredSignature(): bool {
+		$user = $this->users->getUser();
+		if ($user === null) {
+			return false;
+		}
+		try {
+			$mapper = $this->container->get(\OCA\Libresign\Db\UserElementMapper::class);
+			foreach ($mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']) as $element) {
+				if (!empty(($element->getMetadata() ?? [])['securysign_certificate_id'])) {
+					return true;
+				}
+			}
+		} catch (\Throwable $e) {
+			$this->logger->error('Could not read the mirrored SecurySign signature', ['exception' => $e]);
+		}
+		return false;
+	}
+
+	/**
 	 * Where a user without a usable certificate is sent.
 	 *
 	 * Read from `occ config:app:set libresign tendaworld_url` first, then from

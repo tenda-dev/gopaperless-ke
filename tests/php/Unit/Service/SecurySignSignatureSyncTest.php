@@ -163,4 +163,23 @@ final class SecurySignSignatureSyncTest extends TestCase {
 		// Second page load of the same session: cached, so nothing is imported again.
 		self::assertTrue($service->isReady());
 	}
+
+	public function testTheModuleStaysOpenWhileNothingOfOursIsStored(): void {
+		$this->mapper->method('findMany')->willReturnOnConsecutiveCalls([], [$this->element(1, null)]);
+
+		self::assertFalse($this->service->hasMirroredSignature(), 'nothing stored yet');
+		self::assertFalse($this->service->hasMirroredSignature(), 'a signature the user drew is not one of ours');
+	}
+
+	public function testAMirroredCardClosesTheModule(): void {
+		$this->mapper->method('findMany')->willReturn([$this->element(1, '7')]);
+
+		self::assertTrue($this->service->hasMirroredSignature());
+	}
+
+	public function testAnUnreadableMapperLeavesTheModuleOpen(): void {
+		$this->mapper->method('findMany')->willThrowException(new \RuntimeException('database gone'));
+
+		self::assertFalse($this->service->hasMirroredSignature(), 'locking the user out is the worse failure');
+	}
 }

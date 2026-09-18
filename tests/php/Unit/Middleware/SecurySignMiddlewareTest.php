@@ -165,6 +165,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 	 */
 	public function testTheSignatureCannotBeReplacedThroughTheApi(): void {
 		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('hasMirroredSignature')->willReturn(true);
 		$controller = $this->createMock(SignatureElementsController::class);
 
 		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
@@ -186,5 +187,22 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$other->method('applies')->willReturn(false);
 		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
 		$middleware->beforeController($controller, 'createSignatureElement');
+	}
+
+	/**
+	 * With nothing mirrored, LibreSign's own signature module is the fallback.
+	 * Refusing it as well would tell a user whose import failed to draw a
+	 * signature they are not allowed to draw, with no way out of the loop.
+	 */
+	public function testTheLibreSignModuleIsTheFallbackWhileNothingIsMirrored(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('hasMirroredSignature')->willReturn(false);
+		$controller = $this->createMock(SignatureElementsController::class);
+
+		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
+			$this->middleware->beforeController($controller, $method);
+		}
+
+		self::assertTrue(true, 'reaching here is the assertion: none of the three was refused');
 	}
 }
