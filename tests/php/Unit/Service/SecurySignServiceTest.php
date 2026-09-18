@@ -22,6 +22,9 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 final class SecurySignServiceTest extends TestCase {
+	private const PNG_MAGIC = "\x89PNG\r\n\x1a\n";
+	private const IDENTITY = ['sub' => 'google-oauth2|1', 'issuer' => 'https://idp.test/realms/signa', 'accessToken' => 'at'];
+
 	public function testReturnPathsCannotEscapeTheAppOrRestartAuthentication(): void {
 		foreach ([null, '//evil.test', '/apps/libresign/../settings', '/apps/libresign/%2e%2e/settings', '/apps/libresign/%252e%252e/settings', '/apps/libresign/\\evil.test', '/apps/libresign/sso', '/apps/libresign/securysign/return', 'https://evil.test', "/apps/libresign/f/\nfoo"] as $path) {
 			self::assertSame('/apps/libresign/', SecurySignService::returnPath($path));
@@ -96,6 +99,34 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertFalse(SecurySignService::isCurrent(['validFrom_time_t' => $now + 10, 'validTo_time_t' => $now + 20]));
 		self::assertFalse(SecurySignService::isCurrent([]));
 		self::assertFalse(SecurySignService::isCurrent(['validFrom_time_t' => 'soon', 'validTo_time_t' => 'later']));
+	}
+
+	public function testTheVisibleSignatureMustBelongToTheActiveCertificate(): void {
+		$pem = self::selfSignedPem();
+		$png = base64_encode(self::PNG_MAGIC . 'body');
+		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
+
+		self::assertTrue($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png]));
+		// A card left over from a previous certificate must not count as canonical.
+		self::assertFalse($this->readiness($certificate, ['certificateId' => 6, 'imagePngBase64' => $png]));
+		// No card captured yet: onboarding, not an outage.
+		self::assertFalse($this->readiness($certificate, null));
+
+		$this->expectException(\RuntimeException::class);
+		$this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => base64_encode('<html>')]);
+	}
+
+	/**
+	 * @param array<string, mixed> $certificate
+	 * @param array<string, mixed>|null $signature
+	 */
+	private function readiness(array $certificate, ?array $signature): bool {
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
+		$service->method('request')->willReturnCallback(
+			static fn (string $path) => str_starts_with($path, 'pki/') ? $certificate : $signature,
+		);
+		return $service->readiness(self::IDENTITY) !== null;
 	}
 
 	private static function selfSignedPem(): string {
@@ -197,7 +228,7 @@ final class SecurySignServiceTest extends TestCase {
 			self::assertStringContainsString('pki/certificates/me', $e->getMessage());
 		}
 
-		self::assertNull(self::serviceAnswering(404)->request('pki/certificates/me', true));
+		self::assertNull(self::serviceAnswering(404)->request('signature/visible', true));
 		self::assertSame(['status' => 'none'], self::serviceAnswering(200, '{"status":"none"}')->request('pki/certificates/me'));
 	}
 	public function testClaimNamesNeverLeakValues(): void {
@@ -210,7 +241,9 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertStringContainsString('opaque', SecurySignService::claimNames('not-a-jwt'));
 		self::assertStringContainsString('unreadable', SecurySignService::claimNames('a.!!!.c'));
 	}
-	public function testACurrentCertificateIsWhatMakesAUserReady(): void {
+	public function testACurrentCertificateAndItsCardAreWhatMakeAUserReady(): void {
+		$pem = self::selfSignedPem();
+		$png = base64_encode(self::PNG_MAGIC . 'body');
 		$session = $this->createMock(ISession::class);
 		$session->method('get')->willReturn(null);
 		$service = $this->getMockBuilder(SecurySignService::class)
@@ -228,12 +261,15 @@ final class SecurySignServiceTest extends TestCase {
 			'issuer' => 'https://idp.test/realms/signa',
 			'accessToken' => 'at',
 		]);
-		$service->method('request')->willReturn([
-			'status' => 'active',
-			'credentialId' => 'c1',
-			'certificate' => ['certificateId' => 7, 'certificatePem' => self::selfSignedPem()],
-		]);
+		$service->method('request')->willReturnCallback(static fn (string $path) => $path === 'pki/certificates/me'
+			? ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]]
+			: ['certificateId' => 7, 'imagePngBase64' => $png]);
 
+		$readiness = $service->readiness();
+
+		self::assertNotNull($readiness);
+		self::assertSame('7', $readiness['certificateId'], 'the id is normalised to a string for comparison');
+		self::assertSame($png, $readiness['imagePngBase64']);
 		self::assertTrue($service->isReady());
 	}
 

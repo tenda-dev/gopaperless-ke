@@ -20,6 +20,8 @@ use Psr\Log\LoggerInterface;
 
 class SecurySignService {
 	private const READINESS_CACHE_KEY = 'libresign.securysign.readiness';
+	/** Bump to re-import every mirrored signature; 3 dropped the composed card. */
+	public const CARD_VERSION = 3;
 
 	public function __construct(
 		private IAppConfig $config,
@@ -101,12 +103,17 @@ class SecurySignService {
 		return $data;
 	}
 	/**
-	 * Whether SecurySign holds a certificate this user can sign with.
+	 * Whether SecurySign holds a certificate and a signature this user can sign
+	 * with.
 	 *
 	 * The session keeps its answer until logout. The caller can force a fresh
 	 * answer after onboarding or before signing. Anything unexpected is an outage
 	 * and throws, because silently treating a broken response as "not ready"
 	 * would send a paid user back through payment.
+	 *
+	 * A fresh answer is also where the signature is mirrored. The card arrives on
+	 * the same pair of calls the gate already makes, so importing it here keeps
+	 * every caller on one method and costs no extra request.
 	 */
 	public function isReady(bool $forceRefresh = false): bool {
 		$identity = $this->identity();
@@ -118,10 +125,27 @@ class SecurySignService {
 			return $cached['ready'];
 		}
 
+		$readiness = $this->readiness($identity);
+		$this->cacheReadiness($cacheKey, $readiness !== null);
+		if ($readiness !== null) {
+			$this->syncVisibleSignature($readiness);
+		}
+		return $readiness !== null;
+	}
+
+	/**
+	 * What SecurySign holds for this user, or null when they are not ready yet.
+	 * Returns the card alongside the certificate id so a caller can both gate on
+	 * readiness and mirror the signature without asking twice.
+	 *
+	 * @param array{sub: string, issuer: string, accessToken: string}|null $identity
+	 * @return array{certificateId: string, imagePngBase64: string, issuer: string, serial: string, validFrom: string, validUntil: string}|null
+	 */
+	public function readiness(?array $identity = null): ?array {
+		$identity ??= $this->identity();
 		$certificate = $this->request('pki/certificates/me', false, $identity);
 		if (($certificate['status'] ?? null) === 'none') {
-			$this->cacheReadiness($cacheKey, false);
-			return false;
+			return null;
 		}
 		if (($certificate['status'] ?? null) !== 'active' || !is_array($certificate['certificate'] ?? null)) {
 			throw new \RuntimeException('SecurySign returned an unknown certificate status.', 503);
@@ -131,9 +155,97 @@ class SecurySignService {
 		if ($parsed === false || empty($certificate['credentialId']) || empty($leaf['certificateId'])) {
 			throw new \RuntimeException('SecurySign returned an invalid certificate.', 503);
 		}
-		$ready = self::isCurrent($parsed);
-		$this->cacheReadiness($cacheKey, $ready);
-		return $ready;
+		if (!self::isCurrent($parsed)) {
+			return null;
+		}
+		$signature = $this->request('signature/visible', true, $identity);
+		if ($signature === null) {
+			return null;
+		}
+		if ((string)($signature['certificateId'] ?? '') !== (string)$leaf['certificateId']) {
+			return null;
+		}
+		$image = base64_decode($signature['imagePngBase64'] ?? '', true);
+		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
+			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
+		}
+		return [
+			'certificateId' => (string)$leaf['certificateId'],
+			'imagePngBase64' => (string)$signature['imagePngBase64'],
+			'issuer' => (string)($leaf['issuer'] ?? 'SecurySign'),
+			'serial' => (string)($leaf['serialNumberHex'] ?? ''),
+			'validFrom' => self::day($leaf['validFrom'] ?? null),
+			'validUntil' => self::day($leaf['validUntil'] ?? null),
+		];
+	}
+
+
+	/**
+	 * Mirror the SecurySign card into the user's LibreSign signature elements so
+	 * it is what lands on a document. SecurySign owns it: SecurySignMiddleware
+	 * refuses the endpoints that create, change or delete one, so any element a
+	 * gated user has came from here, and one that names a superseded certificate
+	 * is replaced after a renewal.
+	 *
+	 * Takes the readiness array rather than re-reading it, so a page load still
+	 * costs one pair of calls to SecurySign. Failures are logged and swallowed:
+	 * the card is already verified, and failing to cache it locally is no reason
+	 * to lock someone out of the app.
+	 *
+	 * @param array{certificateId: string, imagePngBase64: string} $readiness
+	 */
+	public function syncVisibleSignature(array $readiness): void {
+		$user = $this->users->getUser();
+		if ($user === null) {
+			return;
+		}
+		try {
+			// Resolved lazily: AccountService reaches SignerElementsService, which
+			// reaches this class, so constructor injection would not build.
+			$mapper = $this->container->get(\OCA\Libresign\Db\UserElementMapper::class);
+			$existing = $mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']);
+			// Both the certificate and the card layout have to match. Without the
+			// version, changing the card design would leave every existing user on
+			// the old image forever, because their certificate had not changed.
+			foreach ($existing as $element) {
+				$metadata = $element->getMetadata() ?? [];
+				if (($metadata['securysign_certificate_id'] ?? null) === $readiness['certificateId']
+					&& ($metadata['securysign_card'] ?? null) === self::CARD_VERSION) {
+					return;
+				}
+			}
+
+			// The handwriting is stored exactly as SecurySign returned it. The
+			// account, issuer and validity details are added at signing time by
+			// LibreSign's own signature text template, which already has variables
+			// for every one of them — see the runbook. Compositing a card here
+			// duplicated a feature the app ships.
+			$accounts = $this->container->get(\OCA\Libresign\Service\AccountService::class);
+			$accounts->saveVisibleElement([
+				'type' => 'signature',
+				'file' => ['base64' => 'data:image/png;base64,' . $readiness['imagePngBase64']],
+				'starred' => 1,
+			], '', $user);
+
+			$stale = array_column(array_map(static fn ($e) => ['id' => $e->getId()], $existing), 'id');
+			foreach ($mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']) as $element) {
+				if (in_array($element->getId(), $stale, true)) {
+					$mapper->delete($element);
+					continue;
+				}
+				$element->setMetadata(($element->getMetadata() ?? []) + [
+					'securysign_certificate_id' => $readiness['certificateId'],
+					'securysign_card' => self::CARD_VERSION,
+				]);
+				$mapper->update($element);
+			}
+			$this->logger->info('Imported the SecurySign visible signature', [
+				'certificateId' => $readiness['certificateId'],
+				'replaced' => count($stale),
+			]);
+		} catch (\Throwable $e) {
+			$this->logger->error('Could not import the SecurySign visible signature', ['exception' => $e]);
+		}
 	}
 
 	private function cacheReadiness(string $identity, bool $ready): void {
@@ -141,6 +253,36 @@ class SecurySignService {
 			'identity' => $identity,
 			'ready' => $ready,
 		]);
+	}
+
+	/**
+	 * Whether this user already has a signature mirrored from SecurySign.
+	 *
+	 * While one is there, SecurySign owns it and LibreSign's own signature module
+	 * stays shut. With none, the import has either not run yet or has failed, and
+	 * refusing the module as well would leave the user told to draw a signature
+	 * they are not allowed to draw. The next successful import replaces whatever
+	 * they drew, so the fallback cannot outlive the outage that caused it.
+	 *
+	 * An unreadable mapper answers false, which opens the module rather than
+	 * locking the user out. That is the recoverable side of the choice.
+	 */
+	public function hasMirroredSignature(): bool {
+		$user = $this->users->getUser();
+		if ($user === null) {
+			return false;
+		}
+		try {
+			$mapper = $this->container->get(\OCA\Libresign\Db\UserElementMapper::class);
+			foreach ($mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']) as $element) {
+				if (!empty(($element->getMetadata() ?? [])['securysign_certificate_id'])) {
+					return true;
+				}
+			}
+		} catch (\Throwable $e) {
+			$this->logger->error('Could not read the mirrored SecurySign signature', ['exception' => $e]);
+		}
+		return false;
 	}
 
 	/**
@@ -176,6 +318,12 @@ class SecurySignService {
 		return is_array($claims) ? implode(' ', array_keys($claims)) : 'unreadable payload';
 	}
 
+
+	/** Dates go on a card a person reads, so seconds and timezones are noise. */
+	private static function day(?string $value): string {
+		$time = $value === null ? false : strtotime($value);
+		return $time === false ? '—' : date('j M Y', $time);
+	}
 
 	/** @param array<string, mixed> $parsed openssl_x509_parse() output */
 	public static function isCurrent(array $parsed): bool {

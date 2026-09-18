@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Tests\Unit\Middleware;
 
 use OCA\Libresign\Controller\PageController;
+use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Middleware\SecurySignMiddleware;
@@ -61,6 +62,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 	public function testAPreparedUserAndAnEmailPasswordUserBothSeeTheAppUnchanged(): void {
 		$this->signa->method('applies')->willReturnOnConsecutiveCalls(true, false);
 		$this->signa->method('isReady')->willReturn(true);
+		// A prepared user still gets their SecurySign card mirrored locally.
 		$page = $this->page();
 
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
@@ -154,5 +156,53 @@ final class SecurySignMiddlewareTest extends TestCase {
 			}
 			self::assertSame('/apps/dashboard/', $params['secondaryUrl']);
 		}
+	}
+	/**
+	 * SecurySign owns the card, so the endpoints that would replace it are
+	 * refused. Hiding the button in the Vue would leave the API open, and the API
+	 * is what actually decides what lands on a document. Reads stay open: the
+	 * mirrored signature has to render.
+	 */
+	public function testTheSignatureCannotBeReplacedThroughTheApi(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('hasMirroredSignature')->willReturn(true);
+		$controller = $this->createMock(SignatureElementsController::class);
+
+		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
+			try {
+				$this->middleware->beforeController($controller, $method);
+				self::fail($method . ' was allowed');
+			} catch (LibresignException $e) {
+				self::assertSame(403, $e->getCode());
+				self::assertStringContainsString('SecurySign', $e->getMessage());
+			}
+		}
+
+		// Reading them must still work, or the mirrored card cannot be shown.
+		$this->middleware->beforeController($controller, 'getSignatureElements');
+		$this->middleware->beforeController($controller, 'getSignatureElementPreview');
+
+		// And an email/password user keeps full control of their own signature.
+		$other = $this->createMock(SecurySignService::class);
+		$other->method('applies')->willReturn(false);
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$middleware->beforeController($controller, 'createSignatureElement');
+	}
+
+	/**
+	 * With nothing mirrored, LibreSign's own signature module is the fallback.
+	 * Refusing it as well would tell a user whose import failed to draw a
+	 * signature they are not allowed to draw, with no way out of the loop.
+	 */
+	public function testTheLibreSignModuleIsTheFallbackWhileNothingIsMirrored(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('hasMirroredSignature')->willReturn(false);
+		$controller = $this->createMock(SignatureElementsController::class);
+
+		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
+			$this->middleware->beforeController($controller, $method);
+		}
+
+		self::assertTrue(true, 'reaching here is the assertion: none of the three was refused');
 	}
 }
