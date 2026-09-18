@@ -61,9 +61,6 @@ final class UserCreatedListenerTest extends TestCase {
 
 	public function testAddsNewAccountToTheDefaultGroup(): void {
 		$this->flagEnabled();
-		$this->appConfig->method('getAppValueString')
-			->with('default_signer_group', 'signers')
-			->willReturn('signers');
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('newbie');
 		$group = $this->createMock(IGroup::class);
@@ -77,8 +74,6 @@ final class UserCreatedListenerTest extends TestCase {
 
 	public function testCreatesTheGroupWhenMissing(): void {
 		$this->flagEnabled();
-		$this->appConfig->method('getAppValueString')
-			->willReturn('signers');
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('newbie');
 		$group = $this->createMock(IGroup::class);
@@ -94,9 +89,7 @@ final class UserCreatedListenerTest extends TestCase {
 	}
 
 	public function testRefusesToTouchTheAdminGroup(): void {
-		$this->flagEnabled();
-		$this->appConfig->method('getAppValueString')
-			->willReturn('admin');
+		$this->flagEnabled('admin');
 		$this->groupManager->expects($this->never())
 			->method('get');
 
@@ -105,8 +98,6 @@ final class UserCreatedListenerTest extends TestCase {
 
 	public function testGroupFailuresNeverBreakAccountCreation(): void {
 		$this->flagEnabled();
-		$this->appConfig->method('getAppValueString')
-			->willReturn('signers');
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('newbie');
 		$this->groupManager->method('get')->willThrowException(new \RuntimeException('database gone'));
@@ -115,9 +106,15 @@ final class UserCreatedListenerTest extends TestCase {
 		$this->listener->handle($this->newUserCreatedEventFrom($user));
 	}
 
-	private function flagEnabled(): void {
+	/**
+	 * One stub for every `getAppValueString` call the listener makes. A second
+	 * `method()` stub on the same mock is still parameter-checked against the
+	 * first call, so splitting the flag and the group across two stubs fails on
+	 * whichever call runs first.
+	 */
+	private function flagEnabled(string $group = 'signers'): void {
 		$this->appConfig->method('getAppValueString')
-			->willReturnCallback(static fn (string $key, string $default): string => $key === 'securysign_provider_id' ? '1' : $default);
+			->willReturnCallback(static fn (string $key, string $default = ''): string => $key === 'securysign_provider_id' ? '1' : $group);
 	}
 
 	private function newUserCreatedEvent(string $uid): UserCreatedEvent {
