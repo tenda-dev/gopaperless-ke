@@ -22,6 +22,7 @@ use OCA\Libresign\Listener\LoadAdditionalListener;
 use OCA\Libresign\Listener\MailNotifyListener;
 use OCA\Libresign\Listener\NotificationListener;
 use OCA\Libresign\Listener\RevokeClickToSignCertificateListener;
+use OCA\Libresign\Listener\SecurySignCspListener;
 use OCA\Libresign\Listener\SignedCallbackListener;
 use OCA\Libresign\Listener\SmsNotifyListener;
 use OCA\Libresign\Listener\TwofactorGatewayListener;
@@ -37,6 +38,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
+use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
 
@@ -74,6 +76,9 @@ class Application extends App implements IBootstrap {
 
 		// Files newFile listener
 		$context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadAdditionalListener::class);
+
+		// Allow SecurySign's signing window in a frame
+		$context->registerEventListener(AddContentSecurityPolicyEvent::class, SecurySignCspListener::class);
 
 		// Activity listeners
 		$context->registerEventListener(SendSignNotificationEvent::class, ActivityListener::class);
