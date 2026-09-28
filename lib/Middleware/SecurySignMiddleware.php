@@ -21,6 +21,7 @@ use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Middleware;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
@@ -31,6 +32,7 @@ class SecurySignMiddleware extends Middleware {
 		private IRequest $request,
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
+		private IInitialState $initialState,
 	) {
 	}
 
@@ -64,11 +66,16 @@ class SecurySignMiddleware extends Middleware {
 			|| !in_array($methodName, ['signByFileId', 'signBySignerUuid'], true)) {
 			return;
 		}
+		// The session's answer is enough here. When SecurySign signs, the handler
+		// re-reads the certificate anyway, and forcing a fresh answer cost two
+		// round trips to SecurySign on each of a signature's two requests. When
+		// SecurySign is down, LibreSign's own engine signs instead, so an outage
+		// must not stop the request.
 		try {
-			$ready = $this->signa->isReady(true);
+			$ready = $this->signa->isReady();
 		} catch (\Throwable $e) {
-			$this->logger->error('SecurySign readiness check failed before signing', ['exception' => $e]);
-			throw new LibresignException('SecurySign is unavailable, so we cannot sign right now. Please retry shortly.', Http::STATUS_SERVICE_UNAVAILABLE);
+			$this->logger->warning('SecurySign readiness check failed before signing; the local engine signs if SecurySign cannot', ['exception' => $e]);
+			return;
 		}
 		if (!$ready) {
 			throw new LibresignException('Finish your SecurySign setup in GoPaperless before signing.', Http::STATUS_FORBIDDEN);
@@ -83,6 +90,8 @@ class SecurySignMiddleware extends Middleware {
 		}
 		try {
 			if ($this->signa->isReady()) {
+				// Lets the sign page skip its confirm dialog: the passkey is the confirmation.
+				$this->initialState->provideInitialState('securysign_signs', $this->signa->signs());
 				return $response;
 			}
 			return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.onboard', [

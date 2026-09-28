@@ -213,7 +213,12 @@ class SecurySignHandler extends Pkcs12Handler {
 			$signature = self::seq($int(substr($signature, 0, 32)), $int(substr($signature, 32)));
 		}
 		if (openssl_verify($attributes, $signature, $pem, OPENSSL_ALGO_SHA256) !== 1) {
-			throw new LibresignException('SecurySign did not sign with your certificate. Nothing was signed.', 403);
+			// The approval came from a passkey whose SecurySign key is not the one
+			// behind this user's certificate: in practice, another account's passkey.
+			$email = openssl_x509_parse($pem)['subject']['emailAddress'] ?? null;
+			throw new LibresignException(is_string($email) && $email !== ''
+				? sprintf('Wrong passkey. Choose the passkey for %s.', $email)
+				: 'Wrong passkey. Choose the passkey of the SecurySign account you signed in with.', 403);
 		}
 
 		if (!preg_match_all('/\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/', $pdf, $ranges, PREG_SET_ORDER)) {

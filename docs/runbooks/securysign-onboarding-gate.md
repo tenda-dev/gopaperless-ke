@@ -17,7 +17,7 @@ links and legacy accounts never see it and keep the local signing engine.
 | `force=1` handoff replacing a different local account | code complete, unit tested |
 | Website payment and enrolment continuation | code complete, script tested |
 | Importing the SecurySign visible signature | code complete, unit tested |
-| Signing with the user's own SecurySign certificate | code complete, unit tested, **not yet run against SecurySign**. Off until `securysign_signing_secret` is set. See "Signing with the user's SecurySign certificate" |
+| Signing with the user's own SecurySign certificate | working against production SecurySign on the local stack (2026-09-28: `pdfsig` valid, issuer Signa Hardware CA). Off until the signing secret is set. See "Signing with the user's SecurySign certificate" |
 
 Nothing is enabled until `securysign_provider_id` is set to a positive value.
 With it unset, `SecurySignService::applies()` returns false everywhere and both
@@ -94,8 +94,11 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    nonce, expiry, uid and `sub`, forces a fresh readiness check, then drops the nonce and
    returns the user to the exact page from step 3.
 
-Failures are loud. An outage anywhere returns 503 with the payment retained,
-never a redirect loop and never a signature. `/enrol/start` returning "done"
+Failures on the page gate are loud: an outage there returns 503 with the payment
+retained, never a redirect loop. The signing API is the exception since
+2026-09-29: it trusts the session's readiness, and when SecurySign cannot be
+reached the local engine signs instead (see "Signing with the user's SecurySign
+certificate"). `/enrol/start` returning "done"
 while the certificate or card is still missing comes back as `completed=1`,
 which reports the failure instead of bouncing again.
 
@@ -214,7 +217,8 @@ gate itself is what is broken.
 | Situation | Status | What the user is offered |
 |---|---|---|
 | Signa answers 401 or 403 | 401 | "Sign in again", pointing at `/apps/libresign/sso?providerId=<id>&force=1` — one click that drops the local session and re-enters OIDC |
-| Signa unreachable or 5xx | 503 | "Try again" on the page they came from |
+| Signa unreachable or 5xx on a page load | 503 | "Try again" on the page they came from |
+| Signa unreachable or 5xx while signing | none | The local engine signs; nothing is shown |
 | Onboarding round trip broken | 503 | "Start again" at the app root |
 
 Upstream text never reaches the user. `SecurySignService::request()` logs the
@@ -428,7 +432,9 @@ GoPaperless builds the signed revision itself and asks SecurySign for one thing:
 a signature over one hash, made in its HSM with the key behind the user's
 certificate. The key never leaves SecurySign.
 
-1. The user clicks sign. `SignFileService::identifyEngine()` picks
+1. The user clicks sign once. There is no confirm dialog for these users (the
+   page learns `securysign_signs` from `SecurySignMiddleware`), because the
+   passkey is the confirmation. `SignFileService::identifyEngine()` picks
    `SecurySignHandler` when `SecurySignService::signs()` is true, which needs a
    session from the SecurySign `user_oidc` provider and `securysign_signing_secret`
    set on the instance.
@@ -442,8 +448,12 @@ certificate. The key never leaves SecurySign.
    token from `POST /api/ssc/token`, the SHA-256 of the signed attributes, the
    document name and SecurySign's origin.
 3. The browser opens SecurySign's signing frame (`<securysign_url>/#/sign-frame`)
-   in a dialog (`src/components/SecurySignApproval.vue`). The passkey prompt runs
-   on SecurySign's origin. `/ssc/finalize` verifies the assertion, signs the hash
+   in a dialog (`src/components/SecurySignApproval.vue`), and posts
+   `SSC_SIGN_REQUEST` as soon as the frame reports its size, so the passkey
+   prompt opens without a click on the frame's button. The prompt runs on
+   SecurySign's origin. The page's CSP allows the frame through
+   `SecurySignCspListener`; without it LibreSign's `frame-src 'self'` shows a
+   broken frame. `/ssc/finalize` verifies the assertion, signs the hash
    with the user's HSM key (ECDSA P-256) and the frame posts `SSC_SIGN_COMPLETE`.
 4. **Finalize.** The browser repeats the sign request with `securysignSignature`.
    The handler verifies it against the certificate from `pki/certificates/me` and
@@ -471,6 +481,26 @@ frame's error, not the local engine.
 The signing token is not bound to a user (LOA-2), so any SecurySign passkey could
 approve inside the frame. Only a signature from this user's key verifies at
 finalize, so somebody else's approval is refused there.
+
+### Wrong passkey
+
+The signing token is LOA-2, so SecurySign lets any registered passkey approve.
+One from another SecurySign account signs with that account's key, finalize
+refuses it, and the user reads "Wrong passkey. Choose the passkey for
+<certificate email>." LOA-4 would bind the token to the user's own passkey so the
+browser offers only that one, but `signa-rp-16` is capped at LOA-2 (probed
+2026-09-29: `Requested LOA LOA-4 exceeds RP maximum LOA-2`). Raising it is a
+SecurySign setting, and the token request would then send `loa: LOA-4` and the
+user's email.
+
+### Round trips
+
+One signature costs three calls to SecurySign from the server: the certificate
+and the signing token on prepare, the certificate again on finalize. Until
+2026-09-29 the middleware also forced a fresh readiness check (two more calls) on
+each of the two sign requests. Measured on the local stack for a 929 KB PDF:
+preparing the revision 1.6 s, embedding 0.02 s, reading the signatures back
+0.4 s, one unauthenticated call to securysign.com about 0.5 s.
 
 ### What SecurySign has to provide
 

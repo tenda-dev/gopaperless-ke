@@ -111,7 +111,7 @@
 		<ModalVerificationCode v-if="signMethodsStore.modal.emailToken" mode="email" @change="signWithEmailToken"
 			@close="signMethodsStore.closeModal('emailToken')" />
 		<SecurySignApproval v-if="securysignApproval" :approval="securysignApproval.request"
-			@approved="onSecurySignApproved" @failed="onSecurySignFailed" @cancel="securysignApproval = null" />
+			@approved="onSecurySignApproved" @cancel="securysignApproval = null" />
 	</div>
 
 	<CreditPurchaseFlow
@@ -417,6 +417,8 @@ const signPassword = ref('')
 const showManagePassword = ref(false)
 // Set while SecurySign's signing frame waits for the user's passkey.
 const securysignApproval = ref<{ request: SecurySignApprovalRequest, methodConfig: SignatureMethodConfig } | null>(null)
+// SecurySign signers approve with a passkey, which is confirmation enough.
+const securysignSigns = loadState<boolean>('libresign', 'securysign_signs', false)
 const isModal = window.self !== window.top
 let unwatchPendingAction: null | (() => void) = null
 let requirementValidator: SigningRequirementValidator | null = null
@@ -859,6 +861,11 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 		}
 
 		signStore.setSigningErrors(signError.errors || [])
+		// Without the confirm dialog open, nothing on the page shows signStore.errors.
+		const shown = signMethodsStore.modal.clickToSign || signMethodsStore.modal.password || signMethodsStore.modal.token
+		if (!shown && signError.errors?.length) {
+			showError(signError.errors[0].message)
+		}
 	} finally {
 		loading.value = false
 	}
@@ -868,11 +875,6 @@ async function onSecurySignApproved(signature: string) {
 	const methodConfig = securysignApproval.value?.methodConfig ?? {}
 	securysignApproval.value = null
 	await submitSignature({ ...methodConfig, securysignSignature: signature })
-}
-
-function onSecurySignFailed(message: string) {
-	securysignApproval.value = null
-	signStore.setSigningErrors([{ message: message || t('libresign', 'SecurySign could not sign. Please try again.') }])
 }
 
 async function confirmSignDocument() {
@@ -971,7 +973,10 @@ async function onPaymentSuccess() {
 
 function proceedWithSigning() {
 	ensureServices()
-	if (signMethodsStore.needClickToSign()) {
+	if (signMethodsStore.needClickToSign() && securysignSigns) {
+		// Credits were checked just above, so this skips the dialog's second check too.
+		signWithClick()
+	} else if (signMethodsStore.needClickToSign()) {
 		actionHandler!.showModal('clickToSign')
 	} else if (signMethodsStore.needSignWithPassword()) {
 		actionHandler!.showModal('password')

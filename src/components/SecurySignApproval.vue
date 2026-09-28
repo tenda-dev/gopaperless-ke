@@ -32,10 +32,11 @@ export type SecurySignApprovalRequest = {
 }
 
 const props = defineProps<{ approval: SecurySignApprovalRequest }>()
-const emit = defineEmits(['approved', 'failed', 'cancel'])
+const emit = defineEmits(['approved', 'cancel'])
 
 const frame = ref<HTMLIFrameElement | null>(null)
 const height = ref(420)
+let started = false
 
 // The contract is SecurySign's "Sign in the browser" guide: the frame runs the
 // passkey prompt on its own origin and reports back with postMessage.
@@ -52,16 +53,29 @@ function onMessage(event: MessageEvent) {
 		return
 	}
 	const message = event.data ?? {}
-	if (message.type === 'SSC_RESIZE' && message.height) {
-		height.value = message.height
+	if (message.type === 'SSC_RESIZE') {
+		if (message.height) {
+			height.value = message.height
+		}
+		// The frame's first size report means it is listening. Asking it to sign
+		// opens the passkey prompt without a click on the frame's own button.
+		if (!started) {
+			started = true
+			frame.value?.contentWindow?.postMessage({
+				type: 'SSC_SIGN_REQUEST',
+				documentHash: props.approval.documentHash,
+				documentName: props.approval.documentName,
+				mode: 'registered',
+				token: props.approval.token,
+			}, props.approval.origin)
+		}
 	} else if (message.type === 'SSC_SIGN_COMPLETE' && message.documentHash === props.approval.documentHash) {
 		// The server verifies this against the user's certificate before using it.
 		emit('approved', message.signatureBase64)
-	} else if (message.type === 'SSC_SIGN_ERROR') {
-		emit('failed', message.error)
 	} else if (message.type === 'SSC_CLOSE_FRAME') {
 		emit('cancel')
 	}
+	// SSC_SIGN_ERROR needs nothing here: the frame shows the error and a retry.
 }
 
 onMounted(() => window.addEventListener('message', onMessage))

@@ -55,6 +55,7 @@ final class SecurySignHandlerTest extends TestCase {
 
 		$this->expectException(LibresignException::class);
 		$this->expectExceptionCode(403);
+		$this->expectExceptionMessage('Wrong passkey');
 		SecurySignHandler::embed($prepared, $attributes, $signature, $pem);
 	}
 
