@@ -56,7 +56,10 @@ class SecurySignService {
 			throw new \RuntimeException('Sign in again to connect to SecurySign. Enable user_oidc store_login_token if this persists.', 401);
 		}
 		$claims = $tokens->decodeIdToken($token);
-		$issuer = $this->config->getValueString(Application::APP_ID, 'securysign_issuer');
+		// OIDC discovery lives at <issuer>/.well-known/openid-configuration, so the
+		// provider's own discovery URL names the issuer. A second setting could only
+		// disagree with it, and did when the provider moved to production.
+		$issuer = (string)preg_replace('~/\.well-known/openid-configuration(\?.*)?$~', '', $this->provider()->getDiscoveryEndpoint());
 		if ($issuer === '' || ($claims['iss'] ?? null) !== $issuer || empty($claims['sub'])) {
 			throw new \RuntimeException('The SecurySign identity provider does not match this session.', 403);
 		}
@@ -129,10 +132,9 @@ class SecurySignService {
 	 * the hash with the key behind the user's certificate.
 	 */
 	public function signingToken(string $documentHash): string {
-		$provider = $this->container->get('OCA\\UserOIDC\\Db\\ProviderMapper')->getProvider($this->providerId());
 		$response = $this->http->newClient()->post($this->signingOrigin() . '/api/ssc/token', [
 			'json' => [
-				'clientId' => $provider->getClientId(),
+				'clientId' => $this->provider()->getClientId(),
 				'clientSecret' => $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret'),
 				'documentHash' => $documentHash,
 				'loa' => 'LOA-2',
@@ -151,6 +153,11 @@ class SecurySignService {
 			throw new \RuntimeException('SecurySign could not start signing. Please retry shortly.', 503);
 		}
 		return $token;
+	}
+
+	/** The user_oidc provider row: its discovery URL and client id. */
+	private function provider(): object {
+		return $this->container->get('OCA\\UserOIDC\\Db\\ProviderMapper')->getProvider($this->providerId());
 	}
 
 	public function signingOrigin(): string {

@@ -163,9 +163,7 @@ final class SecurySignServiceTest extends TestCase {
 		$test = new self('t');
 		$config = $test->createMock(IAppConfig::class);
 		$config->method('getValueInt')->willReturn(1);
-		$config->method('getValueString')->willReturnCallback(static function (string $app, string $key, string $default = '') {
-			return $key === 'securysign_issuer' ? 'https://idp.test/realms/signa' : 'https://signa.test';
-		});
+		$config->method('getValueString')->willReturn('https://signa.test');
 		$session = $test->createMock(ISession::class);
 		$session->method('get')->willReturn(1);
 		$users = $test->createMock(IUserSession::class);
@@ -194,8 +192,17 @@ final class SecurySignServiceTest extends TestCase {
 				return ['iss' => 'https://idp.test/realms/signa', 'sub' => 'google-1'];
 			}
 		};
+		$providers = new class {
+			public function getProvider(int $id): object {
+				return new class {
+					public function getDiscoveryEndpoint(): string {
+						return 'https://idp.test/realms/signa/.well-known/openid-configuration?kc_idp_hint=google';
+					}
+				};
+			}
+		};
 		$container = $test->createMock(IServerContainer::class);
-		$container->method('get')->willReturn($tokens);
+		$container->method('get')->willReturnCallback(static fn (string $id) => str_ends_with($id, 'ProviderMapper') ? $providers : $tokens);
 
 		$response = $test->createMock(IResponse::class);
 		$response->method('getStatusCode')->willReturn($status);

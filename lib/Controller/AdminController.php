@@ -25,6 +25,7 @@ use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Install\ConfigureCheckService;
 use OCA\Libresign\Service\Install\InstallService;
 use OCA\Libresign\Service\ReminderService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureProfile\ValueObject\SignatureProfile;
 use OCA\Libresign\Service\SignatureTextService;
@@ -1261,6 +1262,39 @@ class AdminController extends AEnvironmentAwareController {
 				'error' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Persist the SecurySign integration settings
+	 *
+	 * @param int $providerId The user_oidc provider that is SecurySign; 0 turns the integration off
+	 * @param string $url SecurySign's address, such as https://securysign.com
+	 * @param string $tendaworldUrl Where users without a certificate enrol
+	 * @param string $signingSecret SecurySign signing (SSC) secret; empty keeps the stored one
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 400: An address is not a bare https origin
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/securysign-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setSecurySignConfig(int $providerId = 0, string $url = '', string $tendaworldUrl = '', string $signingSecret = ''): DataResponse {
+		try {
+			foreach (array_filter([$url, $tendaworldUrl]) as $origin) {
+				SecurySignService::origin($origin);
+			}
+		} catch (\RuntimeException) {
+			return new DataResponse([
+				'error' => $this->l10n->t('Use a bare https address, such as https://securysign.com'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+		$this->appConfig->setValueInt(Application::APP_ID, 'securysign_provider_id', max(0, $providerId));
+		$this->setPaymentConfig('securysign_url', rtrim($url, '/'));
+		$this->setPaymentConfig('tendaworld_url', rtrim($tendaworldUrl, '/'));
+		$this->setPaymentConfig('securysign_signing_secret', $signingSecret, true);
+		return new DataResponse([
+			'message' => $this->l10n->t('SecurySign settings saved'),
+		]);
 	}
 
 	/**

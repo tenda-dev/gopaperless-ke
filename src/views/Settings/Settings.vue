@@ -37,6 +37,7 @@
 		<ProductPricing />
 		<PublicLanding />
 		<SsoSettings />
+		<SecurySignSettings />
 		<CertificateAccess />
 		<FilesListColumns />
 		<FilesListNext />
@@ -74,6 +75,7 @@ import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'
 import PublicLanding from './PublicLanding.vue'
 import SsoSettings from './SsoSettings.vue'
+import SecurySignSettings from './SecurySignSettings.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'
 import IdentificationFactors from './IdentificationFactors.vue'
 import LegalInformation from './LegalInformation.vue'
