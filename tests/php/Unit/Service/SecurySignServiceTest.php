@@ -159,13 +159,41 @@ final class SecurySignServiceTest extends TestCase {
 	/**
 	 * @return array{0: SecurySignService, 1: object}
 	 */
-	private static function serviceAnswering(int $status, string $body = '{}'): SecurySignService {
+	private static int $gets = 0;
+
+	public function testAnOutageSkipsSecurySignForAMinute(): void {
+		$store = ['oidc.providerid' => 1];
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturnCallback(static function (string $key) use (&$store) {
+			return $store[$key] ?? null;
+		});
+		$session->method('set')->willReturnCallback(static function (string $key, $value) use (&$store): void {
+			$store[$key] = $value;
+		});
+		$service = self::serviceAnswering(502, '{}', $session);
+		self::$gets = 0;
+
+		foreach ([1, 2] as $attempt) {
+			try {
+				$service->request('pki/certificates/me');
+				self::fail('A 502 was treated as an answer');
+			} catch (\RuntimeException $e) {
+				self::assertSame(503, $e->getCode());
+			}
+		}
+		// The second attempt fell back at once instead of waiting on SecurySign again.
+		self::assertSame(1, self::$gets);
+	}
+
+	private static function serviceAnswering(int $status, string $body = '{}', ?ISession $session = null): SecurySignService {
 		$test = new self('t');
 		$config = $test->createMock(IAppConfig::class);
 		$config->method('getValueInt')->willReturn(1);
 		$config->method('getValueString')->willReturn('https://signa.test');
-		$session = $test->createMock(ISession::class);
-		$session->method('get')->willReturn(1);
+		if ($session === null) {
+			$session = $test->createMock(ISession::class);
+			$session->method('get')->willReturn(1);
+		}
 		$users = $test->createMock(IUserSession::class);
 		$users->method('isLoggedIn')->willReturn(true);
 
@@ -208,7 +236,10 @@ final class SecurySignServiceTest extends TestCase {
 		$response->method('getStatusCode')->willReturn($status);
 		$response->method('getBody')->willReturn($body);
 		$client = $test->createMock(IClient::class);
-		$client->method('get')->willReturn($response);
+		$client->method('get')->willReturnCallback(static function () use ($response) {
+			self::$gets++;
+			return $response;
+		});
 		$clients = $test->createMock(IClientService::class);
 		$clients->method('newClient')->willReturn($client);
 

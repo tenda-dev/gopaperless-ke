@@ -11,6 +11,7 @@ namespace OCA\Libresign\Service;
 
 use OCA\Libresign\AppInfo\Application;
 use OCP\Http\Client\IClientService;
+use OCP\Http\Client\IResponse;
 use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IServerContainer;
@@ -20,6 +21,8 @@ use Psr\Log\LoggerInterface;
 
 class SecurySignService {
 	private const READINESS_CACHE_KEY = 'libresign.securysign.readiness';
+	private const DOWN_KEY = 'libresign.securysign.down_until';
+	private const DOWN_SECONDS = 60;
 	/** Bump to re-import every mirrored signature; 3 dropped the composed card. */
 	public const CARD_VERSION = 3;
 
@@ -69,11 +72,8 @@ class SecurySignService {
 	public function request(string $path, bool $allowMissing = false, ?array $identity = null): ?array {
 		$identity ??= $this->identity();
 		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
-		$response = $this->http->newClient()->get($base . '/api/' . $path, [
+		$response = $this->send('get', $base . '/api/' . $path, [
 			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
-			'timeout' => 15,
-			'allow_redirects' => false,
-			'http_errors' => false,
 		]);
 		if ($allowMissing && $response->getStatusCode() === 404) {
 			return null;
@@ -132,16 +132,13 @@ class SecurySignService {
 	 * the hash with the key behind the user's certificate.
 	 */
 	public function signingToken(string $documentHash): string {
-		$response = $this->http->newClient()->post($this->signingOrigin() . '/api/ssc/token', [
+		$response = $this->send('post', $this->signingOrigin() . '/api/ssc/token', [
 			'json' => [
 				'clientId' => $this->provider()->getClientId(),
 				'clientSecret' => $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret'),
 				'documentHash' => $documentHash,
 				'loa' => 'LOA-2',
 			],
-			'timeout' => 15,
-			'allow_redirects' => false,
-			'http_errors' => false,
 		]);
 		$body = (string)$response->getBody();
 		$token = json_decode($body, true)['token'] ?? null;
@@ -153,6 +150,30 @@ class SecurySignService {
 			throw new \RuntimeException('SecurySign could not start signing. Please retry shortly.', 503);
 		}
 		return $token;
+	}
+
+	/**
+	 * One call to SecurySign. A failure (no connection, a timeout or a 5xx) marks
+	 * SecurySign down for this session for a minute, so the pages and signatures
+	 * that follow fall back at once instead of waiting on it again.
+	 */
+	private function send(string $method, string $url, array $options): IResponse {
+		$downUntil = $this->session->get(self::DOWN_KEY);
+		if (is_int($downUntil) && $downUntil > time()) {
+			throw new \RuntimeException('SecurySign is unreachable.', 503);
+		}
+		$options += ['connect_timeout' => 3, 'timeout' => 10, 'allow_redirects' => false, 'http_errors' => false];
+		try {
+			$client = $this->http->newClient();
+			$response = $method === 'post' ? $client->post($url, $options) : $client->get($url, $options);
+		} catch (\Exception $e) {
+			$this->session->set(self::DOWN_KEY, time() + self::DOWN_SECONDS);
+			throw new \RuntimeException('SecurySign is unreachable.', 503, $e);
+		}
+		if ($response->getStatusCode() >= 500) {
+			$this->session->set(self::DOWN_KEY, time() + self::DOWN_SECONDS);
+		}
+		return $response;
 	}
 
 	/** The user_oidc provider row: its discovery URL and client id. */

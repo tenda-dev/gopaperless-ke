@@ -70,14 +70,13 @@ final class SecurySignMiddlewareTest extends TestCase {
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
 	}
 
-	public function testAnOutageDoesNotSilentlyLetTheUserThrough(): void {
+	public function testAnOutageGoesUnnoticedOnAPageLoad(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willThrowException(new \RuntimeException('down', 503));
+		$page = $this->page();
 
-		$response = $this->middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
-
-		self::assertInstanceOf(TemplateResponse::class, $response);
-		self::assertSame(503, $response->getStatus());
+		// The page renders, and signing falls back to the local engine behind its confirm dialog.
+		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
 	}
 
 	public function testTheSigningApiCannotBeUsedToSkipOnboarding(): void {
@@ -115,10 +114,10 @@ final class SecurySignMiddlewareTest extends TestCase {
 	}
 
 	/**
-	 * Both failures land on the branded guest page rather than a bare wall of text,
-	 * and both carry a way forward: a rejected session offers the force=1 handoff
-	 * that signs the user out and straight back in, an outage offers a retry, and
-	 * either way there is a link out of LibreSign entirely.
+	 * A rejected session lands on the branded guest page rather than a bare wall
+	 * of text, with the force=1 handoff that signs the user out and straight back
+	 * in, and a link out of LibreSign entirely. An outage renders the page instead;
+	 * see testAnOutageGoesUnnoticedOnAPageLoad.
 	 */
 	public function testEveryFailureIsBrandedAndOffersAWayOut(): void {
 		$this->signa->method('applies')->willReturn(true);
@@ -126,7 +125,6 @@ final class SecurySignMiddlewareTest extends TestCase {
 
 		$cases = [
 			[401, 401, 'libresign/sso/handoff', 'force=1'],
-			[503, 503, 'apps/libresign/f/document', ''],
 		];
 		foreach ($cases as [$thrown, $expected, $needle, $extra]) {
 			$signa = $this->createMock(SecurySignService::class);

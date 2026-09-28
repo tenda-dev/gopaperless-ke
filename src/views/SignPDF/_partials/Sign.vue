@@ -10,7 +10,7 @@
 
 		<SignCreditsBanner v-if="showSignCreditsBanner"/>
 
-		<div v-if="!loading" class="button-wrapper">
+		<div v-if="!loading || busy" class="button-wrapper">
 			<div v-if="needCreateSignature" class="no-signature-warning">
 				<p>
 					{{ t('libresign', 'You do not have any signature defined.') }}
@@ -38,10 +38,10 @@
 			<div v-else-if="needIdentificationDocuments" class="no-identification-warning">
 				<Documents :sign-request-uuid="signRequestUuid" />
 			</div>
-			<NcButton v-else-if="ableToSign" :wide="true" :disabled="loading" variant="primary"
+			<NcButton v-else-if="ableToSign" :wide="true" :disabled="loading || busy" variant="primary"
 				@click="confirmSignDocument">
 				<template #icon>
-					<NcLoadingIcon v-if="loading" :size="20" />
+					<NcLoadingIcon v-if="loading || busy" :size="20" />
 				</template>
 				{{ t('libresign', 'Sign the document.') }}
 			</NcButton>
@@ -282,6 +282,7 @@ type SignatureMethodConfig = {
 	token?: string
 	productCode?: string | null
 	securysignSignature?: string
+	confirmed?: boolean
 }
 
 type SignError = {
@@ -323,6 +324,7 @@ type SubmitSignaturePayload = {
 	token?: string
 	productCode?: string | null
 	securysignSignature?: string
+	confirmed?: boolean
 	elements?: Array<{
 		documentElementId: number
 		profileNodeId?: number
@@ -419,6 +421,8 @@ const showManagePassword = ref(false)
 const securysignApproval = ref<{ request: SecurySignApprovalRequest, methodConfig: SignatureMethodConfig } | null>(null)
 // SecurySign signers approve with a passkey, which is confirmation enough.
 const securysignSigns = loadState<boolean>('libresign', 'securysign_signs', false)
+// From the sign click until the next screen (SecurySign's window or the confirm dialog) takes over.
+const busy = ref(false)
 const isModal = window.self !== window.top
 let unwatchPendingAction: null | (() => void) = null
 let requirementValidator: SigningRequirementValidator | null = null
@@ -653,7 +657,8 @@ function handlePaymentClose() {
 }
 
 async function signWithClick() {
-	await submitSignature({ method: 'clickToSign' })
+	// Reached from the confirm dialog, so the user has confirmed.
+	await submitSignature({ method: 'clickToSign', confirmed: true })
 }
 
 async function signWithClickGated() {
@@ -804,6 +809,10 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 			payload.securysignSignature = methodConfig.securysignSignature
 		}
 
+		if (methodConfig.confirmed) {
+			payload.confirmed = true
+		}
+
 		if (elements.value.length > 0) {
 			if (canCreateSignature.value) {
 				payload.elements = elements.value.flatMap((row) => typeof row.elementId === 'number'
@@ -859,6 +868,10 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 		if (signError.type === 'securysignApproval' && signError.approval) {
 			securysignApproval.value = { request: signError.approval, methodConfig }
 		}
+		// SecurySign is unavailable: sign locally, behind the usual confirm dialog.
+		if (signError.type === 'confirmSign') {
+			actionHandler!.showModal('clickToSign')
+		}
 
 		signStore.setSigningErrors(signError.errors || [])
 		// Without the confirm dialog open, nothing on the page shows signStore.errors.
@@ -874,10 +887,24 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 async function onSecurySignApproved(signature: string) {
 	const methodConfig = securysignApproval.value?.methodConfig ?? {}
 	securysignApproval.value = null
-	await submitSignature({ ...methodConfig, securysignSignature: signature })
+	busy.value = true
+	try {
+		await submitSignature({ ...methodConfig, securysignSignature: signature })
+	} finally {
+		busy.value = false
+	}
 }
 
 async function confirmSignDocument() {
+	busy.value = true
+	try {
+		await startSigning()
+	} finally {
+		busy.value = false
+	}
+}
+
+async function startSigning() {
 	// prevent double-trigger / race conditions
 	if (isProcessingPayment.value) return
 	isProcessingPayment.value = true
@@ -944,7 +971,7 @@ async function confirmSignDocument() {
 	})
 
 	if (result === 'ready') {
-		proceedWithSigning()
+		await proceedWithSigning()
 	}
 }
 
@@ -971,11 +998,11 @@ async function onPaymentSuccess() {
 	confirmSignDocument()
 }
 
-function proceedWithSigning() {
+async function proceedWithSigning() {
 	ensureServices()
 	if (signMethodsStore.needClickToSign() && securysignSigns) {
 		// Credits were checked just above, so this skips the dialog's second check too.
-		signWithClick()
+		await submitSignature({ method: 'clickToSign' })
 	} else if (signMethodsStore.needClickToSign()) {
 		actionHandler!.showModal('clickToSign')
 	} else if (signMethodsStore.needSignWithPassword()) {

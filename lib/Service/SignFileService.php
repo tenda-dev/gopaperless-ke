@@ -978,6 +978,11 @@ class SignFileService {
 			$this->logger->warning('SecurySign is unavailable, signing with the local engine', ['exception' => $e]);
 			$this->securySignUnavailable = true;
 			$this->engine = null;
+			// SecurySign signers skip the confirm dialog because the passkey confirms.
+			// A local signature has no passkey, so the page asks first, as it always did.
+			if (!\OCP\Server::get(\OCP\IRequest::class)->getParam('confirmed')) {
+				throw $e;
+			}
 			return $this->getEngine()->sign();
 		}
 	}

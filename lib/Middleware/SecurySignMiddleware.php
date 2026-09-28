@@ -85,13 +85,18 @@ class SecurySignMiddleware extends Middleware {
 	#[\Override]
 	public function afterController(Controller $controller, string $methodName, Response $response): Response {
 		if (!$controller instanceof PageController || !$response instanceof TemplateResponse
-			|| $response->getTemplateName() !== 'main' || !$this->signa->applies()) {
+			|| !$this->signa->applies()) {
+			return $response;
+		}
+		// Every page, the public /p/sign one included: the sign button goes straight
+		// to SecurySign, because the passkey is the confirmation. When SecurySign
+		// turns out to be down, the server asks for the local confirm dialog.
+		$this->initialState->provideInitialState('securysign_signs', $this->signa->signs());
+		if ($response->getTemplateName() !== 'main') {
 			return $response;
 		}
 		try {
 			if ($this->signa->isReady()) {
-				// Lets the sign page skip its confirm dialog: the passkey is the confirmation.
-				$this->initialState->provideInitialState('securysign_signs', $this->signa->signs());
 				return $response;
 			}
 			return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.onboard', [
@@ -111,13 +116,10 @@ class SecurySignMiddleware extends Middleware {
 					$this->urls->linkToRoute('libresign.sso.handoff', ['providerId' => $this->signa->providerId(), 'force' => 1]),
 				);
 			}
-			return $this->notice(
-				'SecurySign is not responding',
-				'We could not reach the service that holds your certificate and signature. Your documents and any payment are safe. Please try again in a moment.',
-				503,
-				'Try again',
-				SecurySignService::returnPath($this->request->getRequestUri()),
-			);
+			// An outage should go unnoticed: the page renders, and signing uses the
+			// local engine with its usual confirm dialog until SecurySign is back.
+			$this->initialState->provideInitialState('securysign_signs', false);
+			return $response;
 		}
 	}
 

@@ -94,11 +94,10 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    nonce, expiry, uid and `sub`, forces a fresh readiness check, then drops the nonce and
    returns the user to the exact page from step 3.
 
-Failures on the page gate are loud: an outage there returns 503 with the payment
-retained, never a redirect loop. The signing API is the exception since
-2026-09-29: it trusts the session's readiness, and when SecurySign cannot be
-reached the local engine signs instead (see "Signing with the user's SecurySign
-certificate"). `/enrol/start` returning "done"
+An outage is not shown to users (since 2026-09-29). Pages render, and signing
+falls back to the local engine behind its usual confirm dialog (see "Signing with
+the user's SecurySign certificate"). A rejected session still gets the branded
+"Reconnect" page, because signing in again fixes it. `/enrol/start` returning "done"
 while the certificate or card is still missing comes back as `completed=1`,
 which reports the failure instead of bouncing again.
 
@@ -217,8 +216,7 @@ gate itself is what is broken.
 | Situation | Status | What the user is offered |
 |---|---|---|
 | Signa answers 401 or 403 | 401 | "Sign in again", pointing at `/apps/libresign/sso?providerId=<id>&force=1` — one click that drops the local session and re-enters OIDC |
-| Signa unreachable or 5xx on a page load | 503 | "Try again" on the page they came from |
-| Signa unreachable or 5xx while signing | none | The local engine signs; nothing is shown |
+| Signa unreachable or 5xx | none | The page renders; signing shows the local confirm dialog |
 | Onboarding round trip broken | 503 | "Start again" at the app root |
 
 Upstream text never reaches the user. `SecurySignService::request()` logs the
@@ -465,9 +463,15 @@ certificate. The key never leaves SecurySign.
 | Session from the SecurySign provider, secret configured | SecurySign, or the local engine while SecurySign is down |
 | Everyone else: email/password accounts, token and email signers, public links | LibreSign's local engine |
 
-When SecurySign cannot sign, the document is signed by LibreSign's local engine
-instead, in the same request, and the log records `SecurySign is unavailable,
-signing with the local engine`. That covers connection failures, timeouts, 5xx
+When SecurySign cannot sign, the confirm dialog appears ("Confirm that you want
+to sign this document") and the document is signed by LibreSign's local engine.
+That dialog is how to tell a failed SecurySign attempt apart: SecurySign signers
+never see it otherwise. The first request answers `action: 3700`
+(`SecurySignUnavailable`) and the page opens the dialog; the dialog's button sends
+`confirmed: true`, which lets `SignFileService::signWithEngine()` sign locally.
+The log records `SecurySign is unavailable, signing with the local engine`. After
+a failure, `SecurySignService` skips SecurySign for that session for a minute, and
+every call gives up after 3 s to connect or 10 s in all. That covers connection failures, timeouts, 5xx
 answers, unreadable answers and a refused signing token, so a wrong
 `securysign_signing_secret` also lands here: watch the log for it after
 configuring. Problems the user can fix are shown instead and nothing is signed:
