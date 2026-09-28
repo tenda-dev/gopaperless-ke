@@ -110,6 +110,8 @@
 			@update:phone="val => emit('update:phone', val)" @close="signMethodsStore.closeModal('token')" />
 		<ModalVerificationCode v-if="signMethodsStore.modal.emailToken" mode="email" @change="signWithEmailToken"
 			@close="signMethodsStore.closeModal('emailToken')" />
+		<SecurySignApproval v-if="securysignApproval" :approval="securysignApproval.request"
+			@approved="onSecurySignApproved" @failed="onSecurySignFailed" @cancel="securysignApproval = null" />
 	</div>
 
 	<CreditPurchaseFlow
@@ -153,6 +155,7 @@ import Signatures from '../../../views/Account/partials/Signatures.vue'
 import CreatePassword from '../../../views/CreatePassword.vue'
 import ManagePassword from '../../Account/partials/ManagePassword.vue'
 import UploadCertificate from '../../../views/UploadCertificate.vue'
+import SecurySignApproval, { type SecurySignApprovalRequest } from '../../../components/SecurySignApproval.vue'
 
 import { useSidebarStore } from '../../../store/sidebar.js'
 import { useSignStore } from '../../../store/sign.js'
@@ -278,6 +281,7 @@ type SignatureMethodConfig = {
 	modalCode?: string
 	token?: string
 	productCode?: string | null
+	securysignSignature?: string
 }
 
 type SignError = {
@@ -318,6 +322,7 @@ type SubmitSignaturePayload = {
 	method?: string
 	token?: string
 	productCode?: string | null
+	securysignSignature?: string
 	elements?: Array<{
 		documentElementId: number
 		profileNodeId?: number
@@ -327,6 +332,7 @@ type SubmitSignaturePayload = {
 type SignSubmissionError = {
 	type?: string
 	errors?: SignError[]
+	approval?: SecurySignApprovalRequest
 }
 
 type SignStoreContract = ReturnType<typeof useSignStore> & {
@@ -409,6 +415,8 @@ const user = ref<UserInfo>({
 })
 const signPassword = ref('')
 const showManagePassword = ref(false)
+// Set while SecurySign's signing frame waits for the user's passkey.
+const securysignApproval = ref<{ request: SecurySignApprovalRequest, methodConfig: SignatureMethodConfig } | null>(null)
 const isModal = window.self !== window.top
 let unwatchPendingAction: null | (() => void) = null
 let requirementValidator: SigningRequirementValidator | null = null
@@ -790,6 +798,10 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 			payload.productCode = methodConfig.productCode
 		}
 
+		if (methodConfig.securysignSignature) {
+			payload.securysignSignature = methodConfig.securysignSignature
+		}
+
 		if (elements.value.length > 0) {
 			if (canCreateSignature.value) {
 				payload.elements = elements.value.flatMap((row) => typeof row.elementId === 'number'
@@ -842,11 +854,25 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 				: 'createPassword'
 			actionHandler!.showModal(modalCode)
 		}
+		if (signError.type === 'securysignApproval' && signError.approval) {
+			securysignApproval.value = { request: signError.approval, methodConfig }
+		}
 
 		signStore.setSigningErrors(signError.errors || [])
 	} finally {
 		loading.value = false
 	}
+}
+
+async function onSecurySignApproved(signature: string) {
+	const methodConfig = securysignApproval.value?.methodConfig ?? {}
+	securysignApproval.value = null
+	await submitSignature({ ...methodConfig, securysignSignature: signature })
+}
+
+function onSecurySignFailed(message: string) {
+	securysignApproval.value = null
+	signStore.setSigningErrors([{ message: message || t('libresign', 'SecurySign could not sign. Please try again.') }])
 }
 
 async function confirmSignDocument() {

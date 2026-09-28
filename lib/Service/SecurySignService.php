@@ -102,6 +102,61 @@ class SecurySignService {
 		}
 		return $data;
 	}
+
+	/**
+	 * Whether this user's documents are signed by SecurySign. Everyone else, and
+	 * every instance without the RP's signing secret, keeps LibreSign's own engine.
+	 */
+	public function signs(): bool {
+		return $this->applies()
+			&& $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret') !== '';
+	}
+
+	/** The certificate SecurySign's HSM signs with for this user. */
+	public function certificatePem(): string {
+		$data = $this->request('pki/certificates/me');
+		$pem = (string)($data['certificate']['certificatePem'] ?? '');
+		$parsed = openssl_x509_parse($pem);
+		if (($data['status'] ?? null) !== 'active' || $parsed === false || !self::isCurrent($parsed)) {
+			throw new \RuntimeException('You need an active SecurySign certificate to sign. Finish enrolment and try again.', 409);
+		}
+		return $pem;
+	}
+
+	/**
+	 * A five-minute token for SecurySign's signing frame, bound to one hash. The
+	 * frame runs the passkey prompt on SecurySign's origin, then the HSM signs
+	 * the hash with the key behind the user's certificate.
+	 */
+	public function signingToken(string $documentHash): string {
+		$provider = $this->container->get('OCA\\UserOIDC\\Db\\ProviderMapper')->getProvider($this->providerId());
+		$response = $this->http->newClient()->post($this->signingOrigin() . '/api/ssc/token', [
+			'json' => [
+				'clientId' => $provider->getClientId(),
+				'clientSecret' => $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret'),
+				'documentHash' => $documentHash,
+				'loa' => 'LOA-2',
+			],
+			'timeout' => 15,
+			'allow_redirects' => false,
+			'http_errors' => false,
+		]);
+		$body = (string)$response->getBody();
+		$token = json_decode($body, true)['token'] ?? null;
+		if ($response->getStatusCode() !== 200 || !is_string($token)) {
+			$this->logger->error('SecurySign refused a signing token', [
+				'status' => $response->getStatusCode(),
+				'body' => substr($body, 0, 500),
+			]);
+			throw new \RuntimeException('SecurySign could not start signing. Please retry shortly.', 503);
+		}
+		return $token;
+	}
+
+	public function signingOrigin(): string {
+		return self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
+	}
+
 	/**
 	 * Whether SecurySign holds a certificate and a signature this user can sign
 	 * with.
