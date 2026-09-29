@@ -12,7 +12,6 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\Controller\SecurySignController;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
-use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
@@ -55,6 +54,7 @@ final class SecurySignControllerTest extends TestCase {
 		$this->users->method('getUser')->willReturn($user);
 
 		$urls = $this->createMock(IURLGenerator::class);
+		$urls->method('linkToRoute')->willReturnCallback(static fn (string $route): string => '/' . $route);
 		$urls->method('linkToRouteAbsolute')->willReturnCallback(
 			static fn (string $route, array $params) => 'https://gopaperless.test/apps/libresign/securysign/return?' . http_build_query($params),
 		);
@@ -107,56 +107,65 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
 		self::assertArrayNotHasKey('libresign.securysign.onboarding', $this->store);
 
-		// Replay: the nonce is single use, so the same link cannot be walked again.
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->complete($state));
+		// Replay: the nonce is single use, so the same link only reaches the home page.
+		$this->users->expects(self::never())->method('logout');
+		self::assertSame('/apps/libresign/', $this->controller->complete($state)->getRedirectURL());
 	}
 
-	public function testAWrongOrEmptyStateIsRefused(): void {
+	/** Stale, expired or foreign links go home. None of them may sign anyone out. */
+	public function testABadLinkGoesHomeWithoutSigningOut(): void {
 		$this->signa->method('isReady')->willReturn(false);
-		$this->startOnboarding();
+		$this->users->expects(self::never())->method('logout');
+		$state = $this->startOnboarding();
 
-		foreach (['', str_repeat('a', 64)] as $state) {
-			self::assertInstanceOf(TemplateResponse::class, $this->controller->complete($state));
+		foreach (['', str_repeat('a', 64)] as $bad) {
+			self::assertSame('/apps/libresign/', $this->controller->complete($bad)->getRedirectURL());
 		}
-		self::assertArrayHasKey('libresign.securysign.onboarding', $this->store);
-	}
-
-	public function testAnExpiredNonceIsRefused(): void {
-		$this->signa->method('isReady')->willReturn(false);
-		$state = $this->startOnboarding();
-		$this->store['libresign.securysign.onboarding']['expires'] = time() - 1;
-
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->complete($state));
-	}
-
-	public function testANonceFromAnotherIdentityIsRefused(): void {
-		$this->signa->method('isReady')->willReturn(false);
-		$state = $this->startOnboarding();
-
-		$this->store['libresign.securysign.onboarding']['sub'] = 'google-oauth2|2';
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->complete($state));
-
-		$this->store['libresign.securysign.onboarding']['sub'] = self::IDENTITY['sub'];
 		$this->store['libresign.securysign.onboarding']['uid'] = 'bob@example.test';
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->complete($state));
+		self::assertSame('/apps/libresign/', $this->controller->complete($state)->getRedirectURL());
+		$this->store['libresign.securysign.onboarding']['uid'] = 'alice@example.test';
+		$this->store['libresign.securysign.onboarding']['expires'] = time() - 1;
+		self::assertSame('/apps/libresign/', $this->controller->complete($state)->getRedirectURL());
 	}
 
-	public function testReturningBeforeSecurySignIsReadyDoesNotConsumeTheNonce(): void {
+	/**
+	 * Coming back unfinished (MIMI's logout lands here too) discards the setup:
+	 * the user signs in again and the gate sends them back to MIMI if needed.
+	 */
+	public function testAnUnfinishedSetupSignsOutToTheLoginPage(): void {
 		$this->signa->method('isReady')->willReturn(false);
+		$this->users->expects(self::once())->method('logout');
 		$state = $this->startOnboarding();
 
 		$response = $this->controller->complete($state);
 
-		self::assertInstanceOf(TemplateResponse::class, $response);
-		self::assertSame(503, $response->getStatus());
-		self::assertArrayHasKey('libresign.securysign.onboarding', $this->store);
+		self::assertSame('/core.login.showLoginForm', $response->getRedirectURL());
+		self::assertArrayNotHasKey('libresign.securysign.onboarding', $this->store);
 	}
 
-	public function testASecurySignOutageIsReportedInsteadOfLoopingOrSigning(): void {
-		$this->signa->method('isReady')->willThrowException(new \RuntimeException('down', 503));
+	public function testAnotherSecurySignIdentitySignsOut(): void {
+		$this->signa->method('isReady')->willReturn(false);
+		$this->users->expects(self::once())->method('logout');
+		$state = $this->startOnboarding();
+		$this->store['libresign.securysign.onboarding']['sub'] = 'google-oauth2|2';
 
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->onboard('/apps/libresign/f/document'));
-		self::assertInstanceOf(TemplateResponse::class, $this->controller->complete(str_repeat('a', 64)));
+		self::assertSame('/core.login.showLoginForm', $this->controller->complete($state)->getRedirectURL());
+	}
+
+	/** An outage is not the user's problem: the page loads and the local engine signs. */
+	public function testAnOutageGoesHomeUnnoticed(): void {
+		$this->signa->method('isReady')->willThrowException(new \RuntimeException('down', 503));
+		$this->signa->expects(self::once())->method('forgetReadiness');
+		$this->users->expects(self::never())->method('logout');
+
+		self::assertSame('/apps/libresign/f/document', $this->controller->onboard('/apps/libresign/f/document')->getRedirectURL());
+	}
+
+	public function testADeadSessionSignsOutToTheLoginPage(): void {
+		$this->signa->method('isReady')->willThrowException(new \RuntimeException('expired', 401));
+		$this->users->expects(self::once())->method('logout');
+
+		self::assertSame('/core.login.showLoginForm', $this->controller->onboard('/apps/libresign/f/document')->getRedirectURL());
 	}
 
 	public function testAUserOutsideTheSecurySignProviderIsLeftAlone(): void {

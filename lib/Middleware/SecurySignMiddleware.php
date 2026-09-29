@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Middleware;
 
-use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Controller\PageController;
 use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
@@ -23,6 +22,7 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Middleware;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 class SecurySignMiddleware extends Middleware {
@@ -30,6 +30,7 @@ class SecurySignMiddleware extends Middleware {
 		private SecurySignService $signa,
 		private IRequest $request,
 		private IURLGenerator $urls,
+		private IUserSession $users,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -95,41 +96,14 @@ class SecurySignMiddleware extends Middleware {
 			]));
 		} catch (\Throwable $e) {
 			$this->logger->error('SecurySign readiness check failed on a page load', ['exception' => $e]);
-			// A stale session is the user's to fix by signing in again, and reads
-			// nothing like an outage. Saying "unavailable" for both sends them off to
-			// wait for a service that is up.
-			if ($e->getCode() === 401) {
-				return $this->notice(
-					'Reconnect to continue',
-					'Your GoPaperless session is no longer linked to your SecurySign identity. Signing in again restores it. Nothing has been lost.',
-					401,
-					'Sign in again',
-					$this->urls->linkToRoute('libresign.sso.handoff', ['providerId' => $this->signa->providerId(), 'force' => 1]),
-				);
+			// A dead session means signing in again, straight from the login page.
+			if (in_array($e->getCode(), [401, 403], true)) {
+				$this->users->logout();
+				return new RedirectResponse($this->urls->linkToRoute('core.login.showLoginForm'));
 			}
 			// An outage should go unnoticed: the page renders, and signing uses the
 			// local engine with its usual confirm dialog until SecurySign is back.
 			return $response;
 		}
-	}
-
-	/**
-	 * The guest layout gives this the instance logo and theme, and both links give
-	 * the user somewhere to go. The secondary one leaves LibreSign entirely, which
-	 * is the only way out when the gate itself is what is broken — the rest of
-	 * Nextcloud, sign-out included, is never gated.
-	 */
-	private function notice(string $title, string $message, int $status, string $actionLabel, string $actionUrl): TemplateResponse {
-		$response = new TemplateResponse(Application::APP_ID, 'securysign_notice', [
-			'title' => $title,
-			'message' => $message,
-			'actionLabel' => $actionLabel,
-			'actionUrl' => $actionUrl,
-			'secondaryLabel' => 'Back to GoPaperless',
-			'secondaryUrl' => $this->urls->linkToDefaultPageUrl(),
-		], TemplateResponse::RENDER_AS_GUEST);
-		$response->setStatus($status);
-		$response->cacheFor(0);
-		return $response;
 	}
 }

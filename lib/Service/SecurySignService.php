@@ -358,6 +358,11 @@ class SecurySignService {
 		}
 	}
 
+	/** The next isReady() asks SecurySign again instead of trusting the session. */
+	public function forgetReadiness(): void {
+		$this->session->remove(self::READINESS_CACHE_KEY);
+	}
+
 	private function cacheReadiness(string $identity, bool $ready): void {
 		$this->session->set(self::READINESS_CACHE_KEY, [
 			'identity' => $identity,

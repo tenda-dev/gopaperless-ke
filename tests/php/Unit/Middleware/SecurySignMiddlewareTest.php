@@ -19,6 +19,7 @@ use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use OCP\IUserSession;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -39,7 +40,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 				: '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
 		);
 		$urls->method('linkToDefaultPageUrl')->willReturn('/apps/dashboard/');
-		$this->middleware = new SecurySignMiddleware($this->signa, $this->request, $urls, $this->createMock(LoggerInterface::class));
+		$this->middleware = new SecurySignMiddleware($this->signa, $this->request, $urls, $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
 	}
 
 	private function page(): TemplateResponse {
@@ -108,50 +109,32 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$ready = $this->createMock(SecurySignService::class);
 		$ready->method('applies')->willReturn(true);
 		$ready->expects(self::never())->method('isReady');
-		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
 		$other->beforeController($this->createMock(SignFileController::class), 'requestCodeByFileId');
 	}
 
 	/**
-	 * A rejected session lands on the branded guest page rather than a bare wall
-	 * of text, with the force=1 handoff that signs the user out and straight back
-	 * in, and a link out of LibreSign entirely. An outage renders the page instead;
-	 * see testAnOutageGoesUnnoticedOnAPageLoad.
+	 * A rejected session signs the user out to the login page. No notice page:
+	 * signing in again is the fix, so that is where they land.
 	 */
-	public function testEveryFailureIsBrandedAndOffersAWayOut(): void {
-		$this->signa->method('applies')->willReturn(true);
-		$this->signa->method('providerId')->willReturn(2);
-
-		$cases = [
-			[401, 401, 'libresign/sso/handoff', 'force=1'],
-		];
-		foreach ($cases as [$thrown, $expected, $needle, $extra]) {
+	public function testADeadSessionSignsOutToTheLoginPage(): void {
+		foreach ([401, 403] as $code) {
 			$signa = $this->createMock(SecurySignService::class);
 			$signa->method('applies')->willReturn(true);
-			$signa->method('providerId')->willReturn(2);
-			$signa->method('isReady')->willThrowException(new \RuntimeException('upstream said no', $thrown));
+			$signa->method('isReady')->willThrowException(new \RuntimeException('upstream said no', $code));
 			$urls = $this->createMock(IURLGenerator::class);
-			$urls->method('linkToRoute')->willReturnCallback(
-				static fn (string $route, array $params = []): string => '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
-			);
-			$urls->method('linkToDefaultPageUrl')->willReturn('/apps/dashboard/');
-			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $this->createMock(LoggerInterface::class));
+			$urls->method('linkToRoute')->willReturnCallback(static fn (string $route): string => '/' . $route);
+			$users = $this->createMock(IUserSession::class);
+			$users->expects(self::once())->method('logout');
+			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $users, $this->createMock(LoggerInterface::class));
 
 			$response = $middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
-			self::assertInstanceOf(TemplateResponse::class, $response);
-			self::assertSame($expected, $response->getStatus());
-			self::assertSame('securysign_notice', $response->getTemplateName());
-			$params = $response->getParams();
-			self::assertNotSame('', $params['title']);
-			self::assertStringNotContainsString('upstream said no', $params['message'], 'the upstream text is for the log, not the user');
-			self::assertStringContainsString($needle, $params['actionUrl']);
-			if ($extra !== '') {
-				self::assertStringContainsString($extra, $params['actionUrl']);
-			}
-			self::assertSame('/apps/dashboard/', $params['secondaryUrl']);
+			self::assertInstanceOf(RedirectResponse::class, $response);
+			self::assertSame('/core.login.showLoginForm', $response->getRedirectURL());
 		}
 	}
+
 	/**
 	 * SecurySign owns the card, so the endpoints that would replace it are
 	 * refused. Hiding the button in the Vue would leave the API open, and the API
@@ -180,7 +163,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		// And an email/password user keeps full control of their own signature.
 		$other = $this->createMock(SecurySignService::class);
 		$other->method('applies')->willReturn(false);
-		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
 		$middleware->beforeController($controller, 'createSignatureElement');
 	}
 
