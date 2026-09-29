@@ -41,11 +41,6 @@ occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --
   `gopaperless.ke` that is `2`; `1` is the dead `ke_mimi_id` provider. Read it
   from the `initial-state-core-alternativeLogins` input on `<base>/login`.
   `0` or unset disables the gate.
-- There is no issuer setting. It is the provider's discovery URL without
-  `/.well-known/openid-configuration` and its query, and the id_token's `iss`
-  must equal it exactly. A mismatch is treated as a hostile session and refused,
-  not as an outage. `securysign_issuer` was a setting until 2026-09-28 and is
-  now ignored.
 - `oidc_sso_handoff_enabled` gates `/apps/libresign/sso`, the route the website
   links to for the return leg. Off by default, and with it off the route
   redirects to the app root, so the handoff looks like it silently does nothing.
