@@ -600,7 +600,6 @@ namespace OCA\Libresign;
  *         canRequestSign: bool,
  *         hasSignatureFile: bool,
  *         phoneNumber: string,
- *         securysignSigns: bool,
  *     },
  * }
  * @psalm-type LibresignAccountSettingsUpdateResponse = array{

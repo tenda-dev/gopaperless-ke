@@ -195,7 +195,6 @@ type OpenApiAccountMe = operations['account-me']['responses'][200]['content']['a
 type LibreSignAccountMe = Omit<OpenApiAccountMe, 'settings'> & {
 	settings: OpenApiAccountMe['settings'] & {
 		phoneNumber: string
-		securysignSigns?: boolean
 	}
 }
 type LibreSignUserElement = UserElementRecord
@@ -420,9 +419,6 @@ const signPassword = ref('')
 const showManagePassword = ref(false)
 // Set while SecurySign's signing frame waits for the user's passkey.
 const securysignApproval = ref<{ request: SecurySignApprovalRequest, methodConfig: SignatureMethodConfig } | null>(null)
-// SecurySign signers approve with a passkey, which is confirmation enough. Comes
-// with account/me, which the page loads on open.
-const securysignSigns = computed(() => user.value?.settings?.securysignSigns === true)
 // From the sign click until the next screen (SecurySign's window or the confirm dialog) takes over.
 const busy = ref(false)
 const isModal = window.self !== window.top
@@ -1002,10 +998,7 @@ async function onPaymentSuccess() {
 
 async function proceedWithSigning() {
 	ensureServices()
-	if (signMethodsStore.needClickToSign() && securysignSigns.value) {
-		// Credits were checked just above, so this skips the dialog's second check too.
-		await submitSignature({ method: 'clickToSign' })
-	} else if (signMethodsStore.needClickToSign()) {
+	if (signMethodsStore.needClickToSign()) {
 		actionHandler!.showModal('clickToSign')
 	} else if (signMethodsStore.needSignWithPassword()) {
 		actionHandler!.showModal('password')

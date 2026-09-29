@@ -95,7 +95,7 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    returns the user to the exact page from step 3.
 
 An outage is not shown to users (since 2026-09-29). Pages render, and signing
-falls back to the local engine behind its usual confirm dialog (see "Signing with
+falls back to the local engine (see "Signing with
 the user's SecurySign certificate"). A rejected session still gets the branded
 "Reconnect" page, because signing in again fixes it. `/enrol/start` returning "done"
 while the certificate or card is still missing comes back as `completed=1`,
@@ -216,7 +216,7 @@ gate itself is what is broken.
 | Situation | Status | What the user is offered |
 |---|---|---|
 | Signa answers 401 or 403 | 401 | "Sign in again", pointing at `/apps/libresign/sso?providerId=<id>&force=1` — one click that drops the local session and re-enters OIDC |
-| Signa unreachable or 5xx | none | The page renders; signing shows the local confirm dialog |
+| Signa unreachable or 5xx | none | The page renders; signing falls back to the local engine |
 | Onboarding round trip broken | 503 | "Start again" at the app root |
 
 Upstream text never reaches the user. `SecurySignService::request()` logs the
@@ -430,9 +430,9 @@ GoPaperless builds the signed revision itself and asks SecurySign for one thing:
 a signature over one hash, made in its HSM with the key behind the user's
 certificate. The key never leaves SecurySign.
 
-1. The user clicks sign once. There is no confirm dialog for these users (the
-   page reads `settings.securysignSigns` from `account/me`), because the
-   passkey is the confirmation. `SignFileService::identifyEngine()` picks
+1. The user clicks sign and confirms in the usual dialog. Skipping the dialog
+   for SecurySign signers was tried twice and did not work (see PR #33), so it
+   stays. `SignFileService::identifyEngine()` picks
    `SecurySignHandler` when `SecurySignService::signs()` is true, which needs a
    session from the SecurySign `user_oidc` provider and `securysign_signing_secret`
    set on the instance.
@@ -463,12 +463,12 @@ certificate. The key never leaves SecurySign.
 | Session from the SecurySign provider, secret configured | SecurySign, or the local engine while SecurySign is down |
 | Everyone else: email/password accounts, token and email signers, public links | LibreSign's local engine |
 
-When SecurySign cannot sign, the confirm dialog appears ("Confirm that you want
-to sign this document") and the document is signed by LibreSign's local engine.
-That dialog is how to tell a failed SecurySign attempt apart: SecurySign signers
-never see it otherwise. The first request answers `action: 3700`
-(`SecurySignUnavailable`) and the page opens the dialog; the dialog's button sends
-`confirmed: true`, which lets `SignFileService::signWithEngine()` sign locally.
+When SecurySign cannot sign, LibreSign's local engine signs instead, with no
+error. The user already confirmed in the dialog, whose button sends
+`confirmed: true`, and that is what lets `SignFileService::signWithEngine()` sign
+locally. A request without it (an API client) gets `action: 3700`
+(`SecurySignUnavailable`) and has to repeat with `confirmed: true`. The PDF's
+issuer tells the engines apart: Signa Hardware CA or GoPaperless Local.
 The log records `SecurySign is unavailable, signing with the local engine`. After
 a failure, `SecurySignService` skips SecurySign for that session for a minute, and
 every call gives up after 3 s to connect or 10 s in all. That covers connection failures, timeouts, 5xx
