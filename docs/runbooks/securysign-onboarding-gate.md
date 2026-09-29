@@ -486,16 +486,21 @@ The signing token is not bound to a user (LOA-2), so any SecurySign passkey coul
 approve inside the frame. Only a signature from this user's key verifies at
 finalize, so somebody else's approval is refused there.
 
-### Wrong passkey
+### Which passkey, and MIMI passkeys
 
-The signing token is LOA-2, so SecurySign lets any registered passkey approve.
-One from another SecurySign account signs with that account's key, finalize
-refuses it, and the user reads "Wrong passkey. Choose the passkey for
-<certificate email>." LOA-4 would bind the token to the user's own passkey so the
-browser offers only that one, but `signa-rp-16` is capped at LOA-2 (probed
-2026-09-29: `Requested LOA LOA-4 exceeds RP maximum LOA-2`). Raising it is a
-SecurySign setting, and the token request would then send `loa: LOA-4` and the
-user's email.
+The signing token is LOA-4 whenever the certificate carries an email: the request
+sends `loa: LOA-4` and that email, SecurySign binds the user's newest passkey, and
+the frame asks for it under the RP ID it was registered with. That is what lets a
+passkey created on `mimi.ke` sign here: `mimi.ke/.well-known/webauthn` lists
+`securysign.com` (WebAuthn Related Origin Requests), so the browser allows it in
+SecurySign's frame. The browser offers only that passkey. `signa-rp-16` was
+approved for LOA-4 on 2026-09-29 (`credentialBound: true`); an RP that is not gets
+its token refused, which signs with the local engine.
+
+A certificate without an email gets an LOA-2 token, where any passkey registered
+with SecurySign can approve and only `securysign.com` ones are offered. One from
+another account signs with that account's key, finalize refuses it, and the user
+reads "Wrong passkey. Choose the passkey for <certificate email>."
 
 ### Round trips
 

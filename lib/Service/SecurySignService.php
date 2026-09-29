@@ -130,15 +130,20 @@ class SecurySignService {
 	 * A five-minute token for SecurySign's signing frame, bound to one hash. The
 	 * frame runs the passkey prompt on SecurySign's origin, then the HSM signs
 	 * the hash with the key behind the user's certificate.
+	 *
+	 * With the account's email the token is LOA-4 and names the user's passkey,
+	 * so the frame asks for it under its own RP ID (mimi.ke or securysign.com) and
+	 * the browser offers no other. Without one it falls back to LOA-2, where any
+	 * passkey registered with SecurySign can approve and only securysign.com
+	 * passkeys are offered.
 	 */
-	public function signingToken(string $documentHash): string {
+	public function signingToken(string $documentHash, string $email = ''): string {
 		$response = $this->send('post', $this->signingOrigin() . '/api/ssc/token', [
 			'json' => [
 				'clientId' => $this->provider()->getClientId(),
 				'clientSecret' => $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret'),
 				'documentHash' => $documentHash,
-				'loa' => 'LOA-2',
-			],
+			] + ($email === '' ? ['loa' => 'LOA-2'] : ['loa' => 'LOA-4', 'email' => $email]),
 		]);
 		$body = (string)$response->getBody();
 		$token = json_decode($body, true)['token'] ?? null;

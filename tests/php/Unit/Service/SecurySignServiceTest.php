@@ -160,6 +160,21 @@ final class SecurySignServiceTest extends TestCase {
 	 * @return array{0: SecurySignService, 1: object}
 	 */
 	private static int $gets = 0;
+	/** @var list<array<string, mixed>> */
+	private static array $posts = [];
+
+	public function testTheSigningTokenNamesThePasskeyWhenTheEmailIsKnown(): void {
+		$service = self::serviceAnswering(200, '{"token":"t"}');
+		self::$posts = [];
+
+		$service->signingToken('ab', 'signer@example.com');
+		$service->signingToken('ab');
+
+		// LOA-4 binds the user's passkey, which is how a mimi.ke passkey gets asked for.
+		self::assertSame(['LOA-4', 'signer@example.com'], [self::$posts[0]['json']['loa'], self::$posts[0]['json']['email']]);
+		self::assertSame('LOA-2', self::$posts[1]['json']['loa']);
+		self::assertArrayNotHasKey('email', self::$posts[1]['json']);
+	}
 
 	public function testAnOutageSkipsSecurySignForAMinute(): void {
 		$store = ['oidc.providerid' => 1];
@@ -226,6 +241,9 @@ final class SecurySignServiceTest extends TestCase {
 					public function getDiscoveryEndpoint(): string {
 						return 'https://idp.test/realms/signa/.well-known/openid-configuration?kc_idp_hint=google';
 					}
+					public function getClientId(): string {
+						return 'signa-rp-test';
+					}
 				};
 			}
 		};
@@ -238,6 +256,10 @@ final class SecurySignServiceTest extends TestCase {
 		$client = $test->createMock(IClient::class);
 		$client->method('get')->willReturnCallback(static function () use ($response) {
 			self::$gets++;
+			return $response;
+		});
+		$client->method('post')->willReturnCallback(static function (string $url, array $options) use ($response) {
+			self::$posts[] = $options;
 			return $response;
 		});
 		$clients = $test->createMock(IClientService::class);

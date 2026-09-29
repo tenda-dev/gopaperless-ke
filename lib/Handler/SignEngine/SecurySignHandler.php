@@ -118,7 +118,7 @@ class SecurySignHandler extends Pkcs12Handler {
 		$securySign = \OCP\Server::get(SecurySignService::class);
 		$hash = hash('sha256', $capture->attributes);
 		$approval = [
-			'token' => self::userFacing(static fn () => $securySign->signingToken($hash)),
+			'token' => self::userFacing(static fn () => $securySign->signingToken($hash, self::certificateEmail($pem))),
 			'documentHash' => $hash,
 			'documentName' => $this->getInputFile()->getName(),
 			'origin' => $securySign->signingOrigin(),
@@ -215,8 +215,8 @@ class SecurySignHandler extends Pkcs12Handler {
 		if (openssl_verify($attributes, $signature, $pem, OPENSSL_ALGO_SHA256) !== 1) {
 			// The approval came from a passkey whose SecurySign key is not the one
 			// behind this user's certificate: in practice, another account's passkey.
-			$email = openssl_x509_parse($pem)['subject']['emailAddress'] ?? null;
-			throw new LibresignException(is_string($email) && $email !== ''
+			$email = self::certificateEmail($pem);
+			throw new LibresignException($email !== ''
 				? sprintf('Wrong passkey. Choose the passkey for %s.', $email)
 				: 'Wrong passkey. Choose the passkey of the SecurySign account you signed in with.', 403);
 		}
@@ -237,6 +237,12 @@ class SecurySignHandler extends Pkcs12Handler {
 			throw new LibresignException('The signature does not fit the prepared document.', 500);
 		}
 		return substr_replace($pdf, str_pad($cms, $length, '0'), $start, $length);
+	}
+
+	/** The SecurySign account the certificate was issued to, or '' when it names none. */
+	private static function certificateEmail(string $pem): string {
+		$email = openssl_x509_parse($pem)['subject']['emailAddress'] ?? '';
+		return is_string($email) ? $email : '';
 	}
 
 	private static function signedData(string $attributes, string $signature, string $certificate): string {
