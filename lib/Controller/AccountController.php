@@ -17,6 +17,7 @@ use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\JSActions;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
@@ -389,7 +390,10 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 					'displayName' => $user->getDisplayName()
 				],
 				'extended' => $this->accountService->getExtendedAccount($user->getUID(), $user->getEMailAddress()),
-				'settings' => $this->accountService->getSettings($this->userSession->getUser())
+				'settings' => $this->accountService->getSettings($this->userSession->getUser()) + [
+					// The sign page skips its confirm dialog for these users: the passkey confirms.
+					'securysignSigns' => \OCP\Server::get(SecurySignService::class)->signs(),
+				],
 			],
 			Http::STATUS_OK
 		);

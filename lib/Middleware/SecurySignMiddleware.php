@@ -21,7 +21,6 @@ use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Middleware;
-use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use Psr\Log\LoggerInterface;
@@ -32,7 +31,6 @@ class SecurySignMiddleware extends Middleware {
 		private IRequest $request,
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
-		private IInitialState $initialState,
 	) {
 	}
 
@@ -85,14 +83,7 @@ class SecurySignMiddleware extends Middleware {
 	#[\Override]
 	public function afterController(Controller $controller, string $methodName, Response $response): Response {
 		if (!$controller instanceof PageController || !$response instanceof TemplateResponse
-			|| !$this->signa->applies()) {
-			return $response;
-		}
-		// Every page, the public /p/sign one included: the sign button goes straight
-		// to SecurySign, because the passkey is the confirmation. When SecurySign
-		// turns out to be down, the server asks for the local confirm dialog.
-		$this->initialState->provideInitialState('securysign_signs', $this->signa->signs());
-		if ($response->getTemplateName() !== 'main') {
+			|| $response->getTemplateName() !== 'main' || !$this->signa->applies()) {
 			return $response;
 		}
 		try {
@@ -118,7 +109,6 @@ class SecurySignMiddleware extends Middleware {
 			}
 			// An outage should go unnoticed: the page renders, and signing uses the
 			// local engine with its usual confirm dialog until SecurySign is back.
-			$this->initialState->provideInitialState('securysign_signs', false);
 			return $response;
 		}
 	}

@@ -431,7 +431,7 @@ a signature over one hash, made in its HSM with the key behind the user's
 certificate. The key never leaves SecurySign.
 
 1. The user clicks sign once. There is no confirm dialog for these users (the
-   page learns `securysign_signs` from `SecurySignMiddleware`), because the
+   page reads `settings.securysignSigns` from `account/me`), because the
    passkey is the confirmation. `SignFileService::identifyEngine()` picks
    `SecurySignHandler` when `SecurySignService::signs()` is true, which needs a
    session from the SecurySign `user_oidc` provider and `securysign_signing_secret`

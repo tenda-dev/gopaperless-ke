@@ -17,7 +17,6 @@ use OCA\Libresign\Middleware\SecurySignMiddleware;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
-use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -40,7 +39,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 				: '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
 		);
 		$urls->method('linkToDefaultPageUrl')->willReturn('/apps/dashboard/');
-		$this->middleware = new SecurySignMiddleware($this->signa, $this->request, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IInitialState::class));
+		$this->middleware = new SecurySignMiddleware($this->signa, $this->request, $urls, $this->createMock(LoggerInterface::class));
 	}
 
 	private function page(): TemplateResponse {
@@ -109,7 +108,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$ready = $this->createMock(SecurySignService::class);
 		$ready->method('applies')->willReturn(true);
 		$ready->expects(self::never())->method('isReady');
-		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IInitialState::class));
+		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
 		$other->beforeController($this->createMock(SignFileController::class), 'requestCodeByFileId');
 	}
 
@@ -136,7 +135,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 				static fn (string $route, array $params = []): string => '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
 			);
 			$urls->method('linkToDefaultPageUrl')->willReturn('/apps/dashboard/');
-			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IInitialState::class));
+			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $this->createMock(LoggerInterface::class));
 
 			$response = $middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
@@ -181,7 +180,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		// And an email/password user keeps full control of their own signature.
 		$other = $this->createMock(SecurySignService::class);
 		$other->method('applies')->willReturn(false);
-		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IInitialState::class));
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
 		$middleware->beforeController($controller, 'createSignatureElement');
 	}
 
