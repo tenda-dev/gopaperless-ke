@@ -24,8 +24,8 @@
 				:placeholder="signingSecretSet ? t('libresign', 'Saved. Type a new one to replace it.') : ''" />
 			<NcTextField
 				v-model="tendaworldUrl"
-				:label="t('libresign', 'Enrolment site for users without a certificate')"
-				placeholder="https://tendaworld.com" />
+				:label="t('libresign', 'MIMI enrolment page for users who are not set up')"
+				placeholder="https://gopaperless.mimi.ke" />
 			<p class="securysign-settings__hint">
 				{{ t('libresign', 'The issuer comes from the provider. SecurySign signs only once a provider, the address and the signing secret are set.') }}
 			</p>

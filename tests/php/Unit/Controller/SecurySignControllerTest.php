@@ -36,7 +36,7 @@ final class SecurySignControllerTest extends TestCase {
 		$this->signa = $this->createMock(SecurySignService::class);
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('identity')->willReturn(self::IDENTITY);
-		$this->signa->method('onboardingUrl')->willReturn('https://tendaworld.test/onboarding/gopaperless');
+		$this->signa->method('onboardingUrl')->willReturn('https://gopaperless.mimi.test/enrol');
 
 		$this->store = [];
 		$this->session = $this->createMock(ISession::class);
@@ -50,19 +50,28 @@ final class SecurySignControllerTest extends TestCase {
 
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('alice@example.test');
+		$user->method('getEMailAddress')->willReturn('alice@example.test');
 		$this->users = $this->createMock(IUserSession::class);
 		$this->users->method('getUser')->willReturn($user);
 
-		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$urls = $this->createMock(IURLGenerator::class);
+		$urls->method('linkToRouteAbsolute')->willReturnCallback(
+			static fn (string $route, array $params) => 'https://gopaperless.test/apps/libresign/securysign/return?' . http_build_query($params),
+		);
+		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class));
 	}
 
 	private function startOnboarding(): string {
 		$response = $this->controller->onboard('/apps/libresign/f/document');
 		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringStartsWith('https://gopaperless.mimi.test/enrol?', $response->getRedirectURL());
 		parse_str((string)parse_url($response->getRedirectURL(), PHP_URL_QUERY), $query);
-		self::assertSame(self::IDENTITY['sub'], $query['subject']);
-		self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $query['state']);
-		return $query['state'];
+		// MIMI sets up this account, names it by email if it has to ask, and returns to our route.
+		self::assertSame(self::IDENTITY['sub'], $query['sub']);
+		self::assertSame('alice@example.test', $query['email']);
+		parse_str((string)parse_url($query['returnTo'], PHP_URL_QUERY), $back);
+		self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $back['state']);
+		return $back['state'];
 	}
 
 	public function testAReadyUserIsSentStraightBackToTheirTask(): void {

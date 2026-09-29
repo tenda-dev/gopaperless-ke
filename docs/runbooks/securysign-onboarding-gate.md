@@ -32,7 +32,7 @@ same keys from the command line (app id `libresign`):
 ```bash
 occ config:app:set libresign securysign_provider_id --value 2 --type integer
 occ config:app:set libresign securysign_url        --value https://signa.dev.securysign.com
-occ config:app:set libresign tendaworld_url        --value https://tendaworld.com
+occ config:app:set libresign tendaworld_url        --value https://gopaperless.mimi.ke
 occ config:app:set libresign oidc_sso_handoff_enabled --value 1 --type boolean
 occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --sensitive
 ```
@@ -78,21 +78,26 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    that signed-in session. The answer is reused until logout or an explicit fresh
    check, and the card is mirrored into LibreSign on each fresh check.
 2. Ready (certificate active, inside its validity window, card bound to that
-   `certificateId`) means the page renders untouched.
+   `certificateId`, and linked to a passkey SecurySign lists as "MIMI passkey" in
+   `/auth/credentials`) means the page renders untouched. MIMI passkeys only since
+   2026-09-29; the name is the label MIMI gives its passkeys at `/pki/csr`.
 3. Not ready sends the user to `/apps/libresign/securysign/onboard?returnTo=...`,
    which mints a one-hour nonce in the Nextcloud session bound to the uid and the
-   OIDC `sub`, then hands off to `<tendaworld>/onboarding/gopaperless?state=&subject=`.
-4. The website seals the same pair into `gp_onboarding` (AES-256-GCM, one hour)
-   and starts a fresh OIDC exchange. The live Keycloak session makes this
-   prompt-free, so `prompt=select_account` is suppressed on this leg only.
-5. `/onboarding/gopaperless/continue` re-checks the subject, then entitlement
-   (`checkEntitlement`, backend first, unchanged), then the certificate and the
-   card. It sends the user to `/subscribe` or `/enrol/start` as needed. No
-   payment logic is duplicated.
-6. Once both are in place it redirects to
-   `<gopaperless>/apps/libresign/securysign/return?state=<nonce>`, which verifies
-   nonce, expiry, uid and `sub`, forces a fresh readiness check, then drops the nonce and
-   returns the user to the exact page from step 3.
+   OIDC `sub`, then hands off to GoPaperless's page on MIMI:
+   `<tendaworld_url>/enrol?sub=&email=&returnTo=` (`tendaworld_url` is
+   `https://gopaperless.mimi.ke`; the key kept its old name).
+4. MIMI signs the user in through the same Keycloak, silently. If it is signed in
+   as another account it re-reads Keycloak, then asks "Sign in with <email> to
+   continue" and runs Google's sign-in again until the account matches. It takes
+   whatever is missing: payment, ID, face, questions, the MIMI passkey and
+   signature, and the certificate. Someone who already has a SecurySign
+   certificate keeps it; MIMI sends the new passkey to `/pki/csr`, and SecurySign
+   relinks the certificate to it.
+5. "Continue" goes to `returnTo`, which is
+   `<gopaperless>/apps/libresign/securysign/return?state=<nonce>`. MIMI accepts it
+   only on GoPaperless's registered addresses. The route verifies nonce, expiry,
+   uid and `sub`, forces a fresh readiness check, then drops the nonce and returns
+   the user to the exact page from step 3.
 
 An outage is not shown to users (since 2026-09-29). Pages render, and signing
 falls back to the local engine (see "Signing with

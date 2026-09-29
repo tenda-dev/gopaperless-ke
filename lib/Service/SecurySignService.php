@@ -158,6 +158,23 @@ class SecurySignService {
 	}
 
 	/**
+	 * Whether SecurySign lists the passkey this certificate is linked to as a MIMI
+	 * one. ponytail: reads the name MIMI gives its passkeys at /pki/csr, not the
+	 * passkey's RP ID; switch to the RP ID once /auth/credentials returns it.
+	 *
+	 * @param array{sub: string, issuer: string, accessToken: string} $identity
+	 */
+	private function linkedToMimiPasskey(string $certificateId, array $identity): bool {
+		foreach ($this->request('auth/credentials', false, $identity) ?? [] as $credential) {
+			if (is_array($credential) && (string)($credential['certificateId'] ?? '') === $certificateId
+				&& ($credential['authenticatorName'] ?? null) === 'MIMI passkey') {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * One call to SecurySign. A failure (no connection, a timeout or a 5xx) marks
 	 * SecurySign down for this session for a minute, so the pages and signatures
 	 * that follow fall back at once instead of waiting on it again.
@@ -256,6 +273,11 @@ class SecurySignService {
 		$image = base64_decode($signature['imagePngBase64'] ?? '', true);
 		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
 			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
+		}
+		// MIMI passkeys only. A certificate still linked to a securysign.com passkey
+		// is not ready: the user goes to MIMI, which links it to theirs.
+		if (!$this->linkedToMimiPasskey((string)$leaf['certificateId'], $identity)) {
+			return null;
 		}
 		return [
 			'certificateId' => (string)$leaf['certificateId'],
@@ -374,17 +396,19 @@ class SecurySignService {
 	}
 
 	/**
-	 * Where a user without a usable certificate is sent.
+	 * Where a user who is not set up is sent: GoPaperless's enrolment page on
+	 * MIMI, which takes payment, ID, the MIMI passkey and the certificate.
 	 *
 	 * Read from `occ config:app:set libresign tendaworld_url` first, then from
 	 * the system value, which Nextcloud also fills from an `NC_tendaworld_url`
 	 * environment variable. A deployment that only sets env therefore needs no
-	 * occ run, and one that ran occ is not overridden by the image's env.
+	 * occ run, and one that ran occ is not overridden by the image's env. The
+	 * key keeps its old name; it held the TendaWorld website until 2026-09-29.
 	 */
 	public function onboardingUrl(): string {
 		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
-			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://tendaworld.com');
-		return self::origin($configured) . '/onboarding/gopaperless';
+			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://gopaperless.mimi.ke');
+		return self::origin($configured) . '/enrol';
 	}
 
 
