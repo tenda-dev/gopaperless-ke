@@ -57,15 +57,15 @@ final class SecurySignServiceTest extends TestCase {
 			return $fromOcc;
 		});
 		$system = $this->createMock(IConfig::class);
-		$system->method('getSystemValueString')->willReturn('https://staging.tendaworld.com');
+		$system->method('getSystemValueString')->willReturn('https://gopaperless.mimi.ke');
 		$service = new SecurySignService($appConfig, $system, $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
 
 		// Nobody ran occ: the system value, which an NC_tendaworld_url env var fills.
-		self::assertSame('https://staging.tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
+		self::assertSame('https://gopaperless.mimi.ke/enrol', $service->onboardingUrl());
 
 		// occ wins once it is set, so the image's env cannot override an admin.
-		$fromOcc = 'https://tendaworld.com';
-		self::assertSame('https://tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
+		$fromOcc = 'https://staging-gopaperless.mimi.ke';
+		self::assertSame('https://staging-gopaperless.mimi.ke/enrol', $service->onboardingUrl());
 	}
 
 	public function testMissingCertificateIsDifferentFromAnOutage(): void {
@@ -107,6 +107,8 @@ final class SecurySignServiceTest extends TestCase {
 		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
 
 		self::assertTrue($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png]));
+		// MIMI passkeys only: a certificate still linked to a securysign.com passkey sends the user to MIMI.
+		self::assertFalse($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png], 'WebAuthn Authenticator'));
 		// A card left over from a previous certificate must not count as canonical.
 		self::assertFalse($this->readiness($certificate, ['certificateId' => 6, 'imagePngBase64' => $png]));
 		// No card captured yet: onboarding, not an outage.
@@ -120,12 +122,14 @@ final class SecurySignServiceTest extends TestCase {
 	 * @param array<string, mixed> $certificate
 	 * @param array<string, mixed>|null $signature
 	 */
-	private function readiness(array $certificate, ?array $signature): bool {
+	private function readiness(array $certificate, ?array $signature, string $linkedPasskey = 'MIMI passkey'): bool {
 		$service = $this->getMockBuilder(SecurySignService::class)
 			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
-		$service->method('request')->willReturnCallback(
-			static fn (string $path) => str_starts_with($path, 'pki/') ? $certificate : $signature,
-		);
+		$service->method('request')->willReturnCallback(static fn (string $path) => match (true) {
+			str_starts_with($path, 'pki/') => $certificate,
+			$path === 'auth/credentials' => [['certificateId' => 7, 'authenticatorName' => $linkedPasskey]],
+			default => $signature,
+		});
 		return $service->readiness(self::IDENTITY) !== null;
 	}
 
@@ -159,15 +163,56 @@ final class SecurySignServiceTest extends TestCase {
 	/**
 	 * @return array{0: SecurySignService, 1: object}
 	 */
-	private static function serviceAnswering(int $status, string $body = '{}'): SecurySignService {
+	private static int $gets = 0;
+	/** @var list<array<string, mixed>> */
+	private static array $posts = [];
+
+	public function testTheSigningTokenNamesThePasskeyWhenTheEmailIsKnown(): void {
+		$service = self::serviceAnswering(200, '{"token":"t"}');
+		self::$posts = [];
+
+		$service->signingToken('ab', 'signer@example.com');
+		$service->signingToken('ab');
+
+		// LOA-4 binds the user's passkey, which is how a mimi.ke passkey gets asked for.
+		self::assertSame(['LOA-4', 'signer@example.com'], [self::$posts[0]['json']['loa'], self::$posts[0]['json']['email']]);
+		self::assertSame('LOA-2', self::$posts[1]['json']['loa']);
+		self::assertArrayNotHasKey('email', self::$posts[1]['json']);
+	}
+
+	public function testAnOutageSkipsSecurySignForAMinute(): void {
+		$store = ['oidc.providerid' => 1];
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturnCallback(static function (string $key) use (&$store) {
+			return $store[$key] ?? null;
+		});
+		$session->method('set')->willReturnCallback(static function (string $key, $value) use (&$store): void {
+			$store[$key] = $value;
+		});
+		$service = self::serviceAnswering(502, '{}', $session);
+		self::$gets = 0;
+
+		foreach ([1, 2] as $attempt) {
+			try {
+				$service->request('pki/certificates/me');
+				self::fail('A 502 was treated as an answer');
+			} catch (\RuntimeException $e) {
+				self::assertSame(503, $e->getCode());
+			}
+		}
+		// The second attempt fell back at once instead of waiting on SecurySign again.
+		self::assertSame(1, self::$gets);
+	}
+
+	private static function serviceAnswering(int $status, string $body = '{}', ?ISession $session = null): SecurySignService {
 		$test = new self('t');
 		$config = $test->createMock(IAppConfig::class);
 		$config->method('getValueInt')->willReturn(1);
-		$config->method('getValueString')->willReturnCallback(static function (string $app, string $key, string $default = '') {
-			return $key === 'securysign_issuer' ? 'https://idp.test/realms/signa' : 'https://signa.test';
-		});
-		$session = $test->createMock(ISession::class);
-		$session->method('get')->willReturn(1);
+		$config->method('getValueString')->willReturn('https://signa.test');
+		if ($session === null) {
+			$session = $test->createMock(ISession::class);
+			$session->method('get')->willReturn(1);
+		}
 		$users = $test->createMock(IUserSession::class);
 		$users->method('isLoggedIn')->willReturn(true);
 
@@ -194,14 +239,33 @@ final class SecurySignServiceTest extends TestCase {
 				return ['iss' => 'https://idp.test/realms/signa', 'sub' => 'google-1'];
 			}
 		};
+		$providers = new class {
+			public function getProvider(int $id): object {
+				return new class {
+					public function getDiscoveryEndpoint(): string {
+						return 'https://idp.test/realms/signa/.well-known/openid-configuration?kc_idp_hint=google';
+					}
+					public function getClientId(): string {
+						return 'signa-rp-test';
+					}
+				};
+			}
+		};
 		$container = $test->createMock(IServerContainer::class);
-		$container->method('get')->willReturn($tokens);
+		$container->method('get')->willReturnCallback(static fn (string $id) => str_ends_with($id, 'ProviderMapper') ? $providers : $tokens);
 
 		$response = $test->createMock(IResponse::class);
 		$response->method('getStatusCode')->willReturn($status);
 		$response->method('getBody')->willReturn($body);
 		$client = $test->createMock(IClient::class);
-		$client->method('get')->willReturn($response);
+		$client->method('get')->willReturnCallback(static function () use ($response) {
+			self::$gets++;
+			return $response;
+		});
+		$client->method('post')->willReturnCallback(static function (string $url, array $options) use ($response) {
+			self::$posts[] = $options;
+			return $response;
+		});
 		$clients = $test->createMock(IClientService::class);
 		$clients->method('newClient')->willReturn($client);
 
@@ -261,9 +325,11 @@ final class SecurySignServiceTest extends TestCase {
 			'issuer' => 'https://idp.test/realms/signa',
 			'accessToken' => 'at',
 		]);
-		$service->method('request')->willReturnCallback(static fn (string $path) => $path === 'pki/certificates/me'
-			? ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]]
-			: ['certificateId' => 7, 'imagePngBase64' => $png]);
+		$service->method('request')->willReturnCallback(static fn (string $path) => match ($path) {
+			'pki/certificates/me' => ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]],
+			'auth/credentials' => [['certificateId' => 7, 'authenticatorName' => 'MIMI passkey']],
+			default => ['certificateId' => 7, 'imagePngBase64' => $png],
+		});
 
 		$readiness = $service->readiness();
 

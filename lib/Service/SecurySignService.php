@@ -11,6 +11,7 @@ namespace OCA\Libresign\Service;
 
 use OCA\Libresign\AppInfo\Application;
 use OCP\Http\Client\IClientService;
+use OCP\Http\Client\IResponse;
 use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IServerContainer;
@@ -20,6 +21,8 @@ use Psr\Log\LoggerInterface;
 
 class SecurySignService {
 	private const READINESS_CACHE_KEY = 'libresign.securysign.readiness';
+	private const DOWN_KEY = 'libresign.securysign.down_until';
+	private const DOWN_SECONDS = 60;
 	/** Bump to re-import every mirrored signature; 3 dropped the composed card. */
 	public const CARD_VERSION = 3;
 
@@ -56,7 +59,10 @@ class SecurySignService {
 			throw new \RuntimeException('Sign in again to connect to SecurySign. Enable user_oidc store_login_token if this persists.', 401);
 		}
 		$claims = $tokens->decodeIdToken($token);
-		$issuer = $this->config->getValueString(Application::APP_ID, 'securysign_issuer');
+		// OIDC discovery lives at <issuer>/.well-known/openid-configuration, so the
+		// provider's own discovery URL names the issuer. A second setting could only
+		// disagree with it, and did when the provider moved to production.
+		$issuer = (string)preg_replace('~/\.well-known/openid-configuration(\?.*)?$~', '', $this->provider()->getDiscoveryEndpoint());
 		if ($issuer === '' || ($claims['iss'] ?? null) !== $issuer || empty($claims['sub'])) {
 			throw new \RuntimeException('The SecurySign identity provider does not match this session.', 403);
 		}
@@ -66,11 +72,8 @@ class SecurySignService {
 	public function request(string $path, bool $allowMissing = false, ?array $identity = null): ?array {
 		$identity ??= $this->identity();
 		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
-		$response = $this->http->newClient()->get($base . '/api/' . $path, [
+		$response = $this->send('get', $base . '/api/' . $path, [
 			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
-			'timeout' => 15,
-			'allow_redirects' => false,
-			'http_errors' => false,
 		]);
 		if ($allowMissing && $response->getStatusCode() === 404) {
 			return null;
@@ -102,6 +105,108 @@ class SecurySignService {
 		}
 		return $data;
 	}
+
+	/**
+	 * Whether this user's documents are signed by SecurySign. Everyone else, and
+	 * every instance without the RP's signing secret, keeps LibreSign's own engine.
+	 */
+	public function signs(): bool {
+		return $this->applies()
+			&& $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret') !== '';
+	}
+
+	/** The certificate SecurySign's HSM signs with for this user. */
+	public function certificatePem(): string {
+		$data = $this->request('pki/certificates/me');
+		$pem = (string)($data['certificate']['certificatePem'] ?? '');
+		$parsed = openssl_x509_parse($pem);
+		if (($data['status'] ?? null) !== 'active' || $parsed === false || !self::isCurrent($parsed)) {
+			throw new \RuntimeException('You need an active SecurySign certificate to sign. Finish enrolment and try again.', 409);
+		}
+		return $pem;
+	}
+
+	/**
+	 * A five-minute token for SecurySign's signing frame, bound to one hash. The
+	 * frame runs the passkey prompt on SecurySign's origin, then the HSM signs
+	 * the hash with the key behind the user's certificate.
+	 *
+	 * With the account's email the token is LOA-4 and names the user's passkey,
+	 * so the frame asks for it under its own RP ID (mimi.ke or securysign.com) and
+	 * the browser offers no other. Without one it falls back to LOA-2, where any
+	 * passkey registered with SecurySign can approve and only securysign.com
+	 * passkeys are offered.
+	 */
+	public function signingToken(string $documentHash, string $email = ''): string {
+		$response = $this->send('post', $this->signingOrigin() . '/api/ssc/token', [
+			'json' => [
+				'clientId' => $this->provider()->getClientId(),
+				'clientSecret' => $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret'),
+				'documentHash' => $documentHash,
+			] + ($email === '' ? ['loa' => 'LOA-2'] : ['loa' => 'LOA-4', 'email' => $email]),
+		]);
+		$body = (string)$response->getBody();
+		$token = json_decode($body, true)['token'] ?? null;
+		if ($response->getStatusCode() !== 200 || !is_string($token)) {
+			$this->logger->error('SecurySign refused a signing token', [
+				'status' => $response->getStatusCode(),
+				'body' => substr($body, 0, 500),
+			]);
+			throw new \RuntimeException('SecurySign could not start signing. Please retry shortly.', 503);
+		}
+		return $token;
+	}
+
+	/**
+	 * Whether SecurySign lists the passkey this certificate is linked to as a MIMI
+	 * one. ponytail: reads the name MIMI gives its passkeys at /pki/csr, not the
+	 * passkey's RP ID; switch to the RP ID once /auth/credentials returns it.
+	 *
+	 * @param array{sub: string, issuer: string, accessToken: string} $identity
+	 */
+	private function linkedToMimiPasskey(string $certificateId, array $identity): bool {
+		foreach ($this->request('auth/credentials', false, $identity) ?? [] as $credential) {
+			if (is_array($credential) && (string)($credential['certificateId'] ?? '') === $certificateId
+				&& ($credential['authenticatorName'] ?? null) === 'MIMI passkey') {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * One call to SecurySign. A failure (no connection, a timeout or a 5xx) marks
+	 * SecurySign down for this session for a minute, so the pages and signatures
+	 * that follow fall back at once instead of waiting on it again.
+	 */
+	private function send(string $method, string $url, array $options): IResponse {
+		$downUntil = $this->session->get(self::DOWN_KEY);
+		if (is_int($downUntil) && $downUntil > time()) {
+			throw new \RuntimeException('SecurySign is unreachable.', 503);
+		}
+		$options += ['connect_timeout' => 3, 'timeout' => 10, 'allow_redirects' => false, 'http_errors' => false];
+		try {
+			$client = $this->http->newClient();
+			$response = $method === 'post' ? $client->post($url, $options) : $client->get($url, $options);
+		} catch (\Exception $e) {
+			$this->session->set(self::DOWN_KEY, time() + self::DOWN_SECONDS);
+			throw new \RuntimeException('SecurySign is unreachable.', 503, $e);
+		}
+		if ($response->getStatusCode() >= 500) {
+			$this->session->set(self::DOWN_KEY, time() + self::DOWN_SECONDS);
+		}
+		return $response;
+	}
+
+	/** The user_oidc provider row: its discovery URL and client id. */
+	private function provider(): object {
+		return $this->container->get('OCA\\UserOIDC\\Db\\ProviderMapper')->getProvider($this->providerId());
+	}
+
+	public function signingOrigin(): string {
+		return self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
+	}
+
 	/**
 	 * Whether SecurySign holds a certificate and a signature this user can sign
 	 * with.
@@ -168,6 +273,11 @@ class SecurySignService {
 		$image = base64_decode($signature['imagePngBase64'] ?? '', true);
 		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
 			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
+		}
+		// MIMI passkeys only. A certificate still linked to a securysign.com passkey
+		// is not ready: the user goes to MIMI, which links it to theirs.
+		if (!$this->linkedToMimiPasskey((string)$leaf['certificateId'], $identity)) {
+			return null;
 		}
 		return [
 			'certificateId' => (string)$leaf['certificateId'],
@@ -248,6 +358,11 @@ class SecurySignService {
 		}
 	}
 
+	/** The next isReady() asks SecurySign again instead of trusting the session. */
+	public function forgetReadiness(): void {
+		$this->session->remove(self::READINESS_CACHE_KEY);
+	}
+
 	private function cacheReadiness(string $identity, bool $ready): void {
 		$this->session->set(self::READINESS_CACHE_KEY, [
 			'identity' => $identity,
@@ -286,17 +401,19 @@ class SecurySignService {
 	}
 
 	/**
-	 * Where a user without a usable certificate is sent.
+	 * Where a user who is not set up is sent: GoPaperless's enrolment page on
+	 * MIMI, which takes payment, ID, the MIMI passkey and the certificate.
 	 *
 	 * Read from `occ config:app:set libresign tendaworld_url` first, then from
 	 * the system value, which Nextcloud also fills from an `NC_tendaworld_url`
 	 * environment variable. A deployment that only sets env therefore needs no
-	 * occ run, and one that ran occ is not overridden by the image's env.
+	 * occ run, and one that ran occ is not overridden by the image's env. The
+	 * key keeps its old name; it held the TendaWorld website until 2026-09-29.
 	 */
 	public function onboardingUrl(): string {
 		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
-			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://tendaworld.com');
-		return self::origin($configured) . '/onboarding/gopaperless';
+			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://gopaperless.mimi.ke');
+		return self::origin($configured) . '/enrol';
 	}
 
 

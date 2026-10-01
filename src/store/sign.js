@@ -282,6 +282,23 @@ export const useSignStore = defineStore('sign', () => {
 			}
 		}
 
+		if (action === 3700) {
+			return {
+				type: 'confirmSign',
+				action,
+				errors: [],
+			}
+		}
+
+		if (action === 3600) {
+			return {
+				type: 'securysignApproval',
+				action,
+				approval: errorData.securysign,
+				errors: [],
+			}
+		}
+
 		return {
 			type: 'signError',
 			action,

@@ -162,6 +162,13 @@ class Admin implements ISettings {
 		//	user_oidc. Disabled by default until the IdP integration is ready.
 		$this->initialState->provideInitialState('oidc_sso_handoff_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'oidc_sso_handoff_enabled', false));
 
+		//	SECURYSIGN
+		//	Only whether a signing secret is stored reaches the page, never the secret.
+		$this->initialState->provideInitialState('securysign_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));
+		$this->initialState->provideInitialState('securysign_url', $this->appConfig->getValueString(Application::APP_ID, 'securysign_url', ''));
+		$this->initialState->provideInitialState('tendaworld_url', $this->appConfig->getValueString(Application::APP_ID, 'tendaworld_url', ''));
+		$this->initialState->provideInitialState('securysign_signing_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'securysign_signing_secret', '') !== '');
+
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');

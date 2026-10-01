@@ -16,6 +16,7 @@ use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCP\Files\File;
 use OCP\IAppConfig;
+use SignerPHP\Application\Contract\CertificateValidatorInterface;
 use SignerPHP\Application\DTO\CertificateCredentialsDto;
 use SignerPHP\Application\DTO\CertificationLevel;
 use SignerPHP\Application\DTO\PdfContentDto;
@@ -27,10 +28,16 @@ use SignerPHP\Application\DTO\SigningOptionsDto;
 use SignerPHP\Application\DTO\SignPdfRequestDto;
 use SignerPHP\Application\DTO\TimestampOptionsDto;
 use SignerPHP\Application\Service\PdfSigningService;
+use SignerPHP\Domain\ValueObject\VerifiedCertificate;
 use SignerPHP\Infrastructure\Legacy\OpenSslCertificateValidator;
+use SignerPHP\Infrastructure\Native\Contract\Pkcs7SignerInterface;
 use SignerPHP\Infrastructure\Native\NativePdfSigningEngine;
+use SignerPHP\Infrastructure\Native\Service\SignedBufferBuilder;
+use SignerPHP\Infrastructure\Native\Service\XrefContentResolver;
 
 class PhpNativeHandler extends Pkcs12Handler {
+	private ?Pkcs7SignerInterface $externalSigner = null;
+
 	public function __construct(
 		private IAppConfig $appConfig,
 		private DocMdpConfigService $docMdpConfigService,
@@ -48,6 +55,17 @@ class PhpNativeHandler extends Pkcs12Handler {
 		return $this->getInputFile();
 	}
 
+	/**
+	 * Sign with a key this server does not hold. The certificate is then a bare
+	 * PEM and the signer returns the CMS for the byte range it is handed. No
+	 * document timestamp is applied: it would cover a signature that does not
+	 * exist yet.
+	 */
+	public function setExternalSigner(?Pkcs7SignerInterface $signer): self {
+		$this->externalSigner = $signer;
+		return $this;
+	}
+
 	#[\Override]
 	public function getSignedContent(): string {
 		$pdfContent = $this->getInputFile()->getContent();
@@ -55,14 +73,21 @@ class PhpNativeHandler extends Pkcs12Handler {
 			$this->getCertificate(),
 			$this->getPassword(),
 		);
-		$service = new PdfSigningService(
-			new OpenSslCertificateValidator(),
-			new NativePdfSigningEngine(),
-		);
+		$service = $this->externalSigner === null
+			? new PdfSigningService(new OpenSslCertificateValidator(), new NativePdfSigningEngine())
+			: new PdfSigningService(
+				new class implements CertificateValidatorInterface {
+					public function validate(CertificateCredentialsDto $credentials): VerifiedCertificate {
+						$pem = (string)$credentials->certificateContent;
+						return new VerifiedCertificate($credentials, openssl_x509_parse($pem) ?: [], ['cert' => $pem, 'pkey' => '']);
+					}
+				},
+				new NativePdfSigningEngine(signedBufferBuilder: new SignedBufferBuilder(new XrefContentResolver(), $this->externalSigner)),
+			);
 
 		$visibleElements = $this->getVisibleElements();
 		$metadata = $this->buildMetadata();
-		$timestamp = $this->buildTimestampOptions();
+		$timestamp = $this->externalSigner === null ? $this->buildTimestampOptions() : null;
 		$certificationLevel = $this->resolveCertificationLevel(empty($visibleElements));
 
 		if (empty($visibleElements)) {

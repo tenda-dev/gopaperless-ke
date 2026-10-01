@@ -17,7 +17,7 @@ links and legacy accounts never see it and keep the local signing engine.
 | `force=1` handoff replacing a different local account | code complete, unit tested |
 | Website payment and enrolment continuation | code complete, script tested |
 | Importing the SecurySign visible signature | code complete, unit tested |
-| Signing with the user's own SecurySign certificate | **not built.** See "The upstream blocker" |
+| Signing with the user's own SecurySign certificate | working against production SecurySign on the local stack (2026-09-28: `pdfsig` valid, issuer Signa Hardware CA). Off until the signing secret is set. See "Signing with the user's SecurySign certificate" |
 
 Nothing is enabled until `securysign_provider_id` is set to a positive value.
 With it unset, `SecurySignService::applies()` returns false everywhere and both
@@ -25,22 +25,22 @@ apps behave exactly as before.
 
 ## Config keys
 
-GoPaperless (Nextcloud app config, app id `libresign`):
+GoPaperless: **Administration settings → LibreSign → SecurySign** sets the
+provider, the SecurySign address, the signing secret and the enrolment site. The
+same keys from the command line (app id `libresign`):
 
 ```bash
 occ config:app:set libresign securysign_provider_id --value 2 --type integer
-occ config:app:set libresign securysign_issuer     --value https://idp.dev.securysign.com/realms/signa
 occ config:app:set libresign securysign_url        --value https://signa.dev.securysign.com
-occ config:app:set libresign tendaworld_url        --value https://tendaworld.com
+occ config:app:set libresign tendaworld_url        --value https://gopaperless.mimi.ke
 occ config:app:set libresign oidc_sso_handoff_enabled --value 1 --type boolean
+occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --sensitive
 ```
 
 - `securysign_provider_id` is the `user_oidc` provider id, per instance. On
   `gopaperless.ke` that is `2`; `1` is the dead `ke_mimi_id` provider. Read it
   from the `initial-state-core-alternativeLogins` input on `<base>/login`.
   `0` or unset disables the gate.
-- `securysign_issuer` must equal the `iss` claim in the id_token exactly. A
-  mismatch is treated as a hostile session and refused, not as an outage.
 - `oidc_sso_handoff_enabled` gates `/apps/libresign/sso`, the route the website
   links to for the return leg. Off by default, and with it off the route
   redirects to the app root, so the handoff looks like it silently does nothing.
@@ -73,24 +73,31 @@ Verified against user_oidc 8.11-dev in the local sandbox; 8.10 carries the same
    that signed-in session. The answer is reused until logout or an explicit fresh
    check, and the card is mirrored into LibreSign on each fresh check.
 2. Ready (certificate active, inside its validity window, card bound to that
-   `certificateId`) means the page renders untouched.
+   `certificateId`, and linked to a passkey SecurySign lists as "MIMI passkey" in
+   `/auth/credentials`) means the page renders untouched. MIMI passkeys only since
+   2026-09-29; the name is the label MIMI gives its passkeys at `/pki/csr`.
 3. Not ready sends the user to `/apps/libresign/securysign/onboard?returnTo=...`,
    which mints a one-hour nonce in the Nextcloud session bound to the uid and the
-   OIDC `sub`, then hands off to `<tendaworld>/onboarding/gopaperless?state=&subject=`.
-4. The website seals the same pair into `gp_onboarding` (AES-256-GCM, one hour)
-   and starts a fresh OIDC exchange. The live Keycloak session makes this
-   prompt-free, so `prompt=select_account` is suppressed on this leg only.
-5. `/onboarding/gopaperless/continue` re-checks the subject, then entitlement
-   (`checkEntitlement`, backend first, unchanged), then the certificate and the
-   card. It sends the user to `/subscribe` or `/enrol/start` as needed. No
-   payment logic is duplicated.
-6. Once both are in place it redirects to
-   `<gopaperless>/apps/libresign/securysign/return?state=<nonce>`, which verifies
-   nonce, expiry, uid and `sub`, forces a fresh readiness check, then drops the nonce and
-   returns the user to the exact page from step 3.
+   OIDC `sub`, then hands off to GoPaperless's page on MIMI:
+   `<tendaworld_url>/enrol?sub=&email=&returnTo=` (`tendaworld_url` is
+   `https://gopaperless.mimi.ke`; the key kept its old name).
+4. MIMI signs the user in through the same Keycloak, silently. If it is signed in
+   as another account it re-reads Keycloak, then asks "Sign in with <email> to
+   continue" and runs Google's sign-in again until the account matches. It takes
+   whatever is missing: payment, ID, face, questions, the MIMI passkey and
+   signature, and the certificate. Someone who already has a SecurySign
+   certificate keeps it; MIMI sends the new passkey to `/pki/csr`, and SecurySign
+   relinks the certificate to it.
+5. "Continue" goes to `returnTo`, which is
+   `<gopaperless>/apps/libresign/securysign/return?state=<nonce>`. MIMI accepts it
+   only on GoPaperless's registered addresses. The route verifies nonce, expiry,
+   uid and `sub`, forces a fresh readiness check, then drops the nonce and returns
+   the user to the exact page from step 3.
 
-Failures are loud. An outage anywhere returns 503 with the payment retained,
-never a redirect loop and never a signature. `/enrol/start` returning "done"
+An outage is not shown to users (since 2026-09-29). Pages render, and signing
+falls back to the local engine (see "Signing with
+the user's SecurySign certificate"). A rejected session still gets the branded
+"Reconnect" page, because signing in again fixes it. `/enrol/start` returning "done"
 while the certificate or card is still missing comes back as `completed=1`,
 which reports the failure instead of bouncing again.
 
@@ -162,10 +169,11 @@ Three things about `save()` that are not obvious:
 
 `SignFileService::buildBaseSignatureParams()` fills `IssuerCommonName`,
 `CertificateValidFrom` and `CertificateValidTo` from `readCertificate()` — the
-certificate that **actually signs**, which today is LibreSign's local one. So the
-stamp currently reads "GoPaperless Local", not SecurySign, and the dates are the
-local certificate's. That is accurate rather than aspirational, and it only
-becomes the SecurySign PDC when the upstream blocker below is cleared.
+certificate that **actually signs**. Under the SecurySign engine that is the
+user's SecurySign certificate, because `SecurySignHandler::readCertificate()`
+parses the PEM from `pki/certificates/me`. Under the local engine it is
+LibreSign's own, and the stamp reads "GoPaperless Local". Either way the stamp
+names the certificate in the CMS.
 
 ### Mirroring
 
@@ -208,7 +216,7 @@ gate itself is what is broken.
 | Situation | Status | What the user is offered |
 |---|---|---|
 | Signa answers 401 or 403 | 401 | "Sign in again", pointing at `/apps/libresign/sso?providerId=<id>&force=1` — one click that drops the local session and re-enters OIDC |
-| Signa unreachable or 5xx | 503 | "Try again" on the page they came from |
+| Signa unreachable or 5xx | none | The page renders; signing falls back to the local engine |
 | Onboarding round trip broken | 503 | "Start again" at the app root |
 
 Upstream text never reaches the user. `SecurySignService::request()` logs the
@@ -243,7 +251,6 @@ accepted. Every other host must be https.
 
 ```bash
 docker compose exec --user www-data nextcloud php occ   config:app:set libresign securysign_provider_id --value <local provider id> --type integer
-docker compose exec --user www-data nextcloud php occ   config:app:set libresign securysign_issuer --value https://idp.dev.securysign.com/realms/signa
 docker compose exec --user www-data nextcloud php occ   config:app:set libresign securysign_url --value https://signa.dev.securysign.com
 docker compose exec --user www-data nextcloud php occ   config:app:set libresign tendaworld_url --value http://localhost:3100
 ```
@@ -336,8 +343,14 @@ php -d extension=mbstring -d extension=openssl vendor/bin/phpunit \
   tests/php/Unit/Service/SecurySignServiceTest.php \
   tests/php/Unit/Controller/SecurySignControllerTest.php \
   tests/php/Unit/Controller/SsoControllerTest.php \
-  tests/php/Unit/Middleware/SecurySignMiddlewareTest.php
+  tests/php/Unit/Middleware/SecurySignMiddlewareTest.php   tests/php/Unit/Handler/SignEngine/SecurySignHandlerTest.php
 ```
+
+`SecurySignHandlerTest` prepares a real PDF through `PhpNativeHandler`, signs the
+hash with a local P-256 key standing in for SecurySign's HSM, and has OpenSSL
+verify the finished CMS over the byte range. Checked by hand on 2026-09-28 as
+well: `pdfsig` reports "Signature is Valid" and "Total document signed" for the
+same output, and LibreSign's own `TSA::getSigninTime()` reads its signing time.
 
 `OPENSSL_CONF` only matters on Windows, where `openssl_csr_sign` cannot find a
 config; without it the one certificate test skips instead of failing. The rest of
@@ -411,43 +424,133 @@ docker exec devcontainer-nextcloud-1 grep tokenClaims /var/www/html/data/nextclo
 Grep runs **inside** the container over the whole file. A `tail -c` window misses
 the entry once the log grows, and PowerShell has no `grep` of its own.
 
-## The upstream blocker
+## Signing with the user's SecurySign certificate
 
-GoPaperless must eventually produce PDF signatures with the user's own SecurySign
-certificate and stamp their canonical card. It cannot yet, and no flag in this
-repo pretends otherwise. Signing still runs on LibreSign's local engine for
-everyone, OIDC users included. Read the three findings in `signa-original`
-before wiring anything:
+GoPaperless builds the signed revision itself and asks SecurySign for one thing:
+a signature over one hash, made in its HSM with the key behind the user's
+certificate. The key never leaves SecurySign.
 
-1. `SignaPadesServer.doPrepare` reads only `pdfBase64`, `certId` and `certPem`.
-   The `options` that `SignRouteHandler::padesPrepare` passes are dropped, and
-   the appearance it builds is invisible. There is no way to place the canonical
-   card into the byte range, so a naive integration would sign a document that
-   shows nothing.
-2. `doFinalize` falls back to an ephemeral P-256 key and a self-generated proxy
-   certificate whenever `credentialID` is empty, logs one line to stdout, and
-   returns the result as a successfully signed PDF. That is the silent
-   substitution the requirement forbids.
-3. `padesFinalize` requires `signatureBase64` and stores it, but never verifies
-   the WebAuthn assertion and never binds it to the prepared hash. The CSC call
-   is authorized by the bearer token alone: `CscClient.signHash` fetches its own
-   SAD, and Java sends no `clientData`. So "the user approved this document" is
-   not enforced anywhere on the PAdES path, even though
-   `SingleSigningService` already verifies assertions for the headless API.
+1. The user clicks sign and confirms in the usual dialog. Skipping the dialog
+   for SecurySign signers was tried twice and did not work (see PR #33), so it
+   stays. `SignFileService::identifyEngine()` picks
+   `SecurySignHandler` when `SecurySignService::signs()` is true, which needs a
+   session from the SecurySign `user_oidc` provider and `securysign_signing_secret`
+   set on the instance.
+2. **Prepare.** The handler runs `PhpNativeHandler` with an external signer, so
+   the stamp, the imported card and LibreSign's signature template land exactly
+   as they do today. The signature slot is left as zeros. The CMS signed
+   attributes (content type, signing time, the byte-range digest, and ESS
+   signing-certificate-v2 naming the user's certificate) are built now and parked
+   with the PDF in app data under `securysign/`, keyed by user and document. The
+   sign API answers 422 with `action: 3600` and a `securysign` object: a signing
+   token from `POST /api/ssc/token`, the SHA-256 of the signed attributes, the
+   document name and SecurySign's origin.
+3. The browser opens SecurySign's signing frame (`<securysign_url>/#/sign-frame`)
+   in a dialog (`src/components/SecurySignApproval.vue`), and posts
+   `SSC_SIGN_REQUEST` as soon as the frame reports its size, so the passkey
+   prompt opens without a click on the frame's button. The prompt runs on
+   SecurySign's origin. The page's CSP allows the frame through
+   `SecurySignCspListener`; without it LibreSign's `frame-src 'self'` shows a
+   broken frame. `/ssc/finalize` verifies the assertion, signs the hash
+   with the user's HSM key (ECDSA P-256) and the frame posts `SSC_SIGN_COMPLETE`.
+4. **Finalize.** The browser repeats the sign request with `securysignSignature`.
+   The handler verifies it against the certificate from `pki/certificates/me` and
+   answers 403 to anything else. Then it writes the CMS into the parked revision,
+   and LibreSign stores the file and marks the request signed as it always has.
 
-The contract Signa has to expose before GoPaperless can switch:
+| Signer | Engine |
+|---|---|
+| Session from the SecurySign provider, secret configured | SecurySign, or the local engine while SecurySign is down |
+| Everyone else: email/password accounts, token and email signers, public links | LibreSign's local engine |
 
-- `POST /api/sign/pades/prepare` honours an appearance option carrying the
-  canonical card and returns the byte range covering it, so the card is inside
-  the signed bytes rather than stamped afterwards.
-- `POST /api/sign/pades/finalize` verifies the WebAuthn assertion against the
-  prepared hash, refuses the operation when it does not match, and returns
-  4xx rather than any signature when the credential is missing. Deleting the
-  ephemeral branch, or gating it behind an explicitly non-production flag, is
-  part of this.
-- The response states the signing `certificateId` so GoPaperless can assert it
-  is the same certificate the gate above validated.
+When SecurySign cannot sign, LibreSign's local engine signs instead, with no
+error. The user already confirmed in the dialog, whose button sends
+`confirmed: true`, and that is what lets `SignFileService::signWithEngine()` sign
+locally. A request without it (an API client) gets `action: 3700`
+(`SecurySignUnavailable`) and has to repeat with `confirmed: true`. The PDF's
+issuer tells the engines apart: Signa Hardware CA or GoPaperless Local.
+The log records `SecurySign is unavailable, signing with the local engine`. After
+a failure, `SecurySignService` skips SecurySign for that session for a minute, and
+every call gives up after 3 s to connect or 10 s in all. That covers connection failures, timeouts, 5xx
+answers, unreadable answers and a refused signing token, so a wrong
+`securysign_signing_secret` also lands here: watch the log for it after
+configuring. Problems the user can fix are shown instead and nothing is signed:
+an expired or rejected SecurySign session (401, 403), no active certificate
+(409), and a signature that does not verify. The split is
+`SecurySignHandler::userFacing()`.
 
-Until all three hold, keep `securysign_provider_id` unset on any instance where
-the local engine's signatures would be mistaken for SecurySign ones. The gate is
-onboarding, not signing.
+The fallback only sees what the server sees. If SecurySign answers our calls but
+its frame fails at `/ssc/finalize` (an HSM outage, say), the user gets the
+frame's error, not the local engine.
+The signing token is not bound to a user (LOA-2), so any SecurySign passkey could
+approve inside the frame. Only a signature from this user's key verifies at
+finalize, so somebody else's approval is refused there.
+
+### Which passkey, and MIMI passkeys
+
+The signing token is LOA-4 whenever the certificate carries an email: the request
+sends `loa: LOA-4` and that email, SecurySign binds the user's newest passkey, and
+the frame asks for it under the RP ID it was registered with. That is what lets a
+passkey created on `mimi.ke` sign here: `mimi.ke/.well-known/webauthn` lists
+`securysign.com` (WebAuthn Related Origin Requests), so the browser allows it in
+SecurySign's frame. The browser offers only that passkey. `signa-rp-16` was
+approved for LOA-4 on 2026-09-29 (`credentialBound: true`); an RP that is not gets
+its token refused, which signs with the local engine.
+
+A certificate without an email gets an LOA-2 token, where any passkey registered
+with SecurySign can approve and only `securysign.com` ones are offered. One from
+another account signs with that account's key, finalize refuses it, and the user
+reads "Wrong passkey. Choose the passkey for <certificate email>."
+
+### Round trips
+
+One signature costs three calls to SecurySign from the server: the certificate
+and the signing token on prepare, the certificate again on finalize. Until
+2026-09-29 the middleware also forced a fresh readiness check (two more calls) on
+each of the two sign requests. Measured on the local stack for a 929 KB PDF:
+preparing the revision 1.6 s, embedding 0.02 s, reading the signatures back
+0.4 s, one unauthenticated call to securysign.com about 0.5 s.
+
+### What SecurySign has to provide
+
+Both are settings on the RP that is the `user_oidc` provider's client
+(`signa-rp-18` on the local stack, `signa-rp-8` on `gopaperless.ke`). Both clients
+are already approved RPs: on 2026-09-28 `/ssc/token` answered them with `Invalid
+client credentials`, not `Unknown RP client_id` or `not approved`.
+
+- **The SSC secret.** It is not the OIDC client secret. Signa computes it as
+  HMAC-SHA256 of the client id under `SSC_MASTER_SECRET`, unless
+  `SSC_CLIENT_SECRET_<CLIENT_ID>` overrides it. Ask SecurySign for it.
+- **The GoPaperless origin as an authorised signing origin.** On 2026-09-28
+  `GET /api/ssc/iframe-config?rpOrigin=http%3A%2F%2Flocalhost` answered
+  `allowed:false` on dev. Without it the frame refuses with `RP origin not
+  authorized`.
+
+### Why not SecurySign's PAdES endpoints
+
+Three defects in `signa-original` blocked this until now. On `production` as of
+2026-09-28:
+
+1. `SignaPadesServer.doPrepare` still drops the appearance options, so a PDF
+   prepared there shows nothing.
+2. `doFinalize` still falls back to an ephemeral P-256 key and a self-made
+   certificate when `credentialID` is empty, and reports success.
+3. Fixed by Signa #565: `padesFinalize` now verifies the passkey against the
+   prepared hash.
+
+The path above needs neither endpoint. The appearance is built here, and a
+signature from any key but the user's fails verification, so the ephemeral
+fallback cannot reach a document.
+
+### Limits
+
+- One visible box per signature. When a signer has two boxes on a document,
+  only the first gets a stamp.
+- Envelopes are refused for SecurySign signers. Each file would need its own
+  passkey approval.
+- No TSA timestamp yet. A document timestamp has to cover the finished
+  signature, so it belongs after finalize, and nothing applies it there.
+- SecurySign's CA certificate is not embedded. A validator needs it from
+  elsewhere to build the chain.
+- Signing is synchronous for these users; the async worker path is skipped.
+- Not yet run against SecurySign itself. The local proof uses a stand-in key.

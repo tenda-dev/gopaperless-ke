@@ -17,6 +17,8 @@ final class JSActions {
 	public const ACTION_SIGN_ID_DOC = 2750;
 	public const ACTION_SHOW_ERROR = 3000;
 	public const ACTION_SIGNED = 3500;
+	public const ACTION_SECURYSIGN_APPROVE = 3600;
+	public const ACTION_CONFIRM_SIGN = 3700;
 	public const ACTION_CREATE_SIGNATURE_PASSWORD = 4000;
 	public const ACTION_RENEW_EMAIL = 4500;
 	public const ACTION_INCOMPLETE_SETUP = 5000;

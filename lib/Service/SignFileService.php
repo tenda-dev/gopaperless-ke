@@ -30,10 +30,12 @@ use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Events\SignedEventFactory;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Handler\DocMdpHandler;
 use OCA\Libresign\Handler\FooterHandler;
 use OCA\Libresign\Handler\PdfTk\Pdf;
 use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
+use OCA\Libresign\Handler\SignEngine\SecurySignHandler;
 use OCA\Libresign\Handler\SignEngine\SignEngineFactory;
 use OCA\Libresign\Handler\SignEngine\SignEngineHandler;
 use OCA\Libresign\Helper\JSActions;
@@ -83,6 +85,7 @@ class SignFileService {
 	private string $friendlyName = '';
 	private ?IUser $user = null;
 	private ?SignEngineHandler $engine = null;
+	private bool $securySignUnavailable = false;
 	private IDBConnection $db;
 
 	public function __construct(
@@ -457,6 +460,14 @@ class SignFileService {
 			throw new LibresignException('No sign requests found to process');
 		}
 
+		// ponytail: an envelope would need one passkey approval per file, and both
+		// strategies below swallow or background the per-file step. Refused until
+		// the approval loop exists.
+		if (($this->libreSignFile->isEnvelope() || $this->libreSignFile->hasParent())
+			&& \OCP\Server::get(SecurySignService::class)->signs()) {
+			throw new LibresignException('Envelopes cannot be signed with SecurySign yet. Sign each document on its own.');
+		}
+
 		$this->executeSigningStrategy($signRequests);
 	}
 
@@ -509,7 +520,7 @@ class SignFileService {
 			$this->validateDocMdpAllowsSignatures();
 
 			try {
-				$signedFile = $this->getEngine()->sign();
+				$signedFile = $this->signWithEngine();
 			} catch (LibresignException|Exception $e) {
 				$this->cleanupUnsignedSignedFile();
 				$this->recordSignatureAttempt($e);
@@ -648,7 +659,7 @@ class SignFileService {
 			$this->validateDocMdpAllowsSignatures();
 
 			try {
-				$signedFile = $this->getEngine()->sign();
+				$signedFile = $this->signWithEngine();
 			} catch (LibresignException|Exception $e) {
 				$this->cleanupUnsignedSignedFile();
 				$this->recordSignatureAttempt($e);
@@ -956,7 +967,30 @@ class SignFileService {
 		$this->eventDispatcher->dispatchTyped($event);
 	}
 
+	/**
+	 * SecurySign signs for its users. When it cannot, LibreSign's own engine
+	 * signs instead, so an outage never stops anyone signing.
+	 */
+	private function signWithEngine(): File {
+		try {
+			return $this->getEngine()->sign();
+		} catch (SecurySignUnavailable $e) {
+			$this->logger->warning('SecurySign is unavailable, signing with the local engine', ['exception' => $e]);
+			$this->securySignUnavailable = true;
+			$this->engine = null;
+			// SecurySign signers skip the confirm dialog because the passkey confirms.
+			// A local signature has no passkey, so the page asks first, as it always did.
+			if (!\OCP\Server::get(\OCP\IRequest::class)->getParam('confirmed')) {
+				throw $e;
+			}
+			return $this->getEngine()->sign();
+		}
+	}
+
 	protected function identifyEngine(File $file): SignEngineHandler {
+		if (!$this->securySignUnavailable && $this->isPdf($file) && \OCP\Server::get(SecurySignService::class)->signs()) {
+			return \OCP\Server::get(SecurySignHandler::class);
+		}
 		return $this->signEngineFactory->resolve($file->getExtension());
 	}
 
@@ -1170,12 +1204,15 @@ class SignFileService {
 	}
 
 	private function configureEngine(): void {
-		$this->engine
-			->setInputFile($this->getFileToSign())
-			->setCertificate($this->getOrGeneratePfxContent($this->engine))
-			->setPassword($this->password);
+		$this->engine->setInputFile($this->getFileToSign());
+		// SecurySign holds the key. A local PFX here would sign as somebody else.
+		if (!$this->engine instanceof SecurySignHandler) {
+			$this->engine
+				->setCertificate($this->getOrGeneratePfxContent($this->engine))
+				->setPassword($this->password);
+		}
 
-		if ($this->engine::class === Pkcs12Handler::class) {
+		if (in_array($this->engine::class, [Pkcs12Handler::class, SecurySignHandler::class], true)) {
 			$profile = $this->getSignatureProfile();
 			$renderStamp = $profile->shouldRenderStamp();
 			/**

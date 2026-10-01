@@ -25,6 +25,7 @@ use OCA\Libresign\Service\File\SettingsLoader;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestMetadataService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Service\Worker\WorkerHealthService;
 use OCP\AppFramework\Http;
@@ -61,6 +62,7 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 		private AsyncSigningService $asyncSigningService,
 		private RequestMetadataService $requestMetadataService,
 		private SigningErrorHandler $errorHandler,
+		private SecurySignService $securySign,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -161,7 +163,8 @@ class SignFileController extends AEnvironmentAwareController implements ISignatu
 				$method,
 			);
 
-			if ($async && $this->workerHealthService->isAsyncLocalEnabled()) {
+			// SecurySign asks for a passkey mid-signing, which a background job cannot do.
+			if ($async && $this->workerHealthService->isAsyncLocalEnabled() && !$this->securySign->signs()) {
 				return $this->signAsync($libreSignFile, $signRequest, $user, $userIdentifier, $method, $token, $elements, $metadata);
 			}
 

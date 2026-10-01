@@ -17,7 +17,6 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\RedirectResponse;
-use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
@@ -40,7 +39,7 @@ class SecurySignController extends Controller {
 	#[NoCSRFRequired]
 	#[UseSession]
 	#[FrontpageRoute(verb: 'GET', url: '/securysign/onboard')]
-	public function onboard(?string $returnTo = null): RedirectResponse|TemplateResponse {
+	public function onboard(?string $returnTo = null): RedirectResponse {
 		$path = SecurySignService::returnPath($returnTo);
 		if (!$this->signa->applies()) {
 			return new RedirectResponse($path);
@@ -55,54 +54,63 @@ class SecurySignController extends Controller {
 				'state' => $state, 'sub' => $identity['sub'], 'uid' => $this->users->getUser()->getUID(),
 				'returnTo' => $path, 'expires' => time() + 3600,
 			]);
+			// MIMI sets up this account (it switches if signed in as another one,
+			// asking for this email), then sends the user to our return route.
 			return new RedirectResponse($this->signa->onboardingUrl() . '?' . http_build_query([
-				'state' => $state, 'subject' => $identity['sub'],
+				'sub' => $identity['sub'],
+				'email' => (string)$this->users->getUser()?->getEMailAddress(),
+				'returnTo' => $this->urls->linkToRouteAbsolute('libresign.securySign.complete', ['state' => $state]),
 			]));
 		} catch (\Throwable $e) {
-			$this->logger->error('SecurySign onboarding handoff failed', ['exception' => $e]);
-			return $this->failure();
-		}
-	}
-
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'GET', url: '/securysign/return')]
-	public function complete(string $state = ''): RedirectResponse|TemplateResponse {
-		$pending = $this->session->get('libresign.securysign.onboarding');
-		try {
-			if (!is_array($pending) || $pending['expires'] < time() || !hash_equals($pending['state'], $state)
-				|| $pending['uid'] !== $this->users->getUser()?->getUID()
-				|| $pending['sub'] !== $this->signa->identity()['sub']) {
-				return $this->failure();
-			}
-			if (!$this->signa->isReady(true)) {
-				return $this->failure();
-			}
-			$this->session->remove('libresign.securysign.onboarding');
-			return new RedirectResponse(SecurySignService::returnPath($pending['returnTo']));
-		} catch (\Throwable $e) {
-			$this->logger->error('SecurySign onboarding handoff failed', ['exception' => $e]);
-			return $this->failure();
+			return $this->bail($e, $path);
 		}
 	}
 
 	/**
-	 * Same guest-layout page the middleware uses, so a user bounced out of the
-	 * onboarding round trip sees the branding and the links rather than a wall of
-	 * plain text on white.
+	 * MIMI sends the user here when setup finishes, and when they log out there.
+	 * Anything short of a finished setup is discarded: the user signs in again and
+	 * the gate sends them back to MIMI if they are still not set up.
 	 */
-	private function failure(): TemplateResponse {
-		$response = new TemplateResponse(Application::APP_ID, 'securysign_notice', [
-			'title' => 'We could not finish your setup',
-			'message' => 'Something interrupted the connection to SecurySign. Any payment you have made is retained, and starting again picks up where you left off.',
-			'actionLabel' => 'Start again',
-			'actionUrl' => '/apps/libresign/',
-			'secondaryLabel' => 'Back to GoPaperless',
-			'secondaryUrl' => $this->urls->linkToDefaultPageUrl(),
-		], TemplateResponse::RENDER_AS_GUEST);
-		$response->setStatus(503);
-		$response->cacheFor(0);
-		return $response;
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/securysign/return')]
+	public function complete(string $state = ''): RedirectResponse {
+		$pending = $this->session->get('libresign.securysign.onboarding');
+		if (!is_array($pending) || $pending['expires'] < time() || !hash_equals($pending['state'], $state)
+			|| $pending['uid'] !== $this->users->getUser()?->getUID()) {
+			// A stale or foreign link. It must not sign anyone out, so the gate on
+			// the home page decides where this user goes next.
+			return new RedirectResponse(SecurySignService::returnPath(null));
+		}
+		$this->session->remove('libresign.securysign.onboarding');
+		$path = SecurySignService::returnPath($pending['returnTo']);
+		try {
+			if ($pending['sub'] !== $this->signa->identity()['sub'] || !$this->signa->isReady(true)) {
+				return $this->signOut();
+			}
+			return new RedirectResponse($path);
+		} catch (\Throwable $e) {
+			return $this->bail($e, $path);
+		}
+	}
+
+	/**
+	 * A dead session means signing in again. Anything else is an outage, which the
+	 * user should not notice: the page loads and the local engine signs.
+	 */
+	private function bail(\Throwable $e, string $path): RedirectResponse {
+		$this->logger->error('SecurySign onboarding handoff failed', ['exception' => $e]);
+		if (in_array($e->getCode(), [401, 403], true)) {
+			return $this->signOut();
+		}
+		// A cached "not ready" would send the page straight back here.
+		$this->signa->forgetReadiness();
+		return new RedirectResponse($path);
+	}
+
+	private function signOut(): RedirectResponse {
+		$this->users->logout();
+		return new RedirectResponse($this->urls->linkToRoute('core.login.showLoginForm'));
 	}
 }
