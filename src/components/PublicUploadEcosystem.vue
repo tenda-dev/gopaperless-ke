@@ -58,8 +58,8 @@ const ecosystem = [
 	flex: none;
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
-	padding: 18px var(--pu-pad) 14px;
+	gap: 40px;
+	padding: 56px var(--pu-pad) 24px;
 	border-top: 1px solid var(--eco-edge);
 	font-size: 12px;
 	line-height: 1.35;
@@ -72,20 +72,23 @@ const ecosystem = [
 	flex-wrap: wrap;
 	align-items: flex-start;
 	justify-content: space-between;
-	gap: 14px 48px;
+	gap: 32px 64px;
 }
 
-// Shrinks before the trust chain does, so both stay on one row down to ~1100px of content.
+// Narrow columns at either end, so the footer reads as two short blocks rather than one wide line.
 .pu__eco-about {
-	flex: 1 1 300px;
-	max-width: 560px;
+	flex: 0 1 380px;
+}
+
+.pu__eco-powered {
+	flex: 0 1 300px;
 }
 
 .pu__eco-kicker {
 	display: block;
-	margin-bottom: 8px;
+	margin-bottom: 14px;
 	font-size: 10px;
-	font-weight: 600;
+	font-weight: 500;
 	letter-spacing: .14em;
 	text-transform: uppercase;
 }
@@ -93,20 +96,21 @@ const ecosystem = [
 .pu__eco-lede {
 	margin: 0;
 	font-size: 13px;
-	line-height: 1.55;
+	font-weight: 300;
+	line-height: 1.7;
 	color: var(--eco-fg);
 }
 
 .pu__eco-items {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 10px 24px;
+	flex-direction: column;
+	gap: 18px;
 }
 
 .pu__eco-item {
 	display: flex;
-	align-items: center;
-	gap: 9px;
+	align-items: flex-start;
+	gap: 12px;
 	color: inherit;
 	text-decoration: none;
 
@@ -120,6 +124,7 @@ const ecosystem = [
 	flex: none;
 	width: 18px;
 	height: 18px;
+	margin-top: 1px;
 	color: var(--eco-fg);
 }
 
@@ -127,13 +132,17 @@ const ecosystem = [
 	b {
 		display: block;
 		font-size: 12.5px;
-		font-weight: 600;
+		font-weight: 500;
 		color: var(--eco-fg);
 		transition: color .18s;
 	}
 
 	span {
-		font-size: 11px;
+		display: block;
+		margin-top: 3px;
+		font-size: 10.5px;
+		font-weight: 300;
+		line-height: 1.5;
 	}
 }
 
@@ -142,7 +151,8 @@ const ecosystem = [
 	flex-wrap: wrap;
 	justify-content: flex-end;
 	gap: 6px 10px;
-	padding-top: 12px;
+	padding-top: 20px;
+	font-weight: 300;
 	border-top: 1px solid rgba(255, 255, 255, .08);
 
 	a {
@@ -168,7 +178,8 @@ const ecosystem = [
 
 @media (max-width: 860px) {
 	.pu__eco {
-		padding-block: 20px;
+		gap: 32px;
+		padding-block: 40px 24px;
 	}
 
 	// The links wrap here, and a separator would start the second line.
