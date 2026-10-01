@@ -4,16 +4,17 @@
 -->
 
 <template>
-	<div class="pu">
-		<PublicUploadHeader @sign-in="gateToLogin" />
-		<PublicUploadHero @get-started="gateToLogin" />
-		<PublicUploadStages />
+	<div class="pu" :class="{ 'pu--dark': theme === 'dark' }">
+		<div class="pu__fold">
+			<PublicUploadHeader :theme="theme" @sign-in="gateToLogin" @toggle-theme="toggleTheme" />
+			<PublicUploadHero @get-started="gateToLogin" />
+		</div>
 		<PublicUploadEcosystem />
 	</div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
@@ -22,11 +23,45 @@ import { generateUrl } from '@nextcloud/router'
 import PublicUploadEcosystem from '../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../components/PublicUploadHero.vue'
-import PublicUploadStages from '../components/PublicUploadStages.vue'
 
 defineOptions({ name: 'PublicUpload' })
 
+type Theme = 'light' | 'dark'
+
+const THEME_KEY = 'gopaperless-landing-theme'
+
 const router = useRouter()
+
+/**
+ * The landing follows the visitor's system colour scheme until they pick one
+ * with the header toggle. That choice is remembered in this browser.
+ */
+const darkScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
+const systemDark = ref(Boolean(darkScheme?.matches))
+const chosenTheme = ref<Theme | null>(readThemeChoice())
+const theme = computed<Theme>(() => chosenTheme.value ?? (systemDark.value ? 'dark' : 'light'))
+
+function readThemeChoice(): Theme | null {
+	try {
+		const saved = localStorage.getItem(THEME_KEY)
+		return saved === 'light' || saved === 'dark' ? saved : null
+	} catch {
+		return null
+	}
+}
+
+function toggleTheme(): void {
+	chosenTheme.value = theme.value === 'dark' ? 'light' : 'dark'
+	try {
+		localStorage.setItem(THEME_KEY, chosenTheme.value)
+	} catch {
+		// Private windows can refuse storage, so the choice lasts for this visit only.
+	}
+}
+
+function onSchemeChange(event: MediaQueryListEvent): void {
+	systemDark.value = event.matches
+}
 
 /**
  * PHP only runs on the full-page load, so a logged-in user who reaches this
@@ -37,6 +72,9 @@ onMounted(() => {
 		router.replace({ name: 'requestFiles' })
 	}
 })
+
+onMounted(() => darkScheme?.addEventListener?.('change', onSchemeChange))
+onBeforeUnmount(() => darkScheme?.removeEventListener?.('change', onSchemeChange))
 
 /**
  * Server-built login destination for the configured User OIDC provider.
@@ -62,100 +100,56 @@ function gateToLogin(): void {
 <style scoped lang="scss">
 .pu {
 	// Self-contained palette so the landing renders consistently regardless of
-	// the surrounding Nextcloud theme (the app forces light mode).
+	// the surrounding Nextcloud theme (the rest of the app forces light mode).
 	--ink: #0e1116;
 	--slate: #5b6472;
-	--faint: #9aa3af;
 	--line: #e6e8ec;
-	--line-soft: #eef0f3;
-	--canvas: #f4f5f7;
 	--surface: #ffffff;
 	--brand: #04d56d;
 	--brand-strong: #03b95e;
-	--brand-wash: #e8fbf1;
-	--brand-tint: #d6f7e6;
-	--brand-ring: rgba(4, 213, 109, .18);
+	--on-brand: #0e1116;
 	--eco-bg: #0f172a;
 	--eco-fg: #e2e8f0;
 	--eco-dim: #94a3b8;
 	--eco-accent: #04d56d;
-	// Monospace face for small technical labels (badges, page counts, kickers).
-	--mono: ui-monospace, 'SFMono-Regular', menlo, monospace;
-	--pu-max: 1440px;
-	--pu-pad: clamp(20px, 4vw, 44px);
+	--eco-edge: transparent;
+	// Side gutter that also caps content at 1264px, the 1440 artboard minus its
+	// gutters. 100% resolves against .pu in each section's padding.
+	--pu-pad: max(clamp(20px, 6vw, 88px), (100% - 1264px) / 2);
 	display: flex;
 	flex-direction: column;
 	width: 100%;
-	// Fill the Nextcloud content pane exactly: min-height lets the flex hero
-	// absorb any slack so the whole surface fits without page scroll, while
-	// still allowing natural growth (→ the pane's own scroll) on short/mobile.
 	min-height: 100%;
-	// The landing IS one rounded surface: round the shell and clip so the
-	// header's top corners and the footer's bottom corners terminate inside it.
-	border-radius: var(--body-container-radius, 16px);
+	// Clips the device mockups, which bleed past the stage on purpose.
 	overflow: hidden;
 	font-family: var(--tenda-font-family, 'Space Grotesk', -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, sans-serif);
 	color: var(--ink);
 	background: var(--surface);
-
-	b {
-		font-weight: 600;
-	}
-
-	svg:not(.pu__sig) {
-		fill: currentColor;
-	}
+	color-scheme: light;
 }
 
-.pu-btn {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	width: 100%;
-	padding: 11px 18px;
-	border-radius: 10px;
-	font: inherit;
-	font-weight: 600;
-	font-size: 14px;
-	cursor: pointer;
-	transition: transform .12s, background .2s;
-
-	svg {
-		width: 16px;
-		height: 16px;
-		fill: currentColor;
-	}
-
-	&:active {
-		transform: translateY(1px);
-	}
-
-	&--primary {
-		border: none;
-		color: var(--ink);
-		background: var(--brand);
-
-		&:hover {
-			background: var(--brand-strong);
-		}
-	}
+.pu--dark {
+	--ink: #f1f5f9;
+	--slate: #9ba5b4;
+	--line: rgba(255, 255, 255, .1);
+	// Same navy as the footer, so dark mode reads as one surface.
+	--surface: #0f172a;
+	--eco-edge: rgba(255, 255, 255, .08);
+	color-scheme: dark;
 }
 
-@keyframes pu-draw {
-	to {
-		stroke-dashoffset: 0;
-	}
+// Header and hero fill the first screen, so the footer only appears on scroll.
+// Grid rather than flex: a 1fr row stretched to a min-height gets a definite
+// height, which the hero's device stage needs for its container query units.
+.pu__fold {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	min-height: 100svh;
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.pu * {
 		transition: none !important;
-	}
-
-	.pu__paper.is-signed .pu__sig path {
-		animation: none;
-		stroke-dashoffset: 0;
 	}
 }
 </style>

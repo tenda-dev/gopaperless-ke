@@ -1,0 +1,243 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/*
+ * The GoPaperless login card.
+ *
+ * This restyles Nextcloud's own login page (core's Vue login app) through its
+ * theming variables and a few class hooks, and adds no markup. The form, CSRF
+ * token, throttling, two-factor and alternative logins stay Nextcloud's. The
+ * logos, font and shield icon come from login.ts, never from url() here.
+ *
+ * Set elsewhere, at the level that owns them:
+ * - "Verify with SecurySign": user_oidc's login_label system setting
+ * - no "Log in with a device": the auth.webauthn.enabled system setting
+ * - the Register button: RegisterLoginProvider (register_url app setting)
+ */
+
+@mixin light-tokens {
+	--gp-surface: #ffffff;
+	--gp-card: #ffffff;
+	--gp-ink: #0e1116;
+	--gp-slate: #5b6472;
+	--gp-line: #e6e8ec;
+	// Brand green dark enough for 15px text on white
+	--gp-link: #027a3f;
+	--gp-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 16px 40px rgba(15, 23, 42, .08);
+	--gp-logo: var(--gp-logo-light);
+	--color-main-background: #ffffff;
+	--color-main-background-blur: #ffffff;
+	--color-background-plain: #ffffff;
+	--color-background-hover: #f1f3f5;
+	--color-main-text: #0e1116;
+	--color-text-maxcontrast: #5b6472;
+	--color-border: #e6e8ec;
+	// 3:1 against the card, the minimum for an input's outline
+	--color-border-maxcontrast: #8b95a5;
+}
+
+@mixin dark-tokens {
+	--gp-surface: #0f172a;
+	--gp-card: #16213a;
+	--gp-ink: #f1f5f9;
+	--gp-slate: #9ba5b4;
+	--gp-line: rgba(255, 255, 255, .1);
+	--gp-link: #4ade80;
+	--gp-shadow: none;
+	// The original logo draws "Paper" in white, which is what dark needs.
+	--gp-logo: var(--gp-logo-dark);
+	--color-main-background: #16213a;
+	--color-main-background-blur: #16213a;
+	--color-background-plain: #0f172a;
+	--color-background-hover: rgba(255, 255, 255, .06);
+	--color-main-text: #f1f5f9;
+	--color-text-maxcontrast: #9ba5b4;
+	--color-border: rgba(255, 255, 255, .1);
+	--color-border-maxcontrast: #64748b;
+}
+
+// An ID outranks the theming app's variable selectors on body.
+#body-login {
+	@include light-tokens;
+	--color-primary-element: #04d56d;
+	--color-primary-element-hover: #03b95e;
+	--color-primary-element-text: #0e1116;
+	--color-primary-element-light: rgba(4, 213, 109, .12);
+	--color-primary-element-light-hover: rgba(4, 213, 109, .2);
+	--color-primary-element-light-text: #03b95e;
+	--border-radius-element: 12px;
+	--font-face: 'Space Grotesk', -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, sans-serif;
+	background: var(--gp-surface);
+	color: var(--gp-ink);
+	font-family: var(--font-face);
+}
+
+// A choice saved on the landing (data-gp-theme, set by login.ts) beats the system.
+@media (prefers-color-scheme: dark) {
+	#body-login:not([data-gp-theme='light']) {
+		@include dark-tokens;
+	}
+}
+
+#body-login[data-gp-theme='dark'] {
+	@include dark-tokens;
+}
+
+// The theming logo has white letters that vanish on white, so the header shows
+// the GoPaperless logo for the active theme instead.
+#body-login #header.header-guest .logo {
+	width: 200px;
+	height: 32px;
+	margin: 0 auto 28px;
+	background-image: var(--gp-logo);
+	background-position: center;
+	background-repeat: no-repeat;
+	background-size: contain;
+	filter: none;
+
+	// Phones lose the vertical centring, which left the logo against the top edge.
+	@media (max-width: 480px) {
+		margin-top: 32px;
+	}
+}
+
+#body-login .guest-box.login-box {
+	width: min(420px, calc(100vw - 32px));
+	padding: 32px 28px 28px;
+	border: 1px solid var(--gp-line);
+	border-radius: 20px;
+	background: var(--gp-card);
+	box-shadow: var(--gp-shadow);
+	backdrop-filter: none;
+}
+
+#body-login .login-form__headline {
+	margin-bottom: 20px;
+	font-size: 22px;
+	font-weight: 700;
+	letter-spacing: -.02em;
+	color: var(--gp-ink);
+}
+
+// Social Login's hide_default_login.css hides the form until the URL ends in
+// #body-login. The card always shows it, so the form and the buttons after it
+// come back, and Social Login's "Log in with username or email" link goes.
+#body-login .login-box__wrapper > form.login-form {
+	display: block;
+}
+
+#body-login .login-box__wrapper > form.login-form ~ .button-vue {
+	display: flex;
+}
+
+#body-login #alternative-logins a[href*='#body-login'] {
+	display: none;
+}
+
+#body-login #alternative-logins {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 12px;
+
+	// The "or" divider between the password form and the alternatives
+	&::before {
+		content: 'or';
+		display: flex;
+		justify-content: center;
+		margin-bottom: 4px;
+		font-size: 13px;
+		line-height: 20px;
+		color: var(--gp-slate);
+		background:
+			linear-gradient(var(--gp-line), var(--gp-line)) left center / calc(50% - 22px) 1px no-repeat,
+			linear-gradient(var(--gp-line), var(--gp-line)) right center / calc(50% - 22px) 1px no-repeat;
+	}
+
+	// SecurySign first, then Register, then anything else (Social Login's
+	// buttons in production). The divider keeps order 0.
+	a.button-vue {
+		order: 3;
+		width: 100%;
+		min-height: 48px;
+		border-radius: 12px;
+		font-weight: 600;
+	}
+}
+
+// SecurySign is the alternative the card promotes: outlined in ink, with a shield.
+#body-login #alternative-logins a[href*='/apps/user_oidc/login/'] {
+	order: 1;
+	border: 1.5px solid var(--gp-ink);
+	background: transparent;
+	color: var(--gp-ink);
+
+	&:hover,
+	&:focus-visible {
+		background: var(--color-background-hover);
+	}
+
+	.button-vue__wrapper::before {
+		content: '';
+		flex: none;
+		width: 18px;
+		height: 18px;
+		margin-inline-end: 8px;
+		background-color: currentColor;
+		mask: var(--gp-shield) center / contain no-repeat;
+	}
+}
+
+// Register leaves Nextcloud for the tendaworld.com onboarding, so it reads as a
+// quieter link-style button under sign-in.
+#body-login #alternative-logins a.gp-register {
+	order: 2;
+	min-height: 40px;
+	border: none;
+	background: transparent;
+	color: var(--gp-link);
+
+	&:hover,
+	&:focus-visible {
+		background: var(--color-primary-element-light);
+	}
+}
+
+// Both added by login.ts: the logo links home, and the card gets a way back.
+#body-login .gp-home {
+	display: block;
+}
+
+#body-login .gp-back {
+	display: block;
+	margin-top: 16px;
+	font-size: 14px;
+	font-weight: 500;
+	text-align: center;
+	text-decoration: none;
+	color: var(--gp-slate);
+
+	&::before {
+		content: '←';
+		margin-inline-end: 6px;
+	}
+
+	&:hover,
+	&:focus-visible {
+		color: var(--gp-ink);
+		text-decoration: underline;
+	}
+}
+
+#body-login footer.guest-box {
+	background: transparent;
+	box-shadow: none;
+	backdrop-filter: none;
+	color: var(--gp-slate);
+
+	a {
+		color: inherit;
+	}
+}
