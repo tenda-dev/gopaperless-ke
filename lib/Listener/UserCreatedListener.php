@@ -61,7 +61,9 @@ class UserCreatedListener implements IEventListener {
 		if (!$user->getUID()) {
 			return;
 		}
-		if ((int)trim($this->appConfig->getAppValueString('securysign_provider_id', '0')) <= 0) {
+		// Read as an int, the way the admin settings store it. A string read throws
+		// AppConfigTypeConflictException and kills the new account's first login.
+		if ($this->appConfig->getAppValueInt('securysign_provider_id') <= 0) {
 			return;
 		}
 
