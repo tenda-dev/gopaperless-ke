@@ -34,7 +34,7 @@
 					<div class="chips-header">
 						<span class="chips-label">Product groups</span>
 						<span class="chips-hint">
-							Each group represents an action/product code (e.g. SIGN_DOCUMENT)
+							Each group represents an action/product code (e.g. SIGN_DOCUMENT). Payments charge the default product of each code.
 						</span>
 					</div>
 
@@ -109,25 +109,18 @@
 												Edit
 											</NcActionButton>
 
-											<NcActionButton v-if="!p.is_default" @click="setActive(p)">
+											<NcActionButton v-if="!p.isDefault" @click="setActive(p)">
 												<template #icon>
 													<NcIconSvgWrapper :path="mdiStarOutline" :size="16" />
 												</template>
-												Set Active
+												{{ p.active ? 'Deactivate' : 'Activate' }}
 											</NcActionButton>
 
-											<NcActionButton v-if="!p.is_default" @click="setDefault(p)">
+											<NcActionButton v-if="!p.isDefault && p.active" @click="setDefault(p)">
 												<template #icon>
 													<NcIconSvgWrapper :path="mdiCheckDecagramOutline" :size="16" />
 												</template>
 												Set Default
-											</NcActionButton>
-
-											<NcActionButton @click="handleDelete()" variant="error">
-												<template #icon>
-													<NcIconSvgWrapper :path="mdiDeleteOutline" :size="16" />
-												</template>
-												Delete
 											</NcActionButton>
 
 										</NcActions>
@@ -177,14 +170,14 @@
 			<!-- CONFIRM DIALOG -->
 			<!-- ===================== -->
 			<ConfirmDialog v-model="showConfirmDialog"
-				:title="confirmAction === 'delete' ? 'Delete Product' : confirmAction === 'default' ? 'Set Default Product' : 'Toggle Active Status'"
-				:message="confirmAction === 'delete'
-						? 'Are you sure you want to delete this product? This action cannot be undone.'
-						: confirmAction === 'default'
-							? 'Set this product as the default for this action?'
-							: 'Are you sure you want to toggle the active status of this product?'
-					" :confirmText="confirmAction === 'delete' ? 'Delete' : confirmAction === 'default' ? 'Set Default' : 'Toggle Active'"
-				:destructive="confirmAction === 'delete'" :loading="confirmLoading" @confirm="handleConfirm" />
+				:title="confirmAction === 'default' ? 'Set Default Product' : selectedProduct?.active ? 'Deactivate Product' : 'Activate Product'"
+				:message="confirmAction === 'default'
+					? 'Payments for this code will charge this product from now on.'
+					: selectedProduct?.active
+						? 'Deactivate this product? It cannot be made the default while it is inactive.'
+						: 'Activate this product?'"
+				:confirmText="confirmAction === 'default' ? 'Set Default' : selectedProduct?.active ? 'Deactivate' : 'Activate'"
+				:loading="confirmLoading" @confirm="handleConfirm" />
 		</div>
 	</div>
 </template>
@@ -201,13 +194,12 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import {
 	mdiPencil,
 	mdiStarOutline,
-	mdiDeleteOutline,
 	mdiPlus,
 	mdiPackageVariant,
 	mdiCheckDecagramOutline
 } from '@mdi/js'
 
-import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
+import { notifySuccess, notifyError } from '@/services/toast'
 import ProductModal from './modals/ProductModal.vue'
 import ConfirmDialog from '@/components/Common/ConfirmDialog.vue'
 
@@ -218,9 +210,8 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const selectedProduct = ref<any | null>(null)
 const showConfirmDialog = ref(false)
-const confirmAction = ref<'delete' | 'default' | 'active' | null>(null)
+const confirmAction = ref<'default' | 'active' | null>(null)
 const confirmLoading = ref(false)
-const canDelete = false;
 
 const hasProducts = computed(() => products.value.length > 0)
 
@@ -248,26 +239,13 @@ async function loadProducts() {
 	}
 }
 
-async function handleDelete() {
-	notifyInfo({
-		message: `Delete product will be implemented in a future release.`
-	})
-}
-
 async function handleConfirm() {
 	if (!selectedProduct.value) return
 
 	try {
 		confirmLoading.value = true
 
-		if (confirmAction.value === 'delete') {
-			await axios.delete(
-				generateOcsUrl(`/apps/libresign/api/v1/admin/products/${selectedProduct.value.id}`)
-			)
-
-			notifySuccess({ message: 'Product deleted successfully' })
-
-		} else if (confirmAction.value === 'default') {
+		if (confirmAction.value === 'default') {
 			await axios.post(
 				generateOcsUrl('/apps/libresign/api/v1/product/set-default'),
 				{ productId: selectedProduct.value.id }
@@ -289,10 +267,9 @@ async function handleConfirm() {
 
 		await loadProducts()
 
-	} catch (err) {
-		const action = confirmAction.value === 'delete' ? 'Delete product' : 'Set default product'
+	} catch (err: any) {
 		notifyError({
-			message: `Failed to ${action}`,
+			message: err?.response?.data?.ocs?.data?.error ?? 'Could not update the product',
 			important: true,
 		})
 	} finally {
@@ -323,12 +300,6 @@ function openCreateModal() {
 function editProduct(product: any) {
 	selectedProduct.value = product
 	showEditModal.value = true
-}
-
-function deleteProduct(product: any) {
-	selectedProduct.value = product
-	confirmAction.value = 'delete'
-	showConfirmDialog.value = true
 }
 
 onMounted(() => {

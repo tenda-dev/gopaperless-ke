@@ -48,9 +48,9 @@ final class UserCreatedListenerTest extends TestCase {
 	}
 
 	public function testDoesNothingWhileSecurySignIsDisabled(): void {
-		$this->appConfig->method('getAppValueString')
-			->with('securysign_provider_id', '0')
-			->willReturn('0');
+		$this->appConfig->method('getAppValueInt')
+			->with('securysign_provider_id')
+			->willReturn(0);
 		$this->groupManager->expects($this->never())
 			->method('get');
 		$this->groupManager->expects($this->never())
@@ -107,14 +107,16 @@ final class UserCreatedListenerTest extends TestCase {
 	}
 
 	/**
-	 * One stub for every `getAppValueString` call the listener makes. A second
-	 * `method()` stub on the same mock is still parameter-checked against the
-	 * first call, so splitting the flag and the group across two stubs fails on
-	 * whichever call runs first.
+	 * The provider id is an int setting and the group a string one, so each
+	 * has its own stub.
 	 */
 	private function flagEnabled(string $group = 'signers'): void {
+		$this->appConfig->method('getAppValueInt')
+			->with('securysign_provider_id')
+			->willReturn(1);
 		$this->appConfig->method('getAppValueString')
-			->willReturnCallback(static fn (string $key, string $default = ''): string => $key === 'securysign_provider_id' ? '1' : $group);
+			->with('default_signer_group')
+			->willReturn($group);
 	}
 
 	private function newUserCreatedEvent(string $uid): UserCreatedEvent {
