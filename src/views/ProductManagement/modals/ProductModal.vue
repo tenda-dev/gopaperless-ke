@@ -144,10 +144,8 @@ async function handleSubmit() {
 
   } catch (err: any) {
     notifyError({
-		message:
-			props.mode === 'create'
-			? 'Failed to create product'
-			: 'Failed to update product',
+		message: err?.response?.data?.ocs?.data?.error
+			?? (props.mode === 'create' ? 'Failed to create product' : 'Failed to update product'),
 		important: true,
 	})
   } finally {
