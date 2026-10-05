@@ -26,6 +26,10 @@
 				v-model="tendaworldUrl"
 				:label="t('libresign', 'MIMI enrolment page for users who are not set up')"
 				placeholder="https://gopaperless.mimi.ke" />
+			<NcPasswordField
+				v-model="mimiClientSecret"
+				:label="t('libresign', 'MIMI client secret (asks for the MIMI passkey after sign-in)')"
+				:placeholder="mimiClientSecretSet ? t('libresign', 'Saved. Type a new one to replace it.') : ''" />
 			<p class="securysign-settings__hint">
 				{{ t('libresign', 'The issuer comes from the provider. SecurySign signs only once a provider, the address and the signing secret are set.') }}
 			</p>
@@ -65,6 +69,8 @@ const url = ref(loadState<AdminInitialState['securysign_url']>('libresign', 'sec
 const tendaworldUrl = ref(loadState<AdminInitialState['tendaworld_url']>('libresign', 'tendaworld_url', ''))
 const signingSecretSet = ref(loadState<AdminInitialState['securysign_signing_secret_set']>('libresign', 'securysign_signing_secret_set', false))
 const signingSecret = ref('')
+const mimiClientSecretSet = ref(loadState<AdminInitialState['mimi_client_secret_set']>('libresign', 'mimi_client_secret_set', false))
+const mimiClientSecret = ref('')
 const saving = ref(false)
 
 async function save() {
@@ -75,9 +81,12 @@ async function save() {
 			url: url.value.trim(),
 			tendaworldUrl: tendaworldUrl.value.trim(),
 			signingSecret: signingSecret.value.trim(),
+			mimiClientSecret: mimiClientSecret.value.trim(),
 		})
 		signingSecretSet.value ||= signingSecret.value.trim() !== ''
 		signingSecret.value = ''
+		mimiClientSecretSet.value ||= mimiClientSecret.value.trim() !== ''
+		mimiClientSecret.value = ''
 		showSuccess(t('libresign', 'SecurySign settings saved'))
 	} catch (error) {
 		const message = (error as { response?: { data?: { ocs?: { data?: { error?: string } } } } }).response?.data?.ocs?.data?.error

@@ -12,15 +12,19 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UseSession;
+use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
+use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 class SecurySignController extends Controller {
@@ -93,6 +97,69 @@ class SecurySignController extends Controller {
 		} catch (\Throwable $e) {
 			return $this->bail($e, $path);
 		}
+	}
+
+	/**
+	 * After sign-in the user confirms it is them with their MIMI passkey, on this
+	 * page (MIMI's RP ID, allowed by mimi.ke's /.well-known/webauthn).
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/securysign/passkey')]
+	public function passkey(?string $returnTo = null): RedirectResponse|TemplateResponse {
+		$path = SecurySignService::returnPath($returnTo);
+		if (!$this->signa->passkeyPending()) {
+			return new RedirectResponse($path);
+		}
+		Util::addStyle(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-passkey');
+		$response = new TemplateResponse(Application::APP_ID, 'mimi_passkey', [
+			'returnTo' => $path,
+			'logoutUrl' => $this->urls->linkToRoute('core.login.logout', ['requesttoken' => Util::callRegister()]),
+		], TemplateResponse::RENDER_AS_GUEST);
+		$response->cacheFor(0);
+		return $response;
+	}
+
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'POST', url: '/securysign/passkey/options')]
+	public function passkeyOptions(): DataResponse {
+		try {
+			$options = $this->signa->passkeyOptions();
+		} catch (\Throwable $e) {
+			if (in_array($e->getCode(), [401, 403], true)) {
+				$this->users->logout();
+				return new DataResponse(['redirect' => $this->urls->linkToRoute('core.login.showLoginForm')]);
+			}
+			$this->signa->skipPasskey($e->getMessage());
+			return new DataResponse(['skip' => true]);
+		}
+		if ($options === null) {
+			// No MIMI passkey yet: setting one up is the onboarding the gate runs.
+			return new DataResponse(['redirect' => $this->urls->linkToRoute('libresign.securySign.onboard')]);
+		}
+		return new DataResponse(['options' => $options]);
+	}
+
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'POST', url: '/securysign/passkey/verify')]
+	public function passkeyVerify(array $response = []): DataResponse {
+		try {
+			if ($this->signa->verifyPasskey($response)) {
+				return new DataResponse(['verified' => true]);
+			}
+		} catch (\Throwable $e) {
+			$this->signa->skipPasskey($e->getMessage());
+			return new DataResponse(['verified' => true]);
+		}
+		return new DataResponse([
+			'verified' => false,
+			'error' => 'That passkey could not be confirmed. Use the MIMI passkey for this account and try again.',
+		], Http::STATUS_FORBIDDEN);
 	}
 
 	/**

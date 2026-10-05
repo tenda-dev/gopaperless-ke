@@ -14,6 +14,7 @@ export default createAppConfig({
 	external: resolve('src/external.ts'),
 	validation: resolve('src/validation.ts'),
 	login: resolve('src/login.ts'),
+	passkey: resolve('src/passkey.ts'),
 }, {
 	config: {
 		server: {

@@ -411,9 +411,89 @@ class SecurySignService {
 	 * key keeps its old name; it held the TendaWorld website until 2026-09-29.
 	 */
 	public function onboardingUrl(): string {
+		return $this->mimiOrigin() . '/enrol';
+	}
+
+	private function mimiOrigin(): string {
 		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
 			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://gopaperless.mimi.ke');
-		return self::origin($configured) . '/enrol';
+		return self::origin($configured);
+	}
+
+	private const PASSKEY_KEY = 'libresign.mimi.passkey';
+	private const PASSKEY_STATE_KEY = 'libresign.mimi.passkey_state';
+
+	/**
+	 * Whether this session still owes the MIMI passkey check that follows
+	 * sign-in. Off until the MIMI client secret is set.
+	 */
+	public function passkeyPending(): bool {
+		return $this->applies()
+			&& $this->config->getValueString(Application::APP_ID, 'mimi_client_secret') !== ''
+			&& $this->session->get(self::PASSKEY_KEY) === null;
+	}
+
+	/**
+	 * WebAuthn options for the user's MIMI passkey, run on our page under MIMI's
+	 * RP ID (mimi.ke lists our origin in /.well-known/webauthn). Null when MIMI
+	 * holds no passkey for them. Throws 503 when MIMI cannot answer.
+	 */
+	public function passkeyOptions(): ?array {
+		$answer = $this->mimi('options', ['subject' => $this->identity()['sub']]);
+		if ($answer['status'] === 404) {
+			return null;
+		}
+		if ($answer['status'] !== 200 || !is_array($answer['body']['options'] ?? null) || !is_string($answer['body']['state'] ?? null)) {
+			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey request.', 503);
+		}
+		$this->session->set(self::PASSKEY_STATE_KEY, $answer['body']['state']);
+		return $answer['body']['options'];
+	}
+
+	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
+	public function verifyPasskey(array $assertion): bool {
+		$state = $this->session->get(self::PASSKEY_STATE_KEY);
+		$this->session->remove(self::PASSKEY_STATE_KEY);
+		if (!is_string($state)) {
+			return false;
+		}
+		$answer = $this->mimi('verify', ['state' => $state, 'response' => $assertion]);
+		if ($answer['status'] >= 500) {
+			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey check.', 503);
+		}
+		$verified = $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true
+			&& ($answer['body']['subject'] ?? null) === $this->identity()['sub'];
+		if ($verified) {
+			$this->session->set(self::PASSKEY_KEY, time());
+		}
+		return $verified;
+	}
+
+	/** Lets this session in when MIMI cannot run the check, so an outage locks nobody out. */
+	public function skipPasskey(string $reason): void {
+		$this->logger->warning('MIMI passkey check skipped: ' . $reason);
+		$this->session->set(self::PASSKEY_KEY, 'skipped');
+	}
+
+	/** @return array{status: int, body: array} */
+	private function mimi(string $action, array $payload): array {
+		try {
+			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/passkey/' . $action, [
+				'json' => $payload,
+				'auth' => [
+					$this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless'),
+					$this->config->getValueString(Application::APP_ID, 'mimi_client_secret'),
+				],
+				'connect_timeout' => 3,
+				'timeout' => 10,
+				'allow_redirects' => false,
+				'http_errors' => false,
+			]);
+		} catch (\Exception $e) {
+			throw new \RuntimeException('MIMI is unreachable.', 503, $e);
+		}
+		$body = json_decode((string)$response->getBody(), true);
+		return ['status' => $response->getStatusCode(), 'body' => is_array($body) ? $body : []];
 	}
 
 

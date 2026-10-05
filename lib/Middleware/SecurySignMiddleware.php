@@ -79,6 +79,9 @@ class SecurySignMiddleware extends Middleware {
 		if (!$ready) {
 			throw new LibresignException('Finish your SecurySign setup in GoPaperless before signing.', Http::STATUS_FORBIDDEN);
 		}
+		if ($this->signa->passkeyPending()) {
+			throw new LibresignException('Confirm it is you with your MIMI passkey, then sign.', Http::STATUS_FORBIDDEN);
+		}
 	}
 
 	#[\Override]
@@ -89,6 +92,12 @@ class SecurySignMiddleware extends Middleware {
 		}
 		try {
 			if ($this->signa->isReady()) {
+				// Set up: the MIMI passkey confirms it is them before the app opens.
+				if ($this->signa->passkeyPending()) {
+					return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.passkey', [
+						'returnTo' => SecurySignService::returnPath($this->request->getRequestUri()),
+					]));
+				}
 				return $response;
 			}
 			return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.onboard', [

@@ -179,4 +179,35 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
 	}
+
+	public function testThePasskeyPageIsSkippedOnceTheCheckIsDone(): void {
+		$this->signa->method('passkeyPending')->willReturn(false);
+
+		self::assertSame('/apps/libresign/f/document', $this->controller->passkey('/apps/libresign/f/document')->getRedirectURL());
+	}
+
+	/** MIMI being down must not lock anyone out of GoPaperless. */
+	public function testAMimiOutageSkipsThePasskeyCheck(): void {
+		$this->signa->method('passkeyOptions')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));
+		$this->signa->expects(self::once())->method('skipPasskey');
+		$this->users->expects(self::never())->method('logout');
+
+		self::assertSame(['skip' => true], $this->controller->passkeyOptions()->getData());
+	}
+
+	public function testSomeoneWithoutAMimiPasskeyIsSentToSetOneUp(): void {
+		$this->signa->method('passkeyOptions')->willReturn(null);
+
+		self::assertSame(['redirect' => '/libresign.securySign.onboard'], $this->controller->passkeyOptions()->getData());
+	}
+
+	public function testARefusedPasskeyIsNotLetThrough(): void {
+		$this->signa->method('verifyPasskey')->willReturn(false);
+		$this->signa->expects(self::never())->method('skipPasskey');
+
+		$response = $this->controller->passkeyVerify(['id' => 'x']);
+
+		self::assertSame(403, $response->getStatus());
+		self::assertFalse($response->getData()['verified']);
+	}
 }
