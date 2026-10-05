@@ -6,6 +6,7 @@
 // Loaded only on Nextcloud's /login page by LoginPageListener.
 
 import { mdiShieldCheckOutline } from '@mdi/js'
+import { loadState } from '@nextcloud/initial-state'
 
 import logoOnDark from '../img/gopaperless-logo.png'
 import logoOnLight from '../img/gopaperless-logo-ink.png'
@@ -54,6 +55,29 @@ if (logo?.parentElement) {
 	link.setAttribute('aria-label', 'GoPaperless home')
 	logo.parentElement.insertBefore(link, logo)
 	link.appendChild(logo)
+}
+
+// MIMI is the only way in: the SecurySign provider's button, relabelled, and
+// nothing else. /login?direct=1 keeps the form for a local admin account.
+const mimiProvider = loadState<number>('libresign', 'mimi_login_provider_id', 0)
+if (mimiProvider > 0 && new URLSearchParams(window.location.search).get('direct') !== '1') {
+	body.classList.add('gp-mimi-only')
+	const mark = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><circle cx="12" cy="12" r="3.2"/></svg>'
+	body.style.setProperty('--gp-mimi-mark', `url("data:image/svg+xml,${encodeURIComponent(mark)}")`)
+
+	// Nextcloud renders the alternative logins after this script runs.
+	const markMimi = () => {
+		const path = `/apps/user_oidc/login/${mimiProvider}`
+		const button = document.querySelector<HTMLAnchorElement>(`#alternative-logins a[href$="${path}"], #alternative-logins a[href*="${path}?"]`)
+		if (!button || button.classList.contains('gp-mimi')) {
+			return
+		}
+		button.classList.add('gp-mimi')
+		const text = button.querySelector('.button-vue__text') ?? button
+		text.textContent = 'Sign in with MIMI'
+	}
+	markMimi()
+	new MutationObserver(markMimi).observe(body, { childList: true, subtree: true })
 }
 
 const card = document.querySelector('.guest-box.login-box')

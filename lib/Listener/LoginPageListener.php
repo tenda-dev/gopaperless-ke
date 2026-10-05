@@ -10,6 +10,7 @@ namespace OCA\Libresign\Listener;
 
 use OCA\Libresign\AppInfo\Application;
 use OCP\AppFramework\Http\Events\BeforeLoginTemplateRenderedEvent;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\IAppConfig;
@@ -30,6 +31,7 @@ use OCP\Util;
 class LoginPageListener implements IEventListener {
 	public function __construct(
 		private IAppConfig $appConfig,
+		private IInitialState $initialState,
 	) {
 	}
 
@@ -43,6 +45,11 @@ class LoginPageListener implements IEventListener {
 			return;
 		}
 
+		// With a SecurySign provider set, its button is the only way in and reads
+		// "Sign in with MIMI". login.ts keeps the form at /login?direct=1 for a
+		// local admin account.
+		$this->initialState->provideInitialState('mimi_login_provider_id',
+			$this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 	}

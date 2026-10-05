@@ -205,6 +205,82 @@
 	}
 }
 
+// MIMI-only (login.ts sets gp-mimi-only): one MIMI button. The form, "Log in
+// with a device", Register and every other provider are hidden.
+#body-login.gp-mimi-only {
+	.login-box__wrapper > form.login-form,
+	.login-box__wrapper > form.login-form ~ .button-vue,
+	.password-less-login-form,
+	#alternative-logins > :not(.gp-mimi) {
+		display: none;
+	}
+
+	#alternative-logins {
+		margin-top: 0;
+
+		&::before {
+			content: none;
+		}
+	}
+
+	#alternative-logins a.gp-mimi {
+		min-height: 52px;
+		border: none;
+		background: #00c853;
+		color: #0b1120;
+
+		&:hover,
+		&:focus-visible {
+			background: #00b34a;
+		}
+
+		.button-vue__wrapper::before {
+			mask-image: var(--gp-mimi-mark);
+		}
+	}
+}
+
+// The MIMI passkey check after sign-in (templates/mimi_passkey.php), on the same card.
+#body-login .gp-passkey {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	text-align: center;
+
+	.gp-passkey__text {
+		color: var(--gp-slate);
+	}
+
+	.gp-passkey__button {
+		min-height: 52px;
+		border: none;
+		border-radius: 12px;
+		background: #00c853;
+		color: #0b1120;
+		font-weight: 600;
+		cursor: pointer;
+
+		&:hover,
+		&:focus-visible {
+			background: #00b34a;
+		}
+
+		&:disabled {
+			opacity: .6;
+			cursor: progress;
+		}
+	}
+
+	.gp-passkey__error {
+		color: var(--color-error-text);
+	}
+
+	.gp-passkey__signout {
+		color: var(--gp-link);
+		font-size: 14px;
+	}
+}
+
 // Both added by login.ts: the logo links home, and the card gets a way back.
 #body-login .gp-home {
 	display: block;
