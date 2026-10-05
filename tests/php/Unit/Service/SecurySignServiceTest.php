@@ -68,6 +68,19 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertSame('https://staging-gopaperless.mimi.ke/enrol', $service->onboardingUrl());
 	}
 
+	public function testThePasskeyFrameIsMimisPageForOurClient(): void {
+		$appConfig = $this->createMock(IAppConfig::class);
+		$appConfig->method('getValueString')->willReturnCallback(
+			static fn (string $app, string $key, string $default = '') => $key === 'tendaworld_url' ? 'https://localhost:3000' : $default,
+		);
+		$service = new SecurySignService($appConfig, $this->createMock(IConfig::class), $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+
+		self::assertSame([
+			'origin' => 'https://localhost:3000',
+			'url' => 'https://localhost:3000/passkey/frame?client_id=gopaperless',
+		], $service->passkeyFrame());
+	}
+
 	public function testMissingCertificateIsDifferentFromAnOutage(): void {
 		$session = $this->createMock(ISession::class);
 		$session->method('get')->willReturn(null);

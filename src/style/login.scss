@@ -240,44 +240,19 @@
 	}
 }
 
-// The MIMI passkey check after sign-in (templates/mimi_passkey.php), on the same card.
-#body-login .gp-passkey {
-	display: flex;
-	flex-direction: column;
-	gap: 14px;
-	text-align: center;
+// The MIMI passkey check after sign-in (templates/mimi_passkey.php). The card is
+// MIMI's frame edge to edge, white in both themes, like a card issuer's window.
+#body-login .guest-box.gp-passkey {
+	width: min(400px, calc(100vw - 32px));
+	padding: 0;
+	overflow: hidden;
+	background: #fff;
 
-	.gp-passkey__text {
-		color: var(--gp-slate);
-	}
-
-	.gp-passkey__button {
-		min-height: 52px;
-		border: none;
-		border-radius: 12px;
-		background: #00c853;
-		color: #0b1120;
-		font-weight: 600;
-		cursor: pointer;
-
-		&:hover,
-		&:focus-visible {
-			background: #00b34a;
-		}
-
-		&:disabled {
-			opacity: .6;
-			cursor: progress;
-		}
-	}
-
-	.gp-passkey__error {
-		color: var(--color-error-text);
-	}
-
-	.gp-passkey__signout {
-		color: var(--gp-link);
-		font-size: 14px;
+	.gp-passkey__frame {
+		display: block;
+		width: 100%;
+		height: 480px;
+		border: 0;
 	}
 }
 

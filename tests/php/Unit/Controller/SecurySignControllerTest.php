@@ -186,6 +186,14 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertSame('/apps/libresign/f/document', $this->controller->passkey('/apps/libresign/f/document')->getRedirectURL());
 	}
 
+	public function testABadMimiAddressSkipsThePasskeyPage(): void {
+		$this->signa->method('passkeyPending')->willReturn(true);
+		$this->signa->method('passkeyFrame')->willThrowException(new \RuntimeException('Configure a valid HTTPS origin for the signing integration.', 503));
+		$this->signa->expects(self::once())->method('skipPasskey');
+
+		self::assertSame('/apps/libresign/f/document', $this->controller->passkey('/apps/libresign/f/document')->getRedirectURL());
+	}
+
 	/** MIMI being down must not lock anyone out of GoPaperless. */
 	public function testAMimiOutageSkipsThePasskeyCheck(): void {
 		$this->signa->method('passkeyOptions')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));

@@ -17,6 +17,7 @@ use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UseSession;
+use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -100,8 +101,8 @@ class SecurySignController extends Controller {
 	}
 
 	/**
-	 * After sign-in the user confirms it is them with their MIMI passkey, on this
-	 * page (MIMI's RP ID, allowed by mimi.ke's /.well-known/webauthn).
+	 * After sign-in the user confirms it is them with their MIMI passkey, in
+	 * MIMI's own page framed on this one.
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
@@ -112,13 +113,23 @@ class SecurySignController extends Controller {
 		if (!$this->signa->passkeyPending()) {
 			return new RedirectResponse($path);
 		}
+		try {
+			$frame = $this->signa->passkeyFrame();
+		} catch (\RuntimeException $e) {
+			$this->signa->skipPasskey($e->getMessage());
+			return new RedirectResponse($path);
+		}
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-passkey');
 		$response = new TemplateResponse(Application::APP_ID, 'mimi_passkey', [
 			'returnTo' => $path,
+			'frameUrl' => $frame['url'],
 			'logoutUrl' => $this->urls->linkToRoute('core.login.logout', ['requesttoken' => Util::callRegister()]),
 		], TemplateResponse::RENDER_AS_GUEST);
+		$policy = new ContentSecurityPolicy();
+		$policy->addAllowedFrameDomain($frame['origin']);
+		$response->setContentSecurityPolicy($policy);
 		$response->cacheFor(0);
 		return $response;
 	}

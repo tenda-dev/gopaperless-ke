@@ -434,9 +434,21 @@ class SecurySignService {
 	}
 
 	/**
-	 * WebAuthn options for the user's MIMI passkey, run on our page under MIMI's
-	 * RP ID (mimi.ke lists our origin in /.well-known/webauthn). Null when MIMI
-	 * holds no passkey for them. Throws 503 when MIMI cannot answer.
+	 * MIMI's page that runs the passkey prompt on MIMI's own origin, which
+	 * templates/mimi_passkey.php frames. MIMI lets only our registered origins
+	 * frame it.
+	 *
+	 * @return array{origin: string, url: string}
+	 */
+	public function passkeyFrame(): array {
+		$origin = $this->mimiOrigin();
+		return ['origin' => $origin, 'url' => $origin . '/passkey/frame?' . http_build_query(['client_id' => $this->mimiClientId()])];
+	}
+
+	/**
+	 * WebAuthn options for the user's MIMI passkey, which our page hands to
+	 * MIMI's frame. Null when MIMI holds no passkey for them. Throws 503 when
+	 * MIMI cannot answer.
 	 */
 	public function passkeyOptions(): ?array {
 		$answer = $this->mimi('options', ['subject' => $this->identity()['sub']]);
@@ -475,13 +487,17 @@ class SecurySignService {
 		$this->session->set(self::PASSKEY_KEY, 'skipped');
 	}
 
+	private function mimiClientId(): string {
+		return $this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless');
+	}
+
 	/** @return array{status: int, body: array} */
 	private function mimi(string $action, array $payload): array {
 		try {
 			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/passkey/' . $action, [
 				'json' => $payload,
 				'auth' => [
-					$this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless'),
+					$this->mimiClientId(),
 					$this->config->getValueString(Application::APP_ID, 'mimi_client_secret'),
 				],
 				'connect_timeout' => 3,
