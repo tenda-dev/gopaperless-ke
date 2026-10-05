@@ -12,10 +12,11 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\Product;
 use OCA\Libresign\DTO\ProductDTO;
+use OCA\Libresign\Enum\ProductCode;
 use OCA\Libresign\Service\Product\ProductService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired; // TODO: replace with AdminRequired
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
@@ -39,8 +40,6 @@ class ProductController extends AEnvironmentAwareController {
 	/**
 	 * Create product
 	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'POST',
 		url: '/api/{apiVersion}/product/create',
@@ -57,7 +56,17 @@ class ProductController extends AEnvironmentAwareController {
 
 		try {
 			// Input validation (basic)
-			if ($code === '' || $currency === '') {
+			// Payments look products up by an exact, known code. A typo would
+			// create a product nobody is ever charged for.
+			$productCode = ProductCode::tryFrom(strtoupper(trim($code)));
+			if ($productCode === null) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Unknown product code. Use one of: ' . implode(', ', array_column(ProductCode::cases(), 'value')),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			if ($currency === '') {
 				return new DataResponse([
 					'success' => false,
 					'error' => 'Missing required fields'
@@ -79,7 +88,7 @@ class ProductController extends AEnvironmentAwareController {
 			}
 
 			$product = new Product();
-			$product->setCode($code);
+			$product->setCode($productCode->value);
 			$product->setName($name);
 			$product->setAmount($amount);
 			$product->setCurrency('KES');
@@ -109,8 +118,7 @@ class ProductController extends AEnvironmentAwareController {
 
 			return new DataResponse([
 				'success' => false,
-				'error' => $e->getMessage(),
-				'trace' => $e->getTraceAsString()
+				'error' => 'The product could not be saved.',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -161,8 +169,6 @@ class ProductController extends AEnvironmentAwareController {
 	/**
 	 * List ALL products
 	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'GET',
 		url: '/api/{apiVersion}/product/list-all',
@@ -188,8 +194,7 @@ class ProductController extends AEnvironmentAwareController {
 
 			return new DataResponse([
 				'products' => [],
-				'error' => $e->getMessage(),
-				'trace' => $e->getTraceAsString()
+				'error' => 'The products could not be loaded.',
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -197,8 +202,6 @@ class ProductController extends AEnvironmentAwareController {
 	/**
 	 * Set default product
 	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'POST',
 		url: '/api/{apiVersion}/product/set-default',
@@ -245,8 +248,6 @@ class ProductController extends AEnvironmentAwareController {
 	/**
 	 * Activate / deactivate product
 	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'POST',
 		url: '/api/{apiVersion}/product/update',
@@ -301,8 +302,6 @@ class ProductController extends AEnvironmentAwareController {
 	/**
 	 * Activate / deactivate product
 	 */
-	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(
 		verb: 'POST',
 		url: '/api/{apiVersion}/product/set-active',
