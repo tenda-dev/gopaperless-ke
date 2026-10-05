@@ -45,43 +45,49 @@
 /**
  * Keep the public upload landing page contained within the Nextcloud content pane.
  *
- * Nextcloud's public layout adds footer padding and scrolling to #app-content-vue,
- * which creates extra space below the landing surface and an unwanted page
- * scrollbar. Scope the override to pages containing .pu so authenticated views
- * retain their normal layout behaviour.
- *
- * Desktop uses a fixed viewport composition and therefore locks pane scrolling.
- * Smaller viewports remain scrollable because the responsive landing page can
- * exceed the available height.
+ * Nextcloud's public layout adds footer padding to #app-content-vue, which leaves
+ * extra space below the landing surface. The pane scrolls at every width: the
+ * landing's first screen is one viewport tall and its footer sits below it.
+ * Scoped to pages containing .pu so authenticated views keep their normal layout.
  */
 #body-public #app-content-vue:has(.pu) {
 	padding-block-end: 0 !important;
-
-	@media (min-width: 861px) {
-		overflow: hidden !important;
-	}
 }
 
 /**
- * Hide native public-layout elements that duplicate the landing page.
- * Keep the public header, but remove its app title and generic guest footer.
- * Scoped to `.pu` so other routes remain unchanged.
+ * Let the landing page fill the whole window.
+ *
+ * The landing draws its own header and footer, so Nextcloud's public header bar
+ * and guest footer only duplicate them. Core and the Vue app pane also size and
+ * round themselves from the layout variables below, which leaves the theme
+ * background showing around the page. Redefining the variables on body reaches
+ * every element that reads them. Scoped to `.pu` so other routes keep the normal
+ * public layout.
  */
-#body-public:has(.pu) #header .header-info {
-	display: none;
-}
+#body-public:has(.pu) {
+	--header-height: 0px;
+	--body-container-margin: 0px;
+	--body-container-radius: 0px;
+	--body-height: 100dvh;
 
-#body-public:has(.pu) footer.guest-box {
-	display: none;
+	#header,
+	footer.guest-box {
+		display: none;
+	}
+
+	// Core adds the guest-footer padding and a large top radius on top of the variables.
+	#content {
+		padding-block-end: 0;
+		border-radius: 0;
+	}
 }
 
 /**
  * Apply the landing page's current text colour to SVG icons in child components.
  *
- * The scoped SVG rule in PublicUpload.vue does not cross Vue component
- * boundaries, so icons rendered by the header, workflow rail, and footer need
- * this shared rule to inherit their surrounding colour.
+ * Scoped styles do not cross Vue component boundaries, so icons rendered by the
+ * hero and footer need this shared rule to inherit their surrounding colour.
  */
-.pu svg:not(.pu__sig) {
+.pu svg {
 	fill: currentColor;
 }

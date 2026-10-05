@@ -5,49 +5,51 @@
 
 <template>
 	<section class="pu__hero">
-		<div class="pu__inner pu__hero-grid">
-			<div class="pu__intro">
-				<div class="pu__kicker">
-					Digital Signatures
-				</div>
-				<h1 class="pu__title">
-					Simplify your paperwork
-				</h1>
-				<p class="pu__lede pu__lede--full">
-					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
-				</p>
-				<p class="pu__lede pu__lede--short">
-					The whole process takes just a couple of minutes.
-				</p>
+		<div class="pu__intro">
+			<div class="pu__kicker">
+				Sign · Seal · Deliver
 			</div>
-
-			<!-- Real upload entry point (replaces the former decorative illustration).
-			     Horizontal card: big icon tile · label · action affordance — one
-			     button, collapses to a compact bar on mobile. -->
-			<div class="pu__canvas">
-				<button
-					type="button"
-					class="pu__drop"
-					aria-label="Upload document"
-					@click="$emit('getStarted')">
-					<span class="pu__drop-tile">
-						<svg viewBox="0 0 24 24"><path :d="mdiTrayArrowUp" /></svg>
-					</span>
-					<span class="pu__drop-body">
-						<span class="pu__drop-t">Upload your document</span>
-						<span class="pu__drop-h">PDF · you'll sign in securely to continue</span>
-					</span>
-					<span class="pu__drop-go" aria-hidden="true">
-						<svg viewBox="0 0 24 24"><path :d="mdiChevronRight" /></svg>
-					</span>
+			<h1 class="pu__title">
+				Simplify your paperwork.
+			</h1>
+			<p class="pu__lede">
+				Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
+			</p>
+			<div class="pu__actions">
+				<button type="button" class="pu__cta" @click="$emit('getStarted')">
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
+					Upload your document
 				</button>
+				<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
+			</div>
+			<p class="pu__trust">
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiShieldCheckOutline" /></svg>
+				PDF · You'll sign in securely to continue
+			</p>
+		</div>
+
+		<div class="pu__stage">
+			<div class="pu__devices">
+				<img class="pu__laptop"
+					:src="laptop"
+					width="1350"
+					height="1080"
+					alt="The GoPaperless Request Signature screen on a laptop">
+				<img class="pu__phone"
+					:src="phone"
+					width="1350"
+					height="1080"
+					alt="The GoPaperless document action centre on a phone">
 			</div>
 		</div>
 	</section>
 </template>
 
 <script setup lang="ts">
-import { mdiTrayArrowUp, mdiChevronRight } from '@mdi/js'
+import { mdiShieldCheckOutline, mdiTrayArrowUp } from '@mdi/js'
+
+import laptop from '../../img/landing-desktop.webp'
+import phone from '../../img/landing-mobile.webp'
 
 defineOptions({ name: 'PublicUploadHero' })
 
@@ -58,92 +60,92 @@ defineEmits<{
 
 <style scoped lang="scss">
 .pu__hero {
-	width: 100%;
 	flex: 1 1 auto;
 	display: flex;
-	min-height: 240px;
-}
-
-.pu__hero-grid {
-	flex: 1;
-	display: flex;
-	flex-wrap: wrap;
-	align-items: stretch;
+	align-items: center;
+	gap: 48px;
+	min-height: 0;
+	padding-inline: var(--pu-pad);
 }
 
 .pu__intro {
-	flex: 1 1 380px;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	padding: clamp(20px, 2.4vw, 34px) var(--pu-pad);
+	flex: 0 1 520px;
+	padding-block: clamp(24px, 4vh, 48px);
 }
 
 .pu__kicker {
-	margin-bottom: 18px;
-	font-family: var(--mono);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 22px;
+	font-size: 11px;
 	font-weight: 600;
-	font-size: 11.5px;
+	line-height: 14px;
 	letter-spacing: .16em;
 	text-transform: uppercase;
 	color: var(--brand-strong);
+
+	&::before {
+		content: '';
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--brand);
+	}
 }
 
 .pu__title {
-	margin-bottom: 14px;
-	font-size: clamp(28px, 3.4vw, 40px);
+	margin: 0 0 20px;
+	font-size: clamp(36px, 4.45vw, 64px);
 	font-weight: 700;
-	line-height: 1.06;
-	letter-spacing: -.03em;
+	line-height: 1;
+	letter-spacing: -.035em;
+	color: var(--ink);
 }
 
 .pu__lede {
-	margin-bottom: 0;
-	max-width: 40ch;
-	font-size: 15.5px;
+	max-width: 440px;
+	margin: 0 0 34px;
+	font-size: clamp(16px, 1.25vw, 18px);
 	line-height: 1.6;
 	color: var(--slate);
 }
 
-/* On mobile the full lede is redundant with the rail right below the card,
-   so it collapses to just the closing line. */
-.pu__lede--short {
-	display: none;
-}
-
-.pu__canvas {
-	flex: 1 1 400px;
-	display: grid;
-	place-items: center;
-	min-height: 0;
-	padding: clamp(20px, 2.6vw, 34px);
-	border-inline-start: 1px solid var(--line-soft);
-	background: radial-gradient(120% 120% at 70% 10%, #fff 0%, var(--canvas) 60%);
-}
-
-/* Upload card — horizontal: [ icon tile ] [ label ] [ go ]. The whole card is
-   one button; the go chip echoes the brand action without a second tab stop. */
-.pu__drop {
+.pu__actions {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	gap: 16px;
-	width: min(420px, 100%);
-	padding: 16px;
-	text-align: start;
-	font: inherit;
-	color: inherit;
-	cursor: pointer;
-	border: 1.5px dashed color-mix(in srgb, var(--brand) 40%, transparent);
-	border-radius: 16px;
-	background: var(--brand-wash);
-	transition: border-color .2s, box-shadow .2s, transform .12s;
+	gap: 16px 20px;
+	margin-bottom: 20px;
+}
 
-	&:hover {
-		border-color: var(--brand);
-		box-shadow: 0 0 0 4px var(--brand-ring);
+// Nextcloud's button rule adds a 3px margin and outranks a single class.
+.pu__actions .pu__cta {
+	margin: 0;
+}
+
+.pu__cta {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	padding: 16px 28px;
+	border: none;
+	border-radius: 11px;
+	font: inherit;
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 18px;
+	color: var(--on-brand);
+	background: var(--brand);
+	cursor: pointer;
+	transition: background .2s, transform .12s;
+
+	svg {
+		width: 18px;
+		height: 18px;
 	}
 
-	&:hover .pu__drop-go {
+	&:hover {
 		background: var(--brand-strong);
 	}
 
@@ -152,134 +154,146 @@ defineEmits<{
 	}
 
 	&:focus-visible {
-		outline: 2px solid var(--brand-strong);
+		outline: 2px solid var(--ink);
 		outline-offset: 2px;
 	}
 }
 
-.pu__drop-tile {
-	flex: none;
-	display: grid;
-	place-items: center;
-	width: 84px;
-	height: 84px;
-	border-radius: 16px;
-	background: var(--brand-tint);
-	color: var(--ink);
+.pu__how {
+	font-size: 15px;
+	font-weight: 500;
+	color: var(--slate);
+	text-decoration: none;
 
-	svg {
-		width: 44px;
-		height: 44px;
-		fill: currentColor;
+	&:hover,
+	&:focus-visible {
+		color: var(--ink);
+		text-decoration: underline;
 	}
 }
 
-.pu__drop-body {
-	flex: 1;
+.pu__trust {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	margin: 0;
+	font-size: 13px;
+	line-height: 16px;
+	color: var(--slate);
+
+	svg {
+		flex: none;
+		width: 15px;
+		height: 15px;
+		color: var(--brand-strong);
+	}
+}
+
+/* The stage takes its size from the hero, never from the images, so the devices
+   scale to whatever the first screen leaves beside (or below) the copy. */
+.pu__stage {
+	flex: 1 1 400px;
+	align-self: stretch;
+	display: flex;
+	align-items: center;
 	min-width: 0;
+	container-type: size;
 }
 
-.pu__drop-t {
-	display: block;
-	font-weight: 600;
-	font-size: 16px;
-	letter-spacing: -.01em;
-}
-
-.pu__drop-h {
-	display: block;
-	margin-top: 3px;
-	font-family: var(--mono);
-	font-size: 11.5px;
-	letter-spacing: .01em;
-	color: var(--faint);
-}
-
-.pu__drop-go {
+.pu__devices {
+	position: relative;
 	flex: none;
-	display: grid;
-	place-items: center;
-	width: 40px;
-	height: 40px;
-	border-radius: 10px;
-	background: var(--brand);
-	color: var(--ink);
-	transition: background .2s;
+	// ponytail: 124cqw and 105cqh reproduce the Paper artboard at 1440×900, where an 860px laptop box sits in a 696px stage. Tune here if the devices crowd the copy.
+	width: min(124cqw, 105cqh);
+	aspect-ratio: 1350 / 1080;
 
-	svg {
-		width: 20px;
-		height: 20px;
-		fill: currentColor;
+	img {
+		display: block;
+		max-width: none;
+		height: auto;
+		// The transparent margins overlap the copy, so they must not catch taps.
+		pointer-events: none;
 	}
 }
 
-/* Mobile — stack the hero; the upload card becomes a compact bar. These rules
-   live HERE (not in PublicUpload.vue) because scoped CSS can't reach a child
-   component's inner elements from the parent. */
+/* Both baked-in shadows stop at their image's bottom edge and leave a faint line
+   on a plain background, so each image fades out below its device. */
+.pu__laptop {
+	width: 100%;
+	mask-image: linear-gradient(to bottom, #000 86%, transparent);
+}
+
+/* Offsets from the Paper artboard, as fractions of the laptop box. */
+.pu__phone {
+	position: absolute;
+	top: 38.7%;
+	left: -9%;
+	width: 60.5%;
+	mask-image: linear-gradient(to bottom, #000 91%, transparent);
+}
+
 @media (max-width: 860px) {
+	// Grid, so the stage row has a definite height for 91cqh below. As a flex
+	// column item its height only came from growing, and cqh resolved to 0.
 	.pu__hero {
-		flex: 0 0 auto;
-		min-height: 0;
-	}
-
-	.pu__lede--full {
-		display: none;
-	}
-
-	.pu__lede--short {
-		display: block;
-	}
-
-	.pu__hero-grid {
-		flex-direction: column;
+		display: grid;
+		grid-template-rows: auto minmax(300px, 1fr);
+		gap: 0;
+		padding-block: 20px 12px;
 	}
 
 	.pu__intro {
-		flex: 0 0 auto;
+		padding-block: 0;
 	}
 
-	.pu__canvas {
-		order: 2;
-		flex: 0 0 auto;
-		min-height: 0;
-		padding: 0 var(--pu-pad) clamp(20px, 5vw, 28px);
-		border-inline-start: none;
-		background: none;
+	.pu__kicker {
+		margin-bottom: 16px;
 	}
 
-	.pu__drop {
-		width: 100%;
-		gap: 13px;
-		padding: 12px;
+	.pu__title {
+		margin-bottom: 14px;
 	}
 
-	.pu__drop-tile {
-		width: 56px;
-		height: 56px;
-		border-radius: 12px;
-
-		svg {
-			width: 30px;
-			height: 30px;
-		}
+	.pu__lede {
+		margin-bottom: 20px;
+		font-size: 15px;
 	}
 
-	.pu__drop-t {
-		font-size: 14.5px;
+	.pu__actions {
+		gap: 12px 14px;
+		margin-bottom: 16px;
 	}
 
-	.pu__drop-h {
-		font-size: 11px;
+	.pu__cta {
+		padding: 14px 18px;
 	}
 
-	.pu__drop-go {
-		width: 36px;
-		height: 36px;
+	/* The stage takes whatever height the first screen has left and runs to both
+	   screen edges, and the devices scale to fit it. */
+	.pu__stage {
+		margin-inline: calc(-1 * var(--pu-pad));
+		justify-content: center;
+	}
 
-		svg {
-			width: 16px;
-			height: 16px;
-		}
+	/* Each image is placed on its own, from where its device sits inside the file
+	   (laptop 8.4-91.6% across and 20.8-83.8% down, phone 34.8-65% and 11-89%).
+	   The phone stands in front on the left and the laptop runs off the right edge. */
+	.pu__devices {
+		width: min(100cqw, 91cqh);
+		aspect-ratio: 1 / 1.1;
+	}
+
+	.pu__laptop {
+		position: absolute;
+		top: -10.9%;
+		left: 14.9%;
+		width: 108.2%;
+	}
+
+	.pu__phone {
+		top: 12.5%;
+		left: -39.6%;
+		width: 128.2%;
 	}
 }
 </style>

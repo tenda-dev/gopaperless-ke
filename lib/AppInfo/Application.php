@@ -19,6 +19,7 @@ use OCA\Libresign\Events\SignRequestCanceledEvent;
 use OCA\Libresign\Files\TemplateLoader;
 use OCA\Libresign\Listener\BeforeNodeDeletedListener;
 use OCA\Libresign\Listener\LoadAdditionalListener;
+use OCA\Libresign\Listener\LoginPageListener;
 use OCA\Libresign\Listener\MailNotifyListener;
 use OCA\Libresign\Listener\NotificationListener;
 use OCA\Libresign\Listener\RevokeClickToSignCertificateListener;
@@ -36,6 +37,7 @@ use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\AppFramework\Http\Events\BeforeLoginTemplateRenderedEvent;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
@@ -76,6 +78,10 @@ class Application extends App implements IBootstrap {
 
 		// Files newFile listener
 		$context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadAdditionalListener::class);
+
+		// GoPaperless login card on Nextcloud's /login page, and its Register button
+		$context->registerEventListener(BeforeLoginTemplateRenderedEvent::class, LoginPageListener::class);
+		$context->registerAlternativeLoginProvider(\OCA\Libresign\Login\RegisterLoginProvider::class);
 
 		// Allow SecurySign's signing window in a frame
 		$context->registerEventListener(AddContentSecurityPolicyEvent::class, SecurySignCspListener::class);

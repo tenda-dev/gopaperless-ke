@@ -10,7 +10,6 @@ import PublicUpload from '../../views/PublicUpload.vue'
 import PublicUploadEcosystem from '../../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../../components/PublicUploadHero.vue'
-import PublicUploadStages from '../../components/PublicUploadStages.vue'
 
 const replaceMock = vi.fn()
 
@@ -57,7 +56,6 @@ describe('PublicUpload', () => {
 
 		expect(wrapper.findComponent(PublicUploadHeader).exists()).toBe(true)
 		expect(wrapper.findComponent(PublicUploadHero).exists()).toBe(true)
-		expect(wrapper.findComponent(PublicUploadStages).exists()).toBe(true)
 		expect(wrapper.findComponent(PublicUploadEcosystem).exists()).toBe(true)
 	})
 
