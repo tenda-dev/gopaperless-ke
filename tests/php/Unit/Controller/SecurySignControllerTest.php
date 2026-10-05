@@ -12,6 +12,7 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\Controller\SecurySignController;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
@@ -58,7 +59,7 @@ final class SecurySignControllerTest extends TestCase {
 		$urls->method('linkToRouteAbsolute')->willReturnCallback(
 			static fn (string $route, array $params) => 'https://gopaperless.test/apps/libresign/securysign/return?' . http_build_query($params),
 		);
-		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class));
+		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
 	}
 
 	private function startOnboarding(): string {
@@ -172,7 +173,7 @@ final class SecurySignControllerTest extends TestCase {
 		$signa = $this->createMock(SecurySignService::class);
 		$signa->method('applies')->willReturn(false);
 		$signa->expects(self::never())->method('isReady');
-		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
 
 		$response = $controller->onboard('/apps/libresign/f/document');
 

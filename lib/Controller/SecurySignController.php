@@ -22,6 +22,7 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
+use OCP\IL10N;
 use OCP\ISession;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
@@ -36,6 +37,7 @@ class SecurySignController extends Controller {
 		private IUserSession $users,
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
+		private IL10N $l10n,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -114,7 +116,7 @@ class SecurySignController extends Controller {
 			return new RedirectResponse($path);
 		}
 		try {
-			$frame = $this->signa->passkeyFrame();
+			$frame = $this->signa->passkeyFrame($this->l10n->getLanguageCode());
 		} catch (\RuntimeException $e) {
 			$this->signa->skipPasskey($e->getMessage());
 			return new RedirectResponse($path);

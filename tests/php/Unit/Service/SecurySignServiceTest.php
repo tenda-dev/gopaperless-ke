@@ -77,8 +77,11 @@ final class SecurySignServiceTest extends TestCase {
 
 		self::assertSame([
 			'origin' => 'https://localhost:3000',
-			'url' => 'https://localhost:3000/passkey/frame?client_id=gopaperless',
+			'url' => 'https://localhost:3000/passkey/frame?client_id=gopaperless&lang=en',
 		], $service->passkeyFrame());
+		// Nextcloud names regions too; MIMI only needs the language.
+		self::assertStringEndsWith('&lang=pt', $service->passkeyFrame('pt_BR')['url']);
+		self::assertStringEndsWith('&lang=sw', $service->passkeyFrame('sw')['url']);
 	}
 
 	public function testMissingCertificateIsDifferentFromAnOutage(): void {

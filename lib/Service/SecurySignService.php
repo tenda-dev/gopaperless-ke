@@ -436,13 +436,16 @@ class SecurySignService {
 	/**
 	 * MIMI's page that runs the passkey prompt on MIMI's own origin, which
 	 * templates/mimi_passkey.php frames. MIMI lets only our registered origins
-	 * frame it.
+	 * frame it. It opens in `$language` (Nextcloud's, like pt_BR) when MIMI has
+	 * that language, else in English.
 	 *
 	 * @return array{origin: string, url: string}
 	 */
-	public function passkeyFrame(): array {
+	public function passkeyFrame(string $language = 'en'): array {
 		$origin = $this->mimiOrigin();
-		return ['origin' => $origin, 'url' => $origin . '/passkey/frame?' . http_build_query(['client_id' => $this->mimiClientId()])];
+		// ponytail: MIMI translates by language, not region, so pt_BR asks for pt.
+		$lang = strtolower(explode('_', str_replace('-', '_', $language))[0]);
+		return ['origin' => $origin, 'url' => $origin . '/passkey/frame?' . http_build_query(['client_id' => $this->mimiClientId(), 'lang' => $lang])];
 	}
 
 	/**
