@@ -243,8 +243,9 @@
 // The MIMI passkey check after sign-in (templates/mimi_passkey.php). The card is
 // MIMI's frame edge to edge, white in both themes, like a card issuer's window.
 #body-login .guest-box.gp-passkey {
-	width: min(400px, calc(100vw - 32px));
+	width: min(440px, calc(100vw - 32px));
 	padding: 0;
+	border-radius: 0;
 	overflow: hidden;
 	background: #fff;
 
