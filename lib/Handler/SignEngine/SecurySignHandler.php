@@ -90,9 +90,15 @@ class SecurySignHandler extends Pkcs12Handler {
 		$pem = $this->getCertificate();
 		$card = $this->signingCard($pem);
 		// The card's time is the one signing time: on the card and in the CMS.
+		// It is never later than our own clock: LibreSign refuses a signature
+		// from the future, and SecurySign's clock can run ahead of ours.
 		// ponytail: the PDF's own /M date is written by signer-php from the
 		// server clock, a second or so later; it has no option to take ours.
-		$capture = new class($pem, $card !== null ? $card['time']->getTimestamp() : time()) implements Pkcs7SignerInterface {
+		$time = self::signingTime($card['time'] ?? null, time());
+		if ($card !== null) {
+			$card['time'] = new \DateTimeImmutable('@' . $time);
+		}
+		$capture = new class($pem, $time) implements Pkcs7SignerInterface {
 			public string $attributes = '';
 
 			public function __construct(
@@ -143,6 +149,11 @@ class SecurySignHandler extends Pkcs12Handler {
 		$folder->newFile($key . '.attrs', $capture->attributes);
 
 		throw new SecurySignApprovalRequired($approval);
+	}
+
+	/** SecurySign's time when it has one, but never later than ours. */
+	public static function signingTime(?\DateTimeImmutable $securySign, int $now): int {
+		return $securySign === null ? $now : min($securySign->getTimestamp(), $now);
 	}
 
 	/**
