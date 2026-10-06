@@ -66,6 +66,35 @@ final class SecurySignMiddlewareTest extends TestCase {
 		}
 	}
 
+	public function testASecurySignSignatureSkipsTheMimiPasskeyGateBecauseItsFrameAsks(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(true);
+		$this->signa->method('passkeyPending')->willReturn(true);
+		$this->signa->method('signs')->willReturn(true);
+
+		$this->middleware->beforeController($this->createMock(SignFileController::class), 'signBySignerUuid');
+		$this->addToAssertionCount(1);
+	}
+
+	public function testASigningLinkChecksSetupButLeavesThePasskeyToTheFrame(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(true);
+		$this->signa->method('passkeyPending')->willReturn(true);
+		$page = new TemplateResponse('libresign', 'external');
+
+		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'sign', $page));
+	}
+
+	public function testASigningLinkSendsAnUnpreparedSignerIntoOnboarding(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(false);
+
+		$response = $this->middleware->afterController($this->createMock(PageController::class), 'sign', new TemplateResponse('libresign', 'external'));
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringStartsWith('/apps/libresign/securysign/onboard?returnTo=', $response->getRedirectURL());
+	}
+
 	public function testAnUnpreparedUserIsSentIntoOnboardingWithTheirTaskAttached(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willReturn(false);

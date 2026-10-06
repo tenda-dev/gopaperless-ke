@@ -30,6 +30,7 @@ use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Events\SignedEventFactory;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Exception\MimiPasskeyRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Handler\DocMdpHandler;
 use OCA\Libresign\Handler\FooterHandler;
@@ -978,6 +979,13 @@ class SignFileService {
 			$this->logger->warning('SecurySign is unavailable, signing with the local engine', ['exception' => $e]);
 			$this->securySignUnavailable = true;
 			$this->engine = null;
+			// The passkey gate let this through because SecurySign's frame asks for
+			// the passkey. The local engine has no frame, so the MIMI passkey comes first.
+			if (\OCP\Server::get(SecurySignService::class)->passkeyPending()) {
+				throw new MimiPasskeyRequired($this->urlGenerator->linkToRoute('libresign.securySign.passkey', [
+					'returnTo' => '/apps/libresign/p/sign/' . ($this->signRequest?->getUuid() ?? ''),
+				]));
+			}
 			// SecurySign signers skip the confirm dialog because the passkey confirms.
 			// A local signature has no passkey, so the page asks first, as it always did.
 			if (!\OCP\Server::get(\OCP\IRequest::class)->getParam('confirmed')) {

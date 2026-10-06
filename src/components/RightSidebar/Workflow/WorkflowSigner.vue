@@ -79,6 +79,13 @@
 			</div>
 
 			<div
+				v-if="whatsAppLine"
+				class="workflow-signer-whatsapp"
+				:class="{ 'workflow-signer-whatsapp--failed': whatsAppFailed }">
+				{{ whatsAppLine }}
+			</div>
+
+			<div
 				v-if="identifyMethodLabels.length"
 				class="workflow-signer-methods">
 				<div
@@ -106,7 +113,7 @@
 		<!-- ACTIONS -->
 		<!-- ========================================= -->
 		<div
-		    v-if="canEdit"
+		    v-if="canEdit || canShare"
 			class="workflow-signer-actions"
 			@click.stop>
 			<NcActions
@@ -145,6 +152,27 @@
 					</template>
 					Send Reminder
 				</NcActionButton>
+				<NcActionButton v-if="showWhatsApp"
+					:disabled="!whatsAppReady"
+					:close-after-click="true"
+					@click="$emit('send-whatsapp', signer)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiWhatsapp" :size="15" />
+					</template>
+					{{ whatsAppLabel }}
+				</NcActionButton>
+				<NcActionButton v-if="linkIsLive" :close-after-click="true" @click="copyLink">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiLinkVariant" :size="15" />
+					</template>
+					{{ t('libresign', 'Copy link') }}
+				</NcActionButton>
+				<NcActionButton v-if="linkIsLive" :close-after-click="true" @click="showQr">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiQrcode" :size="15" />
+					</template>
+					{{ t('libresign', 'Show QR') }}
+				</NcActionButton>
 				<NcActionButton @click="$emit('delete', signer)" v-if="canDelete" :close-after-click="true" variant="danger">
 					<template #icon>
 						<NcIconSvgWrapper
@@ -155,20 +183,36 @@
 				</NcActionButton>
 			</NcActions>
 
+			<NcDialog v-if="signLink"
+				:name="t('libresign', 'Scan to sign')"
+				@update:open="signLink = null">
+				<div class="workflow-signer-qr">
+					<img :src="signLink.qr" :alt="t('libresign', 'QR code of the signing link')">
+					<p>{{ t('libresign', 'Only {name} can sign with it, after signing in.', { name: signer.displayName || '' }) }}</p>
+					<code>{{ signLink.url }}</code>
+				</div>
+				<template #actions>
+					<NcButton variant="primary" @click="copyLink">
+						{{ t('libresign', 'Copy link') }}
+					</NcButton>
+				</template>
+			</NcDialog>
 		</div>
 	</div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
-import { emit as emitEventBus } from '@nextcloud/event-bus'
+import { emit as emitEventBus, subscribe, unsubscribe } from '@nextcloud/event-bus'
 import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionCaption from '@nextcloud/vue/components/NcActionCaption'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper
 	from '@nextcloud/vue/components/NcIconSvgWrapper'
 
@@ -176,7 +220,10 @@ import {
 	mdiAlertCircleOutline,
 	mdiBellOutline,
 	mdiDrag,
+	mdiLinkVariant,
 	mdiPencilOutline,
+	mdiQrcode,
+	mdiWhatsapp,
 	mdiSend,
 	mdiTrashCanOutline,
 	mdiMessageTextOutline,
@@ -192,6 +239,9 @@ import type {
 
 import type { EditableSignerDraft,
 } from '../../../store/files'
+
+import { fetchSignLink, fetchWhatsAppRecipient, type WhatsAppRecipient } from '../../../services/whatsapp'
+import { showError, showSuccess } from '../../../services/toast'
 
 defineOptions({
 	name: 'WorkflowSigner',
@@ -211,6 +261,12 @@ const props = withDefaults(defineProps<{
 	canRequestSignature?: boolean
 	canSendReminder?: boolean
 	canCustomizeMessage?: boolean
+	/** WhatsApp, Copy link and Show QR are offered. */
+	canShare?: boolean
+	/** No earlier signer in the order is still waiting. */
+	canActNow?: boolean
+	fileId?: number
+	fileIsDraft?: boolean
 
 	requireRequestPermission?: boolean
 	methods?: IdentifyMethodSetting[]
@@ -223,6 +279,10 @@ const props = withDefaults(defineProps<{
 	canRequestSignature: false,
 	canSendReminder: false,
 	canCustomizeMessage: false,
+	canShare: false,
+	canActNow: true,
+	fileId: 0,
+	fileIsDraft: false,
 	requireRequestPermission: true,
 	methods: () => [],
 })
@@ -233,6 +293,7 @@ const emit = defineEmits<{
 	(e: 'request-signature', signer: EditableSignerDraft): void
 	(e: 'send-reminder', signer: EditableSignerDraft): void
 	(e: 'customize-message', signer: EditableSignerDraft): void
+	(e: 'send-whatsapp', signer: EditableSignerDraft): void
 }>()
 
 const identifyMethodsSettings = loadState<IdentifyMethodSetting[]>(
@@ -269,6 +330,7 @@ const hasAvailableActions = computed(() => {
 		|| props.canRequestSignature
 		|| props.canSendReminder
 		|| props.canCustomizeMessage
+		|| props.canShare
 	)
 })
 
@@ -378,6 +440,104 @@ const avatarStyle = computed(() => {
 	}
 })
 
+/* ── WhatsApp, Copy link, Show QR ──────────────────────────────────────────── */
+
+const recipient = ref<WhatsAppRecipient | null>(null)
+/** The last send's outcome, from the controller via the event bus. */
+const lastSend = ref<{ status: string, availableAgainAt?: string | null } | null>(null)
+const signLink = ref<{ url: string, qr: string } | null>(null)
+
+async function loadRecipient() {
+	recipient.value = props.canShare && props.fileId && props.signer.signRequestId
+		? await fetchWhatsAppRecipient(props.fileId, props.signer.signRequestId)
+		: null
+}
+watch(() => [props.canShare, props.fileId, props.signer.signRequestId, props.signer.status], loadRecipient, { immediate: true })
+
+function onWhatsAppChanged(event: { signRequestId: number, status: string, availableAgainAt?: string | null }) {
+	if (event.signRequestId !== props.signer.signRequestId) {
+		return
+	}
+	lastSend.value = event
+	loadRecipient()
+}
+subscribe('libresign:whatsapp-changed', onWhatsAppChanged)
+onBeforeUnmount(() => unsubscribe('libresign:whatsapp-changed', onWhatsAppChanged))
+
+const showWhatsApp = computed(() => Boolean(recipient.value && !['disabled', 'envelope', 'signed'].includes(recipient.value.reason ?? '')))
+const availableAgainAt = computed(() => {
+	const at = recipient.value?.availableAgainAt ?? lastSend.value?.availableAgainAt
+	return at && Date.parse(at) > Date.now() ? at : null
+})
+const whatsAppReady = computed(() => Boolean(recipient.value?.available && props.canActNow && !availableAgainAt.value))
+
+const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+
+const whatsAppLabel = computed(() => {
+	if (!props.canActNow) {
+		return t('libresign', 'Not their turn yet')
+	}
+	if (availableAgainAt.value) {
+		return t('libresign', 'Available again {time}', { time: time(availableAgainAt.value) })
+	}
+	return props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT
+		? t('libresign', 'Request on WhatsApp')
+		: t('libresign', 'Send on WhatsApp')
+})
+
+const whatsAppFailed = computed(() => lastSend.value?.status === 'failed')
+
+const whatsAppLine = computed(() => {
+	if (!showWhatsApp.value || !recipient.value) {
+		return ''
+	}
+	if (whatsAppFailed.value) {
+		return t('libresign', 'Couldn\'t send on WhatsApp')
+	}
+	if (recipient.value.available) {
+		return recipient.value.lastSentAt
+			? t('libresign', 'WhatsApp {number} · sent {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt) })
+			: t('libresign', 'WhatsApp {number}', { number: recipient.value.masked ?? '' })
+	}
+	switch (recipient.value.reason) {
+	case 'no_number':
+		return t('libresign', 'No WhatsApp number on file')
+	case 'not_account':
+	case 'password_account':
+		return t('libresign', 'WhatsApp needs a MIMI account')
+	case 'no_sub':
+		return t('libresign', 'WhatsApp once they sign in to GoPaperless')
+	default:
+		return t('libresign', 'WhatsApp unavailable right now')
+	}
+})
+
+/** The link works once the signer has been asked: on a draft it would only refuse them. */
+const linkIsLive = computed(() => props.canShare && !props.fileIsDraft && props.signer.status === SIGN_REQUEST_STATUS.ABLE_TO_SIGN)
+
+async function loadSignLink() {
+	signLink.value ??= await fetchSignLink(props.fileId, props.signer.signRequestId as number)
+	return signLink.value
+}
+
+async function copyLink() {
+	try {
+		const { url } = signLink.value ?? await fetchSignLink(props.fileId, props.signer.signRequestId as number)
+		await navigator.clipboard.writeText(url)
+		showSuccess(t('libresign', 'Signing link copied'))
+	} catch {
+		showError(t('libresign', 'Could not copy the signing link'))
+	}
+}
+
+async function showQr() {
+	try {
+		await loadSignLink()
+	} catch {
+		showError(t('libresign', 'Could not load the signing link'))
+	}
+}
+
 // const actionsMenu = ref<any | null>(null)
 const isActionsOpen = ref(false)
 
@@ -391,6 +551,34 @@ function handlePrimaryAction() {
 </script>
 
 <style scoped lang="scss">
+.workflow-signer-whatsapp {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+
+	&--failed {
+		color: var(--color-error-text);
+	}
+}
+
+.workflow-signer-qr {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	text-align: center;
+
+	img {
+		width: 240px;
+		height: 240px;
+	}
+
+	code {
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		font-size: 12px;
+	}
+}
+
 .workflow-signer {
 	position: relative;
 	display: flex;
