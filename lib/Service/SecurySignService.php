@@ -636,6 +636,9 @@ class SecurySignService {
 		if ($path === null || strlen($path) > 2048 || preg_match('/[\\\\\x00-\x20]/', $path)) {
 			return '/apps/libresign/';
 		}
+		// Without pretty URLs every page sits under /index.php. Drop it, so a
+		// signing link opened as /index.php/apps/... still comes back to itself.
+		$path = (string)preg_replace('~^/index\.php(?=/apps/)~', '', $path);
 		$decoded = rawurldecode(explode('?', $path, 2)[0]);
 		if (!str_starts_with($decoded, '/apps/libresign/') || preg_match('~(?:^|/)\.{1,2}(?:/|$)|[\\\\\x00-\x20%]~', $decoded)
 			|| preg_match('~^/apps/libresign/(?:sso|securysign)(?:/|$)~', $decoded)) {
