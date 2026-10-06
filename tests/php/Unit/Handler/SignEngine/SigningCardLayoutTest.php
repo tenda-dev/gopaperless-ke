@@ -109,4 +109,29 @@ final class SigningCardLayoutTest extends TestCase {
 			self::assertGreaterThanOrEqual($at['SIGNA HARDWARE CA'][2] * 0.99, $at[$time][2], 'one scale on the right');
 		}
 	}
+
+	/** horizontal-top: TIMESTAMP straight under ISSUER, both at the top of the right column. */
+	public function testTheTopAlignedCardStacksIssuerAndTimestampAtTheTop(): void {
+		foreach ([[240.0, 70.0], [160.0, 50.0], [300.0, 110.0]] as [$width, $height]) {
+			$card = $this->card('Jane Wanjiku Njoroge') + ['layout' => 'horizontal-top'];
+			[$xObject, $frame] = PhpNativeHandler::signingCardLayout($card, $width, $height);
+			[$x, $y, $w, $h] = $frame;
+			self::assertEqualsWithDelta(3.0, $w / $h, 0.01, 'the handwriting keeps its shape');
+			self::assertLessThanOrEqual($height, $y + $h, 'the handwriting is not cut off');
+
+			preg_match_all('/([\d.]+) Tf ([\d.]+) Tc [\d. ]+ rg ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj/', $xObject->stream, $lines, PREG_SET_ORDER);
+			$at = [];
+			foreach ($lines as [, $size, , $lx, $ly, $text]) {
+				$at[$text] = [(float)$lx, (float)$ly, (float)$size];
+			}
+			$time = '05 Oct 2026, 14:32:08 EAT';
+			$order = ['ISSUER', 'SIGNA HARDWARE CA', 'TIMESTAMP', $time];
+			for ($i = 1; $i < count($order); $i++) {
+				self::assertGreaterThan($at[$order[$i]][1], $at[$order[$i - 1]][1], $order[$i - 1] . ' above ' . $order[$i]);
+				self::assertEqualsWithDelta($at['ISSUER'][0], $at[$order[$i]][0], 0.01, 'one left edge');
+			}
+			self::assertGreaterThan($at['JANE WANJIKU NJOROGE'][1], $at[$time][1], 'TIMESTAMP no longer level with the name');
+			self::assertGreaterThan(0.0, $at[$time][1] - $at[$time][2] * 0.25, 'TIMESTAMP stays inside the box');
+		}
+	}
 }

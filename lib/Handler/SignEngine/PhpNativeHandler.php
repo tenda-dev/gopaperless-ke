@@ -531,8 +531,9 @@ class PhpNativeHandler extends Pkcs12Handler {
 	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
 	 */
 	public static function signingCardLayout(array $card, float $width, float $height): array {
-		if (($card['layout'] ?? 'stacked') === 'horizontal') {
-			return self::horizontalCardLayout($card, $width, $height);
+		$layout = $card['layout'] ?? 'stacked';
+		if ($layout === 'horizontal' || $layout === 'horizontal-top') {
+			return self::horizontalCardLayout($card, $width, $height, $layout === 'horizontal-top');
 		}
 		$pad = max(4.0, $height * 0.06);
 		$room = max(1.0, $width - 2 * $pad);
@@ -591,13 +592,15 @@ class PhpNativeHandler extends Pkcs12Handler {
 	 *                      05 Oct 2026, 16:32:08 EAT
 	 *
 	 * ISSUER sits level with the top of the handwriting and TIMESTAMP level with
-	 * the name. Labels are small spaced grey capitals over darker values. The
-	 * handwriting is fitted whole into the left column, never cropped.
+	 * the name. With horizontal-top, TIMESTAMP sits straight under ISSUER, both
+	 * from the top of the right column. Labels are small spaced grey capitals
+	 * over darker values. The handwriting is fitted whole into the left column,
+	 * never cropped.
 	 *
 	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
 	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
 	 */
-	private static function horizontalCardLayout(array $card, float $width, float $height): array {
+	private static function horizontalCardLayout(array $card, float $width, float $height, bool $topAligned = false): array {
 		$pad = max(3.0, min($width, $height) * 0.07);
 		$gap = $pad * 1.4;
 		$split = $width * 0.56;
@@ -639,12 +642,18 @@ class PhpNativeHandler extends Pkcs12Handler {
 		$label = '0.48 0.51 0.57';
 		$value = '0.20 0.22 0.27';
 
-		// TIMESTAMP shares the baseline of the name's last line.
 		$nameY = $pad + $nameSize * 0.22;
-		$timeY = $nameY;
-		$timeLabelY = $timeY + $valueSize * 0.95 + $labelSize * 0.3;
 		$issuerLabelY = $height - $pad - $labelSize * 0.75;
 		$issuerY = $issuerLabelY - $labelSize * 0.45 - $valueSize * 0.9;
+		if ($topAligned) {
+			// horizontal-top: TIMESTAMP straight under ISSUER, both from the top.
+			$timeLabelY = $issuerY - $valueSize * 0.85 - $labelSize * 0.95;
+			$timeY = $timeLabelY - $labelSize * 0.45 - $valueSize * 0.9;
+		} else {
+			// TIMESTAMP shares the baseline of the name's last line.
+			$timeY = $nameY;
+			$timeLabelY = $timeY + $valueSize * 0.95 + $labelSize * 0.3;
+		}
 
 		$stream = '';
 		foreach (array_reverse($nameLines) as $i => $line) {

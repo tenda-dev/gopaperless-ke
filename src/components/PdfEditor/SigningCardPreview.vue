@@ -4,7 +4,7 @@
 -->
 <template>
 	<div class="signing-card" :style="{ '--chars': chars }">
-		<div v-if="layout === 'horizontal'" class="signing-card__row">
+		<div v-if="layout !== 'stacked'" class="signing-card__row">
 			<div class="signing-card__left">
 				<div class="signing-card__hand signing-card__hand--start">
 					<img v-if="card?.handwriting" :src="card.handwriting" alt="">
@@ -12,7 +12,7 @@
 				</div>
 				<strong class="signing-card__name signing-card__name--wrap">{{ displayName }}</strong>
 			</div>
-			<div class="signing-card__right">
+			<div class="signing-card__right" :class="{ 'signing-card__right--top': layout === 'horizontal-top' }">
 				<div class="signing-card__field">
 					<span class="signing-card__label">{{ t('libresign', 'ISSUER') }}</span>
 					<span class="signing-card__value">{{ issuerValue }}</span>
@@ -48,7 +48,8 @@ defineOptions({
 /**
  * The signature box as the signed PDF draws it: stacked (handwriting, name,
  * issuer, time) or, as an A/B test, horizontal (handwriting and name on the
- * left, ISSUER and TIMESTAMP on the right). The time is a placeholder until
+ * left, ISSUER and TIMESTAMP on the right, spread apart or, with
+ * horizontal-top, together at the top). The time is a placeholder until
  * signing. Only the signed-in user's own boxes can show their handwriting and
  * verified name; everyone else's show placeholders and the name they were
  * invited with.
@@ -188,6 +189,12 @@ const chars = computed(() => Math.max(8, displayName.value.length, issuerText.va
 		display: flex;
 		flex-direction: column;
 		justify-content: space-between;
+
+		// horizontal-top: TIMESTAMP straight under ISSUER, from the top.
+		&--top {
+			justify-content: flex-start;
+			gap: 5cqh;
+		}
 	}
 
 	&__field {

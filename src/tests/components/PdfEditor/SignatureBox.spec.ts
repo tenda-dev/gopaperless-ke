@@ -46,7 +46,7 @@ const signingCardMock = vi.fn(() => Promise.resolve({
 		issuer: 'Signa Hardware CA',
 		handwriting: 'data:image/png;base64,AAAA',
 	} as { name: string, issuer: string, handwriting: string } | null,
-	layout: 'stacked' as 'stacked' | 'horizontal',
+	layout: 'stacked' as 'stacked' | 'horizontal' | 'horizontal-top',
 }))
 vi.mock('../../../services/signingCard', () => ({
 	signingCard: () => signingCardMock(),
@@ -130,5 +130,16 @@ describe('SignatureBox.vue', () => {
 		expect(wrapper.find('.signing-card__left img').attributes('src')).toBe('data:image/png;base64,AAAA')
 		expect(wrapper.findAll('.signing-card__right .signing-card__label').map((l) => l.text())).toEqual(['ISSUER', 'TIMESTAMP'])
 		expect(wrapper.find('.signing-card__right .signing-card__value').text()).toBe('SIGNA HARDWARE CA')
+	})
+
+	it('previews the top-aligned card with ISSUER and TIMESTAMP together at the top', async () => {
+		signingCardMock.mockResolvedValueOnce({ card: null, layout: 'horizontal-top' })
+		const wrapper = mount(SignatureBox, {
+			props: { label: 'Grace Hopper', signer: createSigner({ displayName: 'Grace Hopper' }) },
+		})
+		await flushPromises()
+
+		expect(wrapper.find('.signing-card__right').classes()).toContain('signing-card__right--top')
+		expect(wrapper.findAll('.signing-card__right .signing-card__label').map((l) => l.text())).toEqual(['ISSUER', 'TIMESTAMP'])
 	})
 })

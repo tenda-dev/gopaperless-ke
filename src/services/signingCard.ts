@@ -13,7 +13,7 @@ export type SigningCard = {
 	handwriting: string
 }
 
-export type SigningCardLayout = 'stacked' | 'horizontal'
+export type SigningCardLayout = 'stacked' | 'horizontal' | 'horizontal-top'
 
 export type SigningCardPreview = {
 	/** The signed-in user's own card, or null when SecurySign has none. */
@@ -29,7 +29,7 @@ export function signingCard(): Promise<SigningCardPreview> {
 	preview ??= axios.get(generateUrl('/apps/libresign/securysign/card'))
 		.then(({ data }) => ({
 			card: (data?.card ?? null) as SigningCard | null,
-			layout: (data?.layout === 'horizontal' ? 'horizontal' : 'stacked') as SigningCardLayout,
+			layout: (['horizontal', 'horizontal-top'].includes(data?.layout) ? data.layout : 'stacked') as SigningCardLayout,
 		}))
 		.catch(() => ({ card: null, layout: 'stacked' as const }))
 	return preview

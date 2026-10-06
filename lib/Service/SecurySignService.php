@@ -127,11 +127,13 @@ class SecurySignService {
 	}
 
 	/**
-	 * Which signing card layout to draw: stacked (the default) or horizontal,
-	 * an A/B test set with occ config:app:set libresign signing_card_layout.
+	 * Which signing card layout to draw: stacked (the default), horizontal or
+	 * horizontal-top, an A/B test set with occ config:app:set libresign
+	 * signing_card_layout.
 	 */
 	public function signingCardLayout(): string {
-		return $this->config->getValueString(Application::APP_ID, 'signing_card_layout', 'stacked') === 'horizontal' ? 'horizontal' : 'stacked';
+		$layout = $this->config->getValueString(Application::APP_ID, 'signing_card_layout', 'stacked');
+		return in_array($layout, ['horizontal', 'horizontal-top'], true) ? $layout : 'stacked';
 	}
 
 	/**
