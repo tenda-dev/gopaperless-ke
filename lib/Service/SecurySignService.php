@@ -127,6 +127,55 @@ class SecurySignService {
 	}
 
 	/**
+	 * What goes on the user's signing card, from SecurySign: the raw handwriting,
+	 * the verified ID name, the certificate's actual issuer and the preparation
+	 * time. Null when SecurySign has none for them (no verified identity yet, a
+	 * certificate still carrying a profile name, or the feature off), and the
+	 * document is signed with the usual appearance instead.
+	 *
+	 * @return array{certificateSha256: string, name: string, issuer: string, handwriting: string, time: \DateTimeImmutable, expiresAt: \DateTimeImmutable}|null
+	 */
+	public function signingContext(): ?array {
+		$identity = $this->identity();
+		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
+		$response = $this->send('post', $base . '/api/signature/visible/signing-context', [
+			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
+			'json' => new \stdClass(),
+		]);
+		$status = $response->getStatusCode();
+		$body = json_decode((string)$response->getBody(), true);
+		if ($status !== 200 || !is_array($body)) {
+			$this->logger->info('No SecurySign signing card for this user', [
+				'status' => $status,
+				'error' => is_array($body) ? substr((string)($body['error'] ?? ''), 0, 200) : null,
+			]);
+			return null;
+		}
+		$png = base64_decode((string)($body['handwritingPngBase64'] ?? ''), true);
+		$text = static fn (string $key): string => is_string($body[$key] ?? null) ? trim($body[$key]) : '';
+		if ($png === false || !str_starts_with($png, "\x89PNG") || $text('verifiedFullName') === '' || $text('issuerName') === ''
+			|| $text('certificateSha256') === '' || $text('signingTime') === '' || $text('expiresAt') === '') {
+			$this->logger->warning('SecurySign returned an unreadable signing card');
+			return null;
+		}
+		try {
+			$time = new \DateTimeImmutable($text('signingTime'));
+			$expiresAt = new \DateTimeImmutable($text('expiresAt'));
+		} catch (\Exception) {
+			$this->logger->warning('SecurySign returned an unreadable signing card time');
+			return null;
+		}
+		return [
+			'certificateSha256' => strtolower(str_replace(':', '', $text('certificateSha256'))),
+			'name' => $text('verifiedFullName'),
+			'issuer' => $text('issuerName'),
+			'handwriting' => $png,
+			'time' => $time,
+			'expiresAt' => $expiresAt,
+		];
+	}
+
+	/**
 	 * A five-minute token for SecurySign's signing frame, bound to one hash. The
 	 * frame runs the passkey prompt on SecurySign's origin, then the HSM signs
 	 * the hash with the key behind the user's certificate.
