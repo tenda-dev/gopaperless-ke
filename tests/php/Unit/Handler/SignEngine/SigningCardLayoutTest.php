@@ -40,7 +40,7 @@ final class SigningCardLayoutTest extends TestCase {
 
 		self::assertStringContainsString('(JANE WANJIKU NJOROGE) Tj', $xObject->stream);
 		self::assertStringContainsString('(ISSUER: SIGNA HARDWARE CA) Tj', $xObject->stream);
-		self::assertStringContainsString('(05 Oct 2026, 14:32:08 EAT) Tj', $xObject->stream);
+		self::assertStringContainsString('(TIMESTAMP: 05 Oct 2026, 14:32:08 EAT) Tj', $xObject->stream);
 		self::assertStringNotContainsString('re S', $xObject->stream, 'no border around the card');
 		self::assertSame('/Helvetica-Bold', $xObject->resources['Font']['F2']['BaseFont']);
 	}

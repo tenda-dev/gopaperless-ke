@@ -93,7 +93,7 @@ describe('SignatureBox.vue', () => {
 		expect(signingCardMock).not.toHaveBeenCalled()
 		expect(wrapper.find('.signing-card__name').text()).toBe('GRACE HOPPER')
 		expect(wrapper.find('.signing-card__issuer').text()).toBe('ISSUER: CERTIFICATE ISSUER')
-		expect(wrapper.find('.signing-card__time').text()).toBe('Date and time of signing (EAT)')
+		expect(wrapper.find('.signing-card__time').text()).toBe('TIMESTAMP: set when signed (EAT)')
 		expect(wrapper.find('img').exists()).toBe(false)
 	})
 
