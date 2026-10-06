@@ -274,6 +274,10 @@ class PhoneMnoResolver {
 
 			return $dto->valid ? $dto : null;
 		} catch (\Throwable $e) {
+			$this->logger->error('[PhoneMnoResolver] Error occurred while resolving phone number', [
+				'input' => $rawPhone,
+				'exception' => $e,
+			]);
 			return null;
 		}
 	}

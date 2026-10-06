@@ -234,8 +234,8 @@ export function detectKenyanMno(e164: string): KenyanMno {
   if (/^79\d/.test(n)) return 'safaricom'
 
   // SAFARICOM 01xx
-  // 110–117  →  0110–0117
-  if (/^11[0-7]/.test(n)) return 'safaricom'
+  // 110–119  →  0110–0119
+  if (/^11[0-9]/.test(n)) return 'safaricom'
 
   // AIRTEL 07xx
   // 730–739  →  0730–0739

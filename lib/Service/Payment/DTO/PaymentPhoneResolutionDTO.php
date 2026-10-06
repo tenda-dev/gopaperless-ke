@@ -21,7 +21,7 @@ final class PaymentPhoneResolutionDTO {
 		public readonly ?string $carrierHint,
 		public readonly ?string $countryCallingCode,
 	) {
-		if (!$e164Digits && !$national) {
+		if (!$valid && !$e164Digits && !$national) {
 			throw new InvalidArgumentException('At least one of e164Digits or national must be provided');
 		}
 	}
