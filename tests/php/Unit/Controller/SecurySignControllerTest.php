@@ -187,11 +187,12 @@ final class SecurySignControllerTest extends TestCase {
 			'handwriting' => "\x89PNG", 'time' => new \DateTimeImmutable(), 'expiresAt' => new \DateTimeImmutable(),
 		], null);
 
+		$this->signa->method('signingCardLayout')->willReturn('horizontal');
 		self::assertSame(['card' => [
 			'name' => 'JANE NJOROGE',
 			'issuer' => 'Signa Hardware CA',
 			'handwriting' => 'data:image/png;base64,' . base64_encode("\x89PNG"),
-		]], $this->controller->card()->getData());
-		self::assertSame(['card' => null], $this->controller->card()->getData());
+		], 'layout' => 'horizontal'], $this->controller->card()->getData());
+		self::assertSame(['card' => null, 'layout' => 'horizontal'], $this->controller->card()->getData());
 	}
 }

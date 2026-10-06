@@ -170,7 +170,8 @@ class SecurySignHandler extends Pkcs12Handler {
 		}
 		$path = \OCP\Server::get(ITempManager::class)->getTemporaryFile('.png');
 		file_put_contents($path, $context['handwriting']);
-		return ['name' => $context['name'], 'issuer' => $context['issuer'], 'time' => $context['time'], 'handwriting' => $path];
+		return ['name' => $context['name'], 'issuer' => $context['issuer'], 'time' => $context['time'], 'handwriting' => $path,
+			'layout' => \OCP\Server::get(SecurySignService::class)->signingCardLayout()];
 	}
 
 	private function finalize(string $signature): string {

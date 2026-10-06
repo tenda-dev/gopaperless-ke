@@ -41,9 +41,12 @@ vi.mock('@nextcloud/vue/functions/usernameToColor', () => ({
 }))
 
 const signingCardMock = vi.fn(() => Promise.resolve({
-	name: 'Jane Wanjiku Njoroge',
-	issuer: 'Signa Hardware CA',
-	handwriting: 'data:image/png;base64,AAAA',
+	card: {
+		name: 'Jane Wanjiku Njoroge',
+		issuer: 'Signa Hardware CA',
+		handwriting: 'data:image/png;base64,AAAA',
+	} as { name: string, issuer: string, handwriting: string } | null,
+	layout: 'stacked' as 'stacked' | 'horizontal',
 }))
 vi.mock('../../../services/signingCard', () => ({
 	signingCard: () => signingCardMock(),
@@ -90,7 +93,6 @@ describe('SignatureBox.vue', () => {
 		})
 		await flushPromises()
 
-		expect(signingCardMock).not.toHaveBeenCalled()
 		expect(wrapper.find('.signing-card__name').text()).toBe('GRACE HOPPER')
 		expect(wrapper.find('.signing-card__issuer').text()).toBe('ISSUER: CERTIFICATE ISSUER')
 		expect(wrapper.find('.signing-card__time').text()).toBe('TIMESTAMP: set when signed (EAT)')
@@ -109,5 +111,24 @@ describe('SignatureBox.vue', () => {
 		expect(wrapper.find('.signing-card__name').text()).toBe('JANE WANJIKU NJOROGE')
 		expect(wrapper.find('.signing-card__issuer').text()).toBe('ISSUER: SIGNA HARDWARE CA')
 		expect(wrapper.find('img').attributes('src')).toBe('data:image/png;base64,AAAA')
+	})
+
+	it('previews the horizontal A/B card: handwriting and name left, ISSUER and TIMESTAMP right', async () => {
+		signingCardMock.mockResolvedValueOnce({
+			card: { name: 'Jane Wanjiku Njoroge', issuer: 'Signa Hardware CA', handwriting: 'data:image/png;base64,AAAA' },
+			layout: 'horizontal',
+		})
+		const wrapper = mount(SignatureBox, {
+			props: {
+				label: 'Jane',
+				signer: { ...createSigner({ displayName: 'Jane' }), me: true } as SignerSummaryRecord,
+			},
+		})
+		await flushPromises()
+
+		expect(wrapper.find('.signing-card__left .signing-card__name').text()).toBe('JANE WANJIKU NJOROGE')
+		expect(wrapper.find('.signing-card__left img').attributes('src')).toBe('data:image/png;base64,AAAA')
+		expect(wrapper.findAll('.signing-card__right .signing-card__label').map((l) => l.text())).toEqual(['ISSUER', 'TIMESTAMP'])
+		expect(wrapper.find('.signing-card__right .signing-card__value').text()).toBe('SIGNA HARDWARE CA')
 	})
 })

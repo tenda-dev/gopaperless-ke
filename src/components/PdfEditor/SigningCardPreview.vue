@@ -4,7 +4,26 @@
 -->
 <template>
 	<div class="signing-card" :style="{ '--chars': chars }">
-		<div class="signing-card__body">
+		<div v-if="layout === 'horizontal'" class="signing-card__row">
+			<div class="signing-card__left">
+				<div class="signing-card__hand signing-card__hand--start">
+					<img v-if="card?.handwriting" :src="card.handwriting" alt="">
+					<span v-else class="signing-card__placeholder">{{ t('libresign', 'Signature') }}</span>
+				</div>
+				<strong class="signing-card__name signing-card__name--wrap">{{ displayName }}</strong>
+			</div>
+			<div class="signing-card__right">
+				<div class="signing-card__field">
+					<span class="signing-card__label">{{ t('libresign', 'ISSUER') }}</span>
+					<span class="signing-card__value">{{ issuerValue }}</span>
+				</div>
+				<div class="signing-card__field">
+					<span class="signing-card__label">{{ t('libresign', 'TIMESTAMP') }}</span>
+					<span class="signing-card__value">{{ t('libresign', 'set when signed (EAT)') }}</span>
+				</div>
+			</div>
+		</div>
+		<div v-else class="signing-card__body">
 			<div class="signing-card__hand">
 				<img v-if="card?.handwriting" :src="card.handwriting" alt="">
 				<span v-else class="signing-card__placeholder">{{ t('libresign', 'Signature') }}</span>
@@ -20,17 +39,19 @@
 import { t } from '@nextcloud/l10n'
 import { computed, ref, watchEffect } from 'vue'
 
-import { signingCard, type SigningCard } from '../../services/signingCard'
+import { signingCard, type SigningCard, type SigningCardLayout } from '../../services/signingCard'
 
 defineOptions({
 	name: 'SigningCardPreview',
 })
 
 /**
- * The signature box as the signed PDF draws it: handwriting on top, the name
- * in bold, the issuer, and the time (a placeholder until signing). Only the
- * signed-in user's own boxes can show their handwriting and verified name;
- * everyone else's show placeholders and the name they were invited with.
+ * The signature box as the signed PDF draws it: stacked (handwriting, name,
+ * issuer, time) or, as an A/B test, horizontal (handwriting and name on the
+ * left, ISSUER and TIMESTAMP on the right). The time is a placeholder until
+ * signing. Only the signed-in user's own boxes can show their handwriting and
+ * verified name; everyone else's show placeholders and the name they were
+ * invited with.
  */
 const props = withDefaults(defineProps<{
 	name?: string
@@ -41,20 +62,18 @@ const props = withDefaults(defineProps<{
 })
 
 const card = ref<SigningCard | null>(null)
+const layout = ref<SigningCardLayout>('stacked')
 watchEffect(() => {
-	if (props.mine) {
-		void signingCard().then((found) => {
-			card.value = found
-		})
-	} else {
-		card.value = null
-	}
+	const mine = props.mine
+	void signingCard().then((found) => {
+		layout.value = found.layout
+		card.value = mine ? found.card : null
+	})
 })
 
 const displayName = computed(() => (card.value?.name ?? props.name).toUpperCase())
-const issuerText = computed(() => t('libresign', 'ISSUER: {issuer}', {
-	issuer: (card.value?.issuer ?? t('libresign', 'certificate issuer')).toUpperCase(),
-}, undefined, { escape: false }))
+const issuerValue = computed(() => (card.value?.issuer ?? t('libresign', 'certificate issuer')).toUpperCase())
+const issuerText = computed(() => t('libresign', 'ISSUER: {issuer}', { issuer: issuerValue.value }, undefined, { escape: false }))
 const timeText = t('libresign', 'TIMESTAMP: set when signed (EAT)')
 // Every line keeps its share of the name's size and must fit the width, as on the PDF.
 const chars = computed(() => Math.max(8, displayName.value.length, issuerText.value.length * 0.72, timeText.length * 0.55))
@@ -67,6 +86,8 @@ const chars = computed(() => Math.max(8, displayName.value.length, issuerText.va
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
+	font-family: Helvetica, Arial, sans-serif;
+	line-height: 1.2;
 
 	&__body {
 		display: flex;
@@ -76,9 +97,7 @@ const chars = computed(() => Math.max(8, displayName.value.length, issuerText.va
 		height: 100%;
 		padding: 6cqh 4cqw;
 		box-sizing: border-box;
-		font-family: Helvetica, Arial, sans-serif;
 		text-align: center;
-		line-height: 1.2;
 	}
 
 	&__hand {
@@ -93,6 +112,12 @@ const chars = computed(() => Math.max(8, displayName.value.length, issuerText.va
 			max-width: 100%;
 			max-height: 100%;
 			object-fit: contain;
+		}
+
+		// Horizontal: the handwriting sits on the name, like a signed line.
+		&--start {
+			align-items: flex-end;
+			justify-content: flex-start;
 		}
 	}
 
@@ -129,6 +154,60 @@ const chars = computed(() => Math.max(8, displayName.value.length, issuerText.va
 	&__time {
 		font-size: calc(var(--size) * 0.62);
 		color: #666b78;
+	}
+
+	// The horizontal A/B card, laid out as the PDF draws it.
+	&__row {
+		display: flex;
+		height: 100%;
+		padding: 7cqmin;
+		gap: 10cqmin;
+		box-sizing: border-box;
+		text-align: left;
+	}
+
+	&__left {
+		flex: 0 0 52%;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	&__name--wrap {
+		margin-top: 2cqh;
+		font-size: min(13cqh, 5.4cqw);
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+	}
+
+	&__right {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+	}
+
+	&__field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6cqh;
+	}
+
+	&__label {
+		font-size: min(6.5cqh, 2.6cqw);
+		letter-spacing: 0.12em;
+		color: #7a8291;
+	}
+
+	&__value {
+		font-size: min(10.5cqh, 4.1cqw);
+		color: #333844;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 }
 </style>

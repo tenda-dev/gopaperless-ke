@@ -127,6 +127,14 @@ class SecurySignService {
 	}
 
 	/**
+	 * Which signing card layout to draw: stacked (the default) or horizontal,
+	 * an A/B test set with occ config:app:set libresign signing_card_layout.
+	 */
+	public function signingCardLayout(): string {
+		return $this->config->getValueString(Application::APP_ID, 'signing_card_layout', 'stacked') === 'horizontal' ? 'horizontal' : 'stacked';
+	}
+
+	/**
 	 * What goes on the user's signing card, from SecurySign: the raw handwriting,
 	 * the verified ID name, the certificate's actual issuer and the preparation
 	 * time. Null when SecurySign has none for them (no verified identity yet, a

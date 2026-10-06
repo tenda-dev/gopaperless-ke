@@ -71,4 +71,42 @@ final class SigningCardLayoutTest extends TestCase {
 		preg_match_all('/([\d.]+) ([\d.]+) Td \(JANE NJOROGE\)/', $xObject->stream, $name);
 		self::assertGreaterThan((float)$name[2][0], $y, 'the handwriting sits above the name');
 	}
+
+	/** The horizontal A/B card: handwriting and name left, ISSUER over TIMESTAMP right. */
+	public function testTheHorizontalCardKeepsTheHandwritingWholeOnTheLeft(): void {
+		foreach ([[240.0, 70.0], [160.0, 50.0], [300.0, 110.0]] as [$width, $height]) {
+			$card = $this->card('Bartholomew Ochieng Wanjiku Kamau') + ['layout' => 'horizontal'];
+			[$xObject, $frame] = PhpNativeHandler::signingCardLayout($card, $width, $height);
+			[$x, $y, $w, $h] = $frame;
+
+			self::assertEqualsWithDelta(3.0, $w / $h, 0.01, 'the handwriting keeps its shape');
+			self::assertGreaterThanOrEqual(0.0, $x);
+			self::assertLessThanOrEqual($width * 0.56, $x + $w, 'the handwriting stays in the left column');
+			self::assertLessThanOrEqual($height, $y + $h, 'the handwriting is not cut off at the top');
+
+			preg_match_all('/([\d.]+) Tf ([\d.]+) Tc [\d. ]+ rg ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj/', $xObject->stream, $lines, PREG_SET_ORDER);
+			$at = [];
+			foreach ($lines as [, $size, , $lx, $ly, $text]) {
+				$at[$text] = [(float)$lx, (float)$ly, (float)$size];
+			}
+			$time = '05 Oct 2026, 14:32:08 EAT';
+			self::assertArrayHasKey('ISSUER', $at);
+			self::assertArrayHasKey('TIMESTAMP', $at);
+			self::assertArrayHasKey($time, $at);
+			self::assertGreaterThan($at['SIGNA HARDWARE CA'][1], $at['ISSUER'][1], 'label over value');
+			self::assertGreaterThan($at['TIMESTAMP'][1], $at['SIGNA HARDWARE CA'][1], 'ISSUER above TIMESTAMP');
+
+			// The long name may wrap; every word is there, in order, on the left.
+			$name = array_diff_key($at, array_flip(['ISSUER', 'SIGNA HARDWARE CA', 'TIMESTAMP', $time]));
+			uasort($name, static fn (array $a, array $b): int => $b[1] <=> $a[1]);
+			self::assertSame('BARTHOLOMEW OCHIENG WANJIKU KAMAU', implode(' ', array_keys($name)));
+			self::assertEqualsWithDelta(min(array_column($name, 1)), $at[$time][1], 0.01, 'TIMESTAMP level with the name');
+			foreach ($name as [$nx, $ny, $size]) {
+				self::assertLessThan($at['ISSUER'][0], $nx, 'name on the left');
+				self::assertLessThan($y, $ny, 'the name sits under the handwriting');
+				self::assertGreaterThanOrEqual($at[$time][2] * 0.6, $size, 'a long name stays legible next to the values');
+			}
+			self::assertGreaterThanOrEqual($at['SIGNA HARDWARE CA'][2] * 0.99, $at[$time][2], 'one scale on the right');
+		}
+	}
 }

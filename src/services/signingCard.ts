@@ -13,12 +13,24 @@ export type SigningCard = {
 	handwriting: string
 }
 
-let card: Promise<SigningCard | null> | null = null
+export type SigningCardLayout = 'stacked' | 'horizontal'
 
-/** Fetched once per page: every signature box of the user's shows the same card. */
-export function signingCard(): Promise<SigningCard | null> {
-	card ??= axios.get(generateUrl('/apps/libresign/securysign/card'))
-		.then(({ data }) => (data?.card ?? null) as SigningCard | null)
-		.catch(() => null)
-	return card
+export type SigningCardPreview = {
+	/** The signed-in user's own card, or null when SecurySign has none. */
+	card: SigningCard | null
+	/** How every signature box is drawn (an A/B test). */
+	layout: SigningCardLayout
+}
+
+let preview: Promise<SigningCardPreview> | null = null
+
+/** Fetched once per page: every signature box shares it. */
+export function signingCard(): Promise<SigningCardPreview> {
+	preview ??= axios.get(generateUrl('/apps/libresign/securysign/card'))
+		.then(({ data }) => ({
+			card: (data?.card ?? null) as SigningCard | null,
+			layout: (data?.layout === 'horizontal' ? 'horizontal' : 'stacked') as SigningCardLayout,
+		}))
+		.catch(() => ({ card: null, layout: 'stacked' as const }))
+	return preview
 }

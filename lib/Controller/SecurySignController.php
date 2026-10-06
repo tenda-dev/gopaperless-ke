@@ -113,11 +113,14 @@ class SecurySignController extends Controller {
 				$this->logger->info('No signing card for the preview', ['exception' => $e]);
 			}
 		}
-		return new DataResponse(['card' => $context === null ? null : [
-			'name' => $context['name'],
-			'issuer' => $context['issuer'],
-			'handwriting' => 'data:image/png;base64,' . base64_encode($context['handwriting']),
-		]]);
+		return new DataResponse([
+			'card' => $context === null ? null : [
+				'name' => $context['name'],
+				'issuer' => $context['issuer'],
+				'handwriting' => 'data:image/png;base64,' . base64_encode($context['handwriting']),
+			],
+			'layout' => $this->signa->signingCardLayout(),
+		]);
 	}
 
 	/**
