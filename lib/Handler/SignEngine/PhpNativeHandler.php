@@ -536,7 +536,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 		$lines = [
 			['F2', mb_strtoupper($card['name']), 1.0, '0.04 0.07 0.13'],
 			['F1', 'ISSUER: ' . mb_strtoupper($card['issuer']), 0.72, '0.25 0.27 0.32'],
-			['F1', $card['time']->setTimezone(new \DateTimeZone('Africa/Nairobi'))->format('d M Y, H:i:s') . ' EAT', 0.62, '0.40 0.42 0.47'],
+			['F1', 'TIMESTAMP: ' . $card['time']->setTimezone(new \DateTimeZone('Africa/Nairobi'))->format('d M Y, H:i:s') . ' EAT', 0.62, '0.40 0.42 0.47'],
 		];
 		// The name sets the scale; every line keeps its share of it and fits the width.
 		$size = min($height * 0.12, 16.0);

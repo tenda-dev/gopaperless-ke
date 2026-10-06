@@ -55,7 +55,7 @@ const displayName = computed(() => (card.value?.name ?? props.name).toUpperCase(
 const issuerText = computed(() => t('libresign', 'ISSUER: {issuer}', {
 	issuer: (card.value?.issuer ?? t('libresign', 'certificate issuer')).toUpperCase(),
 }, undefined, { escape: false }))
-const timeText = t('libresign', 'Date and time of signing (EAT)')
+const timeText = t('libresign', 'TIMESTAMP: set when signed (EAT)')
 // Every line keeps its share of the name's size and must fit the width, as on the PDF.
 const chars = computed(() => Math.max(8, displayName.value.length, issuerText.value.length * 0.72, timeText.length * 0.55))
 </script>
