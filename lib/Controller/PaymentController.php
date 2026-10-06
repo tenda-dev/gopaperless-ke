@@ -537,4 +537,68 @@ class PaymentController extends AEnvironmentAwareController {
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
+
+	/**
+	 * Resolve mobile payment routing for a phone number.
+	 *
+	 * Exposes phone MNO resolution and payment routing details for visibility
+	 * and diagnostics, allowing specific phone numbers to be evaluated without
+	 * initiating a payment.
+	 *
+	 * This uses the same routing path as payment initiation.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[CORS]
+	#[ApiRoute(
+		verb: 'POST',
+		url: '/api/{apiVersion}/payment/phone/resolve',
+		requirements: ['apiVersion' => '(v1)']
+	)]
+	public function resolveMobilePaymentPhoneNumber(
+		string $phoneNumber,
+		bool $forceRefresh = false,
+		?string $providerHint = null,
+	): DataResponse {
+		try {
+			if (trim($phoneNumber) === '') {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Missing phone number',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$providerEnum = $providerHint !== null
+				? PaymentProvider::tryFrom($providerHint)
+				: null;
+
+			if ($providerHint !== null && $providerEnum === null) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Invalid provider hint',
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$result = $this->paymentService->resolveMobilePaymentPhoneNumber(
+				$phoneNumber,
+				$forceRefresh,
+				$providerEnum,
+			);
+
+			return new DataResponse([
+				'success' => true,
+				'result' => $result->toArray(),
+			], Http::STATUS_OK);
+		} catch (\Throwable $e) {
+			$this->logger->error('Failed to resolve mobile payment phone number', [
+				'exception' => $e,
+			]);
+
+			return new DataResponse([
+				'success' => false,
+				'error' => 'Unable to resolve mobile payment phone number',
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
 }

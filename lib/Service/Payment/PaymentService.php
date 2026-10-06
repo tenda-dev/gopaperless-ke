@@ -10,9 +10,11 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service\Payment;
 
 use OCA\Libresign\Db\Payment;
+use OCA\Libresign\Enum\PaymentProvider;
 use OCA\Libresign\Enum\PaymentPurpose;
 use OCA\Libresign\Enum\PaymentStatus;
 use OCA\Libresign\Service\Payment\DTO\ExistingPaymentResultDTO;
+use OCA\Libresign\Service\Payment\DTO\PaymentRoutingResultDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentDTO;
 use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
 
@@ -27,6 +29,7 @@ use OCA\Libresign\Service\Payment\DTO\StartPaymentResultDTO;
  */
 class PaymentService {
 	public function __construct(
+		private PaymentRoutingService $paymentRoutingService,
 		private PaymentInitiationService $initiationService,
 		private PaymentLifecycleService $lifecycleService,
 		private PaymentCallbackService $callbackService,
@@ -108,5 +111,9 @@ class PaymentService {
 
 	public function getPaymentFailureReason(Payment $payment): ?string {
 		return $this->responseFactory->getPaymentFailureReason($payment);
+	}
+
+	public function resolveMobilePaymentPhoneNumber(string $phoneNumber, bool $forceRefresh = false, ?PaymentProvider $provider = null): PaymentRoutingResultDTO {
+		return $this->paymentRoutingService->resolveMobileMoney($phoneNumber, $forceRefresh, $provider);
 	}
 }
