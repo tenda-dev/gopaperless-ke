@@ -144,6 +144,7 @@ export type AdminInitialState = {
 	tendaworld_url: string
 	securysign_signing_secret_set: boolean
 	mimi_client_secret_set: boolean
+	mimi_client_id: string
 	phone_mno_routing_v2_enabled: boolean
 }
 

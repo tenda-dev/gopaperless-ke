@@ -169,6 +169,7 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('tendaworld_url', $this->appConfig->getValueString(Application::APP_ID, 'tendaworld_url', ''));
 		$this->initialState->provideInitialState('securysign_signing_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'securysign_signing_secret', '') !== '');
 		$this->initialState->provideInitialState('mimi_client_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'mimi_client_secret', '') !== '');
+		$this->initialState->provideInitialState('mimi_client_id', $this->appConfig->getValueString(Application::APP_ID, 'mimi_client_id', ''));
 
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
