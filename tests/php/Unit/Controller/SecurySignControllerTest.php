@@ -179,4 +179,19 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
 	}
+
+	/** The editor previews the card; the time is only known at signing, so it is not sent. */
+	public function testTheEditorGetsTheCardWithoutATime(): void {
+		$this->signa->method('signingContext')->willReturnOnConsecutiveCalls([
+			'certificateSha256' => 'ab', 'name' => 'JANE NJOROGE', 'issuer' => 'Signa Hardware CA',
+			'handwriting' => "\x89PNG", 'time' => new \DateTimeImmutable(), 'expiresAt' => new \DateTimeImmutable(),
+		], null);
+
+		self::assertSame(['card' => [
+			'name' => 'JANE NJOROGE',
+			'issuer' => 'Signa Hardware CA',
+			'handwriting' => 'data:image/png;base64,' . base64_encode("\x89PNG"),
+		]], $this->controller->card()->getData());
+		self::assertSame(['card' => null], $this->controller->card()->getData());
+	}
 }
