@@ -524,8 +524,8 @@ class PhpNativeHandler extends Pkcs12Handler {
 	/**
 	 * SecurySign's signing card in a box of $width x $height points: the
 	 * handwriting on top at its own proportions, then the name (large, bold),
-	 * "ISSUER: ..." and the time in EAT, each centred, inside a thin light grey
-	 * border. Text shrinks to fit a long name rather than being clipped.
+	 * "ISSUER: ..." and the time in EAT, each centred, with no border. Text
+	 * shrinks to fit a long name rather than being clipped.
 	 *
 	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
 	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
@@ -546,7 +546,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 		$size = max(3.0, $size);
 
 		// Lines are laid from the bottom up: time, issuer, name.
-		$stream = sprintf("q 0.85 0.85 0.85 RG 0.6 w %.2F %.2F %.2F %.2F re S Q\n", 0.3, 0.3, $width - 0.6, $height - 0.6);
+		$stream = '';
 		$baseline = $pad + $size * 0.62 * 0.25;
 		$top = $pad;
 		foreach (array_reverse($lines) as $i => [$font, $text, $share, $colour]) {
