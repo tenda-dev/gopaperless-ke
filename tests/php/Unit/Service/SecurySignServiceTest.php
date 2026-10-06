@@ -196,6 +196,30 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertArrayNotHasKey('email', self::$posts[1]['json']);
 	}
 
+	public function testTheSigningCardIsReadOrLeftOutWhenSecurySignHasNone(): void {
+		$png = "\x89PNG\r\n\x1a\nrest";
+		$context = json_encode([
+			'certificateId' => 7,
+			'certificateSha256' => 'AB:CD',
+			'verifiedFullName' => 'JANE WANJIKU NJOROGE',
+			'nameSource' => 'verified_identity_document',
+			'issuerName' => 'Signa Hardware CA',
+			'handwritingPngBase64' => base64_encode($png),
+			'signingTime' => '2026-10-05T11:32:08Z',
+			'signingTimeMeaning' => 'preparation',
+			'expiresAt' => '2026-10-05T11:37:08Z',
+		]);
+		$card = self::serviceAnswering(200, $context)->signingContext();
+		self::assertSame(['abcd', 'JANE WANJIKU NJOROGE', 'Signa Hardware CA', $png], [$card['certificateSha256'], $card['name'], $card['issuer'], $card['handwriting']]);
+		self::assertSame('2026-10-05T11:32:08+00:00', $card['time']->format(\DateTimeInterface::ATOM));
+
+		// No verified identity, a profile-name certificate, the feature off: the usual appearance.
+		foreach ([409, 403, 429] as $status) {
+			self::assertNull(self::serviceAnswering($status, '{"error":"Renew the certificate"}')->signingContext());
+		}
+		self::assertNull(self::serviceAnswering(200, str_replace(base64_encode($png), base64_encode('GIF89a'), $context))->signingContext());
+	}
+
 	public function testAnOutageSkipsSecurySignForAMinute(): void {
 		$store = ['oidc.providerid' => 1];
 		$session = $this->createMock(ISession::class);
