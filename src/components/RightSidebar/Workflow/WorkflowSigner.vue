@@ -454,15 +454,26 @@ async function loadRecipient() {
 }
 watch(() => [props.canShare, props.fileId, props.signer.signRequestId, props.signer.status], loadRecipient, { immediate: true })
 
+/** WhatsApp turns a message down seconds after Twilio accepts it, so look again. */
+const RECHECK_AFTER_MS = 45_000
+let recheck: ReturnType<typeof setTimeout> | undefined
+
 function onWhatsAppChanged(event: { signRequestId: number, status: string, availableAgainAt?: string | null }) {
 	if (event.signRequestId !== props.signer.signRequestId) {
 		return
 	}
 	lastSend.value = event
 	loadRecipient()
+	clearTimeout(recheck)
+	if (event.status === 'sent') {
+		recheck = setTimeout(loadRecipient, RECHECK_AFTER_MS)
+	}
 }
 subscribe('libresign:whatsapp-changed', onWhatsAppChanged)
-onBeforeUnmount(() => unsubscribe('libresign:whatsapp-changed', onWhatsAppChanged))
+onBeforeUnmount(() => {
+	unsubscribe('libresign:whatsapp-changed', onWhatsAppChanged)
+	clearTimeout(recheck)
+})
 
 const showWhatsApp = computed(() => Boolean(recipient.value && !['disabled', 'envelope', 'signed'].includes(recipient.value.reason ?? '')))
 const availableAgainAt = computed(() => {
@@ -485,7 +496,7 @@ const whatsAppLabel = computed(() => {
 		: t('libresign', 'Send on WhatsApp')
 })
 
-const whatsAppFailed = computed(() => lastSend.value?.status === 'failed')
+const whatsAppFailed = computed(() => lastSend.value?.status === 'failed' || Boolean(recipient.value?.lastError))
 
 const whatsAppLine = computed(() => {
 	if (!showWhatsApp.value || !recipient.value) {

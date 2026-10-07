@@ -66,12 +66,15 @@ class WhatsAppService {
 	/**
 	 * What the signer row shows. Never the full number.
 	 *
-	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string}
+	 * lastError is the latest send's failure, including one WhatsApp reported
+	 * after Twilio had accepted the message.
+	 *
+	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, lastError: ?string}
 	 */
 	public function recipient(FileEntity $file, SignRequest $signRequest): array {
 		$sub = $this->subToMessage($file, $signRequest, $reason, false);
 		if ($sub === null) {
-			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null];
+			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => null];
 		}
 		$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub, 'sign_request_uuid' => $signRequest->getUuid()]))['body'];
 		$available = (bool)($data['available'] ?? false);
@@ -81,6 +84,7 @@ class WhatsAppService {
 			'reason' => $available ? null : ($data['reason'] ?? 'unavailable'),
 			'lastSentAt' => $data['last_sent_at'] ?? null,
 			'availableAgainAt' => $data['available_again_at'] ?? null,
+			'lastError' => $data['last_error'] ?? null,
 		];
 	}
 

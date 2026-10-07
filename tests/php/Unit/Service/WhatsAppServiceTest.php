@@ -98,11 +98,11 @@ final class WhatsAppServiceTest extends TestCase {
 	}
 
 	public function testTheRowGetsTheMaskedNumberAndNeverAsksForMore(): void {
-		$this->answer(200, ['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'last_sent_at' => null, 'available_again_at' => null]);
+		$this->answer(200, ['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'last_sent_at' => null, 'available_again_at' => null, 'last_error' => 'twilio_63016']);
 
 		$row = $this->service()->recipient(self::file(), self::signRequest());
 
-		self::assertSame(['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'lastSentAt' => null, 'availableAgainAt' => null], $row);
+		self::assertSame(['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => 'twilio_63016'], $row);
 		self::assertSame('http://payments.test/external/whatsapp/recipient?sub=sub-ann&sign_request_uuid=' . self::UUID, $this->calls[0][0]);
 		self::assertSame('key-123', $this->calls[0][1]['headers']['X-API-Key']);
 	}

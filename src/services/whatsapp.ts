@@ -18,6 +18,8 @@ export type WhatsAppRecipient = {
 	reason: string | null
 	lastSentAt: string | null
 	availableAgainAt: string | null
+	/** The latest send failed, possibly after Twilio accepted it (twilio_63016, …). */
+	lastError: string | null
 }
 
 const ids = (fileId: number, signRequestId: number) => ({ fileId, signRequestId })
@@ -27,7 +29,7 @@ export async function fetchWhatsAppRecipient(fileId: number, signRequestId: numb
 		const { data } = await axios.get(generateOcsUrl('/apps/libresign/api/v1/whatsapp/{fileId}/{signRequestId}', ids(fileId, signRequestId)))
 		return data.ocs.data
 	} catch {
-		return { available: false, masked: null, reason: 'unavailable', lastSentAt: null, availableAgainAt: null }
+		return { available: false, masked: null, reason: 'unavailable', lastSentAt: null, availableAgainAt: null, lastError: null }
 	}
 }
 

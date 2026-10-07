@@ -46,7 +46,7 @@ class WhatsAppController extends AEnvironmentAwareController {
 	 *
 	 * @param integer $fileId The identifier value of LibreSign file
 	 * @param integer $signRequestId The sign request id
-	 * @return DataResponse<Http::STATUS_OK, array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string}, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, lastError: ?string}, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, array{message: string}, array{}>
 	 *
 	 * 200: OK
 	 * 401: Not allowed
