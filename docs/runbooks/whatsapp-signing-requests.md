@@ -66,9 +66,10 @@ different account" and **Switch account**, which signs out through user_oidc's
 `/sls` (ending the SecurySign session too) and leaves a `libresign_resume`
 cookie that `src/login.ts` uses to come straight back.
 
-The MIMI passkey gate does not stop a SecurySign signature: SecurySign's frame
-asks for the same passkey. If SecurySign is down, the local engine asks for the
-MIMI passkey (`MimiPasskeyRequired`, action 1000) before it signs.
+A signing link goes through the MIMI passkey check like every other page, and the
+sign API refuses until it is done. Then SecurySign's frame asks for the passkey
+again to sign. The spec's one-tap version skipped the MIMI check; the product
+owner made it mandatory on 2026-10-07.
 
 ## Local testing
 

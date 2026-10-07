@@ -274,10 +274,6 @@ export const useSignStore = defineStore('sign', () => {
 		const errorData = error.response?.data?.ocs?.data
 		const action = errorData?.action
 
-		if (action === 1000 && errorData?.redirect) {
-			window.location.assign(errorData.redirect)
-		}
-
 		if (action === 4000) {
 			return {
 				type: 'missingCertification',

@@ -9,7 +9,6 @@ declare(strict_types=1);
 namespace OCA\Libresign\Handler;
 
 use OCA\Libresign\Exception\LibresignException;
-use OCA\Libresign\Exception\MimiPasskeyRequired;
 use OCA\Libresign\Exception\SecurySignApprovalRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Helper\JSActions;
@@ -26,7 +25,7 @@ class SigningErrorHandler {
 	}
 
 	/**
-	 * @return array{action: int, errors: list<array{message: string, code?: int, title?: string}>, securysign?: array{token: string, documentHash: string, documentName: string, origin: string}, redirect?: string}
+	 * @return array{action: int, errors: list<array{message: string, code?: int, title?: string}>, securysign?: array{token: string, documentHash: string, documentName: string, origin: string}}
 	 */
 	public function handleException(\Throwable $exception): array {
 		if ($exception instanceof SecurySignApprovalRequired) {
@@ -34,13 +33,6 @@ class SigningErrorHandler {
 				'action' => JSActions::ACTION_SECURYSIGN_APPROVE,
 				'securysign' => $exception->approval,
 				'errors' => [],
-			];
-		}
-		if ($exception instanceof MimiPasskeyRequired) {
-			return [
-				'action' => JSActions::ACTION_REDIRECT,
-				'redirect' => $exception->redirect,
-				'errors' => [['message' => $exception->getMessage()]],
 			];
 		}
 		if ($exception instanceof SecurySignUnavailable) {

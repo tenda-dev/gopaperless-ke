@@ -92,11 +92,7 @@ class SecurySignMiddleware extends Middleware {
 		if (!$ready) {
 			throw new LibresignException('Finish your SecurySign setup in GoPaperless before signing.', Http::STATUS_FORBIDDEN);
 		}
-		// A SecurySign signature already costs a passkey tap in SecurySign's frame,
-		// and only this user's key verifies, so asking for the MIMI passkey first
-		// would be a second tap for the same proof. The local engine has no frame:
-		// SignFileService asks for the MIMI passkey before it signs.
-		if ($this->signa->passkeyPending() && !$this->signa->signs()) {
+		if ($this->signa->passkeyPending()) {
 			throw new LibresignException('Confirm it is you with your MIMI passkey, then sign.', Http::STATUS_FORBIDDEN);
 		}
 	}
@@ -105,8 +101,8 @@ class SecurySignMiddleware extends Middleware {
 	public function afterController(Controller $controller, string $methodName, Response $response): Response {
 		// The terms and the data protection policy stay readable to someone who is
 		// still signing up: they are what the sign-up asks them to accept.
-		// A signing link (/p/sign/<uuid>) gets the setup check but not the passkey
-		// page: its one passkey tap is SecurySign's frame.
+		// A signing link (/p/sign/<uuid>) renders the "external" template, not
+		// "main", and gets the same checks: setup, then the MIMI passkey.
 		$signingLink = $methodName === 'sign';
 		if (!$controller instanceof PageController || !$response instanceof TemplateResponse
 			|| (!$signingLink && $response->getTemplateName() !== 'main') || $methodName === 'legal' || !$this->signa->applies()) {
@@ -115,7 +111,7 @@ class SecurySignMiddleware extends Middleware {
 		try {
 			if ($this->signa->isReady()) {
 				// Set up: the MIMI passkey confirms it is them before the app opens.
-				if (!$signingLink && $this->signa->passkeyPending()) {
+				if ($this->signa->passkeyPending()) {
 					return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.passkey', [
 						'returnTo' => SecurySignService::returnPath($this->request->getRequestUri()),
 					]));

@@ -66,20 +66,32 @@ final class SecurySignMiddlewareTest extends TestCase {
 		}
 	}
 
-	public function testASecurySignSignatureSkipsTheMimiPasskeyGateBecauseItsFrameAsks(): void {
+	public function testASecurySignSignatureStillNeedsTheMimiPasskeyFirst(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willReturn(true);
 		$this->signa->method('passkeyPending')->willReturn(true);
 		$this->signa->method('signs')->willReturn(true);
 
+		$this->expectException(LibresignException::class);
 		$this->middleware->beforeController($this->createMock(SignFileController::class), 'signBySignerUuid');
-		$this->addToAssertionCount(1);
 	}
 
-	public function testASigningLinkChecksSetupButLeavesThePasskeyToTheFrame(): void {
+	public function testASigningLinkAsksForTheMimiPasskeyAndComesBack(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willReturn(true);
 		$this->signa->method('passkeyPending')->willReturn(true);
+
+		$response = $this->middleware->afterController($this->createMock(PageController::class), 'sign', new TemplateResponse('libresign', 'external'));
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringStartsWith('/libresign/securySign/passkey?', $response->getRedirectURL());
+		self::assertStringContainsString('returnTo=%2Fapps%2Flibresign%2Ff%2Fdocument', $response->getRedirectURL());
+	}
+
+	public function testASigningLinkOpensOnceThePasskeyIsConfirmed(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(true);
+		$this->signa->method('passkeyPending')->willReturn(false);
 		$page = new TemplateResponse('libresign', 'external');
 
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'sign', $page));

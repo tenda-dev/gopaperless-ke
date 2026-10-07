@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace OCA\Libresign\Tests\Unit\Handler;
 
 use OCA\Libresign\Exception\LibresignException;
-use OCA\Libresign\Exception\MimiPasskeyRequired;
 use OCA\Libresign\Handler\SigningErrorHandler;
 use OCA\Libresign\Helper\JSActions;
 use OCP\IL10N;
@@ -162,13 +161,6 @@ class SigningErrorHandlerTest extends TestCase {
 		$this->logger->expects($this->never())->method('error');
 
 		$this->handler->handleException($exception);
-	}
-
-	public function testAPendingMimiPasskeySendsTheSignerToConfirmIt(): void {
-		$result = $this->handler->handleException(new MimiPasskeyRequired('/apps/libresign/securysign/passkey?returnTo=x'));
-
-		$this->assertSame(JSActions::ACTION_REDIRECT, $result['action']);
-		$this->assertSame('/apps/libresign/securysign/passkey?returnTo=x', $result['redirect']);
 	}
 
 	public function testGenericExceptionStructure(): void {
