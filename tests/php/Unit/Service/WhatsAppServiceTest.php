@@ -143,6 +143,15 @@ final class WhatsAppServiceTest extends TestCase {
 		self::assertSame(['sub' => 'sub-ann', 'sign_request_uuid' => self::UUID, 'sender_name' => 'Ann', 'document_name' => 'NDA.pdf'], $this->calls[0][1]['json']);
 	}
 
+	public function testAPaymentsServiceThatDoesNotAnswerIsAFailedSendNotAnError(): void {
+		$this->client->method('post')->willThrowException(new \RuntimeException('cURL error 28: Operation timed out'));
+		$this->client->method('get')->willThrowException(new \RuntimeException('cURL error 28: Operation timed out'));
+		$service = $this->service();
+
+		self::assertSame(['status' => 'failed', 'error' => 'unreachable', 'availableAgainAt' => null], $service->send(self::file(), self::signRequest(), $this->signer));
+		self::assertSame('unavailable', $service->recipient(self::file(), self::signRequest())['reason']);
+	}
+
 	public function testASecondSendWithinADayComesBackWithTheTime(): void {
 		$this->answer(429, ['detail' => ['code' => 'too_soon', 'available_again_at' => '2026-10-07T09:00:00+00:00']]);
 

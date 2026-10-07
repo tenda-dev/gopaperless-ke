@@ -76,7 +76,12 @@ class WhatsAppService {
 		if ($sub === null) {
 			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => null];
 		}
-		$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub, 'sign_request_uuid' => $signRequest->getUuid()]))['body'];
+		try {
+			$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub, 'sign_request_uuid' => $signRequest->getUuid()]))['body'];
+		} catch (\Throwable $e) {
+			$this->logger->warning('The payments service did not answer a WhatsApp lookup', ['exception' => $e]);
+			$data = [];
+		}
 		$available = (bool)($data['available'] ?? false);
 		return [
 			'available' => $available,
@@ -94,12 +99,18 @@ class WhatsAppService {
 		if ($sub === null) {
 			return ['status' => 'failed', 'error' => $reason, 'availableAgainAt' => null];
 		}
-		$answer = $this->call('POST', 'sign-request', [
-			'sub' => $sub,
-			'sign_request_uuid' => $signRequest->getUuid(),
-			'sender_name' => $sender->getDisplayName(),
-			'document_name' => $file->getName(),
-		]);
+		try {
+			$answer = $this->call('POST', 'sign-request', [
+				'sub' => $sub,
+				'sign_request_uuid' => $signRequest->getUuid(),
+				'sender_name' => $sender->getDisplayName(),
+				'document_name' => $file->getName(),
+			]);
+		} catch (\Throwable $e) {
+			// Shown as "Couldn't send on WhatsApp"; the transport error is for the log.
+			$this->logger->warning('The payments service did not answer a WhatsApp send', ['exception' => $e]);
+			return ['status' => 'failed', 'error' => 'unreachable', 'availableAgainAt' => null];
+		}
 		if ($answer['status'] === 429) {
 			return ['status' => 'too_soon', 'error' => null, 'availableAgainAt' => $answer['body']['detail']['available_again_at'] ?? null];
 		}
