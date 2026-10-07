@@ -42,12 +42,13 @@ Payments service (`.env`):
 ## Templates to submit to Meta
 
 Both English, category Utility, on the GoPaperless WhatsApp sender. Twilio numbers
-variables across body and button together.
+variables across body and button together, and a body may not start or end with a
+variable, hence the "Hi,".
 
 | Template | Body | Button |
 | --- | --- | --- |
-| Request | `{{1}} has sent you "{{2}}" to sign on GoPaperless.` | URL "Review and sign": `https://gopaperless.ke/apps/libresign/p/sign/{{3}}` |
-| Receipt | `You signed "{{1}}".` | URL "View": `https://gopaperless.ke/apps/libresign/p/sign/{{2}}` |
+| Request: `gopaperless_sign_request`, `HX6d1d3bf0059a9691c779e5561c9941c3`, submitted 2026-10-07 | `Hi, {{1}} has sent you "{{2}}" to sign on GoPaperless.` | URL "Review and sign": `https://gopaperless.ke/apps/libresign/p/sign/{{3}}` |
+| Receipt: the already approved `document_signed_successfully`, `HX1da175d1f4390bf449864a061a5ad7ec` | `✅ Document signed successfully! 📄 {{1}} View your signed document:` | URL "View Document": `https://gopaperless.ke/apps/libresign/f/validation/{{2}}`, which accepts a sign-request uuid |
 
 Read the live sign URL before submitting: the approved base is fixed, and it has
 to match whether production serves `/index.php`.
