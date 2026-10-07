@@ -26,44 +26,6 @@ GoPaperless never holds a full phone number. It names the signer by their OIDC
 `sub`, and the payments service looks the number up on that account's
 subscription, where MIMI put it at payment.
 
-## End to end
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Sender
-    participant GP as GoPaperless
-    participant APP as WhatsApp applet
-    participant TW as Twilio and WhatsApp
-    actor Signer
-    participant KC as Keycloak (Google)
-    participant MIMI
-    participant SS as SecurySign frame
-
-    Sender->>GP: Request on WhatsApp, from the signer's menu
-    GP->>GP: A draft is requested first, and the usual email goes too
-    GP->>APP: POST /external/whatsapp/sign-request with sub, sign-request uuid, names
-    APP->>APP: Find the WhatsApp number on that sub's subscription
-    APP->>TW: Template gopaperless_sign_request
-    TW-->>APP: Accepted, message SID
-    APP-->>GP: sent
-    GP-->>Sender: Row shows the masked number and the send time
-    TW->>Signer: Hi, Ann has sent you NDA to sign on GoPaperless. Review and sign
-    TW-->>APP: Delivery status callback
-    Signer->>GP: Opens /p/sign/uuid
-    GP->>KC: Not signed in, so straight to sign-in with no login page
-    KC-->>GP: Signed in with Google
-    GP->>MIMI: MIMI passkey check
-    MIMI-->>GP: Confirmed
-    GP-->>Signer: The document and the Sign button
-    Signer->>SS: Sign, with a passkey tap
-    SS-->>GP: Signature from the signer's own certificate
-    GP-->>Signer: Validation page
-    GP->>APP: POST /external/whatsapp/sign-receipt
-    APP->>TW: Template document_signed_successfully
-    TW->>Signer: Document signed successfully. View Document
-```
-
 ## The signer's path
 
 Every way in (WhatsApp, email, Copy link, a scanned QR) opens the same page and
