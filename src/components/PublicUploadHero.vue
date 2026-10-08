@@ -22,10 +22,6 @@
 				</button>
 				<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
 			</div>
-			<p class="pu__trust">
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiShieldCheckOutline" /></svg>
-				PDF · You'll sign in securely to continue
-			</p>
 		</div>
 
 		<div class="pu__stage">
@@ -46,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { mdiShieldCheckOutline, mdiTrayArrowUp } from '@mdi/js'
+import { mdiTrayArrowUp } from '@mdi/js'
 
 import laptop from '../../img/landing-desktop.webp'
 import phone from '../../img/landing-mobile.webp'
@@ -169,23 +165,6 @@ defineEmits<{
 	&:focus-visible {
 		color: var(--ink);
 		text-decoration: underline;
-	}
-}
-
-.pu__trust {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	margin: 0;
-	font-size: 13px;
-	line-height: 16px;
-	color: var(--slate);
-
-	svg {
-		flex: none;
-		width: 15px;
-		height: 15px;
-		color: var(--brand-strong);
 	}
 }
 
