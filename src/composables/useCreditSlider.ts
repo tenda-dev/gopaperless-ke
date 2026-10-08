@@ -90,22 +90,21 @@ export function findNearestSnap(
 }
 
 export function resolveInitialQuantity(params: {
-	initialQuantity?: number
-	minQuantity?: number
-	maxQuantity?: number
-	snapPoints: readonly number[]
-	domainMin: number
+    initialQuantity?: number
+    minQuantity?: number
+    maxQuantity?: number
+    domainMin: number
 }): number {
-	const { initialQuantity, minQuantity, maxQuantity, snapPoints, domainMin } = params
-	const maxV = computeMaxV(maxQuantity, domainMin)
-	const minV = computeMinV(minQuantity, domainMin, maxV)
+    const { initialQuantity, minQuantity, maxQuantity, domainMin } = params
 
-	if (initialQuantity != null) {
-		return clamp(Math.round(initialQuantity), minV, maxV)
-	}
+    const maxV = computeMaxV(maxQuantity, domainMin)
+    const minV = computeMinV(minQuantity, domainMin, maxV)
 
-	const firstPack = computeActiveSnaps(snapPoints, minV, maxV)[0]
-	return firstPack ?? minV
+    if (initialQuantity != null) {
+        return clamp(Math.round(initialQuantity), minV, maxV)
+    }
+
+    return minV
 }
 
 // ── composable ───────────────────────────────────────────────────────────────
@@ -154,7 +153,6 @@ export function useCreditSlider(options: UseCreditSliderOptions = {}) {
 		initialQuantity: toValue(options.initialQuantity),
 		minQuantity: toValue(options.minQuantity),
 		maxQuantity: toValue(options.maxQuantity),
-		snapPoints: snapPointsInput.value,
 		domainMin,
 	}))
 
