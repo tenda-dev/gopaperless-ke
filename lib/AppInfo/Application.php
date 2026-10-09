@@ -42,7 +42,6 @@ use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\IAppConfig;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
-use Psr\Log\LoggerInterface;
 use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
 use Psr\Log\LoggerInterface;
