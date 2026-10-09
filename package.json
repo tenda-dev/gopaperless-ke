@@ -61,7 +61,7 @@
     "codemirror": "^6.0.2",
     "debounce": "^3.0.0",
     "js-confetti": "^0.13.1",
-    "libphonenumber-js": "^1.12.42",
+    "libphonenumber-js": "^1.13.14",
     "pinia": "^3.0.4",
     "shx": "^0.4.0",
     "signature_pad": "^5.1.3",

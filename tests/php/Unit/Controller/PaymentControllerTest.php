@@ -11,9 +11,24 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\Controller\PaymentController;
 use OCA\Libresign\Db\Payment as PaymentEntity;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\PaymentCapability;
+use OCA\Libresign\Enum\PaymentFlowMode;
+use OCA\Libresign\Enum\PaymentProvider;
+use OCA\Libresign\Enum\PhoneMnoResolutionSource;
+use OCA\Libresign\Enum\ResolutionConfidence;
+use OCA\Libresign\Service\Payment\DTO\AutoChargeDTO;
+use OCA\Libresign\Service\Payment\DTO\MnoRoutingResultDTO;
+use OCA\Libresign\Service\Payment\DTO\PaymentCountryContextDTO;
+use OCA\Libresign\Service\Payment\DTO\PaymentRoutingResultDTO;
+use OCA\Libresign\Service\Payment\DTO\PhoneMnoIdentityDTO;
 use OCA\Libresign\Service\Payment\PaymentService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
+use OCP\IAppConfig;
+use OCP\IGroupManager;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
@@ -26,6 +41,9 @@ final class PaymentControllerTest extends TestCase {
 	private LoggerInterface&MockObject $logger;
 	private IUserSession&MockObject $userSession;
 	private SignRequestMapper&MockObject $signRequestMapper;
+	private IAppConfig&MockObject $appConfig;
+	private IGroupManager&MockObject $groupManager;
+	private IL10N&MockObject $l10n;
 	private PaymentController $controller;
 
 	public function setUp(): void {
@@ -36,6 +54,10 @@ final class PaymentControllerTest extends TestCase {
 		$this->logger = $this->createMock(LoggerInterface::class);
 		$this->userSession = $this->createMock(IUserSession::class);
 		$this->signRequestMapper = $this->createMock(SignRequestMapper::class);
+		$this->appConfig = $this->createMock(IAppConfig::class);
+		$this->groupManager = $this->createMock(IGroupManager::class);
+		$this->l10n = $this->createMock(IL10N::class);
+		$this->l10n->method('t')->willReturnCallback(static fn (string $text, ...$args): string => vsprintf($text, $args));
 
 		$this->controller = new PaymentController(
 			request: $this->request,
@@ -43,6 +65,9 @@ final class PaymentControllerTest extends TestCase {
 			logger: $this->logger,
 			userSession: $this->userSession,
 			signRequestMapper: $this->signRequestMapper,
+			appConfig: $this->appConfig,
+			groupManager: $this->groupManager,
+			l10n: $this->l10n,
 		);
 	}
 
@@ -140,5 +165,103 @@ final class PaymentControllerTest extends TestCase {
 
 		self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus());
 		self::assertSame('Unauthorized', $response->getData()['error']);
+	}
+
+	public function testResolvePhoneReturnsUnauthorizedWhenAnonymous(): void {
+		$this->userSession->method('getUser')->willReturn(null);
+
+		$response = $this->controller->resolveMobilePaymentPhoneNumber('+254711000000');
+
+		self::assertSame(Http::STATUS_UNAUTHORIZED, $response->getStatus());
+		self::assertSame('Unauthorized', $response->getData()['error']);
+	}
+
+	public function testResolvePhoneForbidsWhenRoutingV2IsDisabled(): void {
+		$this->givenAuthenticatedUser('user1');
+		$this->appConfig->method('getValueBool')
+			->with('libresign', 'phone_mno_routing_v2_enabled', false)
+			->willReturn(false);
+
+		$response = $this->controller->resolveMobilePaymentPhoneNumber('+254711000000');
+
+		self::assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+	}
+
+	public function testResolvePhoneOmitsAdminRoutingConfigForNonAdmins(): void {
+		$this->givenAuthenticatedUser('user1');
+		$this->appConfig->method('getValueBool')->willReturn(true);
+		$this->groupManager->method('isAdmin')->with('user1')->willReturn(false);
+		$this->paymentService->method('resolveMobilePaymentPhoneNumber')
+			->willReturn($this->givenRoutingResult());
+
+		$response = $this->controller->resolveMobilePaymentPhoneNumber('+254711000000');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertArrayNotHasKey('override', $response->getData()['result']['routing']);
+		self::assertArrayNotHasKey('providerMnoKey', $response->getData()['result']['routing']);
+	}
+
+	public function testResolvePhoneIncludesAdminRoutingConfigForAdmins(): void {
+		$this->givenAuthenticatedUser('admin1');
+		$this->appConfig->method('getValueBool')->willReturn(true);
+		$this->groupManager->method('isAdmin')->with('admin1')->willReturn(true);
+		$this->paymentService->method('resolveMobilePaymentPhoneNumber')
+			->willReturn($this->givenRoutingResult());
+
+		$response = $this->controller->resolveMobilePaymentPhoneNumber('+254711000000');
+
+		self::assertSame(Http::STATUS_OK, $response->getStatus());
+		self::assertSame('daraja', $response->getData()['result']['routing']['override']);
+		self::assertSame('safaricom', $response->getData()['result']['routing']['providerMnoKey']);
+	}
+
+	public function testResolvePhoneIsSessionOnlyAndRateLimited(): void {
+		$method = new \ReflectionMethod(PaymentController::class, 'resolveMobilePaymentPhoneNumber');
+		$names = array_map(static fn (\ReflectionAttribute $a): string => $a->getName(), $method->getAttributes());
+
+		self::assertNotContains(PublicPage::class, $names);
+		self::assertContains(UserRateLimit::class, $names);
+	}
+
+	private function givenRoutingResult(): PaymentRoutingResultDTO {
+		return new PaymentRoutingResultDTO(
+			identity: new PhoneMnoIdentityDTO(
+				valid: true,
+				e164: '+254711000000',
+				national: '0711000000',
+				region: 'KE',
+				country: 'KE',
+				mno: 'safaricom',
+				carrierHint: 'Safaricom',
+				confidence: ResolutionConfidence::HIGH,
+				source: PhoneMnoResolutionSource::DETECTION,
+				verified: true,
+			),
+			route: new MnoRoutingResultDTO(
+				capability: PaymentCapability::MOBILE_MONEY,
+				preferredProvider: PaymentProvider::DARAJA,
+				mnoKey: 'safaricom',
+				mode: PaymentFlowMode::STK_PUSH,
+				currency: 'KES',
+				altCurrency: null,
+				minAmount: 1.0,
+				maxAmount: 150000.0,
+				supportsDecimals: false,
+				confidence: ResolutionConfidence::HIGH,
+				notes: null,
+				country: 'KE',
+				region: 'KE',
+			),
+			countryContext: new PaymentCountryContextDTO(
+				region: 'KE',
+				country: 'kenya',
+				currency: 'KES',
+				altCurrency: null,
+				supportsDecimals: false,
+			),
+			providerOverride: PaymentProvider::DARAJA,
+			providerMnoKey: 'safaricom',
+			autoCharge: new AutoChargeDTO(enabled: true),
+		);
 	}
 }

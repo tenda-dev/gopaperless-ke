@@ -69,11 +69,12 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * Draw GoPaperless's signing card instead of the configured appearance: the
-	 * box's drawn signature, the signer's name, the certificate's issuer and the
-	 * signing time. Null goes back to the configured appearance.
+	 * Draw the signing card instead of the configured appearance: the
+	 * handwriting (the box's drawn signature, or the imported one), the
+	 * signer's name, the certificate's issuer and the signing time. Null goes
+	 * back to the configured appearance.
 	 *
-	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, layout: string}|null $card
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string, layout?: string}|null $card
 	 */
 	public function setSigningCard(?array $card): self {
 		$this->signingCard = $card;
@@ -175,8 +176,9 @@ class PhpNativeHandler extends Pkcs12Handler {
 	): SignatureAppearanceDto {
 		$rect = [$llx, $pageHeight - $ury, $urx, $pageHeight - $lly];
 		if ($this->signingCard !== null) {
-			// The handwriting is the signature drawn for this box.
-			$card = ['handwriting' => $signatureImagePath] + $this->signingCard;
+			// The handwriting is the signature drawn for this box, or the
+			// imported one when the box carries no drawing.
+			$card = ($signatureImagePath !== '' ? ['handwriting' => $signatureImagePath] : []) + $this->signingCard;
 			[$xObject, $frame] = self::signingCardLayout($card, (float)$width, (float)$height);
 			return new SignatureAppearanceDto(
 				backgroundImagePath: null,

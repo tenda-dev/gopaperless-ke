@@ -47,6 +47,14 @@ final class SecurySignHandlerTest extends TestCase {
 		$this->assertTrue(self::verifies(SecurySignHandler::embed($prepared, $attributes, self::raw($signature), $pem)));
 	}
 
+	/** LibreSign refuses a signature dated in the future ("Marty McFly"). */
+	public function testTheSigningTimeIsNeverLaterThanOurClock(): void {
+		$now = 1_791_200_000;
+		$this->assertSame($now, SecurySignHandler::signingTime(new \DateTimeImmutable('@' . ($now + 24)), $now), 'SecurySign ahead of us');
+		$this->assertSame($now - 5, SecurySignHandler::signingTime(new \DateTimeImmutable('@' . ($now - 5)), $now), 'SecurySign behind us');
+		$this->assertSame($now, SecurySignHandler::signingTime(null, $now), 'no card');
+	}
+
 	public function testRefusesASignatureFromAnotherKey(): void {
 		[, $pem] = self::certificate();
 		[$otherKey] = self::certificate();

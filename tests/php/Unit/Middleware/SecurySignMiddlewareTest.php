@@ -47,6 +47,25 @@ final class SecurySignMiddlewareTest extends TestCase {
 		return new TemplateResponse('libresign', 'main');
 	}
 
+	public function testASetUpUserConfirmsTheirMimiPasskeyBeforeTheAppOpens(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(true);
+		$this->signa->method('passkeyPending')->willReturn(true);
+
+		$response = $this->middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringStartsWith('/libresign/securySign/passkey?', $response->getRedirectURL());
+		self::assertStringContainsString('returnTo=%2Fapps%2Flibresign%2Ff%2Fdocument', $response->getRedirectURL());
+
+		try {
+			$this->middleware->beforeController($this->createMock(SignFileController::class), 'signByFileId');
+			self::fail('signing was allowed before the passkey check');
+		} catch (LibresignException $e) {
+			self::assertSame(403, $e->getCode());
+		}
+	}
+
 	public function testAnUnpreparedUserIsSentIntoOnboardingWithTheirTaskAttached(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willReturn(false);

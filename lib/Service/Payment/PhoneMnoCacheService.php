@@ -64,7 +64,7 @@ class PhoneMnoCacheService {
 		$age = $this->dateTimeHelper->nowImmutable()->getTimestamp()
 			- $resolvedAt->getTimestamp();
 
-		if ($age > $this->ttlSeconds()) {
+		if ($age >= $this->ttlSeconds()) {
 			return null;
 		}
 
