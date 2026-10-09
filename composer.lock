@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c83194afa231317f94c34fb7559f2317",
+    "content-hash": "8ee14172975628142965c34273e702f0",
     "packages": [
         {
             "name": "brick/math",
@@ -1006,12 +1006,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/nextcloud-deps/ocp.git",
-                "reference": "ecb87ca475f5cc7a1f22465c3b1a67295a39a36d"
+                "reference": "4cca4dc853442cc7cd15d86cd1a78caf7661654f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/nextcloud-deps/ocp/zipball/ecb87ca475f5cc7a1f22465c3b1a67295a39a36d",
-                "reference": "ecb87ca475f5cc7a1f22465c3b1a67295a39a36d",
+                "url": "https://api.github.com/repos/nextcloud-deps/ocp/zipball/4cca4dc853442cc7cd15d86cd1a78caf7661654f",
+                "reference": "4cca4dc853442cc7cd15d86cd1a78caf7661654f",
                 "shasum": ""
             },
             "require": {
@@ -2407,5 +2407,5 @@
     "platform-overrides": {
         "php": "8.2"
     },
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }
