@@ -34,16 +34,20 @@
 
 		<nav class="pu__eco-links">
 			<a href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">About GoPaperless</a>
-			<a href="https://tendaworld.com/gopaperless/" target="_blank" rel="noopener">Terms and Conditions</a>
-			<a href="https://tendaworld.com/gopaperless/" target="_blank" rel="noopener">Privacy Policy</a>
+			<a :href="termsPage">Terms &amp; Conditions</a>
+			<a :href="privacyPage">Privacy Policy</a>
 		</nav>
 	</div>
 </template>
 
 <script setup lang="ts">
 import { mdiShieldCheckOutline, mdiShieldLockOutline } from '@mdi/js'
+import { generateUrl } from '@nextcloud/router'
 
 defineOptions({ name: 'PublicUploadEcosystem' })
+
+const termsPage = generateUrl('/apps/libresign/p/terms')
+const privacyPage = generateUrl('/apps/libresign/p/privacy')
 
 const ecosystem = [
 	{ name: 'JuliCA Certification Authority', sub: 'Issued and Regulated by the Communications Authority of Kenya', href: 'https://tendaworld.com/julica', icon: mdiShieldCheckOutline },

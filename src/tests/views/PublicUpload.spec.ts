@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
 
 import PublicUpload from '../../views/PublicUpload.vue'
+import PublicLegal from '../../components/PublicLegal.vue'
 import PublicUploadEcosystem from '../../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../../components/PublicUploadHero.vue'
@@ -57,6 +58,18 @@ describe('PublicUpload', () => {
 		expect(wrapper.findComponent(PublicUploadHeader).exists()).toBe(true)
 		expect(wrapper.findComponent(PublicUploadHero).exists()).toBe(true)
 		expect(wrapper.findComponent(PublicUploadEcosystem).exists()).toBe(true)
+	})
+
+	it('shows the document instead of the hero on a legal page, even to a signed-in user', async () => {
+		const { getCurrentUser } = await import('@nextcloud/auth')
+		vi.mocked(getCurrentUser).mockReturnValueOnce({ uid: 'jane' } as ReturnType<typeof getCurrentUser>)
+
+		const wrapper = shallowMount(PublicUpload, { props: { document: 'terms' } })
+
+		expect(wrapper.findComponent(PublicUploadHero).exists()).toBe(false)
+		expect(wrapper.findComponent(PublicLegal).props('document')).toBe('terms')
+		expect(wrapper.findComponent(PublicUploadEcosystem).exists()).toBe(true)
+		expect(replaceMock).not.toHaveBeenCalled()
 	})
 
 	it('navigates to login when get-started is emitted and no OIDC provider is configured', () => {

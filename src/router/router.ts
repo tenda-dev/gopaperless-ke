@@ -42,6 +42,16 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/PublicUpload.vue'),
 	},
 	{
+		// The Terms of Use and the Data Protection Policy, in the landing's look.
+		path: '/p/:document(terms|privacy)',
+		name: 'LegalExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
+		component: () => import('../views/PublicUpload.vue'),
+		props: true,
+	},
+	{
 		path: '/p/sign/:uuid',
 		redirect: (to) => {
 			const action = selectAction(loadState('libresign', 'action', 0), to, { path: '/' })

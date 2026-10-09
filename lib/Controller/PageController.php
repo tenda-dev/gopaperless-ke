@@ -193,6 +193,27 @@ class PageController extends AEnvironmentPageAwareController {
 		if ($this->userSession->isLoggedIn()) {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
 		}
+		return $this->landingPage();
+	}
+
+	/**
+	 * GoPaperless's Terms of Use and Data Protection Policy, as pages in the
+	 * landing's look. Anyone can read them, signed in or not, and the onboarding
+	 * gate lets them through (SecurySignMiddleware).
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>
+	 *
+	 * 200: OK
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/{document}', requirements: ['document' => 'terms|privacy'])]
+	public function legal(string $document): TemplateResponse {
+		return $this->landingPage();
+	}
+
+	/** @return TemplateResponse<Http::STATUS_OK, array{}> */
+	private function landingPage(): TemplateResponse {
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
 
