@@ -205,13 +205,14 @@
 	}
 }
 
-// MIMI-only (login.ts sets gp-mimi-only): one MIMI button. The form, "Log in
-// with a device", Register and every other provider are hidden.
-#body-login.gp-mimi-only {
+// One way in (login.ts sets gp-one-login): the SecurySign provider's button,
+// reading "Log In", with Register as a link under it. The form, "Log in with a
+// device" and every other provider are hidden.
+#body-login.gp-one-login {
 	.login-box__wrapper > form.login-form,
 	.login-box__wrapper > form.login-form ~ .button-vue,
 	.password-less-login-form,
-	#alternative-logins > :not(.gp-mimi) {
+	#alternative-logins > :not(.gp-login):not(.gp-register) {
 		display: none;
 	}
 
@@ -223,7 +224,7 @@
 		}
 	}
 
-	#alternative-logins a.gp-mimi {
+	#alternative-logins a.gp-login {
 		min-height: 52px;
 		border: none;
 		background: #00c853;

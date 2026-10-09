@@ -69,11 +69,12 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * Draw SecurySign's signing card instead of the configured appearance: the
-	 * handwriting, the verified ID name, the certificate's issuer and the
-	 * signing time. Null goes back to the configured appearance.
+	 * Draw the signing card instead of the configured appearance: the
+	 * handwriting (the box's drawn signature, or the imported one), the
+	 * signer's name, the certificate's issuer and the signing time. Null goes
+	 * back to the configured appearance.
 	 *
-	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string}|null $card
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string, layout?: string}|null $card
 	 */
 	public function setSigningCard(?array $card): self {
 		$this->signingCard = $card;
@@ -175,13 +176,16 @@ class PhpNativeHandler extends Pkcs12Handler {
 	): SignatureAppearanceDto {
 		$rect = [$llx, $pageHeight - $ury, $urx, $pageHeight - $lly];
 		if ($this->signingCard !== null) {
-			[$xObject, $frame] = self::signingCardLayout($this->signingCard, (float)$width, (float)$height);
+			// The handwriting is the signature drawn for this box, or the
+			// imported one when the box carries no drawing.
+			$card = ($signatureImagePath !== '' ? ['handwriting' => $signatureImagePath] : []) + $this->signingCard;
+			[$xObject, $frame] = self::signingCardLayout($card, (float)$width, (float)$height);
 			return new SignatureAppearanceDto(
 				backgroundImagePath: null,
 				rect: $rect,
 				page: $pageIndex,
 				xObject: $xObject,
-				signatureImagePath: $this->signingCard['handwriting'],
+				signatureImagePath: $card['handwriting'],
 				signatureImageFrame: $frame,
 			);
 		}
@@ -522,7 +526,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * SecurySign's signing card in a box of $width x $height points: the
+	 * The stacked signing card in a box of $width x $height points: the
 	 * handwriting on top at its own proportions, then the name (large, bold),
 	 * "ISSUER: ..." and the time in EAT, each centred, with no border. Text
 	 * shrinks to fit a long name rather than being clipped.
@@ -531,6 +535,10 @@ class PhpNativeHandler extends Pkcs12Handler {
 	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
 	 */
 	public static function signingCardLayout(array $card, float $width, float $height): array {
+		$layout = $card['layout'] ?? 'stacked';
+		if ($layout === 'horizontal' || $layout === 'horizontal-top') {
+			return self::horizontalCardLayout($card, $width, $height, $layout === 'horizontal-top');
+		}
 		$pad = max(4.0, $height * 0.06);
 		$room = max(1.0, $width - 2 * $pad);
 		$lines = [
@@ -577,6 +585,125 @@ class PhpNativeHandler extends Pkcs12Handler {
 			new SignatureAppearanceXObjectDto(stream: $stream, resources: ['Font' => ['F1' => $font('Helvetica'), 'F2' => $font('Helvetica-Bold')]]),
 			$frame,
 		];
+	}
+
+	/**
+	 * The horizontal card (signing_card_layout = horizontal):
+	 *
+	 *   handwriting        ISSUER
+	 *                      SIGNA HARDWARE CA
+	 *   NAME               TIMESTAMP
+	 *                      05 Oct 2026, 16:32:08 EAT
+	 *
+	 * ISSUER sits level with the top of the handwriting and TIMESTAMP level with
+	 * the name. With horizontal-top, TIMESTAMP sits straight under ISSUER, both
+	 * from the top of the right column. Labels are small spaced grey capitals
+	 * over darker values. The handwriting is fitted whole into the left column,
+	 * never cropped.
+	 *
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
+	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
+	 */
+	private static function horizontalCardLayout(array $card, float $width, float $height, bool $topAligned = false): array {
+		$pad = max(3.0, min($width, $height) * 0.07);
+		$gap = $pad * 1.4;
+		$split = $width * 0.56;
+		$leftRoom = max(1.0, $split - $pad - $gap / 2);
+		$rightX = $split + $gap / 2;
+		$rightRoom = max(1.0, $width - $rightX - $pad);
+
+		$name = mb_strtoupper(trim($card['name']));
+		$issuer = mb_strtoupper($card['issuer']);
+		$time = $card['time']->setTimezone(new \DateTimeZone('Africa/Nairobi'))->format('d M Y, H:i:s') . ' EAT';
+
+		// A long name takes two lines rather than shrinking out of proportion.
+		$nameCap = min($height * 0.13, 10.0);
+		$nameLines = [$name];
+		if ($leftRoom * 0.94 / max(0.01, self::helveticaWidth($name, true)) < $nameCap * 0.75 && preg_match('/\s/', $name)) {
+			$nameLines = self::balancedLines($name);
+		}
+		$widest = max(array_map(static fn (string $line): float => self::helveticaWidth($line, true), $nameLines));
+		$nameSize = max(3.0, min($nameCap, $leftRoom * 0.94 / max(0.01, $widest)));
+
+		// The right column has its own scale, so a long name never shrinks it.
+		$valueSize = min($height * 0.105, 8.5, $rightRoom / max(0.01, self::helveticaWidth($issuer, false), self::helveticaWidth($time, false)));
+		$labelSize = $valueSize * 0.62;
+		// The two blocks on the right stack in the height, with room between them.
+		$needed = 2 * ($labelSize * 1.3 + $valueSize * 1.05) + $valueSize * 0.5;
+		if ($needed > $height - 2 * $pad) {
+			$shrink = ($height - 2 * $pad) / $needed;
+			$valueSize *= $shrink;
+			$labelSize *= $shrink;
+		}
+		$valueSize = max(2.5, $valueSize);
+		$labelSize = max(2.0, $labelSize);
+		$tracking = $labelSize * 0.12;
+
+		$text = static function (string $font, float $size, string $colour, float $x, float $y, string $value, float $spacing = 0.0): string {
+			$encoded = (string)(iconv('UTF-8', 'Windows-1252//TRANSLIT', $value) ?: $value);
+			return sprintf("BT /%s %.2F Tf %.2F Tc %s rg %.2F %.2F Td (%s) Tj ET\n", $font, $size, $spacing, $colour, $x, $y, self::escapePdfText($encoded));
+		};
+		$label = '0.48 0.51 0.57';
+		$value = '0.20 0.22 0.27';
+
+		$nameY = $pad + $nameSize * 0.22;
+		$issuerLabelY = $height - $pad - $labelSize * 0.75;
+		$issuerY = $issuerLabelY - $labelSize * 0.45 - $valueSize * 0.9;
+		if ($topAligned) {
+			// horizontal-top: TIMESTAMP straight under ISSUER, both from the top.
+			$timeLabelY = $issuerY - $valueSize * 0.85 - $labelSize * 0.95;
+			$timeY = $timeLabelY - $labelSize * 0.45 - $valueSize * 0.9;
+		} else {
+			// TIMESTAMP shares the baseline of the name's last line.
+			$timeY = $nameY;
+			$timeLabelY = $timeY + $valueSize * 0.95 + $labelSize * 0.3;
+		}
+
+		$stream = '';
+		foreach (array_reverse($nameLines) as $i => $line) {
+			$stream .= $text('F2', $nameSize, '0.04 0.07 0.13', $pad, $nameY + $i * $nameSize * 1.12, $line);
+		}
+		$stream .= $text('F1', $labelSize, $label, $rightX, $issuerLabelY, 'ISSUER', $tracking)
+			. $text('F1', $valueSize, $value, $rightX, $issuerY, $issuer)
+			. $text('F1', $labelSize, $label, $rightX, $timeLabelY, 'TIMESTAMP', $tracking)
+			. $text('F1', $valueSize, $value, $rightX, $timeY, $time);
+
+		// The handwriting fills the left column above the name, whole: it is
+		// scaled to fit, never cropped, and sits on the name like a signed line.
+		$frame = null;
+		$areaBottom = $nameY + (count($nameLines) - 1) * $nameSize * 1.12 + $nameSize * 0.75 + $pad * 0.45;
+		$areaHeight = $height - $pad - $areaBottom;
+		$image = @getimagesize($card['handwriting']);
+		if ($areaHeight > 1 && is_array($image) && $image[0] > 0 && $image[1] > 0) {
+			$fit = min($leftRoom / $image[0], $areaHeight / $image[1]);
+			$frame = [$pad, $areaBottom, $image[0] * $fit, $image[1] * $fit];
+		}
+
+		$font = static fn (string $base): array => ['Type' => '/Font', 'Subtype' => '/Type1', 'BaseFont' => '/' . $base, 'Encoding' => '/WinAnsiEncoding'];
+		return [
+			new SignatureAppearanceXObjectDto(stream: $stream, resources: ['Font' => ['F1' => $font('Helvetica'), 'F2' => $font('Helvetica-Bold')]]),
+			$frame,
+		];
+	}
+
+	/**
+	 * $text in two lines as even as its words allow, in Helvetica Bold.
+	 *
+	 * @return list<string>
+	 */
+	private static function balancedLines(string $text): array {
+		$words = preg_split('/\s+/', trim($text)) ?: [$text];
+		$best = [$text];
+		$bestWidth = INF;
+		for ($i = 1; $i < count($words); $i++) {
+			$lines = [implode(' ', array_slice($words, 0, $i)), implode(' ', array_slice($words, $i))];
+			$widest = max(self::helveticaWidth($lines[0], true), self::helveticaWidth($lines[1], true));
+			if ($widest < $bestWidth) {
+				$best = $lines;
+				$bestWidth = $widest;
+			}
+		}
+		return $best;
 	}
 
 	/** Width of $text at size 1 in Helvetica (AFM widths; other characters count as a digit). */

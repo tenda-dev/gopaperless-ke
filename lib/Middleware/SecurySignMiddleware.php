@@ -86,8 +86,10 @@ class SecurySignMiddleware extends Middleware {
 
 	#[\Override]
 	public function afterController(Controller $controller, string $methodName, Response $response): Response {
+		// The terms and the data protection policy stay readable to someone who is
+		// still signing up: they are what the sign-up asks them to accept.
 		if (!$controller instanceof PageController || !$response instanceof TemplateResponse
-			|| $response->getTemplateName() !== 'main' || !$this->signa->applies()) {
+			|| $response->getTemplateName() !== 'main' || $methodName === 'legal' || !$this->signa->applies()) {
 			return $response;
 		}
 		try {

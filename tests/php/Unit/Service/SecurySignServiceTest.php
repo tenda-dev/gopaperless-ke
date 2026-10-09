@@ -57,15 +57,15 @@ final class SecurySignServiceTest extends TestCase {
 			return $fromOcc;
 		});
 		$system = $this->createMock(IConfig::class);
-		$system->method('getSystemValueString')->willReturn('https://gopaperless.mimi.ke');
+		$system->method('getSystemValueString')->willReturn('https://staging.tendaworld.com');
 		$service = new SecurySignService($appConfig, $system, $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
 
 		// Nobody ran occ: the system value, which an NC_tendaworld_url env var fills.
-		self::assertSame('https://gopaperless.mimi.ke/enrol', $service->onboardingUrl());
+		self::assertSame('https://staging.tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
 
 		// occ wins once it is set, so the image's env cannot override an admin.
-		$fromOcc = 'https://staging-gopaperless.mimi.ke';
-		self::assertSame('https://staging-gopaperless.mimi.ke/enrol', $service->onboardingUrl());
+		$fromOcc = 'https://tendaworld.com';
+		self::assertSame('https://tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
 	}
 
 	public function testThePasskeyFrameIsMimisPageForOurClient(): void {
@@ -123,8 +123,6 @@ final class SecurySignServiceTest extends TestCase {
 		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
 
 		self::assertTrue($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png]));
-		// MIMI passkeys only: a certificate still linked to a securysign.com passkey sends the user to MIMI.
-		self::assertFalse($this->readiness($certificate, ['certificateId' => 7, 'imagePngBase64' => $png], 'WebAuthn Authenticator'));
 		// A card left over from a previous certificate must not count as canonical.
 		self::assertFalse($this->readiness($certificate, ['certificateId' => 6, 'imagePngBase64' => $png]));
 		// No card captured yet: onboarding, not an outage.
@@ -138,14 +136,12 @@ final class SecurySignServiceTest extends TestCase {
 	 * @param array<string, mixed> $certificate
 	 * @param array<string, mixed>|null $signature
 	 */
-	private function readiness(array $certificate, ?array $signature, string $linkedPasskey = 'MIMI passkey'): bool {
+	private function readiness(array $certificate, ?array $signature): bool {
 		$service = $this->getMockBuilder(SecurySignService::class)
 			->disableOriginalConstructor()->onlyMethods(['request'])->getMock();
-		$service->method('request')->willReturnCallback(static fn (string $path) => match (true) {
-			str_starts_with($path, 'pki/') => $certificate,
-			$path === 'auth/credentials' => [['certificateId' => 7, 'authenticatorName' => $linkedPasskey]],
-			default => $signature,
-		});
+		$service->method('request')->willReturnCallback(
+			static fn (string $path) => str_starts_with($path, 'pki/') ? $certificate : $signature,
+		);
 		return $service->readiness(self::IDENTITY) !== null;
 	}
 
@@ -365,11 +361,9 @@ final class SecurySignServiceTest extends TestCase {
 			'issuer' => 'https://idp.test/realms/signa',
 			'accessToken' => 'at',
 		]);
-		$service->method('request')->willReturnCallback(static fn (string $path) => match ($path) {
-			'pki/certificates/me' => ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]],
-			'auth/credentials' => [['certificateId' => 7, 'authenticatorName' => 'MIMI passkey']],
-			default => ['certificateId' => 7, 'imagePngBase64' => $png],
-		});
+		$service->method('request')->willReturnCallback(static fn (string $path) => $path === 'pki/certificates/me'
+			? ['status' => 'active', 'credentialId' => 'c1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]]
+			: ['certificateId' => 7, 'imagePngBase64' => $png]);
 
 		$readiness = $service->readiness();
 

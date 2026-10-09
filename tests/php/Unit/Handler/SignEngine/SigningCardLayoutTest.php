@@ -9,7 +9,10 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Tests\Unit\Handler\SignEngine;
 
+use OCA\Libresign\DataObjects\VisibleElementAssoc;
+use OCA\Libresign\Db\FileElement;
 use OCA\Libresign\Handler\SignEngine\PhpNativeHandler;
+use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use PHPUnit\Framework\TestCase;
 
 final class SigningCardLayoutTest extends TestCase {
@@ -70,5 +73,91 @@ final class SigningCardLayoutTest extends TestCase {
 		preg_match('/\(JANE NJOROGE\)/', $xObject->stream);
 		preg_match_all('/([\d.]+) ([\d.]+) Td \(JANE NJOROGE\)/', $xObject->stream, $name);
 		self::assertGreaterThan((float)$name[2][0], $y, 'the handwriting sits above the name');
+	}
+
+	/** The horizontal A/B card: handwriting and name left, ISSUER over TIMESTAMP right. */
+	public function testTheHorizontalCardKeepsTheHandwritingWholeOnTheLeft(): void {
+		foreach ([[240.0, 70.0], [160.0, 50.0], [300.0, 110.0]] as [$width, $height]) {
+			$card = $this->card('Bartholomew Ochieng Wanjiku Kamau') + ['layout' => 'horizontal'];
+			[$xObject, $frame] = PhpNativeHandler::signingCardLayout($card, $width, $height);
+			[$x, $y, $w, $h] = $frame;
+
+			self::assertEqualsWithDelta(3.0, $w / $h, 0.01, 'the handwriting keeps its shape');
+			self::assertGreaterThanOrEqual(0.0, $x);
+			self::assertLessThanOrEqual($width * 0.56, $x + $w, 'the handwriting stays in the left column');
+			self::assertLessThanOrEqual($height, $y + $h, 'the handwriting is not cut off at the top');
+
+			preg_match_all('/([\d.]+) Tf ([\d.]+) Tc [\d. ]+ rg ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj/', $xObject->stream, $lines, PREG_SET_ORDER);
+			$at = [];
+			foreach ($lines as [, $size, , $lx, $ly, $text]) {
+				$at[$text] = [(float)$lx, (float)$ly, (float)$size];
+			}
+			$time = '05 Oct 2026, 14:32:08 EAT';
+			self::assertArrayHasKey('ISSUER', $at);
+			self::assertArrayHasKey('TIMESTAMP', $at);
+			self::assertArrayHasKey($time, $at);
+			self::assertGreaterThan($at['SIGNA HARDWARE CA'][1], $at['ISSUER'][1], 'label over value');
+			self::assertGreaterThan($at['TIMESTAMP'][1], $at['SIGNA HARDWARE CA'][1], 'ISSUER above TIMESTAMP');
+
+			// The long name may wrap; every word is there, in order, on the left.
+			$name = array_diff_key($at, array_flip(['ISSUER', 'SIGNA HARDWARE CA', 'TIMESTAMP', $time]));
+			uasort($name, static fn (array $a, array $b): int => $b[1] <=> $a[1]);
+			self::assertSame('BARTHOLOMEW OCHIENG WANJIKU KAMAU', implode(' ', array_keys($name)));
+			self::assertEqualsWithDelta(min(array_column($name, 1)), $at[$time][1], 0.01, 'TIMESTAMP level with the name');
+			foreach ($name as [$nx, $ny, $size]) {
+				self::assertLessThan($at['ISSUER'][0], $nx, 'name on the left');
+				self::assertLessThan($y, $ny, 'the name sits under the handwriting');
+				self::assertGreaterThanOrEqual($at[$time][2] * 0.6, $size, 'a long name stays legible next to the values');
+			}
+			self::assertGreaterThanOrEqual($at['SIGNA HARDWARE CA'][2] * 0.99, $at[$time][2], 'one scale on the right');
+		}
+	}
+
+	/** horizontal-top: TIMESTAMP straight under ISSUER, both at the top of the right column. */
+	public function testTheTopAlignedCardStacksIssuerAndTimestampAtTheTop(): void {
+		foreach ([[240.0, 70.0], [160.0, 50.0], [300.0, 110.0]] as [$width, $height]) {
+			$card = $this->card('Jane Wanjiku Njoroge') + ['layout' => 'horizontal-top'];
+			[$xObject, $frame] = PhpNativeHandler::signingCardLayout($card, $width, $height);
+			[$x, $y, $w, $h] = $frame;
+			self::assertEqualsWithDelta(3.0, $w / $h, 0.01, 'the handwriting keeps its shape');
+			self::assertLessThanOrEqual($height, $y + $h, 'the handwriting is not cut off');
+
+			preg_match_all('/([\d.]+) Tf ([\d.]+) Tc [\d. ]+ rg ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj/', $xObject->stream, $lines, PREG_SET_ORDER);
+			$at = [];
+			foreach ($lines as [, $size, , $lx, $ly, $text]) {
+				$at[$text] = [(float)$lx, (float)$ly, (float)$size];
+			}
+			$time = '05 Oct 2026, 14:32:08 EAT';
+			$order = ['ISSUER', 'SIGNA HARDWARE CA', 'TIMESTAMP', $time];
+			for ($i = 1; $i < count($order); $i++) {
+				self::assertGreaterThan($at[$order[$i]][1], $at[$order[$i - 1]][1], $order[$i - 1] . ' above ' . $order[$i]);
+				self::assertEqualsWithDelta($at['ISSUER'][0], $at[$order[$i]][0], 0.01, 'one left edge');
+			}
+			self::assertGreaterThan($at['JANE WANJIKU NJOROGE'][1], $at[$time][1], 'TIMESTAMP no longer level with the name');
+			self::assertGreaterThan(0.0, $at[$time][1] - $at[$time][2] * 0.25, 'TIMESTAMP stays inside the box');
+		}
+	}
+
+	/** Without SecurySign, GoPaperless fills the card: profile name, issuer, signing time, the box's own drawing. */
+	public function testTheBuiltInCardUsesTheProfileNameAndTheSigningTime(): void {
+		$time = new \DateTimeImmutable('2026-10-09T08:00:00Z');
+		$params = ['SignerName' => 'Jane Njoroge', 'SignerCommonName' => 'jane@example.com', 'IssuerCommonName' => 'GoPaperless CA'];
+		$box = [new VisibleElementAssoc(new FileElement(), $this->handwriting)];
+
+		self::assertSame(
+			['name' => 'Jane Njoroge', 'issuer' => 'GoPaperless CA', 'time' => $time, 'layout' => 'horizontal-top'],
+			Pkcs12Handler::builtInCard($box, $params, 'horizontal-top', $time),
+		);
+		self::assertSame('jane@example.com', Pkcs12Handler::builtInCard($box, ['SignerName' => ' '] + $params, 'stacked', $time)['name']);
+	}
+
+	public function testTheBuiltInCardStepsAsideWhenItHasNothingToDraw(): void {
+		$time = new \DateTimeImmutable();
+		$params = ['SignerName' => 'Jane Njoroge', 'IssuerCommonName' => 'GoPaperless CA'];
+		$box = [new VisibleElementAssoc(new FileElement(), $this->handwriting)];
+
+		self::assertNull(Pkcs12Handler::builtInCard([], $params, 'stacked', $time), 'no visible box');
+		self::assertNull(Pkcs12Handler::builtInCard([new VisibleElementAssoc(new FileElement())], $params, 'stacked', $time), 'nothing drawn');
+		self::assertNull(Pkcs12Handler::builtInCard($box, ['IssuerCommonName' => ''] + $params, 'stacked', $time), 'no issuer');
 	}
 }

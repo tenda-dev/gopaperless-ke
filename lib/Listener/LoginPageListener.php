@@ -37,18 +37,21 @@ class LoginPageListener implements IEventListener {
 
 	#[\Override]
 	public function handle(Event $event): void {
-		if (!($event instanceof BeforeLoginTemplateRenderedEvent)) {
-			return;
-		}
-
 		if (!$this->appConfig->getValueBool(Application::APP_ID, 'custom_login_page_enabled', true)) {
 			return;
 		}
 
+		// Nextcloud's footer reads "Terms & Conditions", not "Legal notice"
+		// (src/legal-links.ts). The login page has its own event, not this one.
+		Util::addScript(Application::APP_ID, 'libresign-legal-links');
+		if (!($event instanceof BeforeLoginTemplateRenderedEvent)) {
+			return;
+		}
+
 		// With a SecurySign provider set, its button is the only way in and reads
-		// "Sign in with MIMI". login.ts keeps the form at /login?direct=1 for a
-		// local admin account.
-		$this->initialState->provideInitialState('mimi_login_provider_id',
+		// "Log In", with Register under it. login.ts keeps the form at
+		// /login?direct=1 for a local admin account.
+		$this->initialState->provideInitialState('login_provider_id',
 			$this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');

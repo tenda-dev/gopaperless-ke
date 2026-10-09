@@ -89,6 +89,15 @@ final class SecurySignMiddlewareTest extends TestCase {
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
 	}
 
+	/** Someone still signing up can read the terms and the data protection policy. */
+	public function testTheLegalPagesAreNeverGated(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->expects(self::never())->method('isReady');
+		$page = $this->page();
+
+		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'legal', $page));
+	}
+
 	public function testAnOutageGoesUnnoticedOnAPageLoad(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('isReady')->willThrowException(new \RuntimeException('down', 503));

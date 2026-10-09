@@ -4,51 +4,57 @@
 -->
 
 <template>
-	<section class="pu__hero">
-		<div class="pu__intro">
+	<div class="pu__main">
+		<!-- Top left, just under the navbar. -->
+		<div class="pu__tagline">
 			<div class="pu__kicker">
 				Sign · Seal · Deliver
 			</div>
-			<h1 class="pu__title">
-				Simplify your paperwork.
-			</h1>
-			<p class="pu__lede">
-				Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
-			</p>
-			<div class="pu__actions">
-				<button type="button" class="pu__cta" @click="$emit('getStarted')">
-					<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
-					Upload your document
-				</button>
-				<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
+			<div class="pu__by">
+				<span>with</span>
+				<img :src="tendaLogo" alt="Tendaworld">
 			</div>
-			<p class="pu__trust">
-				<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiShieldCheckOutline" /></svg>
-				PDF · You'll sign in securely to continue
-			</p>
 		</div>
+		<section class="pu__hero">
+			<div class="pu__intro">
+				<h1 class="pu__title">
+					Simplify your paperwork.
+				</h1>
+				<p class="pu__lede">
+					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
+				</p>
+				<div class="pu__actions">
+					<button type="button" class="pu__cta" @click="$emit('getStarted')">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
+						Upload your document
+					</button>
+					<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
+				</div>
+			</div>
 
-		<div class="pu__stage">
-			<div class="pu__devices">
-				<img class="pu__laptop"
-					:src="laptop"
-					width="1350"
-					height="1080"
-					alt="The GoPaperless Request Signature screen on a laptop">
-				<img class="pu__phone"
-					:src="phone"
-					width="1350"
-					height="1080"
-					alt="The GoPaperless document action centre on a phone">
+			<div class="pu__stage">
+				<div class="pu__devices">
+					<img class="pu__laptop"
+						:src="laptop"
+						width="1350"
+						height="1080"
+						alt="The GoPaperless Request Signature screen on a laptop">
+					<img class="pu__phone"
+						:src="phone"
+						width="1350"
+						height="1080"
+						alt="The GoPaperless document action centre on a phone">
+				</div>
 			</div>
-		</div>
-	</section>
+		</section>
+	</div>
 </template>
 
 <script setup lang="ts">
-import { mdiShieldCheckOutline, mdiTrayArrowUp } from '@mdi/js'
+import { mdiTrayArrowUp } from '@mdi/js'
 
 import laptop from '../../img/landing-desktop.webp'
+import tendaLogo from '../../img/tenda-logo-green-updated.png'
 import phone from '../../img/landing-mobile.webp'
 
 defineOptions({ name: 'PublicUploadHero' })
@@ -59,6 +65,19 @@ defineEmits<{
 </script>
 
 <style scoped lang="scss">
+// The tagline row, then the hero in the height left, so the hero keeps a
+// definite height for the device stage's container query units.
+.pu__main {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	min-height: 0;
+}
+
+.pu__tagline {
+	padding-block-start: clamp(16px, 3vh, 28px);
+	padding-inline: var(--pu-pad);
+}
+
 .pu__hero {
 	flex: 1 1 auto;
 	display: flex;
@@ -74,23 +93,30 @@ defineEmits<{
 }
 
 .pu__kicker {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 22px;
+	margin-bottom: 6px;
 	font-size: 11px;
 	font-weight: 600;
 	line-height: 14px;
 	letter-spacing: .16em;
 	text-transform: uppercase;
 	color: var(--brand-strong);
+}
 
-	&::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--brand);
+.pu__by {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--slate);
+
+	// The PNG carries transparent padding: at 19px the wordmark itself is about
+	// 13px, and the negative margin lines its baseline up with "with".
+	img {
+		display: block;
+		width: auto;
+		height: 19px;
+		margin-top: -3px;
 	}
 }
 
@@ -172,23 +198,6 @@ defineEmits<{
 	}
 }
 
-.pu__trust {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	margin: 0;
-	font-size: 13px;
-	line-height: 16px;
-	color: var(--slate);
-
-	svg {
-		flex: none;
-		width: 15px;
-		height: 15px;
-		color: var(--brand-strong);
-	}
-}
-
 /* The stage takes its size from the hero, never from the images, so the devices
    scale to whatever the first screen leaves beside (or below) the copy. */
 .pu__stage {
@@ -244,10 +253,6 @@ defineEmits<{
 
 	.pu__intro {
 		padding-block: 0;
-	}
-
-	.pu__kicker {
-		margin-bottom: 16px;
 	}
 
 	.pu__title {

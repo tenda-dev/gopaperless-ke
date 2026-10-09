@@ -24,8 +24,8 @@
 				:placeholder="signingSecretSet ? t('libresign', 'Saved. Type a new one to replace it.') : ''" />
 			<NcTextField
 				v-model="tendaworldUrl"
-				:label="t('libresign', 'MIMI enrolment page for users who are not set up')"
-				placeholder="https://gopaperless.mimi.ke" />
+				:label="t('libresign', 'Enrolment site for users without a certificate')"
+				placeholder="https://tendaworld.com" />
 			<NcTextField
 				v-model="mimiClientId"
 				:label="t('libresign', 'MIMI client ID')"

@@ -7,7 +7,8 @@
 	<div class="pu" :class="{ 'pu--dark': theme === 'dark' }">
 		<div class="pu__fold">
 			<PublicUploadHeader :theme="theme" @sign-in="gateToLogin" @toggle-theme="toggleTheme" />
-			<PublicUploadHero @get-started="gateToLogin" />
+			<PublicUploadHero v-if="!document" @get-started="gateToLogin" />
+			<PublicLegal v-else :document="document" />
 		</div>
 		<PublicUploadEcosystem />
 	</div>
@@ -20,11 +21,17 @@ import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
 
+import PublicLegal from '../components/PublicLegal.vue'
 import PublicUploadEcosystem from '../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../components/PublicUploadHero.vue'
 
 defineOptions({ name: 'PublicUpload' })
+
+const props = defineProps<{
+	// Set on /p/terms and /p/privacy, which show that document instead of the hero.
+	document?: 'terms' | 'privacy'
+}>()
 
 type Theme = 'light' | 'dark'
 
@@ -68,7 +75,7 @@ function onSchemeChange(event: MediaQueryListEvent): void {
  * view via in-SPA navigation is sent to the authed upload/request view.
  */
 onMounted(() => {
-	if (getCurrentUser()) {
+	if (getCurrentUser() && !props.document) {
 		router.replace({ name: 'requestFiles' })
 	}
 })
