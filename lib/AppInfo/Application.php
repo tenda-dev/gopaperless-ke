@@ -101,6 +101,7 @@ class Application extends App implements IBootstrap {
 
 		// GoPaperless login card on Nextcloud's /login page, and its Register button
 		$context->registerEventListener(BeforeLoginTemplateRenderedEvent::class, LoginPageListener::class);
+		$context->registerEventListener(\OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent::class, LoginPageListener::class);
 		$context->registerAlternativeLoginProvider(\OCA\Libresign\Login\RegisterLoginProvider::class);
 
 		// Allow SecurySign's signing window in a frame

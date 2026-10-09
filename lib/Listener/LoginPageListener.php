@@ -37,11 +37,14 @@ class LoginPageListener implements IEventListener {
 
 	#[\Override]
 	public function handle(Event $event): void {
-		if (!($event instanceof BeforeLoginTemplateRenderedEvent)) {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'custom_login_page_enabled', true)) {
 			return;
 		}
 
-		if (!$this->appConfig->getValueBool(Application::APP_ID, 'custom_login_page_enabled', true)) {
+		// Nextcloud's footer reads "Terms & Conditions", not "Legal notice"
+		// (src/legal-links.ts). The login page has its own event, not this one.
+		Util::addScript(Application::APP_ID, 'libresign-legal-links');
+		if (!($event instanceof BeforeLoginTemplateRenderedEvent)) {
 			return;
 		}
 

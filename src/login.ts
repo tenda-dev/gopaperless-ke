@@ -79,14 +79,6 @@ if (loginProvider > 0 && new URLSearchParams(window.location.search).get('direct
 	new MutationObserver(markLogin).observe(body, { childList: true, subtree: true })
 }
 
-// Nextcloud labels the theming imprint link "Legal notice". On GoPaperless it is
-// the Terms & Conditions page (occ theming:config imprintUrl), and both read as
-// the landing's footer does.
-const legalLabels: Record<string, string> = { 'Legal notice': 'Terms & Conditions', 'Privacy policy': 'Privacy Policy' }
-for (const link of document.querySelectorAll<HTMLAnchorElement>('.footer__legal-links a.legal')) {
-	link.textContent = legalLabels[link.textContent?.trim() ?? ''] ?? link.textContent
-}
-
 const card = document.querySelector('.guest-box.login-box')
 if (card?.parentElement) {
 	const back = document.createElement('a')
