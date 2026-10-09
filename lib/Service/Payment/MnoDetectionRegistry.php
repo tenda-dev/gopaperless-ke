@@ -80,6 +80,7 @@ final class MnoDetectionRegistry {
 					'/^768/', '/^769/',
 					'/^79/',
 					'/^110/', '/^111/', '/^112/', '/^113/', '/^114/', '/^115/',
+					'/^116/', '/^117/', '/^118/', '/^119/',
 				],
 				'ambiguous' => false,
 				'note' => 'Safaricom M-Pesa. Allocation is clear; portability negligible.',

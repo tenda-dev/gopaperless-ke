@@ -26,7 +26,10 @@ use Psr\Log\LoggerInterface;
  *
  * Resolution precedence when v2 is enabled:
  *
- * active override > verified cache > valid cache > detection > fallback
+ * active override > cache > detection > fallback
+ *
+ * A forced refresh bypasses cache lookup while preserving the
+ * authoritative override.
  *
  * When v2 is disabled, the resolver falls back to detection only and never
  * reads or writes the override/cache tables.
@@ -37,7 +40,7 @@ class PhoneMnoResolver {
 	 * resolution logic changes. Cached rows stamped with a different value
 	 * are treated as a miss and re-resolved.
 	 */
-	public const RESOLVER_VERSION = '1';
+	public const RESOLVER_VERSION = '2';
 
 	public function __construct(
 		private PhoneMnoCacheService $cacheService,
@@ -67,7 +70,7 @@ class PhoneMnoResolver {
 		return '+' . $digits;
 	}
 
-	public function resolve(string $rawPhone): PhoneMnoResolutionDTO {
+	public function resolve(string $rawPhone, bool $forceRefresh = false): PhoneMnoResolutionDTO {
 		$key = self::normalizePhoneKey($rawPhone);
 
 		if ($key === null) {
@@ -112,24 +115,39 @@ class PhoneMnoResolver {
 			);
 		}
 
-		$cached = $this->cacheService->readFreshCache($key, self::RESOLVER_VERSION);
-		if ($cached !== null && $cached->getMno() !== null && $cached->getMno() !== '') {
-			return new PhoneMnoResolutionDTO(
-				identity: new PhoneMnoIdentityDTO(
-					valid: true,
-					e164: $base->e164,
-					national: $base->national,
-					region: $cached->getRegion(),
-					country: $cached->getCountry(),
-					mno: $cached->getMno(),
-					carrierHint: $cached->getCarrierHint(),
-					confidence: $this->confidenceFromString($cached->getConfidence()),
-					source: PhoneMnoResolutionSource::CACHE,
-					verified: $cached->getVerified(),
-				),
-				providerOverride: $this->providerFromCache($cached),
-				providerMnoKey: $cached->getProviderMnoKey(),
+		if (!$forceRefresh) {
+			$cached = $this->cacheService->readFreshCache(
+				$key,
+				self::RESOLVER_VERSION,
 			);
+
+			if ($cached !== null && $cached->getMno() !== null && $cached->getMno() !== '') {
+				$confidence = $this->confidenceFromString(
+					$cached->getConfidence()
+				);
+
+				if (
+					$cached->getVerified()
+					|| $confidence === ResolutionConfidence::HIGH
+				) {
+					return new PhoneMnoResolutionDTO(
+						identity: new PhoneMnoIdentityDTO(
+							valid: true,
+							e164: $base->e164,
+							national: $base->national,
+							region: $cached->getRegion(),
+							country: $cached->getCountry(),
+							mno: $cached->getMno(),
+							carrierHint: $cached->getCarrierHint(),
+							confidence: $confidence,
+							source: PhoneMnoResolutionSource::CACHE,
+							verified: $cached->getVerified(),
+						),
+						providerOverride: $this->providerFromCache($cached),
+						providerMnoKey: $cached->getProviderMnoKey(),
+					);
+				}
+			}
 		}
 
 		$detection = $this->mnoDetectionRegistry->resolve(
@@ -274,6 +292,9 @@ class PhoneMnoResolver {
 
 			return $dto->valid ? $dto : null;
 		} catch (\Throwable $e) {
+			$this->logger->error('[PhoneMnoResolver] Error occurred while resolving phone number', [
+				'exception' => $e,
+			]);
 			return null;
 		}
 	}

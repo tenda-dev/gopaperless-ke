@@ -21,4 +21,15 @@ final class PaymentCountryContextDTO {
 		public readonly bool $supportsDecimals,
 	) {
 	}
+
+	public function toArray(): array {
+
+		return [
+			'region' => $this->region,
+			'country' => $this->country,
+			'currency' => $this->currency,
+			'altCurrency' => $this->altCurrency,
+			'supportsDecimals' => $this->supportsDecimals,
+		];
+	}
 }

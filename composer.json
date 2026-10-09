@@ -64,7 +64,7 @@
 		"ext-simplexml": "*",
 		"ext-sockets": "*",
 		"cweagans/composer-patches": "^2.0",
-		"giggsey/libphonenumber-for-php": "^8.13",
+		"giggsey/libphonenumber-for-php": "^9.0",
 		"jeidison/signer-php": "^1.0",
 		"php-amqplib/php-amqplib": "^3.7",
 		"phpseclib/phpseclib": "^3.0",
