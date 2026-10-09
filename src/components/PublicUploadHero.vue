@@ -4,8 +4,9 @@
 -->
 
 <template>
-	<section class="pu__hero">
-		<div class="pu__intro">
+	<div class="pu__main">
+		<!-- Top left, just under the navbar. -->
+		<div class="pu__tagline">
 			<div class="pu__kicker">
 				Sign · Seal · Deliver
 			</div>
@@ -13,36 +14,40 @@
 				<span>with</span>
 				<img :src="tendaLogo" alt="Tendaworld">
 			</div>
-			<h1 class="pu__title">
-				Simplify your paperwork.
-			</h1>
-			<p class="pu__lede">
-				Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
-			</p>
-			<div class="pu__actions">
-				<button type="button" class="pu__cta" @click="$emit('getStarted')">
-					<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
-					Upload your document
-				</button>
-				<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
-			</div>
 		</div>
+		<section class="pu__hero">
+			<div class="pu__intro">
+				<h1 class="pu__title">
+					Simplify your paperwork.
+				</h1>
+				<p class="pu__lede">
+					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
+				</p>
+				<div class="pu__actions">
+					<button type="button" class="pu__cta" @click="$emit('getStarted')">
+						<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
+						Upload your document
+					</button>
+					<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
+				</div>
+			</div>
 
-		<div class="pu__stage">
-			<div class="pu__devices">
-				<img class="pu__laptop"
-					:src="laptop"
-					width="1350"
-					height="1080"
-					alt="The GoPaperless Request Signature screen on a laptop">
-				<img class="pu__phone"
-					:src="phone"
-					width="1350"
-					height="1080"
-					alt="The GoPaperless document action centre on a phone">
+			<div class="pu__stage">
+				<div class="pu__devices">
+					<img class="pu__laptop"
+						:src="laptop"
+						width="1350"
+						height="1080"
+						alt="The GoPaperless Request Signature screen on a laptop">
+					<img class="pu__phone"
+						:src="phone"
+						width="1350"
+						height="1080"
+						alt="The GoPaperless document action centre on a phone">
+				</div>
 			</div>
-		</div>
-	</section>
+		</section>
+	</div>
 </template>
 
 <script setup lang="ts">
@@ -60,6 +65,19 @@ defineEmits<{
 </script>
 
 <style scoped lang="scss">
+// The tagline row, then the hero in the height left, so the hero keeps a
+// definite height for the device stage's container query units.
+.pu__main {
+	display: grid;
+	grid-template-rows: auto 1fr;
+	min-height: 0;
+}
+
+.pu__tagline {
+	padding-block-start: clamp(16px, 3vh, 28px);
+	padding-inline: var(--pu-pad);
+}
+
 .pu__hero {
 	flex: 1 1 auto;
 	display: flex;
@@ -88,7 +106,6 @@ defineEmits<{
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	margin-bottom: 22px;
 	font-size: 12px;
 	line-height: 16px;
 	color: var(--slate);
@@ -236,10 +253,6 @@ defineEmits<{
 
 	.pu__intro {
 		padding-block: 0;
-	}
-
-	.pu__kicker {
-		margin-bottom: 16px;
 	}
 
 	.pu__title {
