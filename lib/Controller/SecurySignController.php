@@ -54,12 +54,8 @@ class SecurySignController extends Controller {
 				'state' => $state, 'sub' => $identity['sub'], 'uid' => $this->users->getUser()->getUID(),
 				'returnTo' => $path, 'expires' => time() + 3600,
 			]);
-			// MIMI sets up this account (it switches if signed in as another one,
-			// asking for this email), then sends the user to our return route.
 			return new RedirectResponse($this->signa->onboardingUrl() . '?' . http_build_query([
-				'sub' => $identity['sub'],
-				'email' => (string)$this->users->getUser()?->getEMailAddress(),
-				'returnTo' => $this->urls->linkToRouteAbsolute('libresign.securySign.complete', ['state' => $state]),
+				'state' => $state, 'subject' => $identity['sub'],
 			]));
 		} catch (\Throwable $e) {
 			return $this->bail($e, $path);
