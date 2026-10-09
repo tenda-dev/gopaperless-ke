@@ -46,9 +46,9 @@ class LoginPageListener implements IEventListener {
 		}
 
 		// With a SecurySign provider set, its button is the only way in and reads
-		// "Sign in with MIMI". login.ts keeps the form at /login?direct=1 for a
-		// local admin account.
-		$this->initialState->provideInitialState('mimi_login_provider_id',
+		// "Log In", with Register under it. login.ts keeps the form at
+		// /login?direct=1 for a local admin account.
+		$this->initialState->provideInitialState('login_provider_id',
 			$this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
