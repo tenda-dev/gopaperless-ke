@@ -1,3 +1,19 @@
+---
+title: "WhatsApp signing requests: the workflow"
+type: runbook
+status: draft
+domain: product
+layer: runbooks
+owner: engineering
+date: 2026-10-07
+commit: "849fbb412"
+---
+
+<!--
+ - SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+
 # WhatsApp signing requests: the workflow
 
 A sender asks an existing MIMI user to sign from the signer list, and the request
@@ -7,9 +23,8 @@ SecurySign's frame with their own certificate. A "Document signed" receipt then
 arrives in the same chat.
 
 Status on 2026-10-07: built and tested end to end on a local stack, not deployed.
-The code is on `feature/fast-signing` (this repo) and
-`feature/whatsapp-sign-requests` (`gopaperless`, the payments service and
-WhatsApp applet). The request template is approved by Meta.
+The code PRs are to follow on this repo and on `gopaperless` (the payments
+service and WhatsApp applet). The request template is approved by Meta.
 
 ## Who does what
 
@@ -34,7 +49,7 @@ ends on the same validation page.
 ```mermaid
 flowchart TD
     A["Signer opens the signing link<br/>from WhatsApp, email, Copy link or QR"] --> B{Signed in?}
-    B -- no --> C["Google sign-in through Keycloak<br/>the login page is skipped for MIMI accounts"]
+    B -- no --> C["Google sign-in through Keycloak<br/>the login page offers only Sign in with MIMI"]
     C --> D
     B -- yes --> D{Signed in as the signer?}
     D -- no --> E["This document was sent to a different account<br/>Switch account signs out and opens Google's account picker"]
@@ -134,4 +149,4 @@ sequenceDiagram
 | GoPaperless | The Email identification method enabled, so senders can find signers by email |
 
 Settings, templates and local testing in detail: `docs/runbooks/whatsapp-signing-requests.md`
-on `feature/fast-signing`.
+(lands with the code PRs).
