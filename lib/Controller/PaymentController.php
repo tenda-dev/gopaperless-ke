@@ -23,9 +23,13 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\Route;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\DB\Exception;
 
+use OCP\IAppConfig;
+use OCP\IGroupManager;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
@@ -42,6 +46,9 @@ class PaymentController extends AEnvironmentAwareController {
 		LoggerInterface $logger,
 		protected IUserSession $userSession,
 		SignRequestMapper $signRequestMapper,
+		private IAppConfig $appConfig,
+		private IGroupManager $groupManager,
+		private IL10N $l10n,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->paymentService = $paymentService;
@@ -545,11 +552,14 @@ class PaymentController extends AEnvironmentAwareController {
 	 * and diagnostics, allowing specific phone numbers to be evaluated without
 	 * initiating a payment.
 	 *
-	 * This uses the same routing path as payment initiation.
+	 * This uses the same routing path as payment initiation. Requires an
+	 * authenticated session (the caller's own diagnostics), is rate limited, and
+	 * only answers while phone MNO routing v2 is enabled. Admin-configured
+	 * provider overrides are omitted for non-admin callers.
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
-	#[PublicPage]
+	#[UserRateLimit(30, 60)]
 	#[CORS]
 	#[ApiRoute(
 		verb: 'POST',
@@ -562,6 +572,22 @@ class PaymentController extends AEnvironmentAwareController {
 		?string $providerHint = null,
 	): DataResponse {
 		try {
+			$user = $this->userSession->getUser();
+
+			if (!$user) {
+				return new DataResponse([
+					'success' => false,
+					'error' => 'Unauthorized',
+				], Http::STATUS_UNAUTHORIZED);
+			}
+
+			if (!$this->appConfig->getValueBool(Application::APP_ID, 'phone_mno_routing_v2_enabled', false)) {
+				return new DataResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Phone MNO routing v2 is disabled'),
+				], Http::STATUS_FORBIDDEN);
+			}
+
 			if (trim($phoneNumber) === '') {
 				return new DataResponse([
 					'success' => false,
@@ -586,9 +612,15 @@ class PaymentController extends AEnvironmentAwareController {
 				$providerEnum,
 			);
 
+			$data = $result->toArray();
+
+			if (!$this->groupManager->isAdmin($user->getUID())) {
+				unset($data['routing']['override'], $data['routing']['providerMnoKey']);
+			}
+
 			return new DataResponse([
 				'success' => true,
-				'result' => $result->toArray(),
+				'result' => $data,
 			], Http::STATUS_OK);
 		} catch (\Throwable $e) {
 			$this->logger->error('Failed to resolve mobile payment phone number', [
