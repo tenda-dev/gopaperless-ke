@@ -175,13 +175,18 @@ class PhpNativeHandler extends Pkcs12Handler {
 	): SignatureAppearanceDto {
 		$rect = [$llx, $pageHeight - $ury, $urx, $pageHeight - $lly];
 		if ($this->signingCard !== null) {
-			[$xObject, $frame] = self::signingCardLayout($this->signingCard, (float)$width, (float)$height);
+			// SecurySign's card brings its own handwriting; the built-in card uses the box's.
+			$card = $this->signingCard;
+			if ($card['handwriting'] === '') {
+				$card['handwriting'] = $signatureImagePath;
+			}
+			[$xObject, $frame] = self::signingCardLayout($card, (float)$width, (float)$height);
 			return new SignatureAppearanceDto(
 				backgroundImagePath: null,
 				rect: $rect,
 				page: $pageIndex,
 				xObject: $xObject,
-				signatureImagePath: $this->signingCard['handwriting'],
+				signatureImagePath: $card['handwriting'],
 				signatureImageFrame: $frame,
 			);
 		}

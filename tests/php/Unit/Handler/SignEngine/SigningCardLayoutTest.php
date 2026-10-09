@@ -9,7 +9,10 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Tests\Unit\Handler\SignEngine;
 
+use OCA\Libresign\DataObjects\VisibleElementAssoc;
+use OCA\Libresign\Db\FileElement;
 use OCA\Libresign\Handler\SignEngine\PhpNativeHandler;
+use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use PHPUnit\Framework\TestCase;
 
 final class SigningCardLayoutTest extends TestCase {
@@ -133,5 +136,28 @@ final class SigningCardLayoutTest extends TestCase {
 			self::assertGreaterThan($at['JANE WANJIKU NJOROGE'][1], $at[$time][1], 'TIMESTAMP no longer level with the name');
 			self::assertGreaterThan(0.0, $at[$time][1] - $at[$time][2] * 0.25, 'TIMESTAMP stays inside the box');
 		}
+	}
+
+	/** Without SecurySign, GoPaperless fills the card: profile name, issuer, signing time, the box's own drawing. */
+	public function testTheBuiltInCardUsesTheProfileNameAndTheSigningTime(): void {
+		$time = new \DateTimeImmutable('2026-10-09T08:00:00Z');
+		$params = ['SignerName' => 'Jane Njoroge', 'SignerCommonName' => 'jane@example.com', 'IssuerCommonName' => 'GoPaperless CA'];
+		$box = [new VisibleElementAssoc(new FileElement(), $this->handwriting)];
+
+		self::assertSame(
+			['name' => 'Jane Njoroge', 'issuer' => 'GoPaperless CA', 'time' => $time, 'handwriting' => '', 'layout' => 'horizontal-top'],
+			Pkcs12Handler::builtInCard($box, $params, 'horizontal-top', $time),
+		);
+		self::assertSame('jane@example.com', Pkcs12Handler::builtInCard($box, ['SignerName' => ' '] + $params, 'stacked', $time)['name']);
+	}
+
+	public function testTheBuiltInCardStepsAsideWhenItHasNothingToDraw(): void {
+		$time = new \DateTimeImmutable();
+		$params = ['SignerName' => 'Jane Njoroge', 'IssuerCommonName' => 'GoPaperless CA'];
+		$box = [new VisibleElementAssoc(new FileElement(), $this->handwriting)];
+
+		self::assertNull(Pkcs12Handler::builtInCard([], $params, 'stacked', $time), 'no visible box');
+		self::assertNull(Pkcs12Handler::builtInCard([new VisibleElementAssoc(new FileElement())], $params, 'stacked', $time), 'nothing drawn');
+		self::assertNull(Pkcs12Handler::builtInCard($box, ['IssuerCommonName' => ''] + $params, 'stacked', $time), 'no issuer');
 	}
 }

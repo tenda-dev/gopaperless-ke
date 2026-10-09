@@ -10,6 +10,7 @@ namespace OCA\Libresign\Handler\SignEngine;
 
 use DateTime;
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\DataObjects\VisibleElementAssoc;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Handler\CertificateEngine\CertificateEngineFactory;
 use OCA\Libresign\Handler\CertificateEngine\OrderCertificatesTrait;
@@ -18,6 +19,7 @@ use OCA\Libresign\Handler\FooterHandler;
 use OCA\Libresign\Service\CaIdentifierService;
 use OCA\Libresign\Service\Crl\CrlService;
 use OCA\Libresign\Service\FolderService;
+use OCA\Libresign\Service\SecurySignService;
 use OCP\Files\File;
 use OCP\IAppConfig;
 use OCP\IL10N;
@@ -512,22 +514,64 @@ class Pkcs12Handler extends SignEngineHandler {
 	public function sign(): File {
 		$this->beforeSign();
 
-		$handler = $this->getHandler();
+		$card = self::builtInCard(
+			$this->getVisibleElements(),
+			$this->getSignatureParams(),
+			\OCP\Server::get(SecurySignService::class)->signingCardLayout(),
+			new \DateTimeImmutable(),
+		);
+		// Only the PHP engine draws the card, so a card signs there whatever
+		// signature_engine says.
+		$handler = $card === null ? $this->getHandler() : \OCP\Server::get(PhpNativeHandler::class)->setSigningCard($card);
 		$this->logger->debug('Pkcs12Handler::sign() delegating to inner handler', [
 			'handlerClass' => $handler::class,
 			'visibleElementCount' => count($this->getVisibleElements()),
 			'signatureParamKeys' => array_keys($this->getSignatureParams()),
 		]);
 
-		$signedContent = $handler
-			->setCertificate($this->getCertificate())
-			->setInputFile($this->getInputFile())
-			->setPassword($this->getPassword())
-			->setSignatureParams($this->getSignatureParams())
-			->setVisibleElements($this->getVisibleElements())
-			->getSignedContent();
+		try {
+			$signedContent = $handler
+				->setCertificate($this->getCertificate())
+				->setInputFile($this->getInputFile())
+				->setPassword($this->getPassword())
+				->setSignatureParams($this->getSignatureParams())
+				->setVisibleElements($this->getVisibleElements())
+				->getSignedContent();
+		} finally {
+			if ($card !== null) {
+				$handler->setSigningCard(null);
+			}
+		}
 		$this->getInputFile()->putContent($signedContent);
 		return $this->getInputFile();
+	}
+
+	/**
+	 * The signing card for a signature made with GoPaperless's own certificate,
+	 * the same card the editor previews: each box's drawn signature, the
+	 * signer's profile name, the certificate's issuer and the signing time.
+	 * Null keeps LibreSign's own appearance: no visible box, a box without a
+	 * drawn signature, or no name or issuer to show.
+	 *
+	 * @param VisibleElementAssoc[] $elements
+	 * @return array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string, layout: string}|null
+	 */
+	public static function builtInCard(array $elements, array $params, string $layout, \DateTimeImmutable $time): ?array {
+		if ($elements === []) {
+			return null;
+		}
+		foreach ($elements as $element) {
+			if (!is_file($element->getTempFile())) {
+				return null;
+			}
+		}
+		$text = static fn (string $key): string => is_string($params[$key] ?? null) ? trim($params[$key]) : '';
+		$name = $text('SignerName') !== '' ? $text('SignerName') : $text('SignerCommonName');
+		if ($name === '' || $text('IssuerCommonName') === '') {
+			return null;
+		}
+		// No handwriting here: each box draws the signature drawn for it.
+		return ['name' => $name, 'issuer' => $text('IssuerCommonName'), 'time' => $time, 'handwriting' => '', 'layout' => $layout];
 	}
 
 	public function isHandlerOk(): bool {

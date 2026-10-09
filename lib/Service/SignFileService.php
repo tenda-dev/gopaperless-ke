@@ -999,6 +999,10 @@ class SignFileService {
 		$signatureParams = $this->buildBaseSignatureParams($certificateData);
 		$signatureParams = $this->addEmailToSignatureParams($signatureParams, $certificateData);
 		$signatureParams = $this->addMetadataToSignatureParams($signatureParams);
+		// The name on the signing card: the signer's profile name as it is now.
+		$signatureParams['SignerName'] = $this->user instanceof IUser
+			? $this->user->getDisplayName()
+			: (string)$this->signRequest?->getDisplayName();
 		return $signatureParams;
 	}
 
