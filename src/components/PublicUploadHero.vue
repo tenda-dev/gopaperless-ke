@@ -75,9 +75,6 @@ defineEmits<{
 }
 
 .pu__kicker {
-	display: flex;
-	align-items: center;
-	gap: 8px;
 	margin-bottom: 6px;
 	font-size: 11px;
 	font-weight: 600;
@@ -85,14 +82,6 @@ defineEmits<{
 	letter-spacing: .16em;
 	text-transform: uppercase;
 	color: var(--brand-strong);
-
-	&::before {
-		content: '';
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: var(--brand);
-	}
 }
 
 .pu__by {
@@ -100,8 +89,6 @@ defineEmits<{
 	align-items: center;
 	gap: 6px;
 	margin-bottom: 22px;
-	// Lines "with" up under the kicker's text, past its dot.
-	padding-inline-start: 14px;
 	font-size: 12px;
 	line-height: 16px;
 	color: var(--slate);
