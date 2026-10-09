@@ -9,6 +9,10 @@
 			<div class="pu__kicker">
 				Sign · Seal · Deliver
 			</div>
+			<div class="pu__by">
+				<span>with</span>
+				<img :src="tendaLogo" alt="Tendaworld">
+			</div>
 			<h1 class="pu__title">
 				Simplify your paperwork.
 			</h1>
@@ -45,6 +49,7 @@
 import { mdiTrayArrowUp } from '@mdi/js'
 
 import laptop from '../../img/landing-desktop.webp'
+import tendaLogo from '../../img/tenda-logo-green-updated.png'
 import phone from '../../img/landing-mobile.webp'
 
 defineOptions({ name: 'PublicUploadHero' })
@@ -73,7 +78,7 @@ defineEmits<{
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin-bottom: 22px;
+	margin-bottom: 6px;
 	font-size: 11px;
 	font-weight: 600;
 	line-height: 14px;
@@ -87,6 +92,27 @@ defineEmits<{
 		height: 6px;
 		border-radius: 50%;
 		background: var(--brand);
+	}
+}
+
+.pu__by {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 22px;
+	// Lines "with" up under the kicker's text, past its dot.
+	padding-inline-start: 14px;
+	font-size: 12px;
+	line-height: 16px;
+	color: var(--slate);
+
+	// The PNG carries transparent padding: at 19px the wordmark itself is about
+	// 13px, and the negative margin lines its baseline up with "with".
+	img {
+		display: block;
+		width: auto;
+		height: 19px;
+		margin-top: -3px;
 	}
 }
 
