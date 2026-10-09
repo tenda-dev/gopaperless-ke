@@ -16,7 +16,6 @@ use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UseSession;
-use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\IRequest;
 use OCP\ISession;
@@ -94,33 +93,6 @@ class SecurySignController extends Controller {
 		} catch (\Throwable $e) {
 			return $this->bail($e, $path);
 		}
-	}
-
-	/**
-	 * The signed-in user's signing card for the editor's preview: handwriting,
-	 * verified name and issuer. The time is set when they sign. Null when
-	 * SecurySign has no card for them, so the preview shows placeholders.
-	 */
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'GET', url: '/securysign/card')]
-	public function card(): DataResponse {
-		$context = null;
-		if ($this->signa->applies()) {
-			try {
-				$context = $this->signa->signingContext();
-			} catch (\Throwable $e) {
-				$this->logger->info('No signing card for the preview', ['exception' => $e]);
-			}
-		}
-		return new DataResponse([
-			'card' => $context === null ? null : [
-				'name' => $context['name'],
-				'issuer' => $context['issuer'],
-				'handwriting' => 'data:image/png;base64,' . base64_encode($context['handwriting']),
-			],
-			'layout' => $this->signa->signingCardLayout(),
-		]);
 	}
 
 	/**

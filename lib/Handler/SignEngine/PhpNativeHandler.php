@@ -69,11 +69,11 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * Draw SecurySign's signing card instead of the configured appearance: the
-	 * handwriting, the verified ID name, the certificate's issuer and the
+	 * Draw GoPaperless's signing card instead of the configured appearance: the
+	 * box's drawn signature, the signer's name, the certificate's issuer and the
 	 * signing time. Null goes back to the configured appearance.
 	 *
-	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string}|null $card
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, layout: string}|null $card
 	 */
 	public function setSigningCard(?array $card): self {
 		$this->signingCard = $card;
@@ -175,11 +175,8 @@ class PhpNativeHandler extends Pkcs12Handler {
 	): SignatureAppearanceDto {
 		$rect = [$llx, $pageHeight - $ury, $urx, $pageHeight - $lly];
 		if ($this->signingCard !== null) {
-			// SecurySign's card brings its own handwriting; the built-in card uses the box's.
-			$card = $this->signingCard;
-			if ($card['handwriting'] === '') {
-				$card['handwriting'] = $signatureImagePath;
-			}
+			// The handwriting is the signature drawn for this box.
+			$card = ['handwriting' => $signatureImagePath] + $this->signingCard;
 			[$xObject, $frame] = self::signingCardLayout($card, (float)$width, (float)$height);
 			return new SignatureAppearanceDto(
 				backgroundImagePath: null,
@@ -527,7 +524,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * SecurySign's signing card in a box of $width x $height points: the
+	 * The stacked signing card in a box of $width x $height points: the
 	 * handwriting on top at its own proportions, then the name (large, bold),
 	 * "ISSUER: ..." and the time in EAT, each centred, with no border. Text
 	 * shrinks to fit a long name rather than being clipped.
@@ -589,7 +586,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 	}
 
 	/**
-	 * The horizontal card (A/B test, signing_card_layout = horizontal):
+	 * The horizontal card (signing_card_layout = horizontal):
 	 *
 	 *   handwriting        ISSUER
 	 *                      SIGNA HARDWARE CA

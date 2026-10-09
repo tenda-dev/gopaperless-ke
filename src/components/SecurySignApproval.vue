@@ -4,22 +4,24 @@
 -->
 
 <template>
-	<!-- SecurySign's frame is the whole window: it carries its own name,
-		 document, button and Cancel, so nothing of ours goes around it. -->
-	<NcModal size="small" @close="emit('cancel')">
+	<NcDialog :name="t('libresign', 'Approve with SecurySign')" size="normal"
+		dialog-classes="libresign-dialog" @closing="emit('cancel')">
+		<p class="securysign-approval__hint">
+			{{ t('libresign', 'Your passkey approves this signature. The document is signed with your SecurySign certificate.') }}
+		</p>
 		<iframe ref="frame"
 			:src="src"
-			:title="t('libresign', 'SecurySign signing')"
+			title="SecurySign signing"
 			class="securysign-approval__frame"
 			:style="{ height: `${height}px` }"
 			allow="publickey-credentials-get *"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-	</NcModal>
+	</NcDialog>
 </template>
 
 <script setup lang="ts">
 import { t } from '@nextcloud/l10n'
-import NcModal from '@nextcloud/vue/components/NcModal'
+import NcDialog from '@nextcloud/vue/components/NcDialog'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export type SecurySignApprovalRequest = {
@@ -33,7 +35,7 @@ const props = defineProps<{ approval: SecurySignApprovalRequest }>()
 const emit = defineEmits(['approved', 'cancel'])
 
 const frame = ref<HTMLIFrameElement | null>(null)
-const height = ref(600)
+const height = ref(420)
 let started = false
 
 // The contract is SecurySign's "Sign in the browser" guide: the frame runs the
@@ -81,19 +83,12 @@ onBeforeUnmount(() => window.removeEventListener('message', onMessage))
 </script>
 
 <style scoped lang="scss">
+.securysign-approval__hint {
+	margin-bottom: 12px;
+}
+
 .securysign-approval__frame {
-	display: block;
 	width: 100%;
 	border: 0;
-}
-</style>
-
-<style lang="scss">
-// The modal is exactly as wide as SecurySign's card (440px), so no strip of
-// white shows beside it. Unscoped: NcModal is teleported out of this component.
-// The doubled class outranks NcModal's `.modal-wrapper--small > .modal-container`.
-.modal-wrapper .modal-container.modal-container:has(.securysign-approval__frame) {
-	width: 440px;
-	max-width: 100%;
 }
 </style>

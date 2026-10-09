@@ -18,9 +18,7 @@ use OCP\Files\File;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\IRequest;
-use OCP\ITempManager;
 use OCP\IUserSession;
-use Psr\Log\LoggerInterface;
 use SignerPHP\Infrastructure\Native\Contract\Pkcs7SignerInterface;
 use SignerPHP\Infrastructure\PdfCore\Buffer;
 use SignerPHP\Infrastructure\PdfCore\Signature;
@@ -88,27 +86,16 @@ class SecurySignHandler extends Pkcs12Handler {
 
 	private function prepare(): never {
 		$pem = $this->getCertificate();
-		$card = $this->signingCard($pem);
-		// The card's time is the one signing time: on the card and in the CMS.
-		// It is never later than our own clock: LibreSign refuses a signature
-		// from the future, and SecurySign's clock can run ahead of ours.
-		// ponytail: the PDF's own /M date is written by signer-php from the
-		// server clock, a second or so later; it has no option to take ours.
-		$time = self::signingTime($card['time'] ?? null, time());
-		if ($card !== null) {
-			$card['time'] = new \DateTimeImmutable('@' . $time);
-		}
-		$capture = new class($pem, $time) implements Pkcs7SignerInterface {
+		$capture = new class($pem) implements Pkcs7SignerInterface {
 			public string $attributes = '';
 
 			public function __construct(
 				private string $pem,
-				private int $time,
 			) {
 			}
 
 			public function sign(Signature $signatureHandler, Buffer $signableDocument): string {
-				$this->attributes = SecurySignHandler::signedAttributes(hash('sha256', $signableDocument->raw(), true), $this->pem, $this->time);
+				$this->attributes = SecurySignHandler::signedAttributes(hash('sha256', $signableDocument->raw(), true), $this->pem, time());
 				return str_repeat('0', Signature::SIGNATURE_MAX_LENGTH);
 			}
 		};
@@ -116,7 +103,6 @@ class SecurySignHandler extends Pkcs12Handler {
 		$native = \OCP\Server::get(PhpNativeHandler::class);
 		try {
 			$prepared = $native->setExternalSigner($capture)
-				->setSigningCard($card)
 				->setCertificate($pem)
 				->setPassword('')
 				->setInputFile($this->getInputFile())
@@ -126,7 +112,7 @@ class SecurySignHandler extends Pkcs12Handler {
 				->setVisibleElements(array_slice($this->getVisibleElements(), 0, 1))
 				->getSignedContent();
 		} finally {
-			$native->setExternalSigner(null)->setSigningCard(null);
+			$native->setExternalSigner(null);
 		}
 
 		$securySign = \OCP\Server::get(SecurySignService::class);
@@ -149,40 +135,6 @@ class SecurySignHandler extends Pkcs12Handler {
 		$folder->newFile($key . '.attrs', $capture->attributes);
 
 		throw new SecurySignApprovalRequired($approval);
-	}
-
-	/** SecurySign's time when it has one, but never later than ours. */
-	public static function signingTime(?\DateTimeImmutable $securySign, int $now): int {
-		return $securySign === null ? $now : min($securySign->getTimestamp(), $now);
-	}
-
-	/**
-	 * The signing card, when SecurySign has one for the certificate about to
-	 * sign and it is still fresh. Anything else signs with the usual appearance:
-	 * a card naming another certificate would put the wrong name on the page.
-	 *
-	 * @return array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string}|null
-	 */
-	private function signingCard(string $pem): ?array {
-		$logger = \OCP\Server::get(LoggerInterface::class);
-		try {
-			$context = \OCP\Server::get(SecurySignService::class)->signingContext();
-		} catch (\Exception $e) {
-			$logger->warning('SecurySign signing card unavailable; using the usual appearance', ['exception' => $e]);
-			return null;
-		}
-		if ($context === null) {
-			return null;
-		}
-		if (!hash_equals((string)openssl_x509_fingerprint($pem, 'sha256'), $context['certificateSha256'])
-			|| $context['expiresAt'] <= new \DateTimeImmutable()) {
-			$logger->warning('SecurySign signing card is for another certificate or has expired; using the usual appearance');
-			return null;
-		}
-		$path = \OCP\Server::get(ITempManager::class)->getTemporaryFile('.png');
-		file_put_contents($path, $context['handwriting']);
-		return ['name' => $context['name'], 'issuer' => $context['issuer'], 'time' => $context['time'], 'handwriting' => $path,
-			'layout' => \OCP\Server::get(SecurySignService::class)->signingCardLayout()];
 	}
 
 	private function finalize(string $signature): string {

@@ -145,7 +145,7 @@ final class SigningCardLayoutTest extends TestCase {
 		$box = [new VisibleElementAssoc(new FileElement(), $this->handwriting)];
 
 		self::assertSame(
-			['name' => 'Jane Njoroge', 'issuer' => 'GoPaperless CA', 'time' => $time, 'handwriting' => '', 'layout' => 'horizontal-top'],
+			['name' => 'Jane Njoroge', 'issuer' => 'GoPaperless CA', 'time' => $time, 'layout' => 'horizontal-top'],
 			Pkcs12Handler::builtInCard($box, $params, 'horizontal-top', $time),
 		);
 		self::assertSame('jane@example.com', Pkcs12Handler::builtInCard($box, ['SignerName' => ' '] + $params, 'stacked', $time)['name']);

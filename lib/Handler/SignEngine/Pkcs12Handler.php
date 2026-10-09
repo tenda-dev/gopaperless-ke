@@ -19,7 +19,6 @@ use OCA\Libresign\Handler\FooterHandler;
 use OCA\Libresign\Service\CaIdentifierService;
 use OCA\Libresign\Service\Crl\CrlService;
 use OCA\Libresign\Service\FolderService;
-use OCA\Libresign\Service\SecurySignService;
 use OCP\Files\File;
 use OCP\IAppConfig;
 use OCP\IL10N;
@@ -517,7 +516,9 @@ class Pkcs12Handler extends SignEngineHandler {
 		$card = self::builtInCard(
 			$this->getVisibleElements(),
 			$this->getSignatureParams(),
-			\OCP\Server::get(SecurySignService::class)->signingCardLayout(),
+			// horizontal-top unless occ config:app:set libresign signing_card_layout
+			// says stacked or horizontal.
+			$this->appConfig->getValueString(Application::APP_ID, 'signing_card_layout', 'horizontal-top'),
 			new \DateTimeImmutable(),
 		);
 		// Only the PHP engine draws the card, so a card signs there whatever
@@ -554,7 +555,7 @@ class Pkcs12Handler extends SignEngineHandler {
 	 * drawn signature, or no name or issuer to show.
 	 *
 	 * @param VisibleElementAssoc[] $elements
-	 * @return array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string, layout: string}|null
+	 * @return array{name: string, issuer: string, time: \DateTimeImmutable, layout: string}|null
 	 */
 	public static function builtInCard(array $elements, array $params, string $layout, \DateTimeImmutable $time): ?array {
 		if ($elements === []) {
@@ -571,7 +572,7 @@ class Pkcs12Handler extends SignEngineHandler {
 			return null;
 		}
 		// No handwriting here: each box draws the signature drawn for it.
-		return ['name' => $name, 'issuer' => $text('IssuerCommonName'), 'time' => $time, 'handwriting' => '', 'layout' => $layout];
+		return ['name' => $name, 'issuer' => $text('IssuerCommonName'), 'time' => $time, 'layout' => $layout];
 	}
 
 	public function isHandlerOk(): bool {
