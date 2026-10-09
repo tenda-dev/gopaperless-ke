@@ -68,6 +68,22 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertSame('https://staging-gopaperless.mimi.ke/enrol', $service->onboardingUrl());
 	}
 
+	public function testThePasskeyFrameIsMimisPageForOurClient(): void {
+		$appConfig = $this->createMock(IAppConfig::class);
+		$appConfig->method('getValueString')->willReturnCallback(
+			static fn (string $app, string $key, string $default = '') => $key === 'tendaworld_url' ? 'https://localhost:3000' : $default,
+		);
+		$service = new SecurySignService($appConfig, $this->createMock(IConfig::class), $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+
+		self::assertSame([
+			'origin' => 'https://localhost:3000',
+			'url' => 'https://localhost:3000/passkey/frame?client_id=gopaperless&lang=en',
+		], $service->passkeyFrame());
+		// Nextcloud names regions too; MIMI only needs the language.
+		self::assertStringEndsWith('&lang=pt', $service->passkeyFrame('pt_BR')['url']);
+		self::assertStringEndsWith('&lang=sw', $service->passkeyFrame('sw')['url']);
+	}
+
 	public function testMissingCertificateIsDifferentFromAnOutage(): void {
 		$session = $this->createMock(ISession::class);
 		$session->method('get')->willReturn(null);
@@ -178,6 +194,30 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertSame(['LOA-4', 'signer@example.com'], [self::$posts[0]['json']['loa'], self::$posts[0]['json']['email']]);
 		self::assertSame('LOA-2', self::$posts[1]['json']['loa']);
 		self::assertArrayNotHasKey('email', self::$posts[1]['json']);
+	}
+
+	public function testTheSigningCardIsReadOrLeftOutWhenSecurySignHasNone(): void {
+		$png = "\x89PNG\r\n\x1a\nrest";
+		$context = json_encode([
+			'certificateId' => 7,
+			'certificateSha256' => 'AB:CD',
+			'verifiedFullName' => 'JANE WANJIKU NJOROGE',
+			'nameSource' => 'verified_identity_document',
+			'issuerName' => 'Signa Hardware CA',
+			'handwritingPngBase64' => base64_encode($png),
+			'signingTime' => '2026-10-05T11:32:08Z',
+			'signingTimeMeaning' => 'preparation',
+			'expiresAt' => '2026-10-05T11:37:08Z',
+		]);
+		$card = self::serviceAnswering(200, $context)->signingContext();
+		self::assertSame(['abcd', 'JANE WANJIKU NJOROGE', 'Signa Hardware CA', $png], [$card['certificateSha256'], $card['name'], $card['issuer'], $card['handwriting']]);
+		self::assertSame('2026-10-05T11:32:08+00:00', $card['time']->format(\DateTimeInterface::ATOM));
+
+		// No verified identity, a profile-name certificate, the feature off: the usual appearance.
+		foreach ([409, 403, 429] as $status) {
+			self::assertNull(self::serviceAnswering($status, '{"error":"Renew the certificate"}')->signingContext());
+		}
+		self::assertNull(self::serviceAnswering(200, str_replace(base64_encode($png), base64_encode('GIF89a'), $context))->signingContext());
 	}
 
 	public function testAnOutageSkipsSecurySignForAMinute(): void {

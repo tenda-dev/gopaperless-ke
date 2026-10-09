@@ -12,15 +12,21 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\UseSession;
+use OCP\AppFramework\Http\ContentSecurityPolicy;
+use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
+use OCP\AppFramework\Http\TemplateResponse;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 class SecurySignController extends Controller {
@@ -31,6 +37,7 @@ class SecurySignController extends Controller {
 		private IUserSession $users,
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
+		private IL10N $l10n,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -93,6 +100,103 @@ class SecurySignController extends Controller {
 		} catch (\Throwable $e) {
 			return $this->bail($e, $path);
 		}
+	}
+
+	/**
+	 * After sign-in the user confirms it is them with their MIMI passkey, in
+	 * MIMI's own page framed on this one.
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/securysign/passkey')]
+	public function passkey(?string $returnTo = null): RedirectResponse|TemplateResponse {
+		$path = SecurySignService::returnPath($returnTo);
+		if (!$this->signa->passkeyPending()) {
+			return new RedirectResponse($path);
+		}
+		try {
+			$frame = $this->signa->passkeyFrame($this->l10n->getLanguageCode());
+		} catch (\RuntimeException $e) {
+			$this->signa->skipPasskey($e->getMessage());
+			return new RedirectResponse($path);
+		}
+		Util::addStyle(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-passkey');
+		$response = new TemplateResponse(Application::APP_ID, 'mimi_passkey', [
+			'returnTo' => $path,
+			'frameUrl' => $frame['url'],
+			'logoutUrl' => $this->urls->linkToRoute('core.login.logout', ['requesttoken' => Util::callRegister()]),
+		], TemplateResponse::RENDER_AS_GUEST);
+		$policy = new ContentSecurityPolicy();
+		$policy->addAllowedFrameDomain($frame['origin']);
+		$response->setContentSecurityPolicy($policy);
+		$response->cacheFor(0);
+		return $response;
+	}
+
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'POST', url: '/securysign/passkey/options')]
+	public function passkeyOptions(): DataResponse {
+		try {
+			$options = $this->signa->passkeyOptions();
+		} catch (\Throwable $e) {
+			if (in_array($e->getCode(), [401, 403], true)) {
+				$this->users->logout();
+				return new DataResponse(['redirect' => $this->urls->linkToRoute('core.login.showLoginForm')]);
+			}
+			$this->signa->skipPasskey($e->getMessage());
+			return new DataResponse(['skip' => true]);
+		}
+		if ($options === null) {
+			// No MIMI passkey yet: setting one up is the onboarding the gate runs.
+			return new DataResponse(['redirect' => $this->urls->linkToRoute('libresign.securySign.onboard')]);
+		}
+		return new DataResponse(['options' => $options]);
+	}
+
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'POST', url: '/securysign/passkey/verify')]
+	public function passkeyVerify(array $response = []): DataResponse {
+		try {
+			if ($this->signa->verifyPasskey($response)) {
+				return new DataResponse(['verified' => true]);
+			}
+		} catch (\Throwable $e) {
+			$this->signa->skipPasskey($e->getMessage());
+			return new DataResponse(['verified' => true]);
+		}
+		return new DataResponse([
+			'verified' => false,
+			'error' => 'That passkey could not be confirmed. Use the MIMI passkey for this account and try again.',
+		], Http::STATUS_FORBIDDEN);
+	}
+
+	/**
+	 * The signed-in user's signing card for the editor's preview: handwriting,
+	 * verified name and issuer. The time is set when they sign. Null when
+	 * SecurySign has no card for them, so the preview shows placeholders.
+	 */
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/securysign/card')]
+	public function card(): DataResponse {
+		$context = null;
+		if ($this->signa->applies()) {
+			try {
+				$context = $this->signa->signingContext();
+			} catch (\Throwable $e) {
+				$this->logger->info('No signing card for the preview', ['exception' => $e]);
+			}
+		}
+		return new DataResponse(['card' => $context === null ? null : [
+			'name' => $context['name'],
+			'issuer' => $context['issuer'],
+			'handwriting' => 'data:image/png;base64,' . base64_encode($context['handwriting']),
+		]]);
 	}
 
 	/**

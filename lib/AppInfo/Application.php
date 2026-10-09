@@ -40,9 +40,11 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\Http\Events\BeforeLoginTemplateRenderedEvent;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
+use OCP\IAppConfig;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
+use Psr\Log\LoggerInterface;
 
 /**
  * @codeCoverageIgnore
@@ -58,6 +60,24 @@ class Application extends App implements IBootstrap {
 	public function boot(IBootContext $context): void {
 		// gopaperless assets are loaded per-page via templates/controllers,
 		// not globally, to avoid resource-loader 404s on non-LibreSign pages.
+
+		// Browsers keep our scripts for six months, and their URLs only change
+		// with ?v=, which ends in the theming cachebuster. Bumping it once per new
+		// build makes every browser load the new scripts after a deploy.
+		// ponytail: a build is noticed by the main bundle's mtime.
+		$context->injectFn(static function (IAppConfig $appConfig, LoggerInterface $logger): void {
+			try {
+				$build = (string)@filemtime(__DIR__ . '/../../js/libresign-main.mjs');
+				if ($build === '' || $build === $appConfig->getValueString(self::APP_ID, 'js_build')) {
+					return;
+				}
+				$appConfig->setValueInt('theming', 'cachebuster', $appConfig->getValueInt('theming', 'cachebuster') + 1);
+				$appConfig->setValueString(self::APP_ID, 'js_build', $build);
+			} catch (\Throwable $e) {
+				// Stale browser caches are not worth a LibreSign that cannot boot.
+				$logger->warning('Could not refresh the asset cachebuster', ['exception' => $e]);
+			}
+		});
 	}
 
 	#[\Override]

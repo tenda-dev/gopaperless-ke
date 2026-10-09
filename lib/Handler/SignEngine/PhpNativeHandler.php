@@ -37,6 +37,8 @@ use SignerPHP\Infrastructure\Native\Service\XrefContentResolver;
 
 class PhpNativeHandler extends Pkcs12Handler {
 	private ?Pkcs7SignerInterface $externalSigner = null;
+	/** @var array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string}|null */
+	private ?array $signingCard = null;
 
 	public function __construct(
 		private IAppConfig $appConfig,
@@ -63,6 +65,18 @@ class PhpNativeHandler extends Pkcs12Handler {
 	 */
 	public function setExternalSigner(?Pkcs7SignerInterface $signer): self {
 		$this->externalSigner = $signer;
+		return $this;
+	}
+
+	/**
+	 * Draw SecurySign's signing card instead of the configured appearance: the
+	 * handwriting, the verified ID name, the certificate's issuer and the
+	 * signing time. Null goes back to the configured appearance.
+	 *
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string}|null $card
+	 */
+	public function setSigningCard(?array $card): self {
+		$this->signingCard = $card;
 		return $this;
 	}
 
@@ -159,6 +173,19 @@ class PhpNativeHandler extends Pkcs12Handler {
 		int $height,
 		string $signatureImagePath = '',
 	): SignatureAppearanceDto {
+		$rect = [$llx, $pageHeight - $ury, $urx, $pageHeight - $lly];
+		if ($this->signingCard !== null) {
+			[$xObject, $frame] = self::signingCardLayout($this->signingCard, (float)$width, (float)$height);
+			return new SignatureAppearanceDto(
+				backgroundImagePath: null,
+				rect: $rect,
+				page: $pageIndex,
+				xObject: $xObject,
+				signatureImagePath: $this->signingCard['handwriting'],
+				signatureImageFrame: $frame,
+			);
+		}
+
 		$renderMode = $this->signatureTextService->getRenderMode();
 
 		// n0 layer: background stamp is always placed full-bbox when enabled.
@@ -486,11 +513,92 @@ class PhpNativeHandler extends Pkcs12Handler {
 		return $result;
 	}
 
-	private function escapePdfText(string $value): string {
+	private static function escapePdfText(string $value): string {
 		$value = str_replace('\\', '\\\\', $value);
 		$value = str_replace('(', '\\(', $value);
 		$value = str_replace(')', '\\)', $value);
 
 		return $value;
+	}
+
+	/**
+	 * SecurySign's signing card in a box of $width x $height points: the
+	 * handwriting on top at its own proportions, then the name (large, bold),
+	 * "ISSUER: ..." and the time in EAT, each centred, with no border. Text
+	 * shrinks to fit a long name rather than being clipped.
+	 *
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
+	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
+	 */
+	public static function signingCardLayout(array $card, float $width, float $height): array {
+		$pad = max(4.0, $height * 0.06);
+		$room = max(1.0, $width - 2 * $pad);
+		$lines = [
+			['F2', mb_strtoupper($card['name']), 1.0, '0.04 0.07 0.13'],
+			['F1', 'ISSUER: ' . mb_strtoupper($card['issuer']), 0.72, '0.25 0.27 0.32'],
+			['F1', 'TIMESTAMP: ' . $card['time']->setTimezone(new \DateTimeZone('Africa/Nairobi'))->format('d M Y, H:i:s') . ' EAT', 0.62, '0.40 0.42 0.47'],
+		];
+		// The name sets the scale; every line keeps its share of it and fits the width.
+		$size = min($height * 0.12, 16.0);
+		foreach ($lines as [$font, $text, $share]) {
+			$size = min($size, $room / max(0.01, self::helveticaWidth($text, $font === 'F2') * $share));
+		}
+		$size = max(3.0, $size);
+
+		// Lines are laid from the bottom up: time, issuer, name.
+		$stream = '';
+		$baseline = $pad + $size * 0.62 * 0.25;
+		$top = $pad;
+		foreach (array_reverse($lines) as $i => [$font, $text, $share, $colour]) {
+			$lineSize = $size * $share;
+			if ($i > 0) {
+				$baseline += $lineSize * 1.3;
+			}
+			$encoded = (string)(iconv('UTF-8', 'Windows-1252//TRANSLIT', $text) ?: $text);
+			$x = ($width - self::helveticaWidth($text, $font === 'F2') * $lineSize) / 2;
+			$stream .= sprintf("BT /%s %.2F Tf %s rg %.2F %.2F Td (%s) Tj ET\n", $font, $lineSize, $colour, max($pad, $x), $baseline, self::escapePdfText($encoded));
+			$top = $baseline + $lineSize * 0.75;
+		}
+
+		// The handwriting fills what is left above the text, keeping its proportions.
+		$frame = null;
+		$areaBottom = $top + $pad * 0.5;
+		$areaHeight = $height - $pad - $areaBottom;
+		$image = @getimagesize($card['handwriting']);
+		if ($areaHeight > 1 && is_array($image) && $image[0] > 0 && $image[1] > 0) {
+			$fit = min($room / $image[0], $areaHeight / $image[1]);
+			$w = $image[0] * $fit;
+			$h = $image[1] * $fit;
+			$frame = [($width - $w) / 2, $areaBottom + ($areaHeight - $h) / 2, $w, $h];
+		}
+
+		$font = static fn (string $name): array => ['Type' => '/Font', 'Subtype' => '/Type1', 'BaseFont' => '/' . $name, 'Encoding' => '/WinAnsiEncoding'];
+		return [
+			new SignatureAppearanceXObjectDto(stream: $stream, resources: ['Font' => ['F1' => $font('Helvetica'), 'F2' => $font('Helvetica-Bold')]]),
+			$frame,
+		];
+	}
+
+	/** Width of $text at size 1 in Helvetica (AFM widths; other characters count as a digit). */
+	private static function helveticaWidth(string $text, bool $bold): float {
+		static $upper = [
+			false => [667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611],
+			true => [722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611],
+		];
+		static $lower = [
+			false => [556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500],
+			true => [556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500],
+		];
+		$total = 0;
+		foreach (mb_str_split($text) as $char) {
+			$total += match (true) {
+				$char >= 'A' && $char <= 'Z' => $upper[$bold][ord($char) - 65],
+				$char >= 'a' && $char <= 'z' => $lower[$bold][ord($char) - 97],
+				in_array($char, [' ', ',', '.', ':', ';'], true) => $bold && $char === ':' ? 333 : 278,
+				in_array($char, ['-', '(', ')'], true) => 333,
+				default => 556,
+			};
+		}
+		return $total / 1000;
 	}
 }

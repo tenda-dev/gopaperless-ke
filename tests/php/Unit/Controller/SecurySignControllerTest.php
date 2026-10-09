@@ -12,6 +12,7 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\Controller\SecurySignController;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
+use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
@@ -58,7 +59,7 @@ final class SecurySignControllerTest extends TestCase {
 		$urls->method('linkToRouteAbsolute')->willReturnCallback(
 			static fn (string $route, array $params) => 'https://gopaperless.test/apps/libresign/securysign/return?' . http_build_query($params),
 		);
-		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class));
+		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
 	}
 
 	private function startOnboarding(): string {
@@ -172,11 +173,65 @@ final class SecurySignControllerTest extends TestCase {
 		$signa = $this->createMock(SecurySignService::class);
 		$signa->method('applies')->willReturn(false);
 		$signa->expects(self::never())->method('isReady');
-		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class));
+		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
 
 		$response = $controller->onboard('/apps/libresign/f/document');
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
+	}
+
+	public function testThePasskeyPageIsSkippedOnceTheCheckIsDone(): void {
+		$this->signa->method('passkeyPending')->willReturn(false);
+
+		self::assertSame('/apps/libresign/f/document', $this->controller->passkey('/apps/libresign/f/document')->getRedirectURL());
+	}
+
+	public function testABadMimiAddressSkipsThePasskeyPage(): void {
+		$this->signa->method('passkeyPending')->willReturn(true);
+		$this->signa->method('passkeyFrame')->willThrowException(new \RuntimeException('Configure a valid HTTPS origin for the signing integration.', 503));
+		$this->signa->expects(self::once())->method('skipPasskey');
+
+		self::assertSame('/apps/libresign/f/document', $this->controller->passkey('/apps/libresign/f/document')->getRedirectURL());
+	}
+
+	/** MIMI being down must not lock anyone out of GoPaperless. */
+	public function testAMimiOutageSkipsThePasskeyCheck(): void {
+		$this->signa->method('passkeyOptions')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));
+		$this->signa->expects(self::once())->method('skipPasskey');
+		$this->users->expects(self::never())->method('logout');
+
+		self::assertSame(['skip' => true], $this->controller->passkeyOptions()->getData());
+	}
+
+	public function testSomeoneWithoutAMimiPasskeyIsSentToSetOneUp(): void {
+		$this->signa->method('passkeyOptions')->willReturn(null);
+
+		self::assertSame(['redirect' => '/libresign.securySign.onboard'], $this->controller->passkeyOptions()->getData());
+	}
+
+	public function testARefusedPasskeyIsNotLetThrough(): void {
+		$this->signa->method('verifyPasskey')->willReturn(false);
+		$this->signa->expects(self::never())->method('skipPasskey');
+
+		$response = $this->controller->passkeyVerify(['id' => 'x']);
+
+		self::assertSame(403, $response->getStatus());
+		self::assertFalse($response->getData()['verified']);
+	}
+
+	/** The editor previews the card; the time is only known at signing, so it is not sent. */
+	public function testTheEditorGetsTheCardWithoutATime(): void {
+		$this->signa->method('signingContext')->willReturnOnConsecutiveCalls([
+			'certificateSha256' => 'ab', 'name' => 'JANE NJOROGE', 'issuer' => 'Signa Hardware CA',
+			'handwriting' => "\x89PNG", 'time' => new \DateTimeImmutable(), 'expiresAt' => new \DateTimeImmutable(),
+		], null);
+
+		self::assertSame(['card' => [
+			'name' => 'JANE NJOROGE',
+			'issuer' => 'Signa Hardware CA',
+			'handwriting' => 'data:image/png;base64,' . base64_encode("\x89PNG"),
+		]], $this->controller->card()->getData());
+		self::assertSame(['card' => null], $this->controller->card()->getData());
 	}
 }

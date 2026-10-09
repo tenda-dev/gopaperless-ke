@@ -127,6 +127,55 @@ class SecurySignService {
 	}
 
 	/**
+	 * What goes on the user's signing card, from SecurySign: the raw handwriting,
+	 * the verified ID name, the certificate's actual issuer and the preparation
+	 * time. Null when SecurySign has none for them (no verified identity yet, a
+	 * certificate still carrying a profile name, or the feature off), and the
+	 * document is signed with the usual appearance instead.
+	 *
+	 * @return array{certificateSha256: string, name: string, issuer: string, handwriting: string, time: \DateTimeImmutable, expiresAt: \DateTimeImmutable}|null
+	 */
+	public function signingContext(): ?array {
+		$identity = $this->identity();
+		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
+		$response = $this->send('post', $base . '/api/signature/visible/signing-context', [
+			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
+			'json' => new \stdClass(),
+		]);
+		$status = $response->getStatusCode();
+		$body = json_decode((string)$response->getBody(), true);
+		if ($status !== 200 || !is_array($body)) {
+			$this->logger->info('No SecurySign signing card for this user', [
+				'status' => $status,
+				'error' => is_array($body) ? substr((string)($body['error'] ?? ''), 0, 200) : null,
+			]);
+			return null;
+		}
+		$png = base64_decode((string)($body['handwritingPngBase64'] ?? ''), true);
+		$text = static fn (string $key): string => is_string($body[$key] ?? null) ? trim($body[$key]) : '';
+		if ($png === false || !str_starts_with($png, "\x89PNG") || $text('verifiedFullName') === '' || $text('issuerName') === ''
+			|| $text('certificateSha256') === '' || $text('signingTime') === '' || $text('expiresAt') === '') {
+			$this->logger->warning('SecurySign returned an unreadable signing card');
+			return null;
+		}
+		try {
+			$time = new \DateTimeImmutable($text('signingTime'));
+			$expiresAt = new \DateTimeImmutable($text('expiresAt'));
+		} catch (\Exception) {
+			$this->logger->warning('SecurySign returned an unreadable signing card time');
+			return null;
+		}
+		return [
+			'certificateSha256' => strtolower(str_replace(':', '', $text('certificateSha256'))),
+			'name' => $text('verifiedFullName'),
+			'issuer' => $text('issuerName'),
+			'handwriting' => $png,
+			'time' => $time,
+			'expiresAt' => $expiresAt,
+		];
+	}
+
+	/**
 	 * A five-minute token for SecurySign's signing frame, bound to one hash. The
 	 * frame runs the passkey prompt on SecurySign's origin, then the HSM signs
 	 * the hash with the key behind the user's certificate.
@@ -411,9 +460,108 @@ class SecurySignService {
 	 * key keeps its old name; it held the TendaWorld website until 2026-09-29.
 	 */
 	public function onboardingUrl(): string {
+		return $this->mimiOrigin() . '/enrol';
+	}
+
+	private function mimiOrigin(): string {
 		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
 			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://gopaperless.mimi.ke');
-		return self::origin($configured) . '/enrol';
+		return self::origin($configured);
+	}
+
+	private const PASSKEY_KEY = 'libresign.mimi.passkey';
+	private const PASSKEY_STATE_KEY = 'libresign.mimi.passkey_state';
+
+	/**
+	 * Whether this session still owes the MIMI passkey check that follows
+	 * sign-in. Off until the MIMI client secret is set.
+	 */
+	public function passkeyPending(): bool {
+		return $this->applies()
+			&& $this->config->getValueString(Application::APP_ID, 'mimi_client_secret') !== ''
+			&& $this->session->get(self::PASSKEY_KEY) === null;
+	}
+
+	/**
+	 * MIMI's page that runs the passkey prompt on MIMI's own origin, which
+	 * templates/mimi_passkey.php frames. MIMI lets only our registered origins
+	 * frame it. It opens in `$language` (Nextcloud's, like pt_BR) when MIMI has
+	 * that language, else in English.
+	 *
+	 * @return array{origin: string, url: string}
+	 */
+	public function passkeyFrame(string $language = 'en'): array {
+		$origin = $this->mimiOrigin();
+		// ponytail: MIMI translates by language, not region, so pt_BR asks for pt.
+		$lang = strtolower(explode('_', str_replace('-', '_', $language))[0]);
+		return ['origin' => $origin, 'url' => $origin . '/passkey/frame?' . http_build_query(['client_id' => $this->mimiClientId(), 'lang' => $lang])];
+	}
+
+	/**
+	 * WebAuthn options for the user's MIMI passkey, which our page hands to
+	 * MIMI's frame. Null when MIMI holds no passkey for them. Throws 503 when
+	 * MIMI cannot answer.
+	 */
+	public function passkeyOptions(): ?array {
+		$answer = $this->mimi('options', ['subject' => $this->identity()['sub']]);
+		if ($answer['status'] === 404) {
+			return null;
+		}
+		if ($answer['status'] !== 200 || !is_array($answer['body']['options'] ?? null) || !is_string($answer['body']['state'] ?? null)) {
+			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey request.', 503);
+		}
+		$this->session->set(self::PASSKEY_STATE_KEY, $answer['body']['state']);
+		return $answer['body']['options'];
+	}
+
+	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
+	public function verifyPasskey(array $assertion): bool {
+		$state = $this->session->get(self::PASSKEY_STATE_KEY);
+		$this->session->remove(self::PASSKEY_STATE_KEY);
+		if (!is_string($state)) {
+			return false;
+		}
+		$answer = $this->mimi('verify', ['state' => $state, 'response' => $assertion]);
+		if ($answer['status'] >= 500) {
+			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey check.', 503);
+		}
+		$verified = $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true
+			&& ($answer['body']['subject'] ?? null) === $this->identity()['sub'];
+		if ($verified) {
+			$this->session->set(self::PASSKEY_KEY, time());
+		}
+		return $verified;
+	}
+
+	/** Lets this session in when MIMI cannot run the check, so an outage locks nobody out. */
+	public function skipPasskey(string $reason): void {
+		$this->logger->warning('MIMI passkey check skipped: ' . $reason);
+		$this->session->set(self::PASSKEY_KEY, 'skipped');
+	}
+
+	private function mimiClientId(): string {
+		return $this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless');
+	}
+
+	/** @return array{status: int, body: array} */
+	private function mimi(string $action, array $payload): array {
+		try {
+			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/passkey/' . $action, [
+				'json' => $payload,
+				'auth' => [
+					$this->mimiClientId(),
+					$this->config->getValueString(Application::APP_ID, 'mimi_client_secret'),
+				],
+				'connect_timeout' => 3,
+				'timeout' => 10,
+				'allow_redirects' => false,
+				'http_errors' => false,
+			]);
+		} catch (\Exception $e) {
+			throw new \RuntimeException('MIMI is unreachable.', 503, $e);
+		}
+		$body = json_decode((string)$response->getBody(), true);
+		return ['status' => $response->getStatusCode(), 'body' => is_array($body) ? $body : []];
 	}
 
 
