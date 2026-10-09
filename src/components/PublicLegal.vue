@@ -115,8 +115,7 @@
 			<p>All JULICA employees and collaborators are responsible for ensuring that the collection, storage, handling, and protection of data is done appropriately. The contact details of our Data Protection Officer are:</p>
 			<p>
 				Person: Data Protection Officer<br>
-				Email: Christina Wanjiku wood<br>
-				Phone: +254795289184
+				Email: privacy@tendaworld.com
 			</p>
 			<p>The following are the responsibilities of specific people or departments:</p>
 
@@ -228,7 +227,7 @@
 				<li>Be informed on how to keep it up to date</li>
 				<li>Be informed on how the company meets its data protection obligations</li>
 			</ul>
-			<p>Our clients can request such information directly through a subject access request made via email or through the digital form available <a href="https://pecb.com/en/personal_data" target="_blank" rel="noopener">here</a>. We will always verify the identity of anyone making a subject access request before handing over any information. Confirmation will be asked from the data subject using the email data subject used to register an account at JULICA. We aim to respond to the request within 14 days.</p>
+			<p>Our clients can request such information directly through a subject access request made via email. We will always verify the identity of anyone making a subject access request before handing over any information. Confirmation will be asked from the data subject using the email data subject used to register an account at JULICA. We aim to respond to the request within 14 days.</p>
 
 			<h3>8.1 Data Modification</h3>
 			<p>Our clients can request data modification or correction via email or through the digital form available. JULICA will verify the identity of anyone making a request before modifying or correcting any information.</p>
@@ -243,7 +242,7 @@
 			<p>In certain circumstances, when required, JULICA can disclose data to law enforcement agencies without the consent of the data subject. However, the data controller will ensure the request is lawful, seeking assistance from the board and from the company’s legal advisors, where necessary.</p>
 
 			<h2>11 Privacy Statement.</h2>
-			<p>We have a privacy statement available on our website. It presents the type information we collect, the purpose of collection and use, third-party processors involved, and how we protect customers' data. The privacy statement is available at <a href="https://www.julica.com/policies/privacy/" target="_blank" rel="noopener">https://tendaworld.com/policies/privacy/</a></p>
+			<p>We have a privacy statement available on our website. It presents the type information we collect, the purpose of collection and use, third-party processors involved, and how we protect customers' data. The privacy statement is available at <a href="https://www.julica.com/policies/privacy/" target="_blank" rel="noopener">https://www.julica.com/policies/privacy/</a></p>
 		</article>
 	</main>
 </template>
