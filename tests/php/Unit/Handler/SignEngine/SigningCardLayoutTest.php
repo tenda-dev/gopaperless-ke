@@ -138,6 +138,23 @@ final class SigningCardLayoutTest extends TestCase {
 		}
 	}
 
+	/**
+	 * A box too small for the type gets the whole card scaled down, so the
+	 * PDF never cuts off the name, issuer, time or handwriting.
+	 */
+	public function testATinyBoxScalesTheWholeCardDownInsteadOfCuttingItOff(): void {
+		foreach (['horizontal-top', 'horizontal', 'stacked'] as $layout) {
+			$card = $this->card('Christine Wanjiku Wood') + ['layout' => $layout];
+			[$small, $smallFrame] = PhpNativeHandler::signingCardLayout($card, 50.0, 19.0);
+			[$big, $bigFrame] = PhpNativeHandler::signingCardLayout($card, 100.0, 38.0);
+
+			self::assertSame("q 0.50000 0 0 0.50000 0 0 cm\n" . $big->stream . "Q\n", $small->stream, $layout . ': the card at 100 x 38, halved');
+			self::assertEqualsWithDelta(array_map(static fn (float $v): float => $v / 2, $bigFrame), $smallFrame, 0.0001, $layout . ': the handwriting halved with it');
+		}
+		// A box big enough for the type is laid out as it is.
+		self::assertStringStartsNotWith('q ', PhpNativeHandler::signingCardLayout($this->card('Jane Njoroge') + ['layout' => 'horizontal-top'], 240.0, 70.0)[0]->stream);
+	}
+
 	/** Without SecurySign, GoPaperless fills the card: profile name, issuer, signing time, the box's own drawing. */
 	public function testTheBuiltInCardUsesTheProfileNameAndTheSigningTime(): void {
 		$time = new \DateTimeImmutable('2026-10-09T08:00:00Z');

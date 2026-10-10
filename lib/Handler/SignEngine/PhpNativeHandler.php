@@ -529,12 +529,40 @@ class PhpNativeHandler extends Pkcs12Handler {
 	 * The stacked signing card in a box of $width x $height points: the
 	 * handwriting on top at its own proportions, then the name (large, bold),
 	 * "ISSUER: ..." and the time in EAT, each centred, with no border. Text
-	 * shrinks to fit a long name rather than being clipped.
+	 * shrinks to fit a long name rather than being clipped, and a box too small
+	 * for the type scales the whole card down.
 	 *
 	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
 	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
 	 */
 	public static function signingCardLayout(array $card, float $width, float $height): array {
+		// Under about 100 x 38 points the type stops shrinking (labels at 2pt,
+		// values at 2.5pt) and runs past the box, where the PDF cuts it off. A
+		// smaller box gets the card laid out at that size and scaled down whole,
+		// so nothing on it is ever cut off.
+		$grow = max(1.0, self::SMALLEST_CARD[0] / max(1.0, $width), self::SMALLEST_CARD[1] / max(1.0, $height));
+		if ($grow === 1.0) {
+			return self::cardLayoutAt($card, $width, $height);
+		}
+		[$xObject, $frame] = self::cardLayoutAt($card, $width * $grow, $height * $grow);
+		$shrink = 1 / $grow;
+		return [
+			new SignatureAppearanceXObjectDto(
+				stream: sprintf("q %.5F 0 0 %.5F 0 0 cm\n%sQ\n", $shrink, $shrink, $xObject->stream),
+				resources: $xObject->resources,
+			),
+			$frame === null ? null : array_map(static fn (float $value): float => $value * $shrink, $frame),
+		];
+	}
+
+	/** Width and height in points below which the card is scaled down whole. */
+	private const SMALLEST_CARD = [100.0, 38.0];
+
+	/**
+	 * @param array{name: string, issuer: string, time: \DateTimeImmutable, handwriting: string} $card
+	 * @return array{0: SignatureAppearanceXObjectDto, 1: array{0: float, 1: float, 2: float, 3: float}|null}
+	 */
+	private static function cardLayoutAt(array $card, float $width, float $height): array {
 		$layout = $card['layout'] ?? 'stacked';
 		if ($layout === 'horizontal' || $layout === 'horizontal-top') {
 			return self::horizontalCardLayout($card, $width, $height, $layout === 'horizontal-top');
