@@ -7,7 +7,7 @@
 		:style="boxStyle"
 		role="img"
 		:aria-label="signatureBoxAriaLabel">
-		<span class="label" aria-hidden="true">{{ label }}</span>
+		<span class="label" :style="{ '--chars': Math.max(label.length, 1) }" aria-hidden="true">{{ label }}</span>
 	</div>
 </template>
 
@@ -58,6 +58,7 @@ defineExpose({
 
 <style lang="scss" scoped>
 .signature-box {
+	container-type: size;
 	box-sizing: border-box;
 	border: 2px dashed #2563eb;
 	background: rgba(37, 99, 235, 0.08);
@@ -72,10 +73,13 @@ defineExpose({
 	line-height: 1.2;
 	overflow: hidden;
 }
+// The name shrinks with the box instead of being cut off with an ellipsis, as
+// it does on the signed PDF. ponytail: 0.7em is a wide average character, so a
+// name is sized from its length without measuring it; a run of W's could still
+// touch the edge.
 .label {
 	font-weight: 600;
 	white-space: nowrap;
-	text-overflow: ellipsis;
-	overflow: hidden;
+	font-size: min(1em, 45cqh, calc(92cqw / (var(--chars) * 0.7)));
 }
 </style>

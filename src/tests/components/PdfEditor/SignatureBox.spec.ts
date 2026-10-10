@@ -50,6 +50,18 @@ describe('SignatureBox.vue', () => {
 		expect(wrapper.attributes('aria-label')).toBe('Signature position for Ada Lovelace')
 	})
 
+	it('sizes the name from its length so a smaller box shrinks it instead of cutting it off', () => {
+		const wrapper = mount(SignatureBox, {
+			props: {
+				label: 'Christine Wanjiku Wood',
+			},
+		})
+
+		const label = wrapper.find('.label')
+		expect(label.text()).toBe('Christine Wanjiku Wood')
+		expect(label.attributes('style')).toContain('--chars: 22')
+	})
+
 	it('uses signer displayName as the color seed when available', () => {
 		const wrapper = mount(SignatureBox, {
 			props: {
