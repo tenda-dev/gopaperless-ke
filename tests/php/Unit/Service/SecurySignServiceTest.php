@@ -164,20 +164,23 @@ final class SecurySignServiceTest extends TestCase {
 		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
 		$card = ['certificateId' => 7, 'imagePngBase64' => base64_encode(self::PNG_MAGIC . 'card')];
 
-		self::assertSame(base64_encode(self::PNG_MAGIC . 'scribble'), $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'scribble')['imagePngBase64']);
-		// A SecurySign without the handwriting route still yields its card.
-		self::assertSame($card['imagePngBase64'], $this->readinessOf($certificate, $card, null)['imagePngBase64']);
+		$handwriting = $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'scribble');
+		self::assertSame([base64_encode(self::PNG_MAGIC . 'scribble'), SecurySignService::CARD_VERSION], [$handwriting['imagePngBase64'], $handwriting['card']]);
+		// Without the handwriting, SecurySign's card, marked as the fallback.
+		$fallback = $this->readinessOf($certificate, $card, null);
+		self::assertSame([$card['imagePngBase64'], 3], [$fallback['imagePngBase64'], $fallback['card']]);
 	}
 
-	public function testTheHandwritingRouteIsReadWithTheUsersToken(): void {
-		self::$gets = 0;
+	/**
+	 * A client without Keycloak's `basic` scope gets a 403 from this route on a
+	 * valid login. Read as a dead session, that logged the user out on every
+	 * page load: /login, Google, back to /login.
+	 */
+	public function testTheHandwritingRouteNeverEndsTheSession(): void {
 		self::assertSame(self::PNG_MAGIC . 'scribble', self::serviceAnswering(200, self::PNG_MAGIC . 'scribble')->handwriting(self::IDENTITY));
-		self::assertNull(self::serviceAnswering(404)->handwriting(self::IDENTITY));
-		try {
-			self::serviceAnswering(403)->handwriting(self::IDENTITY);
-			self::fail('HTTP 403 accepted');
-		} catch (\RuntimeException $e) {
-			self::assertSame(401, $e->getCode());
+		self::assertNull(self::serviceAnswering(200, '<html>')->handwriting(self::IDENTITY));
+		foreach ([401, 403, 404, 502] as $status) {
+			self::assertNull(self::serviceAnswering($status)->handwriting(self::IDENTITY), 'HTTP ' . $status);
 		}
 	}
 

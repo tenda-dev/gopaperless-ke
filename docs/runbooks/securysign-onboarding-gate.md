@@ -180,6 +180,14 @@ stamped with `metadata.securysign_certificate_id` and `metadata.securysign_card`
 match; a renewed certificate replaces the element, and **bumping `CARD_VERSION`
 re-imports for everyone**. Failures are logged and swallowed.
 
+The handwriting comes from `GET /api/signature/visible/{sub}/image`. When that
+route gives anything but a PNG, SecurySign's card from `/api/signature/visible`
+is imported instead, stamped `securysign_card: 3`, and the log says
+`SecurySign gave no handwriting image; importing its card instead` with the
+status. The first sign-in after the route answers replaces the card with the
+handwriting. A 403 there while every other call succeeds means the client is
+missing Keycloak's `basic` scope; see "access tokens carry no `sub`" below.
+
 `JSignPdfHandler` stamps the element image into the PDF
 (`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the
 template text plus the QR are what land on the page.
@@ -396,6 +404,13 @@ refuses.
 **The fix is one assignment:** Keycloak → Clients → `signa-rp-15` → Client scopes
 → Add client scope → `basic` → Default. Nothing in either repo can add a claim to
 a token it does not mint.
+
+Probed 2026-10-12 on the production realm: `signa-rp-10` (staging) and
+`signa-rp-16` (local) also answer `invalid_scope` to `basic`. There Signa
+resolves the token by its `username` instead, so every call succeeds except
+`/api/signature/visible/{sub}/image`, which answers 403 `Not authorized`
+because the `sub` in the URL is not the username. Both clients need the same
+assignment.
 
 To re-check both tokens, from PowerShell (claim **names** only — the values are
 the user's identity):

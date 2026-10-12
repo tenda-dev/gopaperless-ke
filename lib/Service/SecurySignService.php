@@ -28,6 +28,8 @@ class SecurySignService {
 	 * 4 takes the handwriting alone instead of SecurySign's assembled card.
 	 */
 	public const CARD_VERSION = 4;
+	/** SecurySign's card as it comes, imported while the handwriting route refuses. */
+	private const CARD_FALLBACK_VERSION = 3;
 
 	public function __construct(
 		private IAppConfig $config,
@@ -279,7 +281,7 @@ class SecurySignService {
 	 * gate on readiness and mirror the signature without asking twice.
 	 *
 	 * @param array{sub: string, issuer: string, accessToken: string}|null $identity
-	 * @return array{certificateId: string, imagePngBase64: string, issuer: string, serial: string, validFrom: string, validUntil: string}|null
+	 * @return array{certificateId: string, imagePngBase64: string, card: int, issuer: string, serial: string, validFrom: string, validUntil: string}|null
 	 */
 	public function readiness(?array $identity = null): ?array {
 		$identity ??= $this->identity();
@@ -308,13 +310,15 @@ class SecurySignService {
 		// The row says which certificate the signature belongs to. Its image is
 		// SecurySign's assembled card, and the built-in signing card would draw
 		// that card inside itself, so the handwriting comes from its own route.
-		$image = $this->handwriting($identity) ?? base64_decode($signature['imagePngBase64'] ?? '', true);
+		$handwriting = $this->handwriting($identity);
+		$image = $handwriting ?? base64_decode($signature['imagePngBase64'] ?? '', true);
 		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
 			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
 		}
 		return [
 			'certificateId' => (string)$leaf['certificateId'],
 			'imagePngBase64' => base64_encode($image),
+			'card' => $handwriting === null ? self::CARD_FALLBACK_VERSION : self::CARD_VERSION,
 			'issuer' => (string)($leaf['issuer'] ?? 'SecurySign'),
 			'serial' => (string)($leaf['serialNumberHex'] ?? ''),
 			'validFrom' => self::day($leaf['validFrom'] ?? null),
@@ -325,9 +329,14 @@ class SecurySignService {
 
 	/**
 	 * The user's handwriting alone, as SecurySign serves it for an RP to place
-	 * in its own documents: no name, certificate details or QR code. Null where
-	 * a SecurySign deployment has no such route (404), and readiness falls back
-	 * to the card.
+	 * in its own documents: no name, certificate details or QR code. Null when
+	 * the route gives no PNG, and readiness falls back to the card.
+	 *
+	 * Never a reason to end the session. The two calls before it already proved
+	 * the token, and this route alone also compares the URL's sub with the one
+	 * SecurySign resolves from the access token. A client without Keycloak's
+	 * `basic` scope mints access tokens with no sub, SecurySign falls back to
+	 * the username, and the route answers 403 to a valid login.
 	 *
 	 * @param array{sub: string, issuer: string, accessToken: string} $identity
 	 */
@@ -337,16 +346,17 @@ class SecurySignService {
 			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'image/png'],
 		]);
 		$status = $response->getStatusCode();
-		if ($status === 404) {
-			return null;
+		$body = (string)$response->getBody();
+		if ($status === 200 && str_starts_with($body, "\x89PNG\r\n\x1a\n")) {
+			return $body;
 		}
-		if ($status === 401 || $status === 403) {
-			throw new \RuntimeException('SecurySign rejected your session (HTTP ' . $status . '). Sign out and in again to reconnect.', 401);
+		if ($status !== 404) {
+			$this->logger->warning('SecurySign gave no handwriting image; importing its card instead', [
+				'status' => $status,
+				'tokenClaims' => self::claimNames($identity['accessToken']),
+			]);
 		}
-		if ($status !== 200) {
-			throw new \RuntimeException('SecurySign answered HTTP ' . $status . ' for the handwriting image. Please retry.', 503);
-		}
-		return (string)$response->getBody();
+		return null;
 	}
 
 	/**
@@ -361,7 +371,7 @@ class SecurySignService {
 	 * the card is already verified, and failing to cache it locally is no reason
 	 * to lock someone out of the app.
 	 *
-	 * @param array{certificateId: string, imagePngBase64: string} $readiness
+	 * @param array{certificateId: string, imagePngBase64: string, card: int} $readiness
 	 */
 	public function syncVisibleSignature(array $readiness): void {
 		$user = $this->users->getUser();
@@ -375,11 +385,13 @@ class SecurySignService {
 			$existing = $mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']);
 			// Both the certificate and the card layout have to match. Without the
 			// version, changing the card design would leave every existing user on
-			// the old image forever, because their certificate had not changed.
+			// the old image forever, because their certificate had not changed. A
+			// fallback card gives way to the handwriting once the route answers,
+			// and never replaces handwriting already imported.
 			foreach ($existing as $element) {
 				$metadata = $element->getMetadata() ?? [];
 				if (($metadata['securysign_certificate_id'] ?? null) === $readiness['certificateId']
-					&& ($metadata['securysign_card'] ?? null) === self::CARD_VERSION) {
+					&& ($metadata['securysign_card'] ?? 0) >= $readiness['card']) {
 					return;
 				}
 			}
@@ -404,7 +416,7 @@ class SecurySignService {
 				}
 				$element->setMetadata(($element->getMetadata() ?? []) + [
 					'securysign_certificate_id' => $readiness['certificateId'],
-					'securysign_card' => self::CARD_VERSION,
+					'securysign_card' => $readiness['card'],
 				]);
 				$mapper->update($element);
 			}
