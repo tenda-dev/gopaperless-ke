@@ -61,6 +61,9 @@ class AccountService {
 	 */
 	private const SIGNUP_BONUS_PRODUCT_CODE = 'SIGN_DOCUMENT';
 
+	private const PUBLIC_WORKFLOW_GROUP = 'gopaperless_public_workflow';
+	private const PUBLIC_WORKFLOW_USER_PREFIX = 'gopaperless_public_';
+
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
 	private ?\OCP\Files\File $fileToSign = null;
@@ -360,6 +363,60 @@ class AccountService {
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
 		];
+	}
+
+	public function createTemporaryUser(): IUser {
+		$uid = self::PUBLIC_WORKFLOW_USER_PREFIX . UUIDUtil::getUUID();
+		$password = bin2hex(random_bytes(32));
+
+		$user = $this->userManager->createUser($uid, $password);
+
+		try {
+			$group = $this->groupManager->get(self::PUBLIC_WORKFLOW_GROUP);
+
+			if ($group === null) {
+				$group = $this->groupManager->createGroup(
+					self::PUBLIC_WORKFLOW_GROUP
+				);
+			}
+
+			$group->addUser($user);
+		} catch (\Throwable $e) {
+			$user->delete();
+
+			throw $e;
+		}
+
+		return $user;
+	}
+
+	public function deleteTemporaryUser(IUser $user): void {
+		if (!$this->isTemporaryUser($user)) {
+			throw new LibresignException(
+				'User is not a temporary GoPaperless user'
+			);
+		}
+
+		if (!$user->delete()) {
+			throw new LibresignException(
+				'Failed to delete temporary GoPaperless user'
+			);
+		}
+	}
+
+	private function isTemporaryUser(IUser $user): bool {
+		if (!str_starts_with(
+			$user->getUID(),
+			self::PUBLIC_WORKFLOW_USER_PREFIX
+		)) {
+			return false;
+		}
+
+		return in_array(
+			self::PUBLIC_WORKFLOW_GROUP,
+			$this->groupManager->getUserGroupIds($user),
+			true
+		);
 	}
 
 	/**
@@ -701,6 +758,11 @@ class AccountService {
 		if (!$user) {
 			return false;
 		}
+
+		if ($this->isTemporaryUser($user)) {
+			return true;
+		}
+
 		$authorized = $this->appConfig->getValueArray(Application::APP_ID, 'groups_request_sign', ['admin']);
 		if (empty($authorized)) {
 			return false;
