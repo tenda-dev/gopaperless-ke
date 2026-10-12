@@ -180,13 +180,14 @@ stamped with `metadata.securysign_certificate_id` and `metadata.securysign_card`
 match; a renewed certificate replaces the element, and **bumping `CARD_VERSION`
 re-imports for everyone**. Failures are logged and swallowed.
 
-The handwriting comes from `GET /api/signature/visible/{sub}/image`. When that
-route gives anything but a PNG, SecurySign's card from `/api/signature/visible`
-is imported instead, stamped `securysign_card: 3`, and the log says
-`SecurySign gave no handwriting image; importing its card instead` with the
-status. The first sign-in after the route answers replaces the card with the
-handwriting. A 403 there while every other call succeeds means the client is
-missing Keycloak's `basic` scope; see "access tokens carry no `sub`" below.
+The visible signature scribble comes from `GET /api/signature/visible/{sub}/image`.
+When that route gives anything but a PNG, SecurySign's card from
+`/api/signature/visible` is imported instead, stamped `securysign_card: 3`, and
+the log says `SecurySign gave no visible signature scribble; importing its card
+instead` with the status. The first sign-in after the route answers replaces the
+card with the scribble. A 403 there while every other call succeeds means the
+client is missing Keycloak's `basic` scope; see "access tokens carry no `sub`"
+below.
 
 `JSignPdfHandler` stamps the element image into the PDF
 (`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the

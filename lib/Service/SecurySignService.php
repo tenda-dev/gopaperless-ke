@@ -351,7 +351,7 @@ class SecurySignService {
 			return $body;
 		}
 		if ($status !== 404) {
-			$this->logger->warning('SecurySign gave no handwriting image; importing its card instead', [
+			$this->logger->warning('SecurySign gave no visible signature scribble; importing its card instead', [
 				'status' => $status,
 				'tokenClaims' => self::claimNames($identity['accessToken']),
 			]);
