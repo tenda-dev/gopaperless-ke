@@ -100,6 +100,7 @@ import { computed, type PropType } from 'vue'
 
 import draggable from 'vuedraggable'
 
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -300,10 +301,14 @@ function canSendReminder(signer: EditableSignerDraft) {
 	return controller.canSignerActInOrder(signer)
 }
 
+// Administration > LibreSign > WhatsApp signing requests.
+const whatsAppEnabled = loadState<boolean>('libresign', 'whatsapp_enabled', false)
+
 /** WhatsApp, Copy link and Show QR: whoever manages signers, on a single unsigned document. */
 function canShare(signer: EditableSignerDraft) {
 	return Boolean(
-		props.canManageSigners
+		whatsAppEnabled
+		&& props.canManageSigners
 		&& !isOriginalFileDeleted.value
 		&& filesStore.canRequestSign
 		&& file.value?.nodeType !== 'envelope'

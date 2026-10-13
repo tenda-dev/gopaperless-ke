@@ -16,6 +16,7 @@ use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\DocMdp\ConfigService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\WhatsAppService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\Event;
@@ -69,6 +70,7 @@ class TemplateLoader implements IEventListener {
 			'signature_flow' => $this->getSignatureFlow(),
 			'docmdp_config' => $this->docMdpConfigService->getConfig(),
 			'can_request_sign' => $this->canRequestSign(),
+			'whatsapp_enabled' => WhatsAppService::on($this->appConfig),
 		];
 	}
 

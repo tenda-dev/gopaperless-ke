@@ -17,6 +17,7 @@ use OCA\Libresign\Middleware\SecurySignMiddleware;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\IAppConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
@@ -28,6 +29,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 	private SecurySignService&MockObject $signa;
 	private IRequest&MockObject $request;
 	private SecurySignMiddleware $middleware;
+	private IURLGenerator&MockObject $urls;
 
 	protected function setUp(): void {
 		$this->signa = $this->createMock(SecurySignService::class);
@@ -40,7 +42,25 @@ final class SecurySignMiddlewareTest extends TestCase {
 				: '/' . str_replace('.', '/', $route) . '?' . http_build_query($params),
 		);
 		$urls->method('linkToDefaultPageUrl')->willReturn('/apps/dashboard/');
-		$this->middleware = new SecurySignMiddleware($this->signa, $this->request, $urls, $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
+		$this->urls = $urls;
+		$this->middleware = $this->middleware(whatsApp: true);
+	}
+
+	/** WhatsApp signing requests on or off: the switch, its address and its key. */
+	private function middleware(bool $whatsApp): SecurySignMiddleware {
+		$appConfig = $this->createMock(IAppConfig::class);
+		$appConfig->method('getValueBool')->willReturn($whatsApp);
+		$appConfig->method('getValueString')->willReturn($whatsApp ? 'set' : '');
+		return new SecurySignMiddleware($this->signa, $this->request, $this->urls, $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $appConfig);
+	}
+
+	/** Upstream behaviour: with WhatsApp off, a signing link is not redirected. */
+	public function testASigningLinkIsLeftAloneWhileWhatsAppIsOff(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(false);
+		$page = new TemplateResponse('libresign', 'external');
+
+		self::assertSame($page, $this->middleware(whatsApp: false)->afterController($this->createMock(PageController::class), 'sign', $page));
 	}
 
 	private function page(): TemplateResponse {
@@ -190,7 +210,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$ready = $this->createMock(SecurySignService::class);
 		$ready->method('applies')->willReturn(true);
 		$ready->expects(self::never())->method('isReady');
-		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
+		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
 		$other->beforeController($this->createMock(SignFileController::class), 'requestCodeByFileId');
 	}
 
@@ -207,7 +227,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 			$urls->method('linkToRoute')->willReturnCallback(static fn (string $route): string => '/' . $route);
 			$users = $this->createMock(IUserSession::class);
 			$users->expects(self::once())->method('logout');
-			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $users, $this->createMock(LoggerInterface::class));
+			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $users, $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
 
 			$response = $middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
@@ -244,7 +264,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		// And an email/password user keeps full control of their own signature.
 		$other = $this->createMock(SecurySignService::class);
 		$other->method('applies')->willReturn(false);
-		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class));
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
 		$middleware->beforeController($controller, 'createSignatureElement');
 	}
 

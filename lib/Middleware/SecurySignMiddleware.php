@@ -14,12 +14,14 @@ use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Service\SecurySignService;
+use OCA\Libresign\Service\WhatsAppService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Middleware;
+use OCP\IAppConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
@@ -32,6 +34,7 @@ class SecurySignMiddleware extends Middleware {
 		private IURLGenerator $urls,
 		private IUserSession $users,
 		private LoggerInterface $logger,
+		private IAppConfig $appConfig,
 	) {
 	}
 
@@ -101,9 +104,10 @@ class SecurySignMiddleware extends Middleware {
 	public function afterController(Controller $controller, string $methodName, Response $response): Response {
 		// The terms and the data protection policy stay readable to someone who is
 		// still signing up: they are what the sign-up asks them to accept.
-		// A signing link (/p/sign/<uuid>) renders the "external" template, not
-		// "main", and gets the same checks: setup, then the MIMI passkey.
-		$signingLink = $methodName === 'sign';
+		// With WhatsApp signing requests on, a signing link (/p/sign/<uuid>) gets
+		// the same checks though it renders "external", not "main": setup, then
+		// the MIMI passkey.
+		$signingLink = $methodName === 'sign' && WhatsAppService::on($this->appConfig);
 		if (!$controller instanceof PageController || !$response instanceof TemplateResponse
 			|| (!$signingLink && $response->getTemplateName() !== 'main') || $methodName === 'legal' || !$this->signa->applies()) {
 			return $response;

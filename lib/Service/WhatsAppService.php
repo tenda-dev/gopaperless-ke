@@ -48,10 +48,19 @@ class WhatsAppService {
 	) {
 	}
 
+	/**
+	 * The admin switch, and what it needs. While this is false everything this
+	 * feature adds stays out of the way: the signer-row actions, the signing-link
+	 * redirects, the receipt and remembering the sub at login.
+	 */
+	public static function on(IAppConfig $appConfig): bool {
+		return $appConfig->getValueBool(Application::APP_ID, 'whatsapp_enabled', false)
+			&& $appConfig->getValueString(Application::APP_ID, 'whatsapp_api_url') !== ''
+			&& $appConfig->getValueString(Application::APP_ID, 'whatsapp_api_key') !== '';
+	}
+
 	public function enabled(): bool {
-		return $this->appConfig->getValueBool(Application::APP_ID, 'whatsapp_enabled', false)
-			&& $this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_url') !== ''
-			&& $this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_key') !== '';
+		return self::on($this->appConfig);
 	}
 
 	public function signLink(SignRequest $signRequest): string {

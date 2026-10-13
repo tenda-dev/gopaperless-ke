@@ -1309,6 +1309,41 @@ class AdminController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Persist the WhatsApp signing request settings
+	 *
+	 * @param bool $enabled Whether senders can send signing requests on WhatsApp, copy signing links and show them as QR codes
+	 * @param string $url The payments service that sends the messages, such as https://gopaperless.astralyngroup.com
+	 * @param string $apiKey The payments service's partner API key; empty keeps the stored one
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 * 400: The address is not http(s), or the switch is on without an address and a key
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/whatsapp-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setWhatsAppConfig(bool $enabled = false, string $url = '', string $apiKey = ''): DataResponse {
+		$url = rtrim(trim($url), '/');
+		// http too: locally the payments service is the host machine.
+		if ($url !== '' && !preg_match('~^https?://[^/\s?#]+(/[^\s?#]*)?$~', $url)) {
+			return new DataResponse([
+				'error' => $this->l10n->t('Use an http or https address, such as https://gopaperless.astralyngroup.com'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+		$apiKey = trim($apiKey);
+		if ($enabled && ($url === '' || ($apiKey === '' && $this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_key') === ''))) {
+			return new DataResponse([
+				'error' => $this->l10n->t('WhatsApp needs the payments service address and its API key'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+		$this->appConfig->setValueBool(Application::APP_ID, 'whatsapp_enabled', $enabled);
+		$this->setPaymentConfig('whatsapp_api_url', $url);
+		$this->setPaymentConfig('whatsapp_api_key', $apiKey, true);
+		return new DataResponse([
+			'message' => $this->l10n->t('WhatsApp settings saved'),
+		]);
+	}
+
+	/**
 	 * Persist FX provider API credentials.
 	 *
 	 * @param string|null $exchangeRateApiKey ExchangeRate-API key

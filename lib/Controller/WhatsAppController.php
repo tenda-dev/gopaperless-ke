@@ -103,6 +103,9 @@ class WhatsAppController extends AEnvironmentAwareController {
 			if (!$user instanceof IUser) {
 				throw new \RuntimeException('Sign in first.');
 			}
+			if (!$this->whatsApp->enabled()) {
+				throw new \RuntimeException('WhatsApp signing requests are off.');
+			}
 			$this->validateHelper->canRequestSign($user);
 			$this->validateHelper->validateLibreSignFileId($fileId);
 			$signRequest = $this->signRequestMapper->getByFileIdAndSignRequestId($fileId, $signRequestId);

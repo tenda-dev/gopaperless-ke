@@ -71,7 +71,7 @@ class SecurySignService {
 		}
 		// WhatsApp signing requests name the signer by sub, long after this session.
 		$uid = $this->users->getUser()?->getUID();
-		if ($uid !== null && $this->systemConfig->getUserValue($uid, Application::APP_ID, 'securysign_sub') !== $claims['sub']) {
+		if ($uid !== null && WhatsAppService::on($this->config) && $this->systemConfig->getUserValue($uid, Application::APP_ID, 'securysign_sub') !== $claims['sub']) {
 			$this->systemConfig->setUserValue($uid, Application::APP_ID, 'securysign_sub', (string)$claims['sub']);
 		}
 		return ['sub' => $claims['sub'], 'issuer' => $issuer, 'accessToken' => $token->getAccessToken()];

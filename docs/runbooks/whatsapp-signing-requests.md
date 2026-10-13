@@ -14,19 +14,32 @@ up the number MIMI collected at payment and sends. The row shows it masked.
 
 An account from the SecurySign `user_oidc` provider, with a `sub` GoPaperless
 knows and a WhatsApp number on file, on a single document (no envelopes). The
-`sub` is remembered on every SecurySign login (user preference
-`libresign/securysign_sub`), and read from `oc_user_oidc_sessions` the first time
-for anyone who has not logged in since this shipped. One WhatsApp request per
+`sub` is remembered on every SecurySign login while the setting is on (user
+preference `libresign/securysign_sub`), and read from `oc_user_oidc_sessions` the
+first time for anyone who has not logged in since. One WhatsApp request per
 signer per 24 hours; a failed send does not count.
 
 ## Settings
 
-GoPaperless (app `libresign`):
+GoPaperless: **Administration settings → LibreSign → WhatsApp signing requests**.
+Fill in the payments service address and its partner API key, turn on **Send
+signing requests on WhatsApp**, and save. The switch stays greyed out until a
+SecurySign login provider, the address and the key are all set.
+
+While it is off, GoPaperless behaves as if this feature were not installed:
+
+- No WhatsApp, Copy link or Show QR on the signer row.
+- A signing link is not redirected to SecurySign setup or the MIMI passkey.
+- Signed-out signers get the normal login page.
+- Signing in as the wrong account shows "Invalid user".
+- No receipt is sent, and the `sub` is not remembered at login.
+
+The same settings from the command line:
 
 ```sh
-occ config:app:set libresign whatsapp_enabled --value 1 --type boolean
 occ config:app:set libresign whatsapp_api_url --value https://gopaperless.astralyngroup.com
 occ config:app:set libresign whatsapp_api_key --value '<partner key>' --sensitive
+occ config:app:set libresign whatsapp_enabled --value 1 --type boolean
 ```
 
 Payments service (`.env`):

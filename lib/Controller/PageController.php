@@ -28,6 +28,7 @@ use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
+use OCA\Libresign\Service\WhatsAppService;
 use OCA\Viewer\Event\LoadViewer;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -141,6 +142,7 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('signature_flow', $this->appConfig->getValueString(Application::APP_ID, 'signature_flow', \OCA\Libresign\Enum\SignatureFlow::NONE->value));
 		$this->initialState->provideInitialState('docmdp_config', $this->docMdpConfigService->getConfig());
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
+		$this->initialState->provideInitialState('whatsapp_enabled', WhatsAppService::on($this->appConfig));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
