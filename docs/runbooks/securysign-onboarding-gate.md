@@ -35,7 +35,12 @@ occ config:app:set libresign securysign_url        --value https://signa.dev.sec
 occ config:app:set libresign tendaworld_url        --value https://tendaworld.com
 occ config:app:set libresign oidc_sso_handoff_enabled --value 1 --type boolean
 occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --sensitive
+occ config:app:set libresign signing_card_layout   --value horizontal-top
 ```
+
+- `signing_card_layout` is the card on a signed PDF: `horizontal-top` (the
+  default), `horizontal` or `stacked`. It applies to documents signed with
+  SecurySign and with GoPaperless's own certificate.
 
 - `securysign_provider_id` is the `user_oidc` provider id, per instance. On
   `gopaperless.ke` that is `2`; `1` is the dead `ke_mimi_id` provider. Read it
@@ -188,6 +193,10 @@ instead` with the status. The first sign-in after the route answers replaces the
 card with the scribble. A 403 there while every other call succeeds means the
 client is missing Keycloak's `basic` scope; see "access tokens carry no `sub`"
 below.
+
+A document signed with SecurySign doesn't use the imported element. Its card
+takes the scribble from `POST /api/signature/visible/signing-context`, so a
+fallback card in the user's saved signatures never lands on the page.
 
 `JSignPdfHandler` stamps the element image into the PDF
 (`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the
@@ -411,7 +420,8 @@ Probed 2026-10-12 on the production realm: `signa-rp-10` (staging) and
 resolves the token by its `username` instead, so every call succeeds except
 `/api/signature/visible/{sub}/image`, which answers 403 `Not authorized`
 because the `sub` in the URL is not the username. Both clients need the same
-assignment.
+assignment. `signa-rp-10` has had it since 2026-10-13. Each user signs out and
+in once afterwards, so the session holds a token with `sub`.
 
 To re-check both tokens, from PowerShell (claim **names** only — the values are
 the user's identity):
