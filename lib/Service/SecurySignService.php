@@ -24,11 +24,14 @@ class SecurySignService {
 	private const DOWN_KEY = 'libresign.securysign.down_until';
 	private const DOWN_SECONDS = 60;
 	/**
-	 * Bump to re-import every mirrored signature. 3 dropped the composed card;
-	 * 4 takes the handwriting alone instead of SecurySign's assembled card.
+	 * What a mirrored signature is, best first. A lower one is replaced once a
+	 * higher one is available, never the other way round.
+	 * 5: the visible signature scribble from SecurySign's signing context.
+	 * 4: what SecurySign's image route gave, which can be the whole card.
+	 * 3: SecurySign's card, imported while neither gives the scribble.
 	 */
-	public const CARD_VERSION = 4;
-	/** SecurySign's card as it comes, imported while the handwriting route refuses. */
+	public const CARD_VERSION = 5;
+	private const IMAGE_ROUTE_VERSION = 4;
 	private const CARD_FALLBACK_VERSION = 3;
 
 	public function __construct(
@@ -308,22 +311,46 @@ class SecurySignService {
 			return null;
 		}
 		// The row says which certificate the signature belongs to. Its image is
-		// SecurySign's assembled card, and the built-in signing card would draw
-		// that card inside itself, so the handwriting comes from its own route.
-		$handwriting = $this->handwriting($identity);
-		$image = $handwriting ?? base64_decode($signature['imagePngBase64'] ?? '', true);
+		// SecurySign's assembled card, which the signing card would draw inside
+		// itself. The scribble alone comes first from the signing context, the
+		// source the signed PDF uses, then from the image route, which has been
+		// seen answering with the whole card.
+		$scribble = $this->contextScribble((string)$leaf['certificatePem']);
+		$version = self::CARD_VERSION;
+		if ($scribble === null) {
+			$scribble = $this->handwriting($identity);
+			$version = self::IMAGE_ROUTE_VERSION;
+		}
+		$image = $scribble ?? base64_decode($signature['imagePngBase64'] ?? '', true);
 		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
 			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
 		}
 		return [
 			'certificateId' => (string)$leaf['certificateId'],
 			'imagePngBase64' => base64_encode($image),
-			'card' => $handwriting === null ? self::CARD_FALLBACK_VERSION : self::CARD_VERSION,
+			'card' => $scribble === null ? self::CARD_FALLBACK_VERSION : $version,
 			'issuer' => (string)($leaf['issuer'] ?? 'SecurySign'),
 			'serial' => (string)($leaf['serialNumberHex'] ?? ''),
 			'validFrom' => self::day($leaf['validFrom'] ?? null),
 			'validUntil' => self::day($leaf['validUntil'] ?? null),
 		];
+	}
+
+	/**
+	 * The visible signature scribble from SecurySign's signing context, when the
+	 * context is for this certificate. Null when SecurySign has none to give,
+	 * and the import tries the image route instead.
+	 */
+	private function contextScribble(string $pem): ?string {
+		try {
+			$context = $this->signingContext();
+		} catch (\Throwable $e) {
+			$this->logger->info('No SecurySign signing context for the signature import', ['exception' => $e]);
+			return null;
+		}
+		return $context !== null && hash_equals((string)openssl_x509_fingerprint($pem, 'sha256'), $context['certificateSha256'])
+			? $context['handwriting']
+			: null;
 	}
 
 
@@ -450,6 +477,17 @@ class SecurySignService {
 				'validUntil' => $readiness['validUntil'],
 			],
 		]);
+	}
+
+	/**
+	 * The user's certificate page on the TendaWorld website. A visitor who is
+	 * not signed in there is signed in from their live SecurySign session,
+	 * which both sites share, and lands on the page with nothing to click.
+	 */
+	public function profileUrl(): string {
+		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
+			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://tendaworld.com');
+		return self::origin($configured) . '/profile';
 	}
 
 	/**

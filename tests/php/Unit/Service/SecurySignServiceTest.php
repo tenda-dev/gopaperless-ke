@@ -144,13 +144,20 @@ final class SecurySignServiceTest extends TestCase {
 	 * @param array<string, mixed> $certificate
 	 * @param array<string, mixed>|null $signature
 	 */
-	private function readinessOf(array $certificate, ?array $signature, ?string $handwriting): ?array {
+	/** @param string|null $contextFor the PEM the signing context names, or null when SecurySign has none */
+	private function readinessOf(array $certificate, ?array $signature, ?string $handwriting, ?string $contextScribble = null, ?string $contextFor = null): ?array {
 		$service = $this->getMockBuilder(SecurySignService::class)
-			->disableOriginalConstructor()->onlyMethods(['request', 'handwriting'])->getMock();
+			->disableOriginalConstructor()->onlyMethods(['request', 'handwriting', 'signingContext'])->getMock();
 		$service->method('request')->willReturnCallback(
 			static fn (string $path) => str_starts_with($path, 'pki/') ? $certificate : $signature,
 		);
 		$service->method('handwriting')->willReturn($handwriting);
+		$contextFor ??= $certificate['certificate']['certificatePem'] ?? '';
+		$service->method('signingContext')->willReturn($contextScribble === null ? null : [
+			'certificateSha256' => (string)openssl_x509_fingerprint($contextFor, 'sha256'),
+			'name' => 'Jane Njoroge', 'issuer' => 'Signa Hardware CA', 'handwriting' => $contextScribble,
+			'time' => new \DateTimeImmutable(), 'expiresAt' => new \DateTimeImmutable('+5 minutes'),
+		]);
 		return $service->readiness(self::IDENTITY);
 	}
 
@@ -164,11 +171,33 @@ final class SecurySignServiceTest extends TestCase {
 		$certificate = ['status' => 'active', 'credentialId' => 'cred-1', 'certificate' => ['certificateId' => 7, 'certificatePem' => $pem]];
 		$card = ['certificateId' => 7, 'imagePngBase64' => base64_encode(self::PNG_MAGIC . 'card')];
 
-		$handwriting = $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'scribble');
-		self::assertSame([base64_encode(self::PNG_MAGIC . 'scribble'), SecurySignService::CARD_VERSION], [$handwriting['imagePngBase64'], $handwriting['card']]);
-		// Without the handwriting, SecurySign's card, marked as the fallback.
+		// The signing context's scribble comes first, even when the image route answers.
+		$context = $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'route', self::PNG_MAGIC . 'scribble');
+		self::assertSame([base64_encode(self::PNG_MAGIC . 'scribble'), SecurySignService::CARD_VERSION], [$context['imagePngBase64'], $context['card']]);
+		// Without a context, whatever the image route gives, marked below it.
+		$route = $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'route');
+		self::assertSame([base64_encode(self::PNG_MAGIC . 'route'), 4], [$route['imagePngBase64'], $route['card']]);
+		// A context for another certificate is not this signature.
+		$other = $this->readinessOf($certificate, $card, self::PNG_MAGIC . 'route', self::PNG_MAGIC . 'scribble', self::selfSignedPem());
+		self::assertSame(base64_encode(self::PNG_MAGIC . 'route'), $other['imagePngBase64']);
+		// Without either, SecurySign's card, marked as the fallback.
 		$fallback = $this->readinessOf($certificate, $card, null);
 		self::assertSame([$card['imagePngBase64'], 3], [$fallback['imagePngBase64'], $fallback['card']]);
+	}
+
+	public function testTheProfileLinkIsTheWebsitesCertificatePage(): void {
+		$values = [];
+		$appConfig = $this->createMock(IAppConfig::class);
+		$appConfig->method('getValueString')->willReturnCallback(static function (string $app, string $key, string $default = '') use (&$values): string {
+			return $values[$key] ?? $default;
+		});
+		$system = $this->createMock(IConfig::class);
+		$system->method('getSystemValueString')->willReturnCallback(static fn (string $key, string $default = '') => $default);
+		$service = new SecurySignService($appConfig, $system, $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+
+		self::assertSame('https://tendaworld.com/profile', $service->profileUrl());
+		$values['tendaworld_url'] = 'https://staging.tendaworld.com';
+		self::assertSame('https://staging.tendaworld.com/profile', $service->profileUrl());
 	}
 
 	/**
@@ -394,7 +423,7 @@ final class SecurySignServiceTest extends TestCase {
 				$this->createMock(IServerContainer::class),
 				$this->createMock(IClientService::class),
 				$this->createMock(LoggerInterface::class),
-			])->onlyMethods(['identity', 'request', 'handwriting'])->getMock();
+			])->onlyMethods(['identity', 'request', 'handwriting', 'signingContext'])->getMock();
 		$service->method('identity')->willReturn([
 			'sub' => 'google-oauth2|1',
 			'issuer' => 'https://idp.test/realms/signa',
