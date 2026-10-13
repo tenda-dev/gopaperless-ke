@@ -1074,6 +1074,11 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			->with(Application::APP_ID, 'free_credits_uses', 2)
 			->willReturn(2);
 
+		// Won the atomic claim -> grant proceeds.
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
 		$this->entitlementService
 			->expects($this->once())
 			->method('create')
@@ -1128,6 +1133,10 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			->with(Application::APP_ID, 'free_credits_uses', 2)
 			->willReturn(2);
 
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
 		$this->entitlementService
 			->method('create')
 			->willThrowException(new \Exception('Entitlement service unavailable'));
@@ -1137,5 +1146,239 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 		$this->expectNotToPerformAssertions();
 		$method->invoke($this->getService(), 'newuser');
+	}
+	public function testAwardSignupBonusRespectsConfiguredUses(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(5);
+
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
+		$this->entitlementService
+			->expects($this->once())
+			->method('create')
+			->with('newuser', 'SIGN_DOCUMENT', 5);
+
+		$this->getService()->awardSignupBonus('newuser');
+	}
+
+	public function testAwardSignupBonusSkippedWhenAlreadyGranted(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		// Lost/already-claimed: the conditional UPDATE affected 0 rows.
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(0);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$this->getService()->awardSignupBonus('existing-user');
+	}
+
+	public function testRepeatedAwardDoesNotDuplicateCredits(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		// First call wins the claim, the second (retry / re-fired event /
+		// concurrent request that lost the row lock) sees 0 rows affected.
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturnOnConsecutiveCalls(1, 0);
+
+		$this->entitlementService
+			->expects($this->once())
+			->method('create');
+
+		$service = $this->getService();
+		$service->awardSignupBonus('newuser');
+		$service->awardSignupBonus('newuser');
+	}
+
+	public function testAwardRollsBackWhenEntitlementCreationFails(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
+		$this->entitlementService
+			->method('create')
+			->willThrowException(new \Exception('db down mid-grant'));
+
+		// The claim and the grant share one transaction: a failed grant must
+		// roll back the claim (so the flag reverts), never commit it.
+		$this->connection->expects($this->once())->method('rollBack');
+		$this->connection->expects($this->never())->method('commit');
+
+		$this->getService()->awardSignupBonus('newuser');
+	}
+
+	private function recoveryCutoffTimestamp(): int {
+		return (new \DateTimeImmutable('2026-10-09T21:00:00+00:00'))->getTimestamp();
+	}
+
+	private function invokeRecovery(string $userId, ?\DateTimeInterface $grantedAt = null): void {
+		$account = new ExtendedAccount();
+		$account->setUserId($userId);
+		if ($grantedAt !== null) {
+			$account->setSignupBonusGrantedAt($grantedAt->format(DATE_ATOM));
+		}
+
+		$method = new \ReflectionMethod(AccountService::class, 'maybeRecoverSignupBonus');
+		$method->setAccessible(true);
+		$method->invoke($this->getService(), $account);
+	}
+
+	public function testRecoveryGrantsForAccountFirstLoggedInAtCutoff(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+		$this->appConfig
+			->method('getValueInt')
+			->with(Application::APP_ID, 'free_credits_uses', 2)
+			->willReturn(2);
+
+		$user = $this->createMock(IUser::class);
+		// Exactly the inclusive cutoff instant -> eligible.
+		$user->method('getFirstLogin')->willReturn($this->recoveryCutoffTimestamp());
+		$this->userManager->method('get')->with('recent-user')->willReturn($user);
+
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
+		$this->entitlementService
+			->expects($this->once())
+			->method('create')
+			->with('recent-user', 'SIGN_DOCUMENT', 2);
+
+		$this->invokeRecovery('recent-user');
+	}
+
+	public function testRecoverySkippedForAccountBeforeCutoff(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+
+		$user = $this->createMock(IUser::class);
+		// One second before the cutoff -> a NULL flag must NOT grant credits.
+		$user->method('getFirstLogin')->willReturn($this->recoveryCutoffTimestamp() - 1);
+		$this->userManager->method('get')->with('old-user')->willReturn($user);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$this->invokeRecovery('old-user');
+	}
+
+	public function testRecoverySkippedWhenFirstLoginNeverRecorded(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+
+		$user = $this->createMock(IUser::class);
+		$user->method('getFirstLogin')->willReturn(0); // never logged in
+		$this->userManager->method('get')->with('ghost-user')->willReturn($user);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$this->invokeRecovery('ghost-user');
+	}
+
+	public function testRecoverySkippedWhenFirstLoginUnknown(): void {
+		$this->appConfig
+			->method('getValueBool')
+			->with(Application::APP_ID, 'free_credits_enabled', true)
+			->willReturn(true);
+
+		$user = $this->createMock(IUser::class);
+		$user->method('getFirstLogin')->willReturn(-1); // pre-NC31, unreliable age
+		$this->userManager->method('get')->with('legacy-user')->willReturn($user);
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$this->invokeRecovery('legacy-user');
+	}
+
+	public function testGetExtendedAccountTriggersLazyRecovery(): void {
+		$account = new ExtendedAccount();
+		$account->setUserId('recent-user');
+
+		$this->extendedAccountMapper
+			->method('findByUserId')
+			->willReturn($account);
+
+		$this->appConfig->method('getValueBool')->willReturnMap([
+			[Application::APP_ID, 'free_credits_enabled', true, true],
+			[Application::APP_ID, 'certificate_gate_enabled', false, false],
+		]);
+		$this->appConfig->method('getValueInt')->willReturnMap([
+			[Application::APP_ID, 'free_credits_uses', 2, 2],
+		]);
+
+		$user = $this->createMock(IUser::class);
+		$user->method('getFirstLogin')->willReturn($this->recoveryCutoffTimestamp());
+		$this->userManager->method('get')->with('recent-user')->willReturn($user);
+
+		$this->extendedAccountMapper
+			->method('claimSignupBonus')
+			->willReturn(1);
+
+		$this->entitlementService
+			->expects($this->once())
+			->method('create')
+			->with('recent-user', 'SIGN_DOCUMENT', 2);
+
+		$this->getService()->getExtendedAccount('recent-user', null);
+	}
+	public function testRecoveryShortCircuitsWhenAlreadyGranted(): void {
+		// A populated signup_bonus_granted_at must return immediately: no
+		// config read, no user lookup, no transaction, and no atomic claim.
+		$this->extendedAccountMapper
+			->expects($this->never())
+			->method('claimSignupBonus');
+
+		$this->entitlementService
+			->expects($this->never())
+			->method('create');
+
+		$this->invokeRecovery('already-granted-user', new \DateTimeImmutable('2026-10-11T08:00:00+03:00'));
 	}
 }

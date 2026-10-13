@@ -10,6 +10,7 @@ namespace OCA\Libresign\Service;
 
 use InvalidArgumentException;
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\ExtendedAccount;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\FileTypeMapper;
 use OCA\Libresign\Db\IdentifyMethodMapper;
@@ -60,6 +61,16 @@ class AccountService {
 	 * Mirrors the frontend DEFAULT_SIGN_PRODUCT_CODE ('SIGN_DOCUMENT').
 	 */
 	private const SIGNUP_BONUS_PRODUCT_CODE = 'SIGN_DOCUMENT';
+
+	/**
+	 * Fixed, non-rolling recovery cutoff for the signup bonus.
+	 *
+	 * Accounts whose Nextcloud first login is on or after this instant are
+	 * eligible for lazy recovery of a missed bonus; older accounts are not.
+	 * 2026-10-10 00:00:00 Africa/Nairobi == 2026-10-09T21:00:00Z. Fixed by
+	 * design. NEVER a rolling window.
+	 */
+	private const SIGNUP_BONUS_RECOVERY_CUTOFF = '2026-10-09T21:00:00+00:00';
 
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
@@ -454,6 +465,9 @@ class AccountService {
 			$email
 		);
 
+		// Lazy, idempotent recovery for recent accounts that missed the bonus.
+		$this->maybeRecoverSignupBonus($extended);
+
 		return [
 			'createdAt' => $extended->getCreatedAtImmutable()->format(DATE_ATOM),
 			'paidCertificate' => $extended->getPaidCertificate(),
@@ -466,15 +480,26 @@ class AccountService {
 	}
 
 	/**
-	 * Grant the free signing-credit signup bonus to a newly created account.
+	 * Grant the free signing-credit signup bonus to a user, exactly once.
 	 *
-	 * Controlled by two admin settings:
+	 * Single business-logic entry point for the bonus. Called from the
+	 * account-creation paths createToSign and from
+	 * UserFirstTimeLoggedInListener, and safe to call repeatedly: an atomic
+	 * compare-and-set on gopaperless_extended_accounts.signup_bonus_granted_at
+	 * guarantees at most one grant per user across repeated events,
+	 * retries and concurrency.
+	 *
+	 * Controlled by two admin settings (preserved as the source of truth):
 	 * - free_credits_enabled (bool, default true): whether to award anything
 	 * - free_credits_uses (int, default 2): how many uses to grant
 	 *
-	 * Never throws: a bonus failure must not break account creation.
+	 * Atomicity: Shared by registration, first login, and recovery paths. The atomic
+	 * claim prevents duplicate grants; the claim and entitlement creation
+	 * commit or roll back together.
+	 *
+	 * Never throws: a bonus failure must not break account creation or login.
 	 */
-	private function awardSignupBonus(string $userId): void {
+	public function awardSignupBonus(string $userId): void {
 		if ($userId === '') {
 			return;
 		}
@@ -485,9 +510,37 @@ class AccountService {
 		if ($uses <= 0) {
 			return;
 		}
+
 		try {
-			$this->entitlementService->create($userId, self::SIGNUP_BONUS_PRODUCT_CODE, $uses);
+			// Ensure the claim target exists for users provisioned outside the
+			// registration flow. Keep this outside the grant transaction so a
+			// concurrent row-creation conflict cannot invalidate the transaction.
+			$this->extendedAccountService->create($userId);
 		} catch (\Throwable $e) {
+			$this->logger->error(
+				'[AccountService] Could not ensure extended account before signup bonus',
+				[
+					'userId' => $userId,
+					'exception' => $e->getMessage(),
+				]
+			);
+			return;
+		}
+
+		try {
+			$this->connection->beginTransaction();
+			// Claim the bonus atomically; only the caller that claims it may
+			// create the entitlement.
+			if (!$this->extendedAccountService->claimSignupBonus($userId)) {
+				$this->connection->commit();
+				return;
+			}
+
+			$this->entitlementService->create($userId, self::SIGNUP_BONUS_PRODUCT_CODE, $uses);
+
+			$this->connection->commit();
+		} catch (\Throwable $e) {
+			$this->connection->rollBack();
 			$this->logger->error(
 				'[AccountService] Failed to award signup bonus credits',
 				[
@@ -497,6 +550,44 @@ class AccountService {
 				]
 			);
 		}
+	}
+
+	/**
+	 * Recover a missed signup bonus through the /account/me flow.
+	 *
+	 * Only accounts with a known first-login timestamp at or after the
+	 * fixed cutoff are eligible. The shared grant operation handles
+	 * configuration and idempotency.
+	 */
+	private function maybeRecoverSignupBonus(ExtendedAccount $extended): void {
+		// Skip recovery checks and the claim attempt when already granted.
+		if ($extended->getSignupBonusGrantedAt() !== null) {
+			return;
+		}
+
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true)) {
+			return;
+		}
+
+		$userId = $extended->getUserId();
+
+		$user = $this->userManager->get($userId);
+		if ($user === null) {
+			return;
+		}
+
+		$firstLogin = $user->getFirstLogin();
+		// Unknown or absent first-login timestamps cannot establish eligibility.
+		if ($firstLogin <= 0) {
+			return;
+		}
+
+		$cutoff = (new \DateTimeImmutable(self::SIGNUP_BONUS_RECOVERY_CUTOFF))->getTimestamp();
+		if ($firstLogin < $cutoff) {
+			return;
+		}
+
+		$this->awardSignupBonus($userId);
 	}
 
 	public function getCertificateEngineName(): string {

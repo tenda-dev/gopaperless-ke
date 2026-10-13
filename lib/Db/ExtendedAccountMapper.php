@@ -10,6 +10,7 @@ use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\Exception;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\DB\Types;
 use OCP\IDBConnection;
 
@@ -152,5 +153,52 @@ class ExtendedAccountMapper extends QBMapper {
 			->orderBy('a.created_at', 'ASC');
 
 		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Atomically claims the signup bonus for a user.
+	 *
+	 * Sets signup_bonus_granted_at only when the user's extended-account
+	 * row exists and the timestamp is currently NULL. The conditional
+	 * UPDATE makes the claim safe against concurrent requests.
+	 *
+	 * Returns the number of affected rows:
+	 * - 1: this call successfully claimed the bonus; the caller may create
+	 *      the entitlement.
+	 * - 0: no claim was made because the row is missing or the bonus has
+	 *      already been claimed.
+	 *
+	 * The caller must create the entitlement only when this method returns
+	 * 1. The claim and entitlement creation must run in the same database
+	 * transaction so that either both changes commit or both roll back.
+	 *
+	 * @throws Exception If the database operation fails.
+	 */
+	public function claimSignupBonus(
+		string $userId,
+		\DateTimeImmutable $grantedAt,
+	): int {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->update($this->getTableName())
+			->set(
+				'signup_bonus_granted_at',
+				$qb->createNamedParameter(
+					$grantedAt,
+					IQueryBuilder::PARAM_DATETIME_IMMUTABLE,
+				),
+			)
+			->where(
+				$qb->expr()->eq(
+					'user_id',
+					$qb->createNamedParameter($userId, Types::STRING),
+				),
+			)
+			->andWhere(
+				$qb->expr()->isNull('signup_bonus_granted_at'),
+			);
+
+		return $qb->executeStatement();
 	}
 }
