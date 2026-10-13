@@ -25,6 +25,7 @@ use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestSignatureService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
@@ -128,6 +129,12 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('filters', $this->accountService->getConfigFilters($this->userSession->getUser()));
 		$this->initialState->provideInitialState('sorting', $this->accountService->getConfigSorting($this->userSession->getUser()));
 		$this->initialState->provideInitialState('certificate_engine', $this->accountService->getCertificateEngineName());
+		// SecurySign users sign with SecurySign's certificate, so the account page
+		// shows that one instead of a local certificate they would never use.
+		$securySign = \OCP\Server::get(SecurySignService::class);
+		$securySignSigns = $securySign->signs();
+		$this->initialState->provideInitialState('securysign_signs', $securySignSigns);
+		$this->initialState->provideInitialState('securysign_certificate', $securySignSigns ? $securySign->signingCertificate() : null);
 
 		try {
 			$this->validateHelper->canRequestSign($this->userSession->getUser());

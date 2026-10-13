@@ -259,7 +259,7 @@ class SecurySignService {
 	 */
 	public function isReady(bool $forceRefresh = false): bool {
 		$identity = $this->identity();
-		$cacheKey = hash('sha256', $identity['issuer'] . "\0" . $identity['sub']);
+		$cacheKey = self::cacheKey($identity);
 		$cached = $this->session->get(self::READINESS_CACHE_KEY);
 		if (!$forceRefresh && is_array($cached)
 			&& ($cached['identity'] ?? null) === $cacheKey
@@ -268,7 +268,7 @@ class SecurySignService {
 		}
 
 		$readiness = $this->readiness($identity);
-		$this->cacheReadiness($cacheKey, $readiness !== null);
+		$this->cacheReadiness($cacheKey, $readiness);
 		if ($readiness !== null) {
 			$this->syncVisibleSignature($readiness);
 		}
@@ -434,11 +434,45 @@ class SecurySignService {
 		$this->session->remove(self::READINESS_CACHE_KEY);
 	}
 
-	private function cacheReadiness(string $identity, bool $ready): void {
+	/** @param array{sub: string, issuer: string} $identity */
+	private static function cacheKey(array $identity): string {
+		return hash('sha256', $identity['issuer'] . "\0" . $identity['sub']);
+	}
+
+	private function cacheReadiness(string $identity, ?array $readiness): void {
 		$this->session->set(self::READINESS_CACHE_KEY, [
 			'identity' => $identity,
-			'ready' => $ready,
+			'ready' => $readiness !== null,
+			// Kept for the account page, so showing it costs no request.
+			'certificate' => $readiness === null ? null : [
+				'issuer' => $readiness['issuer'],
+				'serial' => $readiness['serial'],
+				'validUntil' => $readiness['validUntil'],
+			],
 		]);
+	}
+
+	/**
+	 * The certificate SecurySign signs this user's documents with, for the
+	 * account page: issuer, serial and expiry, from the readiness answer the
+	 * session already holds. A session from before they were kept asks once.
+	 * Null when SecurySign can't say right now.
+	 *
+	 * @return array{issuer: string, serial: string, validUntil: string}|null
+	 */
+	public function signingCertificate(): ?array {
+		try {
+			$cached = $this->session->get(self::READINESS_CACHE_KEY);
+			if (!is_array($cached) || ($cached['identity'] ?? null) !== self::cacheKey($this->identity())
+				|| !array_key_exists('certificate', $cached)) {
+				$this->isReady(true);
+				$cached = $this->session->get(self::READINESS_CACHE_KEY);
+			}
+			return is_array($cached['certificate'] ?? null) ? $cached['certificate'] : null;
+		} catch (\Throwable $e) {
+			$this->logger->info('No SecurySign certificate details for the account page', ['exception' => $e]);
+			return null;
+		}
 	}
 
 	/**

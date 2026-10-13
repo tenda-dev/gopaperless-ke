@@ -446,4 +446,56 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertFalse($service->isReady());
 		self::assertFalse($service->isReady(true));
 	}
+
+	/** The account page reads the certificate from the session's readiness answer, asking SecurySign at most once. */
+	public function testTheAccountPageCertificateComesFromTheReadinessAnswer(): void {
+		$cache = ['identity' => 'stale', 'ready' => true];
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturnCallback(static function () use (&$cache) {
+			return $cache;
+		});
+		$session->method('set')->willReturnCallback(static function (string $key, array $value) use (&$cache): void {
+			$cache = $value;
+		});
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->setConstructorArgs([
+				$this->createMock(IAppConfig::class),
+				$this->createMock(IConfig::class),
+				$session,
+				$this->createMock(IUserSession::class),
+				$this->createMock(IServerContainer::class),
+				$this->createMock(IClientService::class),
+				$this->createMock(LoggerInterface::class),
+			])->onlyMethods(['identity', 'readiness', 'syncVisibleSignature'])->getMock();
+		$service->method('identity')->willReturn([
+			'sub' => 'google-oauth2|1',
+			'issuer' => 'https://idp.test/realms/signa',
+			'accessToken' => 'at',
+		]);
+		$service->expects(self::once())->method('readiness')->willReturn([
+			'certificateId' => '7', 'imagePngBase64' => '', 'card' => SecurySignService::CARD_VERSION,
+			'issuer' => 'Signa Hardware CA', 'serial' => '4F3A', 'validFrom' => '13 Oct 2026', 'validUntil' => '13 Oct 2027',
+		]);
+
+		$expected = ['issuer' => 'Signa Hardware CA', 'serial' => '4F3A', 'validUntil' => '13 Oct 2027'];
+		self::assertSame($expected, $service->signingCertificate(), 'an older session asks once');
+		self::assertSame($expected, $service->signingCertificate(), 'then the session answers');
+	}
+
+	public function testAnOutageLeavesTheAccountPageWithoutCertificateDetails(): void {
+		$service = $this->getMockBuilder(SecurySignService::class)
+			->setConstructorArgs([
+				$this->createMock(IAppConfig::class),
+				$this->createMock(IConfig::class),
+				$this->createMock(ISession::class),
+				$this->createMock(IUserSession::class),
+				$this->createMock(IServerContainer::class),
+				$this->createMock(IClientService::class),
+				$this->createMock(LoggerInterface::class),
+			])->onlyMethods(['identity', 'readiness'])->getMock();
+		$service->method('identity')->willReturn(['sub' => 's', 'issuer' => 'i', 'accessToken' => 'at']);
+		$service->method('readiness')->willThrowException(new \RuntimeException('SecurySign answered HTTP 502', 503));
+
+		self::assertNull($service->signingCertificate());
+	}
 }

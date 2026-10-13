@@ -15,7 +15,20 @@
 				</div>
 				<div class="user-password">
 					<h3>{{ t('libresign', 'Certificate') }}</h3>
-					<ManagePassword />
+					<template v-if="securySignSigns">
+						<dl v-if="securySignCertificate" class="securysign-certificate">
+							<dt>{{ t('libresign', 'Issuer') }}</dt>
+							<dd>{{ securySignCertificate.issuer }}</dd>
+							<dt>{{ t('libresign', 'Serial') }}</dt>
+							<dd>{{ securySignCertificate.serial }}</dd>
+							<dt>{{ t('libresign', 'Valid until') }}</dt>
+							<dd>{{ securySignCertificate.validUntil }}</dd>
+						</dl>
+						<p v-else class="securysign-certificate">
+							{{ t('libresign', 'Your SecurySign certificate details are not available right now.') }}
+						</p>
+					</template>
+					<ManagePassword v-else />
 				</div>
 			</div>
 		</div>
@@ -31,6 +44,7 @@
 import { t } from '@nextcloud/l10n'
 
 import { getCurrentUser } from '@nextcloud/auth'
+import { loadState } from '@nextcloud/initial-state'
 
 import Documents from './partials/Documents.vue'
 import ManagePassword from './partials/ManagePassword.vue'
@@ -51,6 +65,16 @@ const user: User = {
 	uid: currentUser?.uid ?? '',
 	displayName: currentUser?.displayName ?? '',
 }
+
+type SecurySignCertificate = {
+	issuer: string
+	serial: string
+	validUntil: string
+}
+
+// SecurySign holds the key, so its users have no local certificate to manage.
+const securySignSigns = loadState<boolean>('libresign', 'securysign_signs', false)
+const securySignCertificate = loadState<SecurySignCertificate | null>('libresign', 'securysign_certificate', null)
 
 defineExpose({
 	user,
@@ -117,6 +141,20 @@ defineExpose({
 			.user-password{
 				display: flex;
 				flex-direction: column;
+			}
+
+			.securysign-certificate{
+				margin: 0;
+
+				dt{
+					color: var(--color-text-maxcontrast);
+					margin-top: 8px;
+				}
+
+				dd{
+					margin: 0;
+					overflow-wrap: anywhere;
+				}
 			}
 		}
 
