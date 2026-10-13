@@ -111,10 +111,12 @@ class SecurySignService {
 
 	/**
 	 * Whether this user's documents are signed by SecurySign. Everyone else, and
-	 * every instance without the RP's signing secret, keeps LibreSign's own engine.
+	 * every instance with the switch off or without the RP's signing secret,
+	 * keeps LibreSign's own engine.
 	 */
 	public function signs(): bool {
 		return $this->applies()
+			&& $this->config->getValueBool(Application::APP_ID, 'securysign_signing_enabled', true)
 			&& $this->config->getValueString(Application::APP_ID, 'securysign_signing_secret') !== '';
 	}
 
@@ -460,23 +462,53 @@ class SecurySignService {
 	}
 
 	/**
-	 * Where a user without a usable certificate is sent.
-	 *
-	 * Read from `occ config:app:set libresign tendaworld_url` first, then from
-	 * the system value, which Nextcloud also fills from an `NC_tendaworld_url`
-	 * environment variable. A deployment that only sets env therefore needs no
-	 * occ run, and one that ran occ is not overridden by the image's env.
+	 * Where a user without a usable certificate gets one, and how they come
+	 * back: the TendaWorld website by default, or MIMI when the admin picks it.
+	 * Either way they return to $returnUrl, which checks $state.
 	 */
-	public function onboardingUrl(): string {
-		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
-			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://tendaworld.com');
-		return self::origin($configured) . '/onboarding/gopaperless';
+	public function enrolmentUrl(string $state, string $sub, string $email, string $returnUrl): string {
+		if ($this->config->getValueString(Application::APP_ID, 'enrolment_site', 'tendaworld') === 'mimi') {
+			// MIMI sets up this account (it switches if signed in as another one,
+			// asking for this email), then sends the user to our return route.
+			return $this->mimiOrigin() . '/enrol?' . http_build_query(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl]);
+		}
+		return $this->websiteOrigin() . '/onboarding/gopaperless?' . http_build_query(['state' => $state, 'subject' => $sub]);
+	}
+
+	/**
+	 * The TendaWorld website's and MIMI's addresses as configured, empty for the
+	 * default. Each reads `occ config:app:set libresign <key>` first, then the
+	 * system value, which an `NC_<key>` environment variable fills. A deployment
+	 * that only sets env needs no occ run, and env never overrides an admin.
+	 *
+	 * @return array{website: string, mimi: string}
+	 */
+	public function addresses(): array {
+		$read = fn (string $key): string => $this->config->getValueString(Application::APP_ID, $key)
+			?: $this->systemConfig->getSystemValueString($key, '');
+		return self::splitAddresses($read('tendaworld_url'), $read('mimi_url'));
+	}
+
+	/**
+	 * ponytail: tendaworld_url held MIMI's address as well until mimi_url
+	 * existed, so a MIMI address found there is MIMI's. Drop this once every
+	 * instance has saved the SecurySign settings since.
+	 *
+	 * @return array{website: string, mimi: string}
+	 */
+	public static function splitAddresses(string $website, string $mimi): array {
+		if (str_contains((string)parse_url($website, PHP_URL_HOST), 'mimi')) {
+			return ['website' => '', 'mimi' => $mimi ?: $website];
+		}
+		return ['website' => $website, 'mimi' => $mimi];
+	}
+
+	private function websiteOrigin(): string {
+		return self::origin($this->addresses()['website'] ?: 'https://tendaworld.com');
 	}
 
 	private function mimiOrigin(): string {
-		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
-			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://gopaperless.mimi.ke');
-		return self::origin($configured);
+		return self::origin($this->addresses()['mimi'] ?: 'https://gopaperless.mimi.ke');
 	}
 
 	private const PASSKEY_KEY = 'libresign.mimi.passkey';
@@ -484,10 +516,11 @@ class SecurySignService {
 
 	/**
 	 * Whether this session still owes the MIMI passkey check that follows
-	 * sign-in. Off until the MIMI client secret is set.
+	 * sign-in. Off while the switch is off or the MIMI client secret is unset.
 	 */
 	public function passkeyPending(): bool {
 		return $this->applies()
+			&& $this->config->getValueBool(Application::APP_ID, 'mimi_passkey_enabled', true)
 			&& $this->config->getValueString(Application::APP_ID, 'mimi_client_secret') !== ''
 			&& $this->session->get(self::PASSKEY_KEY) === null;
 	}
