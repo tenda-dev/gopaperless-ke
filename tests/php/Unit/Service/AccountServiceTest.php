@@ -21,6 +21,7 @@ use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Db\UserElement;
 use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\CRLReason;
+use OCA\Libresign\Enum\EntitlementType;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Handler\CertificateEngine\CertificateEngineFactory;
 use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
@@ -1082,7 +1083,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->entitlementService
 			->expects($this->once())
 			->method('create')
-			->with('newuser', 'SIGN_DOCUMENT', 2);
+			->with('newuser', 'SIGN_DOCUMENT', 2, EntitlementType::PROMOTIONAL);
 
 		$method = new \ReflectionMethod(AccountService::class, 'awardSignupBonus');
 		$method->setAccessible(true);
@@ -1164,7 +1165,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->entitlementService
 			->expects($this->once())
 			->method('create')
-			->with('newuser', 'SIGN_DOCUMENT', 5);
+			->with('newuser', 'SIGN_DOCUMENT', 5, EntitlementType::PROMOTIONAL);
 
 		$this->getService()->awardSignupBonus('newuser');
 	}
@@ -1280,7 +1281,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->entitlementService
 			->expects($this->once())
 			->method('create')
-			->with('recent-user', 'SIGN_DOCUMENT', 2);
+			->with('recent-user', 'SIGN_DOCUMENT', 2, EntitlementType::PROMOTIONAL);
 
 		$this->invokeRecovery('recent-user');
 	}
@@ -1364,7 +1365,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->entitlementService
 			->expects($this->once())
 			->method('create')
-			->with('recent-user', 'SIGN_DOCUMENT', 2);
+			->with('recent-user', 'SIGN_DOCUMENT', 2, EntitlementType::PROMOTIONAL);
 
 		$this->getService()->getExtendedAccount('recent-user', null);
 	}

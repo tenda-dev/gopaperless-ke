@@ -19,6 +19,7 @@ use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Db\UserElement;
 use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\CRLReason;
+use OCA\Libresign\Enum\EntitlementType;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Exception\InvalidPasswordException;
 use OCA\Libresign\Exception\LibresignException;
@@ -536,7 +537,7 @@ class AccountService {
 				return;
 			}
 
-			$this->entitlementService->create($userId, self::SIGNUP_BONUS_PRODUCT_CODE, $uses);
+			$this->entitlementService->create($userId, self::SIGNUP_BONUS_PRODUCT_CODE, $uses, EntitlementType::PROMOTIONAL);
 
 			$this->connection->commit();
 		} catch (\Throwable $e) {

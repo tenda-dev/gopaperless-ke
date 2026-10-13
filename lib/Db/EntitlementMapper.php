@@ -149,6 +149,34 @@ class EntitlementMapper extends QBMapper {
 
 		$qb = $this->db->getQueryBuilder();
 
+		// Consumption/reservation priority: use complimentary or recurring credits
+		// before purchased credits, preserving the user's prepaid balance:
+		//   0 PROMOTIONAL   — signup bonuses and promotional credits
+		//   1 ADMIN_GRANTED — credits granted by an administrator
+		//   2 SUBSCRIPTION  — subscription credits, which may renew or expire
+		//   3 PAY_AS_YOU_GO — purchased credits, preserved until last
+		//   4 unknown types — deterministic fallback for future entitlement types
+		//
+		// Priority is explicit; alphabetical ordering is not the business rule.
+		// Within each priority, consume older entitlements first (FIFO).
+		// This shared selector governs both consumption and sponsorship reservation;
+		// callers MUST not introduce their own ordering.
+		// The CASE expression uses bound parameters and is compatible with the
+		// database platforms supported by Nextcloud.
+
+		$typePriority = $qb->createFunction(sprintf(
+			'CASE e.type'
+			. ' WHEN %s THEN 0'
+			. ' WHEN %s THEN 1'
+			. ' WHEN %s THEN 2'
+			. ' WHEN %s THEN 3'
+			. ' ELSE 4 END',
+			$qb->createNamedParameter(EntitlementType::PROMOTIONAL->value, Types::STRING),
+			$qb->createNamedParameter(EntitlementType::ADMIN_GRANTED->value, Types::STRING),
+			$qb->createNamedParameter(EntitlementType::SUBSCRIPTION->value, Types::STRING),
+			$qb->createNamedParameter(EntitlementType::PAY_AS_YOU_GO->value, Types::STRING),
+		));
+
 		$qb->select('e.*')
 			->from($this->getTableName(), 'e')
 			->where(
@@ -169,7 +197,7 @@ class EntitlementMapper extends QBMapper {
 					)
 				)
 			)
-			->orderBy('e.type', 'ASC')
+			->orderBy($typePriority, 'ASC')
 			->addOrderBy('e.created_at', 'ASC');
 
 		return $this->findEntities($qb);
