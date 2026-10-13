@@ -65,17 +65,19 @@
 				<NcTextField
 					v-model="mimiUrl"
 					:label="t('libresign', 'MIMI address')"
+					:helper-text="t('libresign', 'Empty means https://gopaperless.mimi.ke')"
 					placeholder="https://gopaperless.mimi.ke" />
 				<NcTextField
 					v-model="mimiClientId"
 					:label="t('libresign', 'MIMI client ID')"
+					:helper-text="t('libresign', 'Empty means gopaperless')"
 					placeholder="gopaperless" />
 				<NcPasswordField
 					v-model="mimiClientSecret"
 					:label="t('libresign', 'MIMI client secret')"
 					:placeholder="mimiClientSecretSet ? t('libresign', 'Saved. Type a new one to replace it.') : ''" />
 				<p class="securysign-settings__hint">
-					{{ t('libresign', 'Needs a login provider and the MIMI client secret. An empty address or client ID uses the one shown.') }}
+					{{ t('libresign', 'Needs a login provider and the MIMI client secret.') }}
 				</p>
 				<NcButton type="submit" variant="primary" :disabled="saving">
 					{{ t('libresign', 'Save') }}
@@ -98,6 +100,7 @@
 					v-if="enrolmentSite === 'tendaworld'"
 					v-model="tendaworldUrl"
 					:label="t('libresign', 'TendaWorld website address')"
+					:helper-text="t('libresign', 'Empty means https://tendaworld.com')"
 					placeholder="https://tendaworld.com" />
 				<NcCheckboxRadioSwitch
 					v-model="enrolmentSite"
