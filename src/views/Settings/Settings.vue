@@ -32,6 +32,7 @@
 		<TSA />
 		<Confetti />
 		<FreeCredits />
+		<AdminEntitlementGrants />
 		<OneTimeSigning />
 		<SponsorshipSettings />
 		<ProductPricing />
@@ -70,6 +71,7 @@ import FilesListNext from './FilesListNext.vue'
 import VisibleElementsNext from './VisibleElementsNext.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
+import AdminEntitlementGrants from './AdminEntitlementGrants.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
 import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'

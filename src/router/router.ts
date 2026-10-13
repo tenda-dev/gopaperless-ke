@@ -243,6 +243,11 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/ProductManagement/ProductManagement.vue'),
 	},
 	{
+		path: '/f/admin/entitlements',
+		name: 'AdminEntitlements',
+		component: () => import('../views/EntitlementManagement/EntitlementManagement.vue'),
+	},
+	{
 		path: '/f/payment/return',
 		name: 'PaymentReturn',
 		component: () => import('../views/PaymentReturn.vue'),
@@ -331,6 +336,7 @@ const ROUTE_TITLES: Record<string, string> = {
 	DocsIdDocsValidation: t('libresign', 'Documents validation'),
 	CrlManagement: t('libresign', 'CRL management'),
 	AdminProducts: t('libresign', 'Product management'),
+	AdminEntitlements: t('libresign', 'Entitlement grants'),
 	CreatePassword: t('libresign', 'Create password'),
 	ResetPassword: t('libresign', 'Reset password'),
 	CreateAccount: t('libresign', 'Create account'),

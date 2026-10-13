@@ -329,4 +329,40 @@ class EntitlementReservationMapper extends QBMapper {
 
 		return (int)($result ?: 0);
 	}
+
+	/**
+	 * Active (not yet released) reservations drawing on a given entitlement,
+	 * oldest first. Read-only inspection helper for the admin overview; not
+	 * used in reserve/release/settlement paths.
+	 *
+	 * @return list<EntitlementReservation>
+	 * @throws Exception
+	 */
+	public function findActiveByEntitlementId(
+		int $entitlementId,
+	): array {
+
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('r.*')
+			->from($this->getTableName(), 'r')
+			->where(
+				$qb->expr()->eq(
+					'r.entitlement_id',
+					$qb->createNamedParameter(
+						$entitlementId,
+						Types::INTEGER
+					)
+				)
+			)
+			->andWhere(
+				$qb->expr()->isNull(
+					'r.released_at'
+				)
+			)
+			->orderBy('r.created_at', 'ASC');
+
+		return $this->findEntities($qb);
+	}
+
 }

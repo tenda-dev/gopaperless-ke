@@ -80,6 +80,15 @@ class EntitlementReservationService {
 				break;
 			}
 
+			// Do not reserve credits from an expired or otherwise unusable entitlement,
+			// even if it still reports available uses. The shared selector can return
+			// expired entitlements, so availability alone is not sufficient here.
+			// This guard ensures expired subscription entitlements cannot be reserved
+			// when subscription-based credits with expiry are introduced.
+			if (!$entitlement->canUse()) {
+				continue;
+			}
+
 			$available = $entitlement->getAvailableUses();
 
 			if ($available === null) {

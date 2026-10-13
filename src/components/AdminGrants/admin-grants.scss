@@ -1,0 +1,247 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * Shared presentation for the admin-grants surface. Consumes the --age-* tokens
+ * defined on the .entitlement-admin view root (CSS custom properties inherit, so
+ * these resolve inside scoped child components without re-declaration).
+ */
+
+.age-card {
+	background: var(--age-surface);
+	border: 1px solid var(--age-border);
+	border-radius: var(--age-radius);
+	box-shadow: var(--age-shadow);
+	padding: 20px;
+	margin-bottom: 16px;
+
+	&__head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+		flex-wrap: wrap;
+		margin-bottom: 14px;
+	}
+
+	&__titles {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+
+		h3 {
+			margin: 0;
+			font-size: 15px;
+			font-weight: 600;
+			color: var(--age-fg);
+		}
+	}
+
+	&__sub {
+		font-size: 12.5px;
+		color: var(--age-fg-muted);
+	}
+}
+
+.age-tabletools {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 10px;
+}
+
+.age-search {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 180px;
+	max-width: 300px;
+	flex: 0 1 280px;
+	padding: 0 8px;
+	border: 1px solid var(--age-border-strong);
+	border-radius: var(--age-radius-sm);
+	background: var(--age-surface);
+
+	&:focus-within {
+		border-color: var(--age-primary);
+		box-shadow: 0 0 0 2px var(--age-focus-ring);
+	}
+
+	&__icon { color: var(--age-fg-muted); flex: none; }
+
+	&__input {
+		flex: 1 1 auto;
+		min-width: 0;
+		height: 32px;
+		min-height: 0;
+		margin: 0;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: var(--age-fg);
+		font-size: 13px;
+
+		&:focus-visible { outline: none; }
+		&::placeholder { color: var(--age-fg-faint); }
+		// Hide the native search clear; we provide our own.
+		&::-webkit-search-cancel-button { display: none; }
+	}
+
+	&__clear {
+		display: inline-grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: 50%;
+		background: var(--age-surface-2);
+		color: var(--age-fg-muted);
+		cursor: pointer;
+
+		&:hover { color: var(--age-fg); }
+		&:focus-visible { outline: 2px solid var(--age-focus); outline-offset: 1px; }
+	}
+}
+
+.age-tiles {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 1px;
+	background: var(--age-border);
+	border: 1px solid var(--age-border);
+	border-radius: var(--age-radius-sm);
+	overflow: hidden;
+	margin-bottom: 14px;
+}
+
+.age-tile {
+	background: var(--age-surface);
+	padding: 14px 16px;
+
+	&__k {
+		display: block;
+		font-size: 11.5px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--age-fg-faint);
+	}
+
+	&__v {
+		display: block;
+		margin-top: 4px;
+		font-size: 24px;
+		font-weight: 600;
+		color: var(--age-fg);
+		font-variant-numeric: tabular-nums;
+	}
+}
+
+.age-empty {
+	padding: 22px 2px;
+	font-size: 13px;
+	color: var(--age-fg-faint);
+	text-align: center;
+}
+
+.age-tablewrap {
+	overflow-x: auto;
+}
+
+.age-table {
+	width: 100%;
+	border-collapse: collapse;
+	min-width: 560px;
+
+	th {
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--age-fg-faint);
+		font-weight: 600;
+		text-align: start;
+		padding: 9px 12px;
+		border-bottom: 1px solid var(--age-border);
+		white-space: nowrap;
+	}
+
+	td {
+		padding: 10px 12px;
+		border-bottom: 1px solid var(--age-border);
+		font-size: 13px;
+		color: var(--age-fg);
+		vertical-align: middle;
+	}
+
+	tbody tr:last-child td { border-bottom: none; }
+	tbody tr:hover { background: var(--age-surface-2); }
+}
+
+.age-num {
+	text-align: start;
+	font-variant-numeric: tabular-nums;
+}
+
+.age-muted { color: var(--age-fg-muted); }
+.age-mono { font-family: var(--age-mono); font-size: 12px; }
+.age-cap { text-transform: capitalize; }
+
+.age-ref {
+	display: inline-block;
+	max-width: 160px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: bottom;
+	color: var(--age-fg-muted);
+}
+
+.age-row--spent { opacity: 0.5; }
+
+.age-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 11.5px;
+	font-weight: 600;
+	padding: 3px 9px;
+	border-radius: 999px;
+	white-space: nowrap;
+
+	&--ok { background: var(--age-ok-bg); color: var(--age-ok-text); }
+	&--warn { background: var(--age-warn-bg); color: var(--age-warn-text); }
+	&--neutral { background: var(--age-neutral-bg); color: var(--age-neutral-text); }
+
+	// Entitlement type: neutral outlined, deliberately NOT green (avoids the
+	// washed-out green surfaces).
+	&--type {
+		background: transparent;
+		border: 1px solid var(--age-border-strong);
+		color: var(--age-fg-muted);
+		font-family: var(--age-mono);
+		font-size: 11px;
+		font-weight: 500;
+	}
+}
+
+.age-banner {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 10px 13px;
+	font-size: 12.5px;
+	color: var(--age-fg-muted);
+	background: var(--age-surface-2);
+	border: 1px solid var(--age-border);
+	border-radius: var(--age-radius-sm);
+	margin-bottom: 14px;
+
+	:deep(svg) { flex: none; color: var(--age-fg-faint); margin-top: 1px; }
+}
+
+.age-readonly {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	margin: 10px 0 0;
+	font-size: 12px;
+	color: var(--age-fg-faint);
+}

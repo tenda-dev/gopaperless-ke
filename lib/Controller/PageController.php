@@ -141,6 +141,7 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('signature_flow', $this->appConfig->getValueString(Application::APP_ID, 'signature_flow', \OCA\Libresign\Enum\SignatureFlow::NONE->value));
 		$this->initialState->provideInitialState('docmdp_config', $this->docMdpConfigService->getConfig());
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
+		$this->initialState->provideInitialState('admin_entitlement_grants_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'admin_entitlement_grants_enabled', false));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
