@@ -15,8 +15,12 @@
 				</div>
 				<div class="user-password">
 					<h3>{{ t('libresign', 'Certificate') }}</h3>
-					<template v-if="securySignSigns">
-						<dl v-if="securySignCertificate" class="securysign-certificate">
+					<a v-if="securySignSigns"
+						:href="securySignProfileUrl"
+						class="securysign-certificate"
+						target="_blank"
+						rel="noopener noreferrer">
+						<dl v-if="securySignCertificate">
 							<dt>{{ t('libresign', 'Issuer') }}</dt>
 							<dd>{{ securySignCertificate.issuer }}</dd>
 							<dt>{{ t('libresign', 'Serial') }}</dt>
@@ -24,10 +28,11 @@
 							<dt>{{ t('libresign', 'Valid until') }}</dt>
 							<dd>{{ securySignCertificate.validUntil }}</dd>
 						</dl>
-						<p v-else class="securysign-certificate">
+						<p v-else>
 							{{ t('libresign', 'Your SecurySign certificate details are not available right now.') }}
 						</p>
-					</template>
+						<span class="securysign-certificate__open">{{ t('libresign', 'View on TendaWorld') }} ↗</span>
+					</a>
 					<ManagePassword v-else />
 				</div>
 			</div>
@@ -75,6 +80,8 @@ type SecurySignCertificate = {
 // SecurySign holds the key, so its users have no local certificate to manage.
 const securySignSigns = loadState<boolean>('libresign', 'securysign_signs', false)
 const securySignCertificate = loadState<SecurySignCertificate | null>('libresign', 'securysign_certificate', null)
+// The website signs a SecurySign user in from the session both sites share.
+const securySignProfileUrl = loadState<string>('libresign', 'securysign_profile_url', 'https://tendaworld.com/profile')
 
 defineExpose({
 	user,
@@ -144,7 +151,26 @@ defineExpose({
 			}
 
 			.securysign-certificate{
-				margin: 0;
+				display: block;
+				margin: 0 -8px;
+				padding: 8px;
+				border-radius: var(--border-radius-large);
+				color: inherit;
+				text-decoration: none;
+
+				&:hover, &:focus-visible{
+					background-color: var(--color-background-hover);
+				}
+
+				dl, p{
+					margin: 0;
+				}
+
+				&__open{
+					display: inline-block;
+					margin-top: 12px;
+					color: var(--color-primary-element);
+				}
 
 				dt{
 					color: var(--color-text-maxcontrast);

@@ -80,6 +80,18 @@ describe('Account.vue', () => {
 		afterEach(() => {
 			delete initialState.securysign_signs
 			delete initialState.securysign_certificate
+			delete initialState.securysign_profile_url
+		})
+
+		it('links the certificate to its page on the TendaWorld website, in a new tab', () => {
+			initialState.securysign_signs = true
+			initialState.securysign_profile_url = 'https://staging.tendaworld.com/profile'
+			const link = createWrapper().find('a.securysign-certificate')
+
+			expect(link.attributes('href')).toBe('https://staging.tendaworld.com/profile')
+			expect(link.attributes('target')).toBe('_blank')
+			expect(link.attributes('rel')).toContain('noopener')
+			expect(link.text()).toContain('View on TendaWorld')
 		})
 
 		it('shows the SecurySign certificate read-only instead of the local certificate buttons', () => {

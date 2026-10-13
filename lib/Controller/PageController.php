@@ -134,6 +134,9 @@ class PageController extends AEnvironmentPageAwareController {
 		$securySign = \OCP\Server::get(SecurySignService::class);
 		$securySignSigns = $securySign->signs();
 		$this->initialState->provideInitialState('securysign_signs', $securySignSigns);
+		if ($securySignSigns) {
+			$this->initialState->provideInitialState('securysign_profile_url', $securySign->profileUrl());
+		}
 		// Initial state refuses null; a missing key reads as null on the page.
 		$securySignCertificate = $securySignSigns ? $securySign->signingCertificate() : null;
 		if ($securySignCertificate !== null) {
