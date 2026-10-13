@@ -50,28 +50,89 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertTrue($service->applies());
 	}
 
-	public function testTheOnboardingTargetComesFromOccOrTheSystemValue(): void {
-		$fromOcc = '';
+	private const RETURN_URL = 'https://gopaperless.test/apps/libresign/securysign/return?state=s1';
+
+	/** @param array<string, string> $values app config; anything else reads as its default */
+	private function serviceWithConfig(array &$values, ?IConfig $system = null): SecurySignService {
 		$appConfig = $this->createMock(IAppConfig::class);
-		$appConfig->method('getValueString')->willReturnCallback(static function () use (&$fromOcc) {
-			return $fromOcc;
-		});
+		$appConfig->method('getValueString')->willReturnCallback(
+			static function (string $app, string $key, string $default = '') use (&$values): string {
+				return $values[$key] ?? $default;
+			},
+		);
+		return new SecurySignService($appConfig, $system ?? $this->createMock(IConfig::class), $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+	}
+
+	public function testTheTendaWorldWebsiteEnrolsByDefaultFromOccOrTheSystemValue(): void {
+		$values = [];
 		$system = $this->createMock(IConfig::class);
-		$system->method('getSystemValueString')->willReturn('https://staging.tendaworld.com');
-		$service = new SecurySignService($appConfig, $system, $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+		$system->method('getSystemValueString')->willReturnCallback(
+			static fn (string $key, string $default = '') => $key === 'tendaworld_url' ? 'https://staging.tendaworld.com' : $default,
+		);
+		$service = $this->serviceWithConfig($values, $system);
 
 		// Nobody ran occ: the system value, which an NC_tendaworld_url env var fills.
-		self::assertSame('https://staging.tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
+		self::assertSame(
+			'https://staging.tendaworld.com/onboarding/gopaperless?state=s1&subject=sub-1',
+			$service->enrolmentUrl('s1', 'sub-1', 'jane@example.test', self::RETURN_URL),
+		);
 
 		// occ wins once it is set, so the image's env cannot override an admin.
-		$fromOcc = 'https://tendaworld.com';
-		self::assertSame('https://tendaworld.com/onboarding/gopaperless', $service->onboardingUrl());
+		$values['tendaworld_url'] = 'https://tendaworld.com';
+		self::assertStringStartsWith('https://tendaworld.com/onboarding/gopaperless?', $service->enrolmentUrl('s1', 'sub-1', '', self::RETURN_URL));
+	}
+
+	public function testMimiEnrolsWhenChosenAndSendsTheUserBackToOurReturnRoute(): void {
+		$values = ['enrolment_site' => 'mimi', 'mimi_url' => 'https://staging-gopaperless.mimi.ke'];
+		$url = $this->serviceWithConfig($values)->enrolmentUrl('s1', 'sub-1', 'jane@example.test', self::RETURN_URL);
+
+		self::assertSame('https://staging-gopaperless.mimi.ke/enrol', strtok($url, '?'));
+		parse_str((string)parse_url($url, PHP_URL_QUERY), $query);
+		self::assertSame(['sub' => 'sub-1', 'email' => 'jane@example.test', 'returnTo' => self::RETURN_URL], $query);
+	}
+
+	/** The website setting used to hold MIMI's address too. One left there is MIMI's, and enrolment still reaches the website. */
+	public function testAMimiAddressLeftInTheWebsiteSettingIsMimis(): void {
+		$values = ['tendaworld_url' => 'https://gopaperless.mimi.ke'];
+		$service = $this->serviceWithConfig($values);
+
+		self::assertSame('https://gopaperless.mimi.ke', $service->passkeyFrame()['origin']);
+		self::assertStringStartsWith('https://tendaworld.com/onboarding/gopaperless?', $service->enrolmentUrl('s1', 'sub-1', '', self::RETURN_URL));
+		self::assertSame(['website' => '', 'mimi' => 'https://other.mimi.ke'], SecurySignService::splitAddresses('https://gopaperless.mimi.ke', 'https://other.mimi.ke'));
+		self::assertSame(['website' => 'https://tendaworld.com', 'mimi' => ''], SecurySignService::splitAddresses('https://tendaworld.com', ''));
+	}
+
+	public function testSigningAndThePasskeyCheckEachFollowTheirSwitch(): void {
+		$switches = [];
+		$appConfig = $this->createMock(IAppConfig::class);
+		$appConfig->method('getValueInt')->willReturn(1);
+		$appConfig->method('getValueString')->willReturn('secret');
+		$appConfig->method('getValueBool')->willReturnCallback(
+			static function (string $app, string $key, bool $default = false) use (&$switches): bool {
+				return $switches[$key] ?? $default;
+			},
+		);
+		$session = $this->createMock(ISession::class);
+		$session->method('get')->willReturnCallback(static fn (string $key) => $key === 'oidc.providerid' ? 1 : null);
+		$users = $this->createMock(IUserSession::class);
+		$users->method('isLoggedIn')->willReturn(true);
+		$service = new SecurySignService($appConfig, $this->createMock(IConfig::class), $session, $users, $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
+
+		self::assertTrue($service->signs(), 'a switch never saved counts as on');
+		self::assertTrue($service->passkeyPending());
+
+		$switches['securysign_signing_enabled'] = false;
+		self::assertFalse($service->signs());
+		self::assertTrue($service->passkeyPending(), 'each switch only turns off its own feature');
+
+		$switches['mimi_passkey_enabled'] = false;
+		self::assertFalse($service->passkeyPending());
 	}
 
 	public function testThePasskeyFrameIsMimisPageForOurClient(): void {
 		$appConfig = $this->createMock(IAppConfig::class);
 		$appConfig->method('getValueString')->willReturnCallback(
-			static fn (string $app, string $key, string $default = '') => $key === 'tendaworld_url' ? 'https://localhost:3000' : $default,
+			static fn (string $app, string $key, string $default = '') => $key === 'mimi_url' ? 'https://localhost:3000' : $default,
 		);
 		$service = new SecurySignService($appConfig, $this->createMock(IConfig::class), $this->createMock(ISession::class), $this->createMock(IUserSession::class), $this->createMock(IServerContainer::class), $this->createMock(IClientService::class), $this->createMock(LoggerInterface::class));
 
