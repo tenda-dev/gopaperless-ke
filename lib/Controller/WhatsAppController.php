@@ -23,11 +23,13 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 use OCP\IUser;
+use OCP\IUserManager;
 use OCP\IUserSession;
 
 /**
- * The three signer-row actions: WhatsApp, Copy link and Show QR. Only someone
- * who could send that signer a reminder may use them, checked the same way.
+ * The three signer-row actions: WhatsApp, Copy link and Show QR, and the
+ * add-signer form's WhatsApp switch. Only someone who could send that signer a
+ * reminder may use them, checked the same way.
  */
 class WhatsAppController extends AEnvironmentAwareController {
 	public function __construct(
@@ -37,6 +39,7 @@ class WhatsAppController extends AEnvironmentAwareController {
 		private SignRequestMapper $signRequestMapper,
 		private FileMapper $fileMapper,
 		private IUserSession $userSession,
+		private IUserManager $userManager,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -78,6 +81,48 @@ class WhatsAppController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Whether an account can be sent requests on WhatsApp, for the add-signer form
+	 *
+	 * @param string $uid The account the sender picked
+	 * @return DataResponse<Http::STATUS_OK, array{available: bool, masked: ?string, reason: ?string}, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED, array{message: string}, array{}>
+	 *
+	 * 200: OK
+	 * 401: Not allowed
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/whatsapp/account', requirements: ['apiVersion' => '(v1)'])]
+	public function account(string $uid): DataResponse {
+		try {
+			$this->allowed();
+			return new DataResponse($this->whatsApp->account($this->userManager->get($uid)));
+		} catch (\Throwable $th) {
+			return new DataResponse(['message' => $th->getMessage()], Http::STATUS_UNAUTHORIZED);
+		}
+	}
+
+	/**
+	 * Send this signer the request on WhatsApp when they are asked to sign
+	 *
+	 * @param integer $fileId The identifier value of LibreSign file
+	 * @param integer $signRequestId The sign request id
+	 * @param boolean $send Whether to send it on WhatsApp
+	 * @param string $to A number to send it to instead of the one on their account
+	 * @return DataResponse<Http::STATUS_OK, array{send: bool, masked: ?string}, array{}>|DataResponse<Http::STATUS_UNAUTHORIZED|Http::STATUS_UNPROCESSABLE_ENTITY, array{message: string}, array{}>
+	 *
+	 * 200: OK
+	 * 401: Not allowed
+	 * 422: Not a Kenyan mobile number
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'PUT', url: '/api/{apiVersion}/whatsapp/{fileId}/{signRequestId}/choice', requirements: ['apiVersion' => '(v1)'])]
+	public function choose(int $fileId, int $signRequestId, bool $send = true, string $to = ''): DataResponse {
+		return $this->guarded($fileId, $signRequestId, fn (FileEntity $file, SignRequest $signRequest)
+			=> $this->whatsApp->choose($signRequest, $send, $to));
+	}
+
+	/**
 	 * A signer's signing link and its QR code
 	 *
 	 * @param integer $fileId The identifier value of LibreSign file
@@ -97,20 +142,28 @@ class WhatsAppController extends AEnvironmentAwareController {
 		});
 	}
 
+	/** Signed in, the feature on, and allowed to send documents for signature. */
+	private function allowed(): IUser {
+		$user = $this->userSession->getUser();
+		if (!$user instanceof IUser) {
+			throw new \RuntimeException('Sign in first.');
+		}
+		if (!$this->whatsApp->enabled()) {
+			throw new \RuntimeException('WhatsApp signing requests are off.');
+		}
+		$this->validateHelper->canRequestSign($user);
+		return $user;
+	}
+
 	private function guarded(int $fileId, int $signRequestId, callable $action): DataResponse {
 		try {
-			$user = $this->userSession->getUser();
-			if (!$user instanceof IUser) {
-				throw new \RuntimeException('Sign in first.');
-			}
-			if (!$this->whatsApp->enabled()) {
-				throw new \RuntimeException('WhatsApp signing requests are off.');
-			}
-			$this->validateHelper->canRequestSign($user);
+			$user = $this->allowed();
 			$this->validateHelper->validateLibreSignFileId($fileId);
 			$signRequest = $this->signRequestMapper->getByFileIdAndSignRequestId($fileId, $signRequestId);
 			$this->validateHelper->iRequestedSignThisFile($user, $fileId);
 			return new DataResponse($action($this->fileMapper->getById($fileId), $signRequest, $user));
+		} catch (\InvalidArgumentException $e) {
+			return new DataResponse(['message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
 		} catch (\Throwable $th) {
 			return new DataResponse(['message' => $th->getMessage()], Http::STATUS_UNAUTHORIZED);
 		}

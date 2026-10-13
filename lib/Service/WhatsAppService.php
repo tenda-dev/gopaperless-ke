@@ -13,6 +13,7 @@ use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\File as FileEntity;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Db\SignRequest;
+use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Vendor\Endroid\QrCode\QrCode;
 use OCA\Libresign\Vendor\Endroid\QrCode\Writer\SvgWriter;
@@ -30,17 +31,23 @@ use Psr\Log\LoggerInterface;
  * Signing requests on WhatsApp, and the signing link with its QR.
  *
  * WhatsApp only carries the link: the signer stays an account signer, so
- * SecurySign signs with their own certificate. GoPaperless never holds a full
- * phone number. It names the signer by their OIDC sub, and the payments service
- * (the gopaperless repo, /external/whatsapp/*) looks the number up and sends.
+ * SecurySign signs with their own certificate. GoPaperless never holds the
+ * number on an account. It names the signer by their OIDC sub, and the payments
+ * service (the gopaperless repo, /external/whatsapp/*) looks the number up and
+ * sends. The only number GoPaperless keeps is one the sender typed when adding
+ * the signer, in the sign request's metadata.
  */
 class WhatsAppService {
+	/** Sign request metadata: present when the sender chose WhatsApp, ['to' => typed number or null]. */
+	private const CHOICE = 'whatsapp';
+
 	public function __construct(
 		private IAppConfig $appConfig,
 		private IConfig $config,
 		private IDBConnection $db,
 		private IUserManager $userManager,
 		private IdentifyMethodMapper $identifyMethods,
+		private SignRequestMapper $signRequests,
 		private SecurySignService $signa,
 		private IURLGenerator $urls,
 		private IClientService $http,
@@ -50,8 +57,9 @@ class WhatsAppService {
 
 	/**
 	 * The admin switch, and what it needs. While this is false everything this
-	 * feature adds stays out of the way: the signer-row actions, the signing-link
-	 * redirects, the receipt and remembering the sub at login.
+	 * feature adds stays out of the way: the add-signer switch, the signer-row
+	 * actions, the signing-link redirects, the request and receipt messages, and
+	 * remembering the sub at login.
 	 */
 	public static function on(IAppConfig $appConfig): bool {
 		return $appConfig->getValueBool(Application::APP_ID, 'whatsapp_enabled', false)
@@ -61,6 +69,93 @@ class WhatsAppService {
 
 	public function enabled(): bool {
 		return self::on($this->appConfig);
+	}
+
+	/** Kenyan mobile numbers only, as the payments service takes them: 0712 345 678 → 254712345678. */
+	public static function normalize(string $number): ?string {
+		$digits = (string)preg_replace('/\D/', '', $number);
+		if (str_starts_with($digits, '254')) {
+			$digits = substr($digits, 3);
+		}
+		$digits = ltrim($digits, '0');
+		return preg_match('/^[17]\d{8}$/', $digits) ? '254' . $digits : null;
+	}
+
+	/** 254712345678 → +254 7•• ••• 678, the same mask the payments service uses. */
+	public static function mask(string $number): string {
+		return '+' . substr($number, 0, 3) . ' ' . $number[3] . '•• ••• ' . substr($number, -3);
+	}
+
+	/** @return array{to: ?string}|null null unless the sender chose WhatsApp for this signer */
+	public function choice(SignRequest $signRequest): ?array {
+		$choice = ($signRequest->getMetadata() ?? [])[self::CHOICE] ?? null;
+		return is_array($choice) ? ['to' => is_string($choice['to'] ?? null) ? $choice['to'] : null] : null;
+	}
+
+	/**
+	 * "Send sign request on Whatsapp" in the add-signer form. The message goes
+	 * when the signer is asked to sign (see requested()), to the typed number
+	 * when there is one.
+	 *
+	 * @return array{send: bool, masked: ?string}
+	 * @throws \InvalidArgumentException when the number is not a Kenyan mobile number
+	 */
+	public function choose(SignRequest $signRequest, bool $send, string $to): array {
+		$number = trim($to) === '' ? null : self::normalize($to);
+		if (trim($to) !== '' && $number === null) {
+			throw new \InvalidArgumentException('Enter a Kenyan mobile number, like 0712 345 678.');
+		}
+		$metadata = $signRequest->getMetadata() ?? [];
+		unset($metadata[self::CHOICE]);
+		if ($send) {
+			$metadata[self::CHOICE] = ['to' => $number];
+		}
+		$signRequest->setMetadata($metadata);
+		$this->signRequests->update($signRequest);
+		return ['send' => $send, 'masked' => $send && $number !== null ? self::mask($number) : null];
+	}
+
+	/**
+	 * The add-signer form's check, before there is a sign request.
+	 *
+	 * @return array{available: bool, masked: ?string, reason: ?string}
+	 */
+	public function account(?IUser $signer): array {
+		$reason = $this->enabled() ? $this->accountReason($signer) : 'disabled';
+		$sub = $reason === null && $signer instanceof IUser ? $this->subFor($signer) : null;
+		if ($sub === null) {
+			return ['available' => false, 'masked' => null, 'reason' => $reason ?? 'no_sub'];
+		}
+		try {
+			$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub]))['body'];
+		} catch (\Throwable $e) {
+			$this->logger->warning('The payments service did not answer a WhatsApp lookup', ['exception' => $e]);
+			$data = [];
+		}
+		$available = (bool)($data['available'] ?? false);
+		return ['available' => $available, 'masked' => $data['masked'] ?? null, 'reason' => $available ? null : ($data['reason'] ?? 'unavailable')];
+	}
+
+	/**
+	 * The signer was just asked to sign: on request, when their turn comes, or
+	 * on a reminder. Sends on WhatsApp too if the sender chose it when adding
+	 * them. The payments service refuses a second message within 24 hours.
+	 *
+	 * ponytail: runs inside the request, like the receipt. A background job if a
+	 * document with many WhatsApp signers ever takes too long to request.
+	 */
+	public function requested(FileEntity $file, SignRequest $signRequest): void {
+		if (!$this->enabled() || $this->choice($signRequest) === null) {
+			return;
+		}
+		$sender = $this->userManager->get($file->getUserId());
+		if (!$sender instanceof IUser) {
+			return;
+		}
+		$result = $this->send($file, $signRequest, $sender);
+		if ($result['status'] === 'failed') {
+			$this->logger->info('WhatsApp signing request not sent', ['signRequestId' => $signRequest->getId(), 'error' => $result['error']]);
+		}
 	}
 
 	public function signLink(SignRequest $signRequest): string {
@@ -76,14 +171,16 @@ class WhatsAppService {
 	 * What the signer row shows. Never the full number.
 	 *
 	 * lastError is the latest send's failure, including one WhatsApp reported
-	 * after Twilio had accepted the message.
+	 * after Twilio had accepted the message. chosen: the sender turned WhatsApp
+	 * on when adding the signer, so it goes with the request.
 	 *
-	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, lastError: ?string}
+	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, lastError: ?string, chosen: bool}
 	 */
 	public function recipient(FileEntity $file, SignRequest $signRequest): array {
+		$choice = $this->choice($signRequest);
 		$sub = $this->subToMessage($file, $signRequest, $reason, false);
 		if ($sub === null) {
-			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => null];
+			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => null, 'chosen' => $choice !== null];
 		}
 		try {
 			$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub, 'sign_request_uuid' => $signRequest->getUuid()]))['body'];
@@ -91,14 +188,16 @@ class WhatsAppService {
 			$this->logger->warning('The payments service did not answer a WhatsApp lookup', ['exception' => $e]);
 			$data = [];
 		}
-		$available = (bool)($data['available'] ?? false);
+		$typed = $choice['to'] ?? null;
+		$available = $typed !== null || (bool)($data['available'] ?? false);
 		return [
 			'available' => $available,
-			'masked' => $data['masked'] ?? null,
+			'masked' => $typed !== null ? self::mask($typed) : ($data['masked'] ?? null),
 			'reason' => $available ? null : ($data['reason'] ?? 'unavailable'),
 			'lastSentAt' => $data['last_sent_at'] ?? null,
 			'availableAgainAt' => $data['available_again_at'] ?? null,
 			'lastError' => $data['last_error'] ?? null,
+			'chosen' => $choice !== null,
 		];
 	}
 
@@ -108,20 +207,31 @@ class WhatsAppService {
 		if ($sub === null) {
 			return ['status' => 'failed', 'error' => $reason, 'availableAgainAt' => null];
 		}
+		$message = [
+			'sub' => $sub,
+			'sign_request_uuid' => $signRequest->getUuid(),
+			'sender_name' => $sender->getDisplayName(),
+			'document_name' => $file->getName(),
+		];
+		$typed = $this->choice($signRequest)['to'] ?? null;
+		if ($typed !== null) {
+			$message['to'] = $typed;
+		}
 		try {
-			$answer = $this->call('POST', 'sign-request', [
-				'sub' => $sub,
-				'sign_request_uuid' => $signRequest->getUuid(),
-				'sender_name' => $sender->getDisplayName(),
-				'document_name' => $file->getName(),
-			]);
+			$answer = $this->call('POST', 'sign-request', $message);
 		} catch (\Throwable $e) {
 			// Shown as "Couldn't send on WhatsApp"; the transport error is for the log.
 			$this->logger->warning('The payments service did not answer a WhatsApp send', ['exception' => $e]);
 			return ['status' => 'failed', 'error' => 'unreachable', 'availableAgainAt' => null];
 		}
 		if ($answer['status'] === 429) {
-			return ['status' => 'too_soon', 'error' => null, 'availableAgainAt' => $answer['body']['detail']['available_again_at'] ?? null];
+			$again = $answer['body']['detail']['available_again_at'] ?? null;
+			// "Request on WhatsApp" on a draft requests it first, and requested()
+			// already sent it if WhatsApp was chosen. This click is that send.
+			if (is_string($again) && strtotime($again) - time() > 86400 - 120) {
+				return ['status' => 'sent', 'error' => null, 'availableAgainAt' => $again];
+			}
+			return ['status' => 'too_soon', 'error' => null, 'availableAgainAt' => $again];
 		}
 		return [
 			'status' => (string)($answer['body']['status'] ?? 'failed'),
@@ -196,9 +306,7 @@ class WhatsAppService {
 			$file->getNodeType() === 'envelope' => 'envelope',
 			$signRequest->getSigned() !== null => 'signed',
 			$toSend && $signRequest->getStatusEnum() !== SignRequestStatus::ABLE_TO_SIGN => 'not_their_turn',
-			!$signer instanceof IUser => 'not_account',
-			$signer->getBackendClassName() !== 'user_oidc' || $this->signa->providerId() <= 0 => 'password_account',
-			default => null,
+			default => $this->accountReason($signer),
 		};
 		if ($reason !== null) {
 			return null;
@@ -206,6 +314,14 @@ class WhatsAppService {
 		$sub = $this->subFor($signer);
 		$reason = $sub === null ? 'no_sub' : null;
 		return $sub;
+	}
+
+	private function accountReason(?IUser $signer): ?string {
+		return match (true) {
+			!$signer instanceof IUser => 'not_account',
+			$signer->getBackendClassName() !== 'user_oidc' || $this->signa->providerId() <= 0 => 'password_account',
+			default => null,
+		};
 	}
 
 	private function accountSigner(SignRequest $signRequest): ?IUser {

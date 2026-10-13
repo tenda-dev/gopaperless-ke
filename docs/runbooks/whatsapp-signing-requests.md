@@ -1,19 +1,29 @@
 # WhatsApp signing requests
 
+**Add new signer** has a **Send sign request on Whatsapp** switch for someone
+added by account. Picking them checks for a number in the background. Turned on,
+it shows a **WhatsApp number** field: leave it empty to use the number on file, or
+type another. The message then goes out with the request email, when the signer
+is asked to sign (straight away, or when their turn comes).
+
 The signer row in the request sidebar has three actions: **Request on WhatsApp**
 (or **Send on WhatsApp** once requested), **Copy link** and **Show QR**. WhatsApp
 only carries the signing link. The signer stays an account signer, so SecurySign
 signs with their own certificate. Spec: "GoPaperless fast signing: implementation
 spec" (Claude Doc, 2026-10-06).
 
-GoPaperless never holds a full phone number. It names the signer by their OIDC
-`sub` and the payments service (`gopaperless` repo, `/external/whatsapp/*`) looks
-up the number MIMI collected at payment and sends. The row shows it masked.
+GoPaperless never holds the number on an account. It names the signer by their
+OIDC `sub` and the payments service (`gopaperless` repo, `/external/whatsapp/*`)
+looks up the number MIMI collected at payment and sends. The row shows it masked.
+A number typed in **Add new signer** is kept on that sign request
+(`oc_libresign_sign_request.metadata`, key `whatsapp`) and sent along with it.
 
 ## Who qualifies
 
 An account from the SecurySign `user_oidc` provider, with a `sub` GoPaperless
-knows and a WhatsApp number on file, on a single document (no envelopes). The
+knows and either a WhatsApp number on file or one the sender types, on a single
+document (no envelopes). Typed numbers must be Kenyan mobile numbers, and one
+number gets at most 5 requests in 24 hours across all documents. The
 `sub` is remembered on every SecurySign login while the setting is on (user
 preference `libresign/securysign_sub`), and read from `oc_user_oidc_sessions` the
 first time for anyone who has not logged in since. One WhatsApp request per
@@ -28,11 +38,15 @@ SecurySign login provider, the address and the key are all set.
 
 While it is off, GoPaperless behaves as if this feature were not installed:
 
+- No **Send sign request on Whatsapp** switch in **Add new signer**.
 - No WhatsApp, Copy link or Show QR on the signer row.
 - A signing link is not redirected to SecurySign setup or the MIMI passkey.
 - Signed-out signers get the normal login page.
 - Signing in as the wrong account shows "Invalid user".
-- No receipt is sent, and the `sub` is not remembered at login.
+- No request or receipt message is sent, and the `sub` is not remembered at login.
+
+Typed numbers need the payments service at `b1369b7` or later (migration 039).
+An older one ignores the typed number and sends to the number on file.
 
 The same settings from the command line:
 
@@ -86,8 +100,13 @@ owner made it mandatory on 2026-10-07.
 
 ## Local testing
 
-The payments service runs from its worktree against a throwaway Postgres and
-Redis:
+The simplest setup points local GoPaperless at production
+(`https://gopaperless.astralyngroup.com`) with the `gopaperless` partner key.
+Messages then go out for real, to real numbers, and their links open
+`gopaperless.ke`; sign on localhost at `/apps/libresign/p/sign/<uuid>` instead.
+
+To keep production out of it, the payments service runs from its worktree against
+a throwaway Postgres and Redis:
 
 ```sh
 docker start fast-signing-pg fast-signing-redis

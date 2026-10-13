@@ -506,8 +506,11 @@ const whatsAppLine = computed(() => {
 		return t('libresign', 'Couldn\'t send on WhatsApp')
 	}
 	if (recipient.value.available) {
-		return recipient.value.lastSentAt
-			? t('libresign', 'WhatsApp {number} · sent {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt) })
+		if (recipient.value.lastSentAt) {
+			return t('libresign', 'WhatsApp {number} · sent {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt) })
+		}
+		return recipient.value.chosen && (props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT)
+			? t('libresign', 'WhatsApp {number} · goes with the request', { number: recipient.value.masked ?? '' })
 			: t('libresign', 'WhatsApp {number}', { number: recipient.value.masked ?? '' })
 	}
 	switch (recipient.value.reason) {
