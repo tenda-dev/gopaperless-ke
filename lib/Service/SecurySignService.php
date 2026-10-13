@@ -487,9 +487,7 @@ class SecurySignService {
 	 * which both sites share, and lands on the page with nothing to click.
 	 */
 	public function profileUrl(): string {
-		$configured = $this->config->getValueString(Application::APP_ID, 'tendaworld_url')
-			?: $this->systemConfig->getSystemValueString('tendaworld_url', 'https://tendaworld.com');
-		return self::origin($configured) . '/profile';
+		return $this->websiteOrigin() . '/profile';
 	}
 
 	/**

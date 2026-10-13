@@ -259,6 +259,9 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertSame('https://tendaworld.com/profile', $service->profileUrl());
 		$values['tendaworld_url'] = 'https://staging.tendaworld.com';
 		self::assertSame('https://staging.tendaworld.com/profile', $service->profileUrl());
+		// A MIMI address left in the website setting is MIMI's, not the website's.
+		$values['tendaworld_url'] = 'https://gopaperless.mimi.ke';
+		self::assertSame('https://tendaworld.com/profile', $service->profileUrl());
 	}
 
 	/**
