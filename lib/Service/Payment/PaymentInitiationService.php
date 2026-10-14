@@ -212,12 +212,12 @@ class PaymentInitiationService {
 		// purchase that actually carries a draft UUID. The backend is
 		// authoritative here: a UUID supplied for any other purpose/method
 		// (e.g. mobile, certificate, sign-request) is ignored.
-		$isCardCreditPurchase =
-			$methodEnum === PaymentMethod::CARD
+		$isCardCreditPurchase
+			= $methodEnum === PaymentMethod::CARD
 			&& $paymentPurpose === PaymentPurpose::CREDIT_PURCHASE;
 
-		$isCardSponsorshipCreditPurchase =
-			$isCardCreditPurchase
+		$isCardSponsorshipCreditPurchase
+			= $isCardCreditPurchase
 			&& $sponsorshipWorkflowFileUuid !== null
 			&& $sponsorshipWorkflowFileUuid !== '';
 
