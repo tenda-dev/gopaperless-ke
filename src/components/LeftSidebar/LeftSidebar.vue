@@ -93,6 +93,18 @@
 					</NcAppNavigationItem>
 
 					<NcAppNavigationItem
+						v-if="adminEntitlementGrantsEnabled"
+						:to="{name: 'AdminEntitlements'}"
+						:name="t('libresign', 'Entitlement grants')"
+						@click="unselectFile">
+						<template #icon>
+							<div class="icon-wrapper">
+								<NcIconSvgWrapper :path="mdiCreditCardPlusOutline" :size="20" />
+							</div>
+						</template>
+					</NcAppNavigationItem>
+
+					<NcAppNavigationItem
 						:to="{name: 'CrlManagement'}"
 						:name="t('libresign', 'CRL Management')"
 						@click="unselectFile">
@@ -125,6 +137,7 @@ import {
 	mdiFolderOutline,
 	mdiShieldLockOutline,
 	mdiAnimationOutline,
+	mdiCreditCardPlusOutline,
 	mdiPlus,
 	mdiCloudUpload,
 	mdiMonitorDashboard,
@@ -159,6 +172,7 @@ const config = loadState('libresign', 'config', {
 	identificationDocumentsFlow: false,
 	isApprover: false,
 })
+const adminEntitlementGrantsEnabled = loadState('libresign', 'admin_entitlement_grants_enabled', false)
 
 const isAdmin = computed(() => {
 	const user = getCurrentUser()

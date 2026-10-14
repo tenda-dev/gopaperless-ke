@@ -29,6 +29,7 @@ use OCA\Libresign\Listener\SmsNotifyListener;
 use OCA\Libresign\Listener\TwofactorGatewayListener;
 use OCA\Libresign\Listener\UserCreatedListener;
 use OCA\Libresign\Listener\UserDeletedListener;
+use OCA\Libresign\Listener\UserFirstTimeLoggedInListener;
 use OCA\Libresign\Middleware\GlobalInjectionMiddleware;
 use OCA\Libresign\Middleware\InjectionMiddleware;
 use OCA\Libresign\Notification\Notifier;
@@ -44,6 +45,7 @@ use OCP\IAppConfig;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
+use OCP\User\Events\UserFirstTimeLoggedInEvent;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -132,6 +134,7 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(SignedEvent::class, TwofactorGatewayListener::class);
 
 		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
+		$context->registerEventListener(UserFirstTimeLoggedInEvent::class, UserFirstTimeLoggedInListener::class);
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
 
 		$context->registerDashboardWidget(PendingSignaturesWidget::class);

@@ -119,4 +119,51 @@ final class EntitlementReservationServiceTest extends \OCA\Libresign\Tests\Unit\
 		$this->assertSame(0, $entitlement->getReservedUses());
 		$this->assertNotNull($reservation->getReleasedAt());
 	}
+
+	public function testReserveForWorkflowSkipsExpiredEntitlements(): void {
+		// Expired bucket still reports available uses, but must NOT be drawn.
+		$expired = $this->createEntitlement(1, 5, 0);
+		$expired->setExpiresAt(new \DateTime('-1 day'));
+		$usable = $this->createEntitlement(2, 10, 0);
+
+		$this->entitlementMapper
+			->method('findActiveByUserAndProduct')
+			->with('requester', 'SIGN_DOCUMENT')
+			->willReturn([$expired, $usable]);
+
+		$this->reservationMapper
+			->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (\OCA\Libresign\Db\EntitlementReservation $r) {
+				$this->assertSame(2, $r->getEntitlementId());
+				$this->assertSame(3, $r->getQuantity());
+			});
+		$this->entitlementMapper
+			->expects($this->once())
+			->method('update')
+			->willReturnCallback(function (Entitlement $e) {
+				$this->assertSame(2, $e->getId());
+				$this->assertSame(3, $e->getReservedUses());
+			});
+
+		$this->service->reserveForWorkflow('requester', 'SIGN_DOCUMENT', 100, 1, 3);
+	}
+
+	public function testReserveForWorkflowThrowsWhenOnlyExpiredCapacity(): void {
+		$expired = $this->createEntitlement(1, 5, 0);
+		$expired->setExpiresAt(new \DateTime('-1 day'));
+
+		$this->entitlementMapper
+			->method('findActiveByUserAndProduct')
+			->with('requester', 'SIGN_DOCUMENT')
+			->willReturn([$expired]);
+
+		// The expired bucket is skipped, so nothing is reserved.
+		$this->reservationMapper->expects($this->never())->method('insert');
+
+		$this->expectException(\RuntimeException::class);
+		$this->expectExceptionMessage('Insufficient entitlement capacity');
+
+		$this->service->reserveForWorkflow('requester', 'SIGN_DOCUMENT', 100, 1, 1);
+	}
 }

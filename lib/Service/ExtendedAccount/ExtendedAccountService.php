@@ -174,6 +174,23 @@ final class ExtendedAccountService {
 	}
 
 	/**
+	 * Atomically claim the signup bonus for a user (compare-and-set).
+	 *
+	 * Returns true only for the caller that transitions
+	 * signup_bonus_granted_at from NULL to the current timestamp. Concurrent
+	 * or repeated callers receive false. A successful claim requires the
+	 * caller to create the entitlement within the SAME transaction, ensuring
+	 * that a rollback reverts the claim so the bonus cannot be duplicated or
+	 * permanently lost.
+	 */
+	public function claimSignupBonus(string $userId): bool {
+		return $this->mapper->claimSignupBonus(
+			$userId,
+			$this->nowImmutable(),
+		) === 1;
+	}
+
+	/**
 	 * Grants or extends certificate access after a successful payment.
 	 *
 	 * Invoked from the payment finalise branch for

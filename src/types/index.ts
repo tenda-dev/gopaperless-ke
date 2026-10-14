@@ -123,6 +123,7 @@ export type AdminInitialState = {
 	envelope_enabled: boolean
 	free_credits_enabled: boolean
 	free_credits_uses: number
+	admin_entitlement_grants_enabled: boolean
 	one_time_signing_enabled: boolean
 	sponsorship_enabled: boolean
 	product_default_currency: string

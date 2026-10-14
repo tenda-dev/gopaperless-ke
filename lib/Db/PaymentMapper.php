@@ -769,4 +769,31 @@ class PaymentMapper extends QBMapper {
 	private function status(PaymentStatus $status): string {
 		return $status->value;
 	}
+
+	/**
+	 * Most-recent payments for a user, newest first, bounded by $limit.
+	 *
+	 * The limit is enforced in SQL so callers never fetch an unbounded history
+	 * and truncate client-side. Used by the admin entitlement overview.
+	 *
+	 * @return Payment[]
+	 * @throws Exception
+	 */
+	public function findRecentByUserId(string $userId, int $limit = 30): array {
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('p.*')
+			->from($this->getTableName(), 'p')
+			->where(
+				$qb->expr()->eq(
+					'p.user_id',
+					$qb->createNamedParameter($userId, Types::STRING)
+				)
+			)
+			->orderBy('p.created_at', 'DESC')
+			->setMaxResults($limit);
+
+		return $this->findEntities($qb);
+	}
+
 }

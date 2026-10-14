@@ -39,6 +39,9 @@ use OCP\AppFramework\Db\Entity;
  *
  * @method void setValidUntil(?\DateTimeInterface|string $date)
  * @method ?\DateTimeInterface|string getValidUntil()
+ *
+ * @method void setSignupBonusGrantedAt(?\DateTimeInterface|string $date)
+ * @method ?\DateTimeInterface|string getSignupBonusGrantedAt()
  */
 class ExtendedAccount extends Entity {
 
@@ -55,6 +58,14 @@ class ExtendedAccount extends Entity {
 	protected DateTimeInterface|string|null $validUntil = null;
 
 	/**
+	 * Timestamp of a successfully COMMITTED signup-bonus grant.
+	 * NULL = no grant recorded yet. This is the authoritative
+	 * idempotency key for the free-credits signup bonus; it is NOT
+	 * an account-age signal.
+	 */
+	protected DateTimeInterface|string|null $signupBonusGrantedAt = null;
+
+	/**
 	 * @throws \Exception
 	 */
 	public function __construct() {
@@ -66,6 +77,7 @@ class ExtendedAccount extends Entity {
 		$this->addType('paidCertificate', 'boolean');
 		$this->addType('certPaidAt', 'datetime');
 		$this->addType('validUntil', 'datetime');
+		$this->addType('signupBonusGrantedAt', 'datetime');
 	}
 
 	private function nowImmutable(): \DateTimeImmutable {
@@ -89,6 +101,10 @@ class ExtendedAccount extends Entity {
 
 	public function getValidUntilImmutable(): ?\DateTimeImmutable {
 		return $this->asDateTime($this->validUntil);
+	}
+
+	public function getSignupBonusGrantedAtImmutable(): ?\DateTimeImmutable {
+		return $this->asDateTime($this->signupBonusGrantedAt);
 	}
 
 	/**

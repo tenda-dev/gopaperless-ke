@@ -367,6 +367,118 @@ class EntitlementService {
 	}
 
 	/**
+	 * Create an administrative grant of credits.
+	 *
+	 * Reuses create() to keep entitlement creation in a single code path.
+	 * The future entitlement ledger can extend this method to persist the
+	 * acting administrator, reason, and reference alongside the grant.
+	 *
+	 * The log entry is operational only; it is not a durable, queryable
+	 * audit record.
+	 *
+	 * @throws Exception
+	 */
+	public function grant(
+		string $recipientUserId,
+		string $productCode,
+		int $uses,
+		string $actingAdminUserId,
+		string $reason,
+		?string $reference = null,
+	): Entitlement {
+		$entitlement = $this->create(
+			$recipientUserId,
+			$productCode,
+			$uses,
+			EntitlementType::ADMIN_GRANTED,
+		);
+
+		$this->logger->info('[EntitlementService] admin grant created', [
+			'entitlementId' => $entitlement->getId(),
+			'recipientUserId' => $recipientUserId,
+			'actingAdminUserId' => $actingAdminUserId,
+			'productCode' => $productCode,
+			'uses' => $uses,
+			'reason' => $reason,
+			'reference' => $reference,
+		]);
+
+		return $entitlement;
+	}
+
+	/**
+	 * Read-only overview of a user's entitlements for a product: an aggregate
+	 * summary plus the individual rows.
+	 *
+	 * Unlike getAvailableCredits(), this does NOT call ProductService and so never
+	 * lazily materialises a default product — safe for admin inspection reads.
+	 *
+	 * @return array{summary: array{productCode: string, availableUses: int, remainingUses: int, reservedUses: int, activeEntitlements: int}, entitlements: list<array<string, mixed>>}
+	 * @throws Exception
+	 */
+	public function getProductOverview(string $userId, string $productCode): array {
+		$rows = $this->entitlementMapper->findByUserAndProduct($userId, $productCode);
+
+		$available = 0;
+		$remaining = 0;
+		$reserved = 0;
+		$active = 0;
+		$items = [];
+
+		foreach ($rows as $entitlement) {
+			$usable = $entitlement->canUse();
+			if ($usable) {
+				$available += (int)$entitlement->getAvailableUses();
+				$remaining += (int)$entitlement->getRemainingUses();
+				$reserved += (int)($entitlement->getReservedUses() ?? 0);
+				$active++;
+			}
+			$items[] = [
+				'id' => $entitlement->getId(),
+				'type' => $entitlement->getType(),
+				'remainingUses' => $entitlement->getRemainingUses(),
+				'reservedUses' => $entitlement->getReservedUses(),
+				'availableUses' => $entitlement->getAvailableUses(),
+				'expiresAt' => $entitlement->getExpiresAt()?->format(DATE_ATOM),
+				'createdAt' => $entitlement->getCreatedAt()?->format(DATE_ATOM),
+				'usable' => $usable,
+			];
+		}
+
+		return [
+			'summary' => [
+				'productCode' => $productCode,
+				'availableUses' => $available,
+				'remainingUses' => $remaining,
+				'reservedUses' => $reserved,
+				'activeEntitlements' => $active,
+				// Use the shared selector's priority and FIFO ordering so the UI reflects
+				// the entitlement that consumption will draw from next.
+				'nextEntitlementId' => $this->resolveNextEntitlementId($userId, $productCode),
+			],
+			'entitlements' => $items,
+		];
+	}
+
+	/**
+	 * Resolve the first usable entitlement in the shared priority order:
+	 * PROMOTIONAL → ADMIN_GRANTED → SUBSCRIPTION → PAY_AS_YOU_GO, FIFO
+	 * within each type.
+	 *
+	 * Uses canUse() to exclude expired entitlements and those without
+	 * available uses, keeping the displayed next-to-draw indicator aligned
+	 * with reservation eligibility.
+	 */
+	private function resolveNextEntitlementId(string $userId, string $productCode): ?int {
+		foreach ($this->entitlementMapper->findActiveByUserAndProduct($userId, $productCode) as $entitlement) {
+			if ($entitlement->canUse()) {
+				return $entitlement->getId();
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * @throws \Exception
 	 */
 	private function now(): string {
