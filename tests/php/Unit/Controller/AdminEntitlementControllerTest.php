@@ -21,7 +21,6 @@ use OCA\Libresign\Service\Entitlement\ReservationInspectionService;
 use OCA\Libresign\Service\Payment\PaymentDiagnosticService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\AppFramework\Http;
-use PHPUnit\Framework\Attributes\DataProvider;
 use OCP\IAppConfig;
 use OCP\IGroupManager;
 use OCP\IL10N;
@@ -29,6 +28,7 @@ use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\IUserSession;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 
@@ -326,5 +326,3 @@ final class AdminEntitlementControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->paymentDetail(7)->getStatus());
 	}
 }
-
-

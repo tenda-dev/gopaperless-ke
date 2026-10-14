@@ -28,8 +28,8 @@ use OCA\Libresign\Listener\SignedCallbackListener;
 use OCA\Libresign\Listener\SmsNotifyListener;
 use OCA\Libresign\Listener\TwofactorGatewayListener;
 use OCA\Libresign\Listener\UserCreatedListener;
-use OCA\Libresign\Listener\UserFirstTimeLoggedInListener;
 use OCA\Libresign\Listener\UserDeletedListener;
+use OCA\Libresign\Listener\UserFirstTimeLoggedInListener;
 use OCA\Libresign\Middleware\GlobalInjectionMiddleware;
 use OCA\Libresign\Middleware\InjectionMiddleware;
 use OCA\Libresign\Notification\Notifier;
@@ -44,8 +44,8 @@ use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\IAppConfig;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\User\Events\UserCreatedEvent;
-use OCP\User\Events\UserFirstTimeLoggedInEvent;
 use OCP\User\Events\UserDeletedEvent;
+use OCP\User\Events\UserFirstTimeLoggedInEvent;
 use Psr\Log\LoggerInterface;
 
 /**
