@@ -209,7 +209,17 @@ describe('pdfEditorModel', () => {
 
 	describe('RULE: no signature box is smaller than the admin minimum', () => {
 		it('reads the minimum from the capabilities, 0 when there is none', () => {
-			expect(signatureMinimum({ 'signature-minimum-width': 220, 'signature-minimum-height': 70 })).toEqual({ minWidth: 220, minHeight: 70 })
+			const signElements = {
+				'is-available': true,
+				'can-create-signature': true,
+				'full-signature-width': 0,
+				'full-signature-height': 0,
+				'signature-width': 0,
+				'signature-height': 0,
+				'signature-minimum-width': 220,
+				'signature-minimum-height': 70,
+			}
+			expect(signatureMinimum(signElements)).toEqual({ minWidth: 220, minHeight: 70 })
 			expect(signatureMinimum(undefined)).toEqual({ minWidth: 0, minHeight: 0 })
 		})
 
