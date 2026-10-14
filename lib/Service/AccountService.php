@@ -68,10 +68,13 @@ class AccountService {
 	 *
 	 * Accounts whose Nextcloud first login is on or after this instant are
 	 * eligible for lazy recovery of a missed bonus; older accounts are not.
-	 * 2026-10-10 00:00:00 Africa/Nairobi == 2026-10-09T21:00:00Z. Fixed by
-	 * design. NEVER a rolling window.
+	 * Set to the deploy instant (2026-10-13 23:00 EAT == 20:00Z): bonuses
+	 * granted before grant-tracking existed were written without
+	 * signup_bonus_granted_at, so an earlier cutoff would double-recover any
+	 * such grant to a user first logging in after it. Fixed by design. NEVER a
+	 * rolling window.
 	 */
-	private const SIGNUP_BONUS_RECOVERY_CUTOFF = '2026-10-09T21:00:00+00:00';
+	private const SIGNUP_BONUS_RECOVERY_CUTOFF = '2026-10-13T20:00:00+00:00';
 
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
@@ -541,7 +544,9 @@ class AccountService {
 
 			$this->connection->commit();
 		} catch (\Throwable $e) {
-			$this->connection->rollBack();
+			if ($this->connection->inTransaction()) {
+				$this->connection->rollBack();
+			}
 			$this->logger->error(
 				'[AccountService] Failed to award signup bonus credits',
 				[

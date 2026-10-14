@@ -1237,6 +1237,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 		// The claim and the grant share one transaction: a failed grant must
 		// roll back the claim (so the flag reverts), never commit it.
+		$this->connection->method('inTransaction')->willReturn(true);
 		$this->connection->expects($this->once())->method('rollBack');
 		$this->connection->expects($this->never())->method('commit');
 
@@ -1244,7 +1245,7 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	}
 
 	private function recoveryCutoffTimestamp(): int {
-		return (new \DateTimeImmutable('2026-10-09T21:00:00+00:00'))->getTimestamp();
+		return (new \DateTimeImmutable('2026-10-13T20:00:00+00:00'))->getTimestamp();
 	}
 
 	private function invokeRecovery(string $userId, ?\DateTimeInterface $grantedAt = null): void {
