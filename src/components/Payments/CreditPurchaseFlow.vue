@@ -39,6 +39,7 @@
 	  :payment-purpose="paymentPurpose || 'credit_purchase'"
       :sign-request-id="signRequestId"
       :sign-uuid="signUuid"
+      :sponsorship-workflow-file-uuid="props.sponsorshipWorkflowFileUuid"
       :product-code="productCode"
 	  :pricing="pricing"
 	  :initial-payment="hydratedPayment"
@@ -75,6 +76,7 @@ const props = defineProps<{
 
 	signUuid?: string
 	signRequestId?: number
+	sponsorshipWorkflowFileUuid?: string
 
 	quantity?: number
 	allowQuantitySelection: boolean

@@ -82,6 +82,7 @@ class PaymentController extends AEnvironmentAwareController {
 		?string $purpose,
 		?int $quantity,
 		?string $returnUrl,
+		?string $sponsorshipWorkflowFileUuid = null,
 	): DataResponse {
 
 		try {
@@ -155,7 +156,8 @@ class PaymentController extends AEnvironmentAwareController {
 				phoneNumber: $phoneNumber,
 				purpose: $purposeEnum,
 				quantity: $quantity ?? 1,
-				returnUrl: $returnUrl
+				returnUrl: $returnUrl,
+				sponsorshipWorkflowFileUuid: $sponsorshipWorkflowFileUuid,
 			);
 
 			$result = $this->paymentService->startPayment($dto);
@@ -218,6 +220,7 @@ class PaymentController extends AEnvironmentAwareController {
 			'reason' => $this->paymentService->getPaymentFailureReason($payment),
 			'signRequestUuid' => $signRequestUuid,
 			'returnUrl' => $payment->getProviderMetadataObject()->returnUrl,
+			'sponsorshipWorkflowFileUuid' => $payment->getProviderMetadataObject()->getSponsorshipWorkflowFileUuid(),
 		], Http::STATUS_OK);
 	}
 
