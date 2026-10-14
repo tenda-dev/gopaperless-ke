@@ -24,15 +24,11 @@ class SecurySignService {
 	private const DOWN_KEY = 'libresign.securysign.down_until';
 	private const DOWN_SECONDS = 60;
 	/**
-	 * What a mirrored signature is, best first. A lower one is replaced once a
-	 * higher one is available, never the other way round.
-	 * 5: the visible signature scribble from SecurySign's signing context.
-	 * 4: what SecurySign's image route gave, which can be the whole card.
-	 * 3: SecurySign's card, imported while neither gives the scribble.
+	 * What a mirrored signature is. A lower one is replaced at the next sign-in,
+	 * never the other way round. 6 is the visible signature scribble alone, from
+	 * either SecurySign source. Anything lower may be SecurySign's whole card.
 	 */
-	public const CARD_VERSION = 5;
-	private const IMAGE_ROUTE_VERSION = 4;
-	private const CARD_FALLBACK_VERSION = 3;
+	public const CARD_VERSION = 6;
 
 	public function __construct(
 		private IAppConfig $config,
@@ -286,7 +282,7 @@ class SecurySignService {
 	 * gate on readiness and mirror the signature without asking twice.
 	 *
 	 * @param array{sub: string, issuer: string, accessToken: string}|null $identity
-	 * @return array{certificateId: string, imagePngBase64: string, card: int, issuer: string, serial: string, validFrom: string, validUntil: string}|null
+	 * @return array{certificateId: string, imagePngBase64: string, imageSha256: string, card: int, issuer: string, serial: string, validFrom: string, validUntil: string}|null
 	 */
 	public function readiness(?array $identity = null): ?array {
 		$identity ??= $this->identity();
@@ -313,24 +309,25 @@ class SecurySignService {
 			return null;
 		}
 		// The row says which certificate the signature belongs to. Its image is
-		// SecurySign's assembled card, which the signing card would draw inside
-		// itself. The scribble alone comes first from the signing context, the
-		// source the signed PDF uses, then from the image route, which has been
-		// seen answering with the whole card.
-		$scribble = $this->contextScribble((string)$leaf['certificatePem']);
-		$version = self::CARD_VERSION;
+		// SecurySign's assembled card, which never goes on a document. The
+		// scribble alone comes from the signing context, which needs a verified
+		// ID, or else from the image route. With neither (an account older than
+		// SecurySign's separate scribble), the user draws one in GoPaperless,
+		// which saves it to SecurySign: see saveDrawnSignature().
+		$scribble = $this->contextScribble((string)$leaf['certificatePem'])
+			?? $this->handwriting($identity, (string)($signature['imageSha256'] ?? ''));
 		if ($scribble === null) {
-			$scribble = $this->handwriting($identity);
-			$version = self::IMAGE_ROUTE_VERSION;
-		}
-		$image = $scribble ?? base64_decode($signature['imagePngBase64'] ?? '', true);
-		if (!is_string($image) || !str_starts_with($image, "\x89PNG\r\n\x1a\n")) {
-			throw new \RuntimeException('SecurySign returned an invalid visible signature.', 503);
+			$this->logger->warning('SecurySign has no visible signature scribble for this user; they draw one in GoPaperless', [
+				'certificateId' => (string)$leaf['certificateId'],
+			]);
 		}
 		return [
 			'certificateId' => (string)$leaf['certificateId'],
-			'imagePngBase64' => base64_encode($image),
-			'card' => $scribble === null ? self::CARD_FALLBACK_VERSION : $version,
+			'imagePngBase64' => $scribble === null ? '' : base64_encode($scribble),
+			// Changes whenever the signature changes on SecurySign: how a redraw
+			// there is noticed here (refreshVisibleSignature()).
+			'imageSha256' => (string)($signature['imageSha256'] ?? ''),
+			'card' => self::CARD_VERSION,
 			'issuer' => (string)($leaf['issuer'] ?? 'SecurySign'),
 			'serial' => (string)($leaf['serialNumberHex'] ?? ''),
 			'validFrom' => self::day($leaf['validFrom'] ?? null),
@@ -357,52 +354,84 @@ class SecurySignService {
 
 
 	/**
-	 * The user's handwriting alone, as SecurySign serves it for an RP to place
-	 * in its own documents: no name, certificate details or QR code. Null when
-	 * the route gives no PNG, and readiness falls back to the card.
+	 * The visible signature scribble alone, as SecurySign serves it for an RP to
+	 * place in its own documents. Null when the route has none to give. It then
+	 * serves SecurySign's card instead, tagged with the card's own hash, so a
+	 * picture tagged $cardSha256 (or not tagged) is refused, and so is any
+	 * picture when the card's hash is unknown — the check fails closed so the
+	 * card can never slip through as the scribble. A 5xx is an outage.
 	 *
-	 * Never a reason to end the session. The two calls before it already proved
-	 * the token, and this route alone also compares the URL's sub with the one
-	 * SecurySign resolves from the access token. A client without Keycloak's
-	 * `basic` scope mints access tokens with no sub, SecurySign falls back to
-	 * the username, and the route answers 403 to a valid login.
+	 * This route alone also compares the URL's sub with the one SecurySign
+	 * resolves from the access token. A client without Keycloak's `basic` scope
+	 * mints access tokens with no sub, and the route answers 403 to a valid login.
 	 *
 	 * @param array{sub: string, issuer: string, accessToken: string} $identity
 	 */
-	public function handwriting(array $identity): ?string {
+	public function handwriting(array $identity, string $cardSha256): ?string {
 		$base = self::origin($this->config->getValueString(Application::APP_ID, 'securysign_url'));
 		$response = $this->send('get', $base . '/api/signature/visible/' . rawurlencode($identity['sub']) . '/image', [
 			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'image/png'],
 		]);
 		$status = $response->getStatusCode();
+		if ($status >= 500) {
+			throw new \RuntimeException('SecurySign is unreachable.', 503);
+		}
 		$body = (string)$response->getBody();
 		if ($status === 200 && str_starts_with($body, "\x89PNG\r\n\x1a\n")) {
-			return $body;
-		}
-		if ($status !== 404) {
-			$this->logger->warning('SecurySign gave no visible signature scribble; importing its card instead', [
-				'status' => $status,
-				'tokenClaims' => self::claimNames($identity['accessToken']),
+			$tag = self::normalizeSha256(self::pngText($body, 'signa-image-sha256'));
+			$known = self::normalizeSha256($cardSha256);
+			if ($known !== '' && $tag !== '' && $tag !== $known) {
+				return $body;
+			}
+			$this->logger->warning('SecurySign sent its card, not the visible signature scribble', [
+				'tagged' => $tag !== '',
+				'cardHashKnown' => $known !== '',
 			]);
+			return null;
 		}
+		$this->logger->warning('SecurySign gave no visible signature scribble', [
+			'status' => $status,
+			'tokenClaims' => self::claimNames($identity['accessToken']),
+		]);
 		return null;
+	}
+
+	/** Lowercase colonless hex, the shape openssl_x509_fingerprint returns. */
+	private static function normalizeSha256(string $hash): string {
+		return strtolower(str_replace([':', ' '], '', trim($hash)));
+	}
+
+	/** A PNG tEXt value, or '' when the image has none under that keyword. */
+	private static function pngText(string $png, string $keyword): string {
+		$at = 8;
+		while ($at + 8 <= strlen($png)) {
+			$length = unpack('N', $png, $at)[1];
+			if (substr($png, $at + 4, 4) === 'tEXt') {
+				[$key, $value] = explode("\0", substr($png, $at + 8, $length), 2) + [1 => ''];
+				if ($key === $keyword) {
+					return $value;
+				}
+			}
+			$at += 12 + $length;
+		}
+		return '';
 	}
 
 	/**
 	 * Mirror the SecurySign card into the user's LibreSign signature elements so
-	 * it is what lands on a document. SecurySign owns it: SecurySignMiddleware
-	 * refuses the endpoints that create, change or delete one, so any element a
-	 * gated user has came from here, and one that names a superseded certificate
-	 * is replaced after a renewal.
+	 * it is what lands on a document. SecurySign owns it: one drawn here is saved
+	 * to SecurySign first and arrives through here too, deleting one is refused,
+	 * and one that names a superseded certificate is replaced after a renewal.
 	 *
 	 * Takes the readiness array rather than re-reading it, so a page load still
 	 * costs one pair of calls to SecurySign. Failures are logged and swallowed:
 	 * the card is already verified, and failing to cache it locally is no reason
 	 * to lock someone out of the app.
 	 *
-	 * @param array{certificateId: string, imagePngBase64: string, card: int} $readiness
+	 * @param array{certificateId: string, imagePngBase64: string, imageSha256?: string, card: int} $readiness
+	 * @param bool $replace true for a signature just drawn: it replaces the current one even when that one is up to date
 	 */
-	public function syncVisibleSignature(array $readiness): void {
+	public function syncVisibleSignature(array $readiness, bool $replace = false): void {
 		$user = $this->users->getUser();
 		if ($user === null) {
 			return;
@@ -412,15 +441,29 @@ class SecurySignService {
 			// reaches this class, so constructor injection would not build.
 			$mapper = $this->container->get(\OCA\Libresign\Db\UserElementMapper::class);
 			$existing = $mapper->findMany(['user_id' => $user->getUID(), 'type' => 'signature']);
-			// Both the certificate and the card layout have to match. Without the
-			// version, changing the card design would leave every existing user on
-			// the old image forever, because their certificate had not changed. A
-			// fallback card gives way to the handwriting once the route answers,
-			// and never replaces handwriting already imported.
-			foreach ($existing as $element) {
+			if ($readiness['imagePngBase64'] === '') {
+				// SecurySign has no scribble. An import older than the current
+				// version may be its card: it goes, and LibreSign asks for a
+				// signature, which createSignatureElement sends to SecurySign.
+				foreach ($existing as $element) {
+					$metadata = $element->getMetadata() ?? [];
+					if (isset($metadata['securysign_certificate_id'])
+						&& ($metadata['securysign_certificate_id'] !== $readiness['certificateId'] || ($metadata['securysign_card'] ?? 0) < self::CARD_VERSION)) {
+						$mapper->delete($element);
+					}
+				}
+				return;
+			}
+			// The certificate, the card layout and SecurySign's signature all have
+			// to match. Without the version, changing the card design would leave
+			// every existing user on the old image forever, because their
+			// certificate had not changed. Without the signature's hash, a redraw
+			// on SecurySign would never replace the copy here.
+			foreach ($replace ? [] : $existing as $element) {
 				$metadata = $element->getMetadata() ?? [];
 				if (($metadata['securysign_certificate_id'] ?? null) === $readiness['certificateId']
-					&& ($metadata['securysign_card'] ?? 0) >= $readiness['card']) {
+					&& ($metadata['securysign_card'] ?? 0) >= $readiness['card']
+					&& ($metadata['securysign_image_sha256'] ?? '') === ($readiness['imageSha256'] ?? '')) {
 					return;
 				}
 			}
@@ -446,6 +489,7 @@ class SecurySignService {
 				$element->setMetadata(($element->getMetadata() ?? []) + [
 					'securysign_certificate_id' => $readiness['certificateId'],
 					'securysign_card' => $readiness['card'],
+					'securysign_image_sha256' => $readiness['imageSha256'] ?? '',
 				]);
 				$mapper->update($element);
 			}
@@ -455,6 +499,67 @@ class SecurySignService {
 			]);
 		} catch (\Throwable $e) {
 			$this->logger->error('Could not import the SecurySign visible signature', ['exception' => $e]);
+		}
+	}
+
+	/**
+	 * A visible signature scribble drawn in GoPaperless, for someone SecurySign
+	 * has none for. SecurySign keeps it, so every app gets it from now on, and
+	 * it becomes the signature here just as an imported one does. $image is the
+	 * signature box's data URL. Throws with SecurySign's reason when it refuses.
+	 */
+	public function saveDrawnSignature(string $image): void {
+		// Any data URL prefix: the typed signature arrives as
+		// data:application/octet-streamng;base64, (LibreSign's TextInput.vue).
+		// The bytes decide what it is.
+		$png = base64_decode(str_starts_with($image, 'data:') ? substr($image, (int)strpos($image, ',') + 1) : $image, true);
+		if (!is_string($png) || !str_starts_with($png, "\x89PNG\r\n\x1a\n")) {
+			throw new \RuntimeException('Your signature could not be read. Please try again.', 400);
+		}
+		$identity = $this->identity();
+		$response = $this->send('post', $this->signingOrigin() . '/api/signature/visible', [
+			'headers' => ['Authorization' => 'Bearer ' . $identity['accessToken'], 'Accept' => 'application/json'],
+			'json' => ['imagePngBase64' => base64_encode($png), 'sourceType' => 'draw'],
+		]);
+		$body = json_decode((string)$response->getBody(), true);
+		if ($response->getStatusCode() !== 200 || !is_array($body) || empty($body['certificateId'])) {
+			$reason = is_array($body) && is_string($body['error'] ?? null) ? substr($body['error'], 0, 200) : '';
+			$this->logger->warning('SecurySign refused a visible signature scribble drawn in GoPaperless', [
+				'status' => $response->getStatusCode(),
+				'error' => $reason,
+			]);
+			throw new \RuntimeException('SecurySign could not save your signature' . ($reason === '' ? '. Please try again.' : ': ' . $reason), 503);
+		}
+		$this->syncVisibleSignature([
+			'certificateId' => (string)$body['certificateId'],
+			'imagePngBase64' => base64_encode($png),
+			'imageSha256' => (string)($body['imageSha256'] ?? ''),
+			'card' => self::CARD_VERSION,
+		], true);
+	}
+
+	/**
+	 * A signature changed on SecurySign since this session last asked replaces
+	 * the copy here. Run when the user's signatures are fetched (account page,
+	 * signing panel, before signing); sign-in already does the full check. One
+	 * call while nothing changed. Failures are logged and swallowed: the gate
+	 * has already let this session in.
+	 */
+	public function refreshVisibleSignature(): void {
+		if (!$this->applies()) {
+			return;
+		}
+		try {
+			$identity = $this->identity();
+			$signature = $this->request('signature/visible', true, $identity);
+			$cached = $this->session->get(self::READINESS_CACHE_KEY);
+			if (is_array($cached) && ($cached['identity'] ?? null) === self::cacheKey($identity)
+				&& ($cached['imageSha256'] ?? null) === (string)($signature['imageSha256'] ?? '')) {
+				return;
+			}
+			$this->isReady(true);
+		} catch (\Throwable $e) {
+			$this->logger->info('Could not check SecurySign for a changed visible signature', ['exception' => $e]);
 		}
 	}
 
@@ -472,6 +577,7 @@ class SecurySignService {
 		$this->session->set(self::READINESS_CACHE_KEY, [
 			'identity' => $identity,
 			'ready' => $readiness !== null,
+			'imageSha256' => $readiness['imageSha256'] ?? null,
 			// Kept for the account page, so showing it costs no request.
 			'certificate' => $readiness === null ? null : [
 				'issuer' => $readiness['issuer'],
@@ -550,11 +656,19 @@ class SecurySignService {
 	 */
 	public function enrolmentUrl(string $state, string $sub, string $email, string $returnUrl): string {
 		if ($this->config->getValueString(Application::APP_ID, 'enrolment_site', 'tendaworld') === 'mimi') {
-			// MIMI sets up this account (it switches if signed in as another one,
-			// asking for this email), then sends the user to our return route.
-			return $this->mimiOrigin() . '/enrol?' . http_build_query(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl]);
+			return $this->mimiEnrolmentUrl($sub, $email, $returnUrl);
 		}
 		return $this->websiteOrigin() . '/onboarding/gopaperless?' . http_build_query(['state' => $state, 'subject' => $sub]);
+	}
+
+	/**
+	 * MIMI's enrolment for this account. MIMI switches to it if signed in as
+	 * another one, asking for this email, runs the steps still missing (a
+	 * SecurySign certificate made elsewhere is moved onto the new MIMI passkey),
+	 * then sends the user to $returnUrl if it is one of our addresses MIMI has.
+	 */
+	public function mimiEnrolmentUrl(string $sub, string $email, string $returnUrl): string {
+		return $this->mimiOrigin() . '/enrol?' . http_build_query(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl]);
 	}
 
 	/**

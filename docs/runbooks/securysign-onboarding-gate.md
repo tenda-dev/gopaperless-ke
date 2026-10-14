@@ -34,7 +34,12 @@ GoPaperless: **Administration settings → LibreSign** has four SecurySign secti
 - **Sign with SecurySign:** a switch and the signing (SSC) secret. The switch
   can only be on once a provider and the secret are set.
 - **MIMI passkey check:** a switch, the MIMI address, client ID and secret. The
-  switch can only be on once a provider and the secret are set.
+  switch can only be on once a provider and the secret are set. Someone with no
+  MIMI passkey is sent to MIMI's `/enrol` to make one, whichever enrolment site
+  is chosen, and comes back to the check. MIMI runs whatever GoPaperless's MIMI
+  steps they haven't done (for someone who enrolled through the website, the ID,
+  face and questions too) and moves their SecurySign certificate onto the new
+  passkey. MIMI only returns people to addresses registered for the client.
 - **Enrolment for users without a certificate:** the TendaWorld website or
   MIMI. MIMI enrolment uses the MIMI address and client ID from the section
   above, and MIMI only returns people to addresses registered for that client.
@@ -58,7 +63,11 @@ occ config:app:set libresign signing_card_layout   --value horizontal-top
 
 - `signing_card_layout` is the card on a signed PDF: `horizontal-top` (the
   default), `horizontal` or `stacked`. It applies to documents signed with
-  SecurySign and with GoPaperless's own certificate.
+  SecurySign and with GoPaperless's own certificate. `horizontal-top` is one
+  composition scaled whole into the signature box: the visible signature
+  scribble with ISSUER and TIMESTAMP small against its top right and the name
+  under it. A tight box gets a smaller copy of the same card. The scribble is
+  cut to its ink first, so the canvas margin it was drawn with takes no room.
 - Both switches count as on until someone turns them off, so an instance that
   already has a secret keeps its behaviour.
 - A MIMI address left in `tendaworld_url` is read as the MIMI address, and
@@ -208,31 +217,48 @@ stamped with `metadata.securysign_certificate_id` and `metadata.securysign_card`
 match; a renewed certificate replaces the element, and **bumping `CARD_VERSION`
 re-imports for everyone**. Failures are logged and swallowed.
 
-The visible signature scribble comes from `GET /api/signature/visible/{sub}/image`.
-When that route gives anything but a PNG, SecurySign's card from
-`/api/signature/visible` is imported instead, stamped `securysign_card: 3`, and
-the log says `SecurySign gave no visible signature scribble; importing its card
-instead` with the status. The first sign-in after the route answers replaces the
-card with the scribble. A 403 there while every other call succeeds means the
-client is missing Keycloak's `basic` scope; see "access tokens carry no `sub`"
-below.
+Only the visible signature scribble is imported, never SecurySign's card. It
+comes from `POST /api/signature/visible/signing-context` when the account has a
+verified ID, and otherwise from `GET /api/signature/visible/{sub}/image`. That
+route serves the card when it has no scribble, tagged with the card's hash, and
+GoPaperless refuses it. With no scribble from either, an import that may be the
+card is deleted and the user is let in without a signature. GoPaperless asks
+them to draw one ("Define your signature") and saves it to SecurySign with
+`POST /api/signature/visible` and their login, so SecurySign keeps it for every
+app. The log says `SecurySign has no visible signature scribble for this user;
+they draw one in GoPaperless`. The line before it says why:
 
-A document signed with SecurySign doesn't use the imported element. Its card
-takes the scribble from `POST /api/signature/visible/signing-context`, so a
-fallback card in the user's saved signatures never lands on the page.
+- `SecurySign sent its card, not the visible signature scribble`: SecurySign
+  holds no scribble for the account, or it runs the image route that served
+  every user the card on Postgres (fixed in SecurySign `fix/rp-image-route-scribble`).
+- `SecurySign gave no visible signature scribble` with a status: a 403 while
+  every other call succeeds means the client is missing Keycloak's `basic`
+  scope; see "access tokens carry no `sub`" below.
+
+A 5xx from that route is an outage, not "not ready".
+
+A document signed with SecurySign takes the scribble from the signing context
+too. When SecurySign has no context for the certificate, the card is drawn from
+the certificate itself (its name and issuer) around the imported scribble, never
+LibreSign's old appearance.
 
 `JSignPdfHandler` stamps the element image into the PDF
 (`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the
 template text plus the QR are what land on the page.
 
-LibreSign's own signature module is the fallback. `hasMirroredSignature()` asks
-whether a stored element carries `securysign_certificate_id`; only then are the
-mutating endpoints refused. With nothing mirrored, because the import has not run
-or has failed, the user can draw one and sign, and the next successful import
-replaces it. Without that, a failed import leaves them told to draw a signature
-the API will not let them draw, and `SignFileService::retrieveUserElement()`
-refuses the signature with "You need to define a visible signature or initials to
-sign this document."
+A SecurySign user who draws a signature in GoPaperless, a first one or a new one,
+has it saved to SecurySign first (`POST /api/signature/visible`), and it comes
+back as their imported signature. SecurySign signs the new image with the same
+key and keeps the same QR code, so the certificate and documents already signed
+are untouched. Deleting it is refused while a stored element carries
+`securysign_certificate_id` (`hasMirroredSignature()`).
+
+LibreSign's own signature module is the fallback. With nothing mirrored, because
+the import has not run or has failed, nothing is refused: the user can draw one
+and sign. Without that, a failed import leaves them told to draw a signature the
+API will not let them draw, and `SignFileService::retrieveUserElement()` refuses
+the signature with "You need to define a visible signature or initials to sign
+this document."
 
 Editing is refused at the endpoints that mutate — `createSignatureElement`,
 `patchSignatureElement`, `deleteSignatureElement` return 403 while the gate
