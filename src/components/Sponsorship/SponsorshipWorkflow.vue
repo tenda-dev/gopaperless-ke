@@ -34,7 +34,7 @@ const workflow = computed(() => workflowStore.workflow)
 
 // The draft being resumed. For envelopes this is the selected parent file,
 // which is exactly what the request-signature sidebar operates on.
-const sponsorshipWorkflowFileUuid = computed(() => filesStore.getFile()?.uuid)
+const sponsorshipWorkflowFileUuid = computed(() => filesStore.getFile()?.uuid ?? undefined)
 
 const sponsorshipError = computed(
 	() => workflow.value?.instruction.errors[0],
