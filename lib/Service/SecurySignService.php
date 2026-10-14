@@ -357,7 +357,9 @@ class SecurySignService {
 	 * The visible signature scribble alone, as SecurySign serves it for an RP to
 	 * place in its own documents. Null when the route has none to give. It then
 	 * serves SecurySign's card instead, tagged with the card's own hash, so a
-	 * picture tagged $cardSha256 (or not tagged) is refused. A 5xx is an outage.
+	 * picture tagged $cardSha256 (or not tagged) is refused, and so is any
+	 * picture when the card's hash is unknown — the check fails closed so the
+	 * card can never slip through as the scribble. A 5xx is an outage.
 	 *
 	 * This route alone also compares the URL's sub with the one SecurySign
 	 * resolves from the access token. A client without Keycloak's `basic` scope
@@ -376,11 +378,15 @@ class SecurySignService {
 		}
 		$body = (string)$response->getBody();
 		if ($status === 200 && str_starts_with($body, "\x89PNG\r\n\x1a\n")) {
-			$tag = self::pngText($body, 'signa-image-sha256');
-			if ($tag !== '' && $tag !== $cardSha256) {
+			$tag = self::normalizeSha256(self::pngText($body, 'signa-image-sha256'));
+			$known = self::normalizeSha256($cardSha256);
+			if ($known !== '' && $tag !== '' && $tag !== $known) {
 				return $body;
 			}
-			$this->logger->warning('SecurySign sent its card, not the visible signature scribble');
+			$this->logger->warning('SecurySign sent its card, not the visible signature scribble', [
+				'tagged' => $tag !== '',
+				'cardHashKnown' => $known !== '',
+			]);
 			return null;
 		}
 		$this->logger->warning('SecurySign gave no visible signature scribble', [
@@ -388,6 +394,11 @@ class SecurySignService {
 			'tokenClaims' => self::claimNames($identity['accessToken']),
 		]);
 		return null;
+	}
+
+	/** Lowercase colonless hex, the shape openssl_x509_fingerprint returns. */
+	private static function normalizeSha256(string $hash): string {
+		return strtolower(str_replace([':', ' '], '', trim($hash)));
 	}
 
 	/** A PNG tEXt value, or '' when the image has none under that keyword. */

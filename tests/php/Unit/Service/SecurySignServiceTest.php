@@ -296,6 +296,8 @@ final class SecurySignServiceTest extends TestCase {
 		self::assertNull(self::serviceAnswering(200, $tagged('card-hash'))->handwriting(self::IDENTITY, 'card-hash'));
 		self::assertNull(self::serviceAnswering(200, self::PNG_MAGIC . self::pngChunk('IEND', ''))->handwriting(self::IDENTITY, 'card-hash'), 'untagged');
 		self::assertNull(self::serviceAnswering(200, '<html>')->handwriting(self::IDENTITY, 'card-hash'));
+		self::assertSame($tagged('SCRIBBLE-HASH'), self::serviceAnswering(200, $tagged('SCRIBBLE-HASH'))->handwriting(self::IDENTITY, 'card-hash'), 'the tag comparison is normalized');
+		self::assertNull(self::serviceAnswering(200, $tagged('card-hash'))->handwriting(self::IDENTITY, ''), 'an unknown card hash refuses every picture');
 		foreach ([401, 403, 404] as $status) {
 			self::assertNull(self::serviceAnswering($status)->handwriting(self::IDENTITY, 'card-hash'), 'HTTP ' . $status);
 		}
