@@ -424,6 +424,7 @@ import type { Product } from '@/payment/product.ts'
 const props = defineProps<{
 	signUuid?: string
 	signRequestId?: number
+	sponsorshipWorkflowFileUuid?: string
 	paymentPurpose: PaymentPurpose
 	quantity: number
 	productCode: string
@@ -1394,6 +1395,7 @@ async function handleCardPayment() {
 			productCode: props.productCode,
 			redirectUrl: payment.buildPaymentRedirectUrl(),
 			returnUrl: payment.buildPaymentReturnUrl(),
+			sponsorshipWorkflowFileUuid: props.sponsorshipWorkflowFileUuid,
 			quantity: props.quantity,
 			purpose: payment.paymentPurpose.value ?? 'sign_request'
 	    },
@@ -1433,6 +1435,8 @@ async function retryPayment() {
 				purpose: payment.paymentPurpose.value ?? 'sign_request',
 				redirectUrl,
 				returnUrl,
+				// Scope the pointer to the card flow; mobile retries never carry it.
+				sponsorshipWorkflowFileUuid: isCardPaymentMethod ? props.sponsorshipWorkflowFileUuid : undefined,
 			},
 			(status) => {  // ← onTerminal callback
 				if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()

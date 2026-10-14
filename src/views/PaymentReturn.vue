@@ -19,6 +19,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
@@ -32,6 +33,8 @@ import { notifySuccess, notifyError } from '@/services/toast'
 import { usePaymentContextStore } from '@/store/paymentContext'
 
 const status = ref<'loading' | 'error'>('loading')
+
+const router = useRouter()
 
 let hasRun = false
 
@@ -61,6 +64,44 @@ function redirectToReturnUrl(returnUrl: string | undefined) {
 		console.warn('[PaymentReturn] Invalid return URL', err)
 		window.location.replace('/')
 	}
+}
+
+/**
+ * After a verified-successful sponsorship-workflow card credit purchase, send
+ * the user back to the document they were enriching so they can resume the
+ * request-signature workflow.
+ *
+ * The UUID only selects the destination route; the files list re-fetches and
+ * authorises the file server-side, and the existing request-signature flow
+ * performs all sponsorship validation and finalisation. It is never treated
+ * as authorization here. Falls back to the persisted returnUrl when no
+ * sponsorship-workflow pointer is present.
+ */
+function redirectToSponsorshipWorkflowDraft(
+	sponsorshipWorkflowFileUuid: string | undefined,
+	fallbackReturnUrl: string | undefined,
+) {
+	if (sponsorshipWorkflowFileUuid) {
+		try {
+			const href = router.resolve({
+				name: 'fileslist',
+				query: { uuid: sponsorshipWorkflowFileUuid },
+			}).href
+
+			const url = new URL(href, window.location.origin)
+
+			if (url.origin === window.location.origin) {
+				window.location.replace(
+					`${url.pathname}${url.search}${url.hash}`
+				)
+				return
+			}
+		} catch (err) {
+			console.warn('[PaymentReturn] Sponsorship-workflow redirect failed', err)
+		}
+	}
+
+	redirectToReturnUrl(fallbackReturnUrl)
 }
 
 onMounted(async () => {
@@ -94,7 +135,10 @@ onMounted(async () => {
 				message: 'Payment successful',
 			})
 
-			redirectToReturnUrl(res.returnUrl)
+			redirectToSponsorshipWorkflowDraft(
+				res.sponsorshipWorkflowFileUuid ?? undefined,
+				res.returnUrl,
+			)
 
 			return
 		}

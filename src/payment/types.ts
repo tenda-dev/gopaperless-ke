@@ -136,6 +136,13 @@ export interface VerifyPaymentResponse {
 	 * after payment verification.
 	 */
 	returnUrl?: string;
+	/**
+	 * Draft file UUID recovered from the verified payment's sponsorship-workflow
+	 * context. Present only for card sponsorship credit-purchase payments that
+	 * carried it. Used to navigate the user back to the document after verified
+	 * success; it does not authorize access on its own.
+	 */
+	sponsorshipWorkflowFileUuid?: string | null;
 }
 
 export type SupportedRegion = 'KE' | 'TZ' | 'UG' | 'RW' | 'MW' | 'ZM' | 'ZW'
@@ -174,6 +181,15 @@ export interface StartPaymentPayload {
 
 	signUuid?: string
 	signRequestId?: number
+
+	/**
+	 * Draft file UUID for a sponsorship-workflow card credit purchase.
+	 * Sent only for the card flow so the backend can persist a navigation
+	 * pointer and the user can resume the request-signature workflow after
+	 * the DPO redirect. Never treated as authorization. The backend ignores it
+	 * for any other purpose/method.
+	 */
+	sponsorshipWorkflowFileUuid?: string | null
 
 	/**
 	 * Used for redirect/card payment flows.
