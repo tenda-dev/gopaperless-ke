@@ -64,6 +64,8 @@ use OCP\ITempManager;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use OCP\Security\ICredentialsManager;
 use OCP\Security\ISecureRandom;
 use Psr\Log\LoggerInterface;
@@ -71,6 +73,8 @@ use RuntimeException;
 use Sabre\DAV\UUIDUtil;
 
 class SignFileService {
+	/** Seconds a signer waits while someone else signs the same document. */
+	private const SIGNING_LOCK_WAIT = 30;
 	private ?SignRequestEntity $signRequest = null;
 	private string $password = '';
 	private ?FileEntity $libreSignFile = null;
@@ -517,19 +521,24 @@ class SignFileService {
 		$this->setVisibleElements($this->elementsInput);
 
 		try {
-			$this->validateDocMdpAllowsSignatures();
-
+			$lock = $this->lockForSigning($libreSignFile);
 			try {
-				$signedFile = $this->signWithEngine();
-			} catch (LibresignException|Exception $e) {
-				$this->cleanupUnsignedSignedFile();
-				$this->recordSignatureAttempt($e);
-				throw $e;
-			}
+				$this->validateDocMdpAllowsSignatures();
 
-			$hash = $this->computeHash($signedFile);
-			$this->updateSignRequest($hash);
-			$this->updateLibreSignFile($libreSignFile, $signedFile->getId(), $hash);
+				try {
+					$signedFile = $this->signWithEngine();
+				} catch (LibresignException|Exception $e) {
+					$this->cleanupUnsignedSignedFile();
+					$this->recordSignatureAttempt($e);
+					throw $e;
+				}
+
+				$hash = $this->computeHash($signedFile);
+				$this->updateSignRequest($hash);
+				$this->updateLibreSignFile($libreSignFile, $signedFile->getId(), $hash);
+			} finally {
+				$this->unlockForSigning($lock);
+			}
 
 			try {
 				$this->dispatchSignedEvent();
@@ -656,26 +665,31 @@ class SignFileService {
 			$this->setVisibleElements($this->elementsInput);
 			$this->fileToSign = null;
 
-			$this->validateDocMdpAllowsSignatures();
-
+			$lock = $this->lockForSigning($this->libreSignFile);
 			try {
-				$signedFile = $this->signWithEngine();
-			} catch (LibresignException|Exception $e) {
-				$this->cleanupUnsignedSignedFile();
-				$this->recordSignatureAttempt($e);
+				$this->validateDocMdpAllowsSignatures();
 
-				$isEnvelope = $this->libreSignFile->isEnvelope() || $this->libreSignFile->hasParent();
-				if (!$isEnvelope) {
-					throw $e;
+				try {
+					$signedFile = $this->signWithEngine();
+				} catch (LibresignException|Exception $e) {
+					$this->cleanupUnsignedSignedFile();
+					$this->recordSignatureAttempt($e);
+
+					$isEnvelope = $this->libreSignFile->isEnvelope() || $this->libreSignFile->hasParent();
+					if (!$isEnvelope) {
+						throw $e;
+					}
+					continue;
 				}
-				continue;
+
+				$hash = $this->computeHash($signedFile);
+				$envelopeLastSignedDate = $this->getEngine()->getLastSignedDate();
+
+				$this->updateSignRequest($hash);
+				$this->updateLibreSignFile($this->libreSignFile, $signedFile->getId(), $hash);
+			} finally {
+				$this->unlockForSigning($lock);
 			}
-
-			$hash = $this->computeHash($signedFile);
-			$envelopeLastSignedDate = $this->getEngine()->getLastSignedDate();
-
-			$this->updateSignRequest($hash);
-			$this->updateLibreSignFile($this->libreSignFile, $signedFile->getId(), $hash);
 
 			try {
 				$this->dispatchSignedEvent();
@@ -840,6 +854,39 @@ class SignFileService {
 		$meta = $envelope->getMetadata() ?? [];
 		$meta['status_changed_at'] = (new DateTime())->format(DateTimeInterface::ATOM);
 		$envelope->setMetadata($meta);
+	}
+
+	/**
+	 * One signer at a time per document. Each signature is appended to the copy
+	 * the signer read, so two saving at once would drop one of the signatures.
+	 * The next signer waits, then signs the file the previous one left.
+	 */
+	private function lockForSigning(FileEntity $file): string {
+		$key = 'libresign/sign/' . $file->getId();
+		$locking = \OCP\Server::get(ILockingProvider::class);
+		$deadline = time() + self::SIGNING_LOCK_WAIT;
+		while (true) {
+			try {
+				$locking->acquireLock($key, ILockingProvider::LOCK_EXCLUSIVE, 'LibreSign signing');
+				break;
+			} catch (LockedException) {
+				if (time() >= $deadline) {
+					throw new LibresignException($this->l10n->t('Someone else is signing this document right now. Try again in a moment.'), AppFrameworkHttp::STATUS_CONFLICT);
+				}
+				usleep(250_000);
+			}
+		}
+		// This request may have loaded the file before the signer it waited for
+		// saved: without this it would start a fresh signed copy over theirs.
+		$signedNodeId = $this->fileMapper->getCurrentSignedNodeId((int)$file->getId());
+		if ($signedNodeId !== $file->getSignedNodeId()) {
+			$file->setSignedNodeId($signedNodeId);
+		}
+		return $key;
+	}
+
+	private function unlockForSigning(string $key): void {
+		\OCP\Server::get(ILockingProvider::class)->releaseLock($key, ILockingProvider::LOCK_EXCLUSIVE);
 	}
 
 	/**

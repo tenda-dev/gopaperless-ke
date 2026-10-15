@@ -1,0 +1,79 @@
+--- a/src/Infrastructure/PdfCore/Service/SignatureObjectAssembler.php
++++ b/src/Infrastructure/PdfCore/Service/SignatureObjectAssembler.php
+@@ -135,7 +135,18 @@
+             return $resolvedAcroForm;
+         }
+ 
+-        return $rootObject;
++        // A form dictionary written straight into the catalog, as JSignPdf writes
++        // it. Returning the catalog put the new field and /SigFlags on the catalog,
++        // outside the form: viewers lost the signature and the earlier ones broke.
++        // Move the dictionary into its own object and point the catalog at it.
++        if (! $acroForm instanceof PDFValueObject) {
++            throw new PdfCoreStructureException('Invalid AcroForm object');
++        }
++        $acroFormObject = $pdfDocument->createObject(clone $acroForm);
++        $rootObject['AcroForm'] = new PDFValueReference($acroFormObject->getOid());
++        $pdfDocument->addObject($rootObject);
++
++        return $acroFormObject;
+     }
+ 
+     /**
+@@ -182,9 +193,25 @@
+             ]),
+         ]);
+ 
+-        $permsObject = $this->resolveOrCreatePermsObject($pdfDocument, $rootObject);
+-        $permsObject['DocMDP'] = new PDFValueReference($signatureObject->getOid());
+-        $pdfDocument->addObject($permsObject);
++        $docMdp = new PDFValueReference($signatureObject->getOid());
++        $perms = $rootObject['Perms'] ?? null;
++        $reference = $perms?->asObjectReferenceOrNull();
++        if (is_int($reference)) {
++            $permsObject = $pdfDocument->getObject($reference)
++                ?? throw new PdfCoreStructureException('Could not resolve existing Perms object.');
++            $permsObject['DocMDP'] = $docMdp;
++            $pdfDocument->addObject($permsObject);
++
++            return;
++        }
++
++        // A missing or inline /Perms used to come back as the catalog itself, so
++        // the catalog got /Perms << >> and a stray /DocMDP: viewers found no
++        // certification. The entry belongs inside the catalog's /Perms.
++        $permsValue = $perms instanceof PDFValueObject ? clone $perms : new PDFValueObject;
++        $permsValue['DocMDP'] = $docMdp;
++        $rootObject['Perms'] = $permsValue;
++        $pdfDocument->addObject($rootObject);
+     }
+ 
+     private function hasExistingDocMdp(PdfDocument $pdfDocument, PDFValue $permsValue): bool
+@@ -205,27 +232,4 @@
+ 
+         return isset($permsObject['DocMDP']);
+     }
+-
+-    private function resolveOrCreatePermsObject(PdfDocument $pdfDocument, PDFObject $rootObject): PDFObject
+-    {
+-        if (! isset($rootObject['Perms'])) {
+-            $rootObject['Perms'] = new PDFValueObject;
+-            $pdfDocument->addObject($rootObject);
+-
+-            return $rootObject;
+-        }
+-
+-        $perms = $rootObject['Perms'];
+-        $reference = $perms->asObjectReferenceOrNull();
+-        if (($reference !== null) && (! is_array($reference))) {
+-            $resolvedPerms = $pdfDocument->getObject($reference);
+-            if ($resolvedPerms === null) {
+-                throw new PdfCoreStructureException('Could not resolve existing Perms object.');
+-            }
+-
+-            return $resolvedPerms;
+-        }
+-
+-        return $rootObject;
+-    }
+ }
