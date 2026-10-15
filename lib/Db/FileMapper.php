@@ -95,6 +95,20 @@ class FileMapper extends CachedQBMapper {
 	}
 
 	/**
+	 * The signed copy's node id as stored now, past the entity cache. Read it
+	 * under the signing lock: another signer may have made that copy after this
+	 * request loaded the file.
+	 */
+	public function getCurrentSignedNodeId(int $id): ?int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('signed_node_id')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
+		$value = $qb->executeQuery()->fetchOne();
+		return $value === false || $value === null ? null : (int)$value;
+	}
+
+	/**
 	 * Return LibreSign file by signed hash
 	 *
 	 * @throws DoesNotExistException
