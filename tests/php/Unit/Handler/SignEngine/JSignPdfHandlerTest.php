@@ -214,6 +214,7 @@ final class JSignPdfHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			'PDF 1.7 not changed' => ['SHA256', '%PDF-1.7', '%PDF-1.7'],
 			'PDF 2.0 not changed' => ['SHA256', '%PDF-2.0', '%PDF-2.0'],
 			'Invalid PDF not changed' => ['SHA256', 'random data', 'random data'],
+			'Signed PDF 1.4 not changed, its signature covers the header' => ['SHA256', "%PDF-1.4\n/ByteRange [0 1 2 3]", '%PDF-1.4'],
 		];
 	}
 

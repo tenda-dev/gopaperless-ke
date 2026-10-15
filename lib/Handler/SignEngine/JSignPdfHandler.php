@@ -200,7 +200,9 @@ class JSignPdfHandler extends Pkcs12Handler {
 	 */
 	private function normalizePdfVersion(string $content): string {
 		$version = $this->extractPdfVersion($content);
-		if ($version === null) {
+		// Every earlier signature covers the header, so rewriting it invalidates
+		// them. getHashAlgorithm() then picks SHA-1, the most a PDF below 1.6 allows.
+		if ($version === null || $this->hasExistingSignatures($content)) {
 			return $content;
 		}
 
