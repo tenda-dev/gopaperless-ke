@@ -95,7 +95,19 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$this->signa->expects(self::never())->method('isReady');
 		$page = $this->page();
 
+		$this->middleware->beforeController($this->createMock(PageController::class), 'legal');
 		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'legal', $page));
+	}
+
+	/**
+	 * The import that replaces the user's signature runs before the page lists
+	 * their signatures, so the page never offers the one it deleted.
+	 */
+	public function testThePageAsksBeforeItListsTheSignatures(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->expects(self::once())->method('isReady')->willThrowException(new \RuntimeException('upstream said no', 401));
+
+		$this->middleware->beforeController($this->createMock(PageController::class), 'index');
 	}
 
 	public function testAnOutageGoesUnnoticedOnAPageLoad(): void {
@@ -164,24 +176,24 @@ final class SecurySignMiddlewareTest extends TestCase {
 	}
 
 	/**
-	 * SecurySign owns the card, so the endpoints that would replace it are
-	 * refused. Hiding the button in the Vue would leave the API open, and the API
-	 * is what actually decides what lands on a document. Reads stay open: the
-	 * mirrored signature has to render.
+	 * SecurySign owns the signature. Drawing a new one is let through, because
+	 * the controller saves it to SecurySign first; deleting it is refused.
+	 * Hiding the button in the Vue would leave the API open. Reads stay open:
+	 * the mirrored signature has to render.
 	 */
-	public function testTheSignatureCannotBeReplacedThroughTheApi(): void {
+	public function testTheSignatureCanBeRedrawnButNotDeletedThroughTheApi(): void {
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('hasMirroredSignature')->willReturn(true);
 		$controller = $this->createMock(SignatureElementsController::class);
 
-		foreach (['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'] as $method) {
-			try {
-				$this->middleware->beforeController($controller, $method);
-				self::fail($method . ' was allowed');
-			} catch (LibresignException $e) {
-				self::assertSame(403, $e->getCode());
-				self::assertStringContainsString('SecurySign', $e->getMessage());
-			}
+		$this->middleware->beforeController($controller, 'createSignatureElement');
+		$this->middleware->beforeController($controller, 'patchSignatureElement');
+		try {
+			$this->middleware->beforeController($controller, 'deleteSignatureElement');
+			self::fail('deleteSignatureElement was allowed');
+		} catch (LibresignException $e) {
+			self::assertSame(403, $e->getCode());
+			self::assertStringContainsString('SecurySign', $e->getMessage());
 		}
 
 		// Reading them must still work, or the mirrored card cannot be shown.

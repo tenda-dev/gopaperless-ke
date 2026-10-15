@@ -1,0 +1,51 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * The admin-grants token palette as a mixin. Applied on the view root (where it
+ * cascades to in-tree children) AND on the grant dialog root, because NcDialog
+ * teleports to <body>, outside the view root, so it would not otherwise inherit.
+ */
+@mixin age-tokens {
+	--age-surface: var(--color-main-background);
+	--age-surface-2: var(--color-background-hover);
+	--age-border: var(--color-border);
+	--age-border-strong: var(--color-border-dark, var(--color-border));
+	--age-fg: var(--color-main-text);
+	--age-fg-muted: var(--color-text-maxcontrast);
+	--age-fg-faint: var(--color-text-maxcontrast);
+
+	--age-primary: var(--color-primary-element);
+	--age-primary-text: var(--color-primary-element-text);
+	--age-focus: var(--color-primary-element);
+	--age-focus-ring: color-mix(in srgb, var(--color-primary-element) 35%, transparent);
+	--age-danger: var(--color-error, #c82333);
+	--age-err-bg: var(--gp-error-bg, rgba(220, 53, 69, 0.15));
+	--age-err-text: var(--gp-error-text, #c82333);
+	// Signing-flow green (borrowed from CreditPurchaseFlow / CreditQuantitySelector).
+	--age-green: #04d56d;
+	--age-green-dim: rgba(4, 213, 109, 0.14);
+	--age-green-border: rgba(4, 213, 109, 0.32);
+	--age-green-text: #0a6636;
+
+	--age-ok-bg: var(--gp-success-bg);
+	--age-ok-text: var(--gp-success-text);
+	--age-warn-bg: rgba(200, 146, 0, 0.16);
+	--age-warn-text: #8a6d00;
+	--age-neutral-bg: var(--color-background-dark, rgba(127, 127, 127, 0.10));
+	--age-neutral-text: var(--color-text-maxcontrast);
+	--age-avatar-bg: var(--color-background-dark, rgba(127, 127, 127, 0.12));
+	--age-avatar-text: var(--color-main-text);
+
+	--age-radius: 12px;
+	--age-radius-sm: 8px;
+	--age-shadow: none;
+	--age-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+	@media (prefers-color-scheme: dark) {
+		& {
+			--age-warn-text: #e0b24a;
+			--age-green-text: #5fe39a;
+		}
+	}
+}

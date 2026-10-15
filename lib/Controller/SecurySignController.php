@@ -30,6 +30,9 @@ use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 class SecurySignController extends Controller {
+	/** Where the passkey page sends the user once the check is done, kept for a trip to MIMI. */
+	private const PASSKEY_RETURN = 'libresign.mimi.passkey_return';
+
 	public function __construct(
 		IRequest $request,
 		private SecurySignService $signa,
@@ -61,9 +64,12 @@ class SecurySignController extends Controller {
 				'state' => $state, 'sub' => $identity['sub'], 'uid' => $this->users->getUser()->getUID(),
 				'returnTo' => $path, 'expires' => time() + 3600,
 			]);
-			return new RedirectResponse($this->signa->onboardingUrl() . '?' . http_build_query([
-				'state' => $state, 'subject' => $identity['sub'],
-			]));
+			return new RedirectResponse($this->signa->enrolmentUrl(
+				$state,
+				$identity['sub'],
+				(string)$this->users->getUser()?->getEMailAddress(),
+				$this->urls->linkToRouteAbsolute('libresign.securySign.complete', ['state' => $state]),
+			));
 		} catch (\Throwable $e) {
 			return $this->bail($e, $path);
 		}
@@ -111,6 +117,7 @@ class SecurySignController extends Controller {
 		if (!$this->signa->passkeyPending()) {
 			return new RedirectResponse($path);
 		}
+		$this->session->set(self::PASSKEY_RETURN, $path);
 		try {
 			$frame = $this->signa->passkeyFrame($this->l10n->getLanguageCode());
 		} catch (\RuntimeException $e) {
@@ -138,6 +145,19 @@ class SecurySignController extends Controller {
 	public function passkeyOptions(): DataResponse {
 		try {
 			$options = $this->signa->passkeyOptions();
+			if ($options === null) {
+				// No MIMI passkey yet, so MIMI sets one up and sends the user back
+				// to this check. Not the onboarding gate: it sends anyone with a
+				// certificate straight back here, and round again.
+				$return = $this->session->get(self::PASSKEY_RETURN);
+				return new DataResponse(['redirect' => $this->signa->mimiEnrolmentUrl(
+					$this->signa->identity()['sub'],
+					(string)$this->users->getUser()?->getEMailAddress(),
+					$this->urls->linkToRouteAbsolute('libresign.securySign.passkey', [
+						'returnTo' => SecurySignService::returnPath(is_string($return) ? $return : null),
+					]),
+				)]);
+			}
 		} catch (\Throwable $e) {
 			if (in_array($e->getCode(), [401, 403], true)) {
 				$this->users->logout();
@@ -145,10 +165,6 @@ class SecurySignController extends Controller {
 			}
 			$this->signa->skipPasskey($e->getMessage());
 			return new DataResponse(['skip' => true]);
-		}
-		if ($options === null) {
-			// No MIMI passkey yet: setting one up is the onboarding the gate runs.
-			return new DataResponse(['redirect' => $this->urls->linkToRoute('libresign.securySign.onboard')]);
 		}
 		return new DataResponse(['options' => $options]);
 	}
@@ -169,30 +185,6 @@ class SecurySignController extends Controller {
 			'verified' => false,
 			'error' => 'That passkey could not be confirmed. Use the MIMI passkey for this account and try again.',
 		], Http::STATUS_FORBIDDEN);
-	}
-
-	/**
-	 * The signed-in user's signing card for the editor's preview: handwriting,
-	 * verified name and issuer. The time is set when they sign. Null when
-	 * SecurySign has no card for them, so the preview shows placeholders.
-	 */
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'GET', url: '/securysign/card')]
-	public function card(): DataResponse {
-		$context = null;
-		if ($this->signa->applies()) {
-			try {
-				$context = $this->signa->signingContext();
-			} catch (\Throwable $e) {
-				$this->logger->info('No signing card for the preview', ['exception' => $e]);
-			}
-		}
-		return new DataResponse(['card' => $context === null ? null : [
-			'name' => $context['name'],
-			'issuer' => $context['issuer'],
-			'handwriting' => 'data:image/png;base64,' . base64_encode($context['handwriting']),
-		]]);
 	}
 
 	/**

@@ -47,18 +47,31 @@ class SecurySignMiddleware extends Middleware {
 			return;
 		}
 
-		// SecurySign owns the visible signature. Refusing the three endpoints that
-		// change one is what makes that real: hiding a button in the Vue leaves the
-		// API able to replace the card that goes on a document. Reads are
-		// untouched, so the mirrored signature still renders everywhere.
+		// A session's first readiness answer imports the SecurySign signature and
+		// deletes the one it replaces. Asked after the page controller, the page had
+		// already shipped the deleted one, and signing with it failed with "Field
+		// <id> does not belong to user". afterController reuses this answer from
+		// the session, and handles a failure itself.
+		if ($controller instanceof PageController && $methodName !== 'legal') {
+			try {
+				$this->signa->isReady();
+			} catch (\Throwable) {
+			}
+			return;
+		}
+
+		// SecurySign owns the visible signature. A new one drawn here is saved to
+		// SecurySign first (SignatureElementsController), so what lands on a
+		// document is always SecurySign's. Deleting it here is refused: hiding a
+		// button in the Vue would leave the API able to. Reads are untouched.
 		//
 		// Only while a mirrored signature is actually there. With none, LibreSign's
 		// own signature module is the fallback, or an import that failed would
 		// leave the user unable to sign and unable to do anything about it.
 		if ($controller instanceof SignatureElementsController
-			&& in_array($methodName, ['createSignatureElement', 'patchSignatureElement', 'deleteSignatureElement'], true)
+			&& $methodName === 'deleteSignatureElement'
 			&& $this->signa->hasMirroredSignature()) {
-			throw new LibresignException('Your signature is managed in SecurySign and cannot be changed here.', Http::STATUS_FORBIDDEN);
+			throw new LibresignException('Your signature is kept in SecurySign. Draw a new one to change it.', Http::STATUS_FORBIDDEN);
 		}
 
 		if (!$controller instanceof SignFileController

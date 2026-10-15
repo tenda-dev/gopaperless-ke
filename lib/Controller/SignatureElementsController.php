@@ -12,6 +12,7 @@ use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Middleware\Attribute\RequireSignRequestUuid;
 use OCA\Libresign\Service\AccountService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SignerElementsService;
@@ -56,6 +57,7 @@ class SignatureElementsController extends AEnvironmentAwareController implements
 		protected IMimeIconProvider $mimeIconProvider,
 		protected IURLGenerator $urlGenerator,
 		private ValidateHelper $validateHelper,
+		private SecurySignService $securySign,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -77,13 +79,26 @@ class SignatureElementsController extends AEnvironmentAwareController implements
 	#[OpenAPI(tags: ['signing'])]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/signature/elements', requirements: ['apiVersion' => '(v1)'])]
 	public function createSignatureElement(array $elements): DataResponse {
+		$count = count($elements);
 		try {
 			$this->validateHelper->validateVisibleElements($elements, $this->validateHelper::TYPE_VISIBLE_ELEMENT_USER);
-			$this->accountService->saveVisibleElements(
-				elements: $elements,
-				sessionId: $this->sessionService->getSessionId(),
-				user: $this->userSession->getUser(),
-			);
+			// A SecurySign user's signature belongs to SecurySign, so it is saved
+			// there and comes back as their imported one.
+			if ($this->securySign->applies()) {
+				foreach ($elements as $i => $element) {
+					if (($element['type'] ?? '') === 'signature') {
+						$this->securySign->saveDrawnSignature((string)($element['file']['base64'] ?? ''));
+						unset($elements[$i]);
+					}
+				}
+			}
+			if ($elements !== []) {
+				$this->accountService->saveVisibleElements(
+					elements: array_values($elements),
+					sessionId: $this->sessionService->getSessionId(),
+					user: $this->userSession->getUser(),
+				);
+			}
 		} catch (\Throwable $th) {
 			return new DataResponse(
 				[
@@ -92,7 +107,7 @@ class SignatureElementsController extends AEnvironmentAwareController implements
 				Http::STATUS_UNPROCESSABLE_ENTITY
 			);
 		}
-		if (count($elements) === 1) {
+		if ($count === 1) {
 			$message = $this->l10n->t('Element created with success');
 		} else {
 			$message = $this->l10n->t('Elements created with success');
@@ -128,6 +143,11 @@ class SignatureElementsController extends AEnvironmentAwareController implements
 	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/signature/elements', requirements: ['apiVersion' => '(v1)'])]
 	public function getSignatureElements(): DataResponse {
 		$userId = $this->userSession->getUser()?->getUID();
+		if ($userId) {
+			// Asked for when the account page or the signing panel opens, and
+			// before signing: a signature changed on SecurySign replaces the copy.
+			$this->securySign->refreshVisibleSignature();
+		}
 		try {
 			$elements = (
 				$userId
@@ -303,7 +323,15 @@ class SignatureElementsController extends AEnvironmentAwareController implements
 				);
 				$element['elementId'] = $userElement['id'];
 			}
-			$this->accountService->saveVisibleElement($element, $this->sessionService->getSessionId(), $user);
+			// A SecurySign user's new signature is saved to SecurySign and comes
+			// back as their imported one. SecurySign signs the new image with the
+			// same key, so their certificate is untouched.
+			if ($this->securySign->applies() && ($element['type'] ?? $userElement['type'] ?? '') === 'signature'
+				&& isset($element['file']['base64'])) {
+				$this->securySign->saveDrawnSignature((string)$element['file']['base64']);
+			} else {
+				$this->accountService->saveVisibleElement($element, $this->sessionService->getSessionId(), $user);
+			}
 			/** @var LibresignUserElement[] $elements */
 			$elements = (
 				$this->userSession->getUser() instanceof IUser

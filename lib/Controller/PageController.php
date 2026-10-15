@@ -25,6 +25,7 @@ use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestSignatureService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
@@ -128,6 +129,19 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('filters', $this->accountService->getConfigFilters($this->userSession->getUser()));
 		$this->initialState->provideInitialState('sorting', $this->accountService->getConfigSorting($this->userSession->getUser()));
 		$this->initialState->provideInitialState('certificate_engine', $this->accountService->getCertificateEngineName());
+		// SecurySign users sign with SecurySign's certificate, so the account page
+		// shows that one instead of a local certificate they would never use.
+		$securySign = \OCP\Server::get(SecurySignService::class);
+		$securySignSigns = $securySign->signs();
+		$this->initialState->provideInitialState('securysign_signs', $securySignSigns);
+		if ($securySignSigns) {
+			$this->initialState->provideInitialState('securysign_profile_url', $securySign->profileUrl());
+		}
+		// Initial state refuses null; a missing key reads as null on the page.
+		$securySignCertificate = $securySignSigns ? $securySign->signingCertificate() : null;
+		if ($securySignCertificate !== null) {
+			$this->initialState->provideInitialState('securysign_certificate', $securySignCertificate);
+		}
 
 		try {
 			$this->validateHelper->canRequestSign($this->userSession->getUser());
@@ -141,6 +155,7 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('signature_flow', $this->appConfig->getValueString(Application::APP_ID, 'signature_flow', \OCA\Libresign\Enum\SignatureFlow::NONE->value));
 		$this->initialState->provideInitialState('docmdp_config', $this->docMdpConfigService->getConfig());
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
+		$this->initialState->provideInitialState('admin_entitlement_grants_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'admin_entitlement_grants_enabled', false));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
