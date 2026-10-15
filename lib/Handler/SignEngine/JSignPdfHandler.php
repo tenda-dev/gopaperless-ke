@@ -255,6 +255,11 @@ class JSignPdfHandler extends Pkcs12Handler {
 
 	#[\Override]
 	public function getSignedContent(): string {
+		// One handler serves the whole PHP process: every file of an envelope, every
+		// signing job of a cron run. Options are appended below, so a reused set
+		// carried the last document's into the next, its certification level
+		// among them, and certified an already signed document a second time.
+		$this->jSignParam = null;
 		$normalizedPdf = $this->normalizePdfVersion($this->getInputFile()->getContent());
 		$hashAlgorithm = $this->getHashAlgorithm($normalizedPdf);
 		$param = $this->getJSignParam();
