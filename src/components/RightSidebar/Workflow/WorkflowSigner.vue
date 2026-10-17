@@ -511,6 +511,9 @@ const whatsAppLabel = computed(() => {
 const whatsAppFailed = computed(() => !whatsAppSending.value && (lastSend.value?.status === 'failed' || Boolean(recipient.value?.lastError)))
 const whatsAppSent = computed(() => !whatsAppSending.value && !whatsAppFailed.value && Boolean(recipient.value?.available && recipient.value.lastSentAt))
 
+/** Non-breaking spaces, so a narrow sidebar never splits the number. */
+const maskedNumber = computed(() => (recipient.value?.masked ?? '').replace(/ /g, '\u00a0'))
+
 const whatsAppLine = computed(() => {
 	if (!showWhatsApp.value || !recipient.value) {
 		return ''
@@ -523,11 +526,11 @@ const whatsAppLine = computed(() => {
 	}
 	if (recipient.value.available) {
 		if (whatsAppSent.value) {
-			return t('libresign', 'Sent on WhatsApp to {number} · {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt as string) })
+			return t('libresign', 'Sent on WhatsApp to {number} · {time}', { number: maskedNumber.value, time: time(recipient.value.lastSentAt as string) })
 		}
 		return recipient.value.chosen && (props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT)
-			? t('libresign', 'WhatsApp {number} · goes with the request', { number: recipient.value.masked ?? '' })
-			: t('libresign', 'WhatsApp {number}', { number: recipient.value.masked ?? '' })
+			? t('libresign', 'WhatsApp {number} · goes with the request', { number: maskedNumber.value })
+			: t('libresign', 'WhatsApp {number}', { number: maskedNumber.value })
 	}
 	switch (recipient.value.reason) {
 	case 'no_number':
