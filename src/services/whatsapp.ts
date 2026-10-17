@@ -19,6 +19,8 @@ export type WhatsAppRecipient = {
 	reason: string | null
 	lastSentAt: string | null
 	availableAgainAt: string | null
+	/** Why availableAgainAt is ahead: sent (once a day), retry_wait (2 minutes after a try) or daily_limit (3 tries a day). */
+	waitReason?: string | null
 	/** The latest send failed, possibly after Twilio accepted it (twilio_63016, …). */
 	lastError: string | null
 	/** WhatsApp was turned on when the signer was added, so it goes with the request. */

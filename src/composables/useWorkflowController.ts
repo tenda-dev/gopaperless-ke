@@ -962,21 +962,30 @@ export function useWorkflowController(
 					return
 				}
 			}
+			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'sending' })
 			const { data } = await axios.post(generateOcsUrl('/apps/libresign/api/v1/whatsapp/{fileId}/{signRequestId}', {
 				fileId: f.id,
 				signRequestId: signer.signRequestId,
 			}))
 			const result = data?.ocs?.data ?? {}
+			const again = result.availableAgainAt
+				? new Date(result.availableAgainAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+				: ''
 			if (result.status === 'sent') {
 				showSuccess(t('libresign', 'Sent on WhatsApp'), true, true)
+			} else if (result.status === 'too_soon' && result.waitReason === 'sent') {
+				showWarning(t('libresign', 'Already sent on WhatsApp. You can send it again {time}.', { time: again }))
+			} else if (result.status === 'too_soon' && result.waitReason === 'daily_limit') {
+				showWarning(t('libresign', 'Too many tries today. You can try again {time}.', { time: again }))
 			} else if (result.status === 'too_soon') {
-				showWarning(t('libresign', 'Already sent on WhatsApp in the last 24 hours'))
+				showWarning(t('libresign', 'The last try just failed. You can try again {time}.', { time: again }))
 			} else {
 				showError(t('libresign', 'Couldn\'t send on WhatsApp'))
 			}
 			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, ...result })
 		} catch (error: unknown) {
 			showRequestError(error, t('libresign', 'Couldn\'t send on WhatsApp'))
+			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'failed' })
 		} finally {
 			hasLoading.value = false
 		}

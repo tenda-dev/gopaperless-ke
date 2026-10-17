@@ -108,7 +108,7 @@ final class WhatsAppServiceTest extends TestCase {
 
 		$row = $this->service()->recipient(self::file(), self::signRequest());
 
-		self::assertSame(['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => 'twilio_63016', 'chosen' => false], $row);
+		self::assertSame(['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null, 'lastSentAt' => null, 'availableAgainAt' => null, 'waitReason' => null, 'lastError' => 'twilio_63016', 'chosen' => false], $row);
 		self::assertSame('http://payments.test/external/whatsapp/recipient?sub=sub-ann&sign_request_uuid=' . self::UUID, $this->calls[0][0]);
 		self::assertSame('key-123', $this->calls[0][1]['headers']['X-API-Key']);
 	}
@@ -222,20 +222,11 @@ final class WhatsAppServiceTest extends TestCase {
 		self::assertSame('not_account', $this->service()->account(null)['reason']);
 	}
 
-	public function testAClickRightAfterTheRequestWentOutCountsAsThatSend(): void {
-		$again = gmdate('c', time() + 86400 - 5);
-		$this->answer(429, ['detail' => ['code' => 'too_soon', 'available_again_at' => $again]]);
+	public function testAHeldSignerComesBackWithTheTimeAndWhy(): void {
+		$this->answer(429, ['detail' => ['code' => 'too_soon', 'reason' => 'retry_wait', 'available_again_at' => '2026-10-07T09:00:00+00:00']]);
 
 		$result = $this->service()->send(self::file(), self::signRequest(), $this->signer);
 
-		self::assertSame(['status' => 'sent', 'error' => null, 'availableAgainAt' => $again], $result);
-	}
-
-	public function testASecondSendWithinADayComesBackWithTheTime(): void {
-		$this->answer(429, ['detail' => ['code' => 'too_soon', 'available_again_at' => '2026-10-07T09:00:00+00:00']]);
-
-		$result = $this->service()->send(self::file(), self::signRequest(), $this->signer);
-
-		self::assertSame(['status' => 'too_soon', 'error' => null, 'availableAgainAt' => '2026-10-07T09:00:00+00:00'], $result);
+		self::assertSame(['status' => 'too_soon', 'error' => null, 'availableAgainAt' => '2026-10-07T09:00:00+00:00', 'waitReason' => 'retry_wait'], $result);
 	}
 }

@@ -2,9 +2,9 @@
 
 **Add new signer** has a **Send sign request on Whatsapp** switch for someone
 added by account. Picking them checks for a number in the background. Turned on,
-it shows a **WhatsApp number** field: leave it empty to use the number on file, or
-type another. The message then goes out with the request email, when the signer
-is asked to sign (straight away, or when their turn comes).
+it shows a **WhatsApp number** field holding the number on file, masked. Leave it
+to use that number, or type another. The message then goes out with the request
+email, when the signer is asked to sign (straight away, or when their turn comes).
 
 The signer row in the request sidebar has three actions: **Request on WhatsApp**
 (or **Send on WhatsApp** once requested), **Copy link** and **Show QR**. WhatsApp
@@ -22,12 +22,26 @@ A number typed in **Add new signer** is kept on that sign request
 
 An account from the SecurySign `user_oidc` provider, with a `sub` GoPaperless
 knows and either a WhatsApp number on file or one the sender types, on a single
-document (no envelopes). Typed numbers must be Kenyan mobile numbers, and one
-number gets at most 5 requests in 24 hours across all documents. The
+document (no envelopes). Typed numbers must be Kenyan mobile numbers. The
 `sub` is remembered on every SecurySign login while the setting is on (user
 preference `libresign/securysign_sub`), and read from `oc_user_oidc_sessions` the
-first time for anyone who has not logged in since. One WhatsApp request per
-signer per 24 hours; a failed send does not count.
+first time for anyone who has not logged in since.
+
+## Limits
+
+The payments service enforces these for each signer of a document:
+
+- One WhatsApp request every 24 hours. A failed send does not count.
+- 2 minutes between tries, and at most 3 tries in 24 hours, failed or not.
+- A repeat within 2 minutes of a message that went out (a double click, two
+  tabs, **Request on WhatsApp** right after the request sent it) answers "sent"
+  and sends nothing. Sends for one signer at the same moment queue behind a
+  Postgres advisory lock, so only one message goes.
+- A typed number gets at most 5 requests in 24 hours across all documents.
+
+The signer row says where it stands: "Sent on WhatsApp to +254 7•• ••• 166 ·
+Sat 14:02" in green, and the menu item reads "Sent · send again Sun 14:02" or
+"Try again 14:06" while it is held.
 
 ## Settings
 
@@ -46,7 +60,9 @@ While it is off, GoPaperless behaves as if this feature were not installed:
 - No request or receipt message is sent, and the `sub` is not remembered at login.
 
 Typed numbers need the payments service at `b1369b7` or later (migration 039).
-An older one ignores the typed number and sends to the number on file.
+An older one ignores the typed number and sends to the number on file. The retry
+limits and the repeat answer need `c72f503` or later; an older one only keeps the
+one-a-day rule.
 
 The same settings from the command line:
 

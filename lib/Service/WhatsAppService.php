@@ -139,7 +139,8 @@ class WhatsAppService {
 	/**
 	 * The signer was just asked to sign: on request, when their turn comes, or
 	 * on a reminder. Sends on WhatsApp too if the sender chose it when adding
-	 * them. The payments service refuses a second message within 24 hours.
+	 * them. The payments service holds the limits: one message a day, retries
+	 * 2 minutes apart, 3 tries a day.
 	 *
 	 * ponytail: runs inside the request, like the receipt. A background job if a
 	 * document with many WhatsApp signers ever takes too long to request.
@@ -172,15 +173,16 @@ class WhatsAppService {
 	 *
 	 * lastError is the latest send's failure, including one WhatsApp reported
 	 * after Twilio had accepted the message. chosen: the sender turned WhatsApp
-	 * on when adding the signer, so it goes with the request.
+	 * on when adding the signer, so it goes with the request. waitReason says
+	 * why availableAgainAt is in the future: sent, retry_wait or daily_limit.
 	 *
-	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, lastError: ?string, chosen: bool}
+	 * @return array{available: bool, masked: ?string, reason: ?string, lastSentAt: ?string, availableAgainAt: ?string, waitReason: ?string, lastError: ?string, chosen: bool}
 	 */
 	public function recipient(FileEntity $file, SignRequest $signRequest): array {
 		$choice = $this->choice($signRequest);
 		$sub = $this->subToMessage($file, $signRequest, $reason, false);
 		if ($sub === null) {
-			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'lastError' => null, 'chosen' => $choice !== null];
+			return ['available' => false, 'masked' => null, 'reason' => $reason, 'lastSentAt' => null, 'availableAgainAt' => null, 'waitReason' => null, 'lastError' => null, 'chosen' => $choice !== null];
 		}
 		try {
 			$data = $this->call('GET', 'recipient?' . http_build_query(['sub' => $sub, 'sign_request_uuid' => $signRequest->getUuid()]))['body'];
@@ -196,12 +198,19 @@ class WhatsAppService {
 			'reason' => $available ? null : ($data['reason'] ?? 'unavailable'),
 			'lastSentAt' => $data['last_sent_at'] ?? null,
 			'availableAgainAt' => $data['available_again_at'] ?? null,
+			'waitReason' => $data['wait_reason'] ?? null,
 			'lastError' => $data['last_error'] ?? null,
 			'chosen' => $choice !== null,
 		];
 	}
 
-	/** @return array{status: string, error: ?string, availableAgainAt: ?string} */
+	/**
+	 * A repeat right after a message went out (a double click, or "Request on
+	 * WhatsApp" after the request already sent it) comes back "sent" from the
+	 * payments service without a second message.
+	 *
+	 * @return array{status: string, error: ?string, availableAgainAt: ?string, waitReason?: ?string}
+	 */
 	public function send(FileEntity $file, SignRequest $signRequest, IUser $sender): array {
 		$sub = $this->subToMessage($file, $signRequest, $reason, true);
 		if ($sub === null) {
@@ -225,13 +234,8 @@ class WhatsAppService {
 			return ['status' => 'failed', 'error' => 'unreachable', 'availableAgainAt' => null];
 		}
 		if ($answer['status'] === 429) {
-			$again = $answer['body']['detail']['available_again_at'] ?? null;
-			// "Request on WhatsApp" on a draft requests it first, and requested()
-			// already sent it if WhatsApp was chosen. This click is that send.
-			if (is_string($again) && strtotime($again) - time() > 86400 - 120) {
-				return ['status' => 'sent', 'error' => null, 'availableAgainAt' => $again];
-			}
-			return ['status' => 'too_soon', 'error' => null, 'availableAgainAt' => $again];
+			$detail = $answer['body']['detail'] ?? [];
+			return ['status' => 'too_soon', 'error' => null, 'availableAgainAt' => $detail['available_again_at'] ?? null, 'waitReason' => $detail['reason'] ?? 'sent'];
 		}
 		return [
 			'status' => (string)($answer['body']['status'] ?? 'failed'),

@@ -81,7 +81,8 @@
 			<div
 				v-if="whatsAppLine"
 				class="workflow-signer-whatsapp"
-				:class="{ 'workflow-signer-whatsapp--failed': whatsAppFailed }">
+				:class="{ 'workflow-signer-whatsapp--failed': whatsAppFailed, 'workflow-signer-whatsapp--sent': whatsAppSent }">
+				<NcIconSvgWrapper v-if="whatsAppSent" :path="mdiCheckAll" :size="15" />
 				{{ whatsAppLine }}
 			</div>
 
@@ -219,6 +220,7 @@ import NcIconSvgWrapper
 import {
 	mdiAlertCircleOutline,
 	mdiBellOutline,
+	mdiCheckAll,
 	mdiDrag,
 	mdiLinkVariant,
 	mdiPencilOutline,
@@ -443,8 +445,8 @@ const avatarStyle = computed(() => {
 /* ── WhatsApp, Copy link, Show QR ──────────────────────────────────────────── */
 
 const recipient = ref<WhatsAppRecipient | null>(null)
-/** The last send's outcome, from the controller via the event bus. */
-const lastSend = ref<{ status: string, availableAgainAt?: string | null } | null>(null)
+/** The last send's outcome, from the controller via the event bus; "sending" while it is out. */
+const lastSend = ref<{ status: string, availableAgainAt?: string | null, waitReason?: string | null } | null>(null)
 const signLink = ref<{ url: string, qr: string } | null>(null)
 
 async function loadRecipient() {
@@ -463,6 +465,9 @@ function onWhatsAppChanged(event: { signRequestId: number, status: string, avail
 		return
 	}
 	lastSend.value = event
+	if (event.status === 'sending') {
+		return
+	}
 	loadRecipient()
 	clearTimeout(recheck)
 	if (event.status === 'sent') {
@@ -480,7 +485,8 @@ const availableAgainAt = computed(() => {
 	const at = recipient.value?.availableAgainAt ?? lastSend.value?.availableAgainAt
 	return at && Date.parse(at) > Date.now() ? at : null
 })
-const whatsAppReady = computed(() => Boolean(recipient.value?.available && props.canActNow && !availableAgainAt.value))
+const whatsAppSending = computed(() => lastSend.value?.status === 'sending')
+const whatsAppReady = computed(() => Boolean(recipient.value?.available && props.canActNow && !availableAgainAt.value && !whatsAppSending.value))
 
 const time = (iso: string) => new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 
@@ -488,26 +494,35 @@ const whatsAppLabel = computed(() => {
 	if (!props.canActNow) {
 		return t('libresign', 'Not their turn yet')
 	}
+	if (whatsAppSending.value) {
+		return t('libresign', 'Sending on WhatsApp…')
+	}
 	if (availableAgainAt.value) {
-		return t('libresign', 'Available again {time}', { time: time(availableAgainAt.value) })
+		return (recipient.value?.waitReason ?? lastSend.value?.waitReason) === 'sent'
+			? t('libresign', 'Sent · send again {time}', { time: time(availableAgainAt.value) })
+			: t('libresign', 'Try again {time}', { time: time(availableAgainAt.value) })
 	}
 	return props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT
 		? t('libresign', 'Request on WhatsApp')
 		: t('libresign', 'Send on WhatsApp')
 })
 
-const whatsAppFailed = computed(() => lastSend.value?.status === 'failed' || Boolean(recipient.value?.lastError))
+const whatsAppFailed = computed(() => !whatsAppSending.value && (lastSend.value?.status === 'failed' || Boolean(recipient.value?.lastError)))
+const whatsAppSent = computed(() => !whatsAppSending.value && !whatsAppFailed.value && Boolean(recipient.value?.available && recipient.value.lastSentAt))
 
 const whatsAppLine = computed(() => {
 	if (!showWhatsApp.value || !recipient.value) {
 		return ''
 	}
+	if (whatsAppSending.value) {
+		return t('libresign', 'Sending on WhatsApp…')
+	}
 	if (whatsAppFailed.value) {
 		return t('libresign', 'Couldn\'t send on WhatsApp')
 	}
 	if (recipient.value.available) {
-		if (recipient.value.lastSentAt) {
-			return t('libresign', 'WhatsApp {number} · sent {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt) })
+		if (whatsAppSent.value) {
+			return t('libresign', 'Sent on WhatsApp to {number} · {time}', { number: recipient.value.masked ?? '', time: time(recipient.value.lastSentAt as string) })
 		}
 		return recipient.value.chosen && (props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT)
 			? t('libresign', 'WhatsApp {number} · goes with the request', { number: recipient.value.masked ?? '' })
@@ -571,6 +586,14 @@ function handlePrimaryAction() {
 
 	&--failed {
 		color: var(--color-error-text);
+	}
+
+	&--sent {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		color: var(--color-success-text);
+		font-weight: 600;
 	}
 }
 
