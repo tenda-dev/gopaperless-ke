@@ -14,7 +14,9 @@ use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\JSActions;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
 use OCA\Libresign\Service\MailService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
+use OCA\Libresign\Service\WhatsAppService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\IRootFolder;
@@ -82,7 +84,7 @@ class Account extends AbstractIdentifyMethod {
 	#[\Override]
 	public function validateToIdentify(): void {
 		$signer = $this->getSigner();
-		$this->throwIfNotAuthenticated();
+		$this->throwIfNotAuthenticated($signer);
 		$this->authenticatedUserIsTheSigner($signer);
 		$this->throwIfMaximumValidityExpired();
 		$this->throwIfRenewalIntervalExpired();
@@ -95,7 +97,7 @@ class Account extends AbstractIdentifyMethod {
 	#[\Override]
 	public function validateToSign(): void {
 		$signer = $this->getSigner();
-		$this->throwIfNotAuthenticated();
+		$this->throwIfNotAuthenticated($signer);
 		$this->authenticatedUserIsTheSigner($signer);
 		$this->throwIfInvalidToken();
 		$this->throwIfMaximumValidityExpired();
@@ -143,25 +145,36 @@ class Account extends AbstractIdentifyMethod {
 
 	private function authenticatedUserIsTheSigner(IUser $signer): void {
 		if ($this->userSession->getUser() !== $signer) {
+			// With WhatsApp signing requests on: never name the intended account,
+			// whoever is signed in is not them. switchAccount lets the page offer a
+			// way out to the right account.
+			$error = WhatsAppService::on($this->identifyService->getAppConfig())
+				? ['message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'), 'switchAccount' => true]
+				: ['message' => $this->identifyService->getL10n()->t('Invalid user')];
 			throw new LibresignException(json_encode([
 				'action' => JSActions::ACTION_DO_NOTHING,
-				'errors' => [['message' => $this->identifyService->getL10n()->t('Invalid user')]],
+				'errors' => [$error],
 			]));
 		}
 	}
 
-	private function throwIfNotAuthenticated(): void {
+	private function throwIfNotAuthenticated(IUser $signer): void {
 		if (!$this->userSession->getUser() instanceof IUser) {
 			$signRequest = $this->identifyService->getSignRequestMapper()->getById($this->getEntity()->getSignRequestId());
+			$signPage = $this->urlGenerator->linkToRoute('libresign.page.sign', ['uuid' => $signRequest->getUuid()]);
+			// With WhatsApp signing requests on, an account from the SecurySign login
+			// goes straight to it: the login page would only offer that one button.
+			// Password accounts keep the form.
+			$provider = WhatsAppService::on($this->identifyService->getAppConfig())
+				? \OCP\Server::get(SecurySignService::class)->providerId()
+				: 0;
+			$redirect = $provider > 0 && $signer->getBackendClassName() === 'user_oidc'
+				? $this->urlGenerator->linkToRoute('user_oidc.login.login', ['providerId' => $provider, 'redirectUrl' => $signPage])
+				: $this->urlGenerator->linkToRoute('core.login.showLoginForm', ['redirect_url' => $signPage]);
 			throw new LibresignException(json_encode([
 				'action' => JSActions::ACTION_REDIRECT,
 				'errors' => [$this->identifyService->getL10n()->t('You are not logged in. Please log in.')],
-				'redirect' => $this->urlGenerator->linkToRoute('core.login.showLoginForm', [
-					'redirect_url' => $this->urlGenerator->linkToRoute(
-						'libresign.page.sign',
-						['uuid' => $signRequest->getUuid()]
-					),
-				]),
+				'redirect' => $redirect,
 			]));
 		}
 	}

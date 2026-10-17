@@ -51,11 +51,16 @@
 					:can-request-signature="canRequestSignature(signer)"
 					:can-send-reminder="canSendReminder(signer)"
 					:can-customize-message="canCustomizeMessage(signer)"
+					:can-share="canShare(signer)"
+					:can-act-now="controller.canSignerActInOrder(signer)"
+					:file-id="file?.id ?? 0"
+					:file-is-draft="file?.status === 0"
 					:methods="controller.methods.value"
 					@edit="$emit('edit-signer', signer)"
 					@delete="$emit('delete-signer', signer)"
 					@request-signature="$emit('request-signature', signer)"
 					@send-reminder="$emit('send-reminder', signer)"
+					@send-whatsapp="$emit('send-whatsapp', signer)"
 					@customize-message="$emit('customize-message', signer)" />
 			</template>
 		</draggable>
@@ -75,11 +80,16 @@
 				:can-request-signature="canRequestSignature(signer)"
 				:can-send-reminder="canSendReminder(signer)"
 				:can-customize-message="canCustomizeMessage(signer)"
+					:can-share="canShare(signer)"
+					:can-act-now="controller.canSignerActInOrder(signer)"
+					:file-id="file?.id ?? 0"
+					:file-is-draft="file?.status === 0"
 				:methods="controller.methods.value"
 				@edit="$emit('edit-signer', signer)"
 				@delete="$emit('delete-signer', signer)"
 				@request-signature="$emit('request-signature', signer)"
 				@send-reminder="$emit('send-reminder', signer)"
+					@send-whatsapp="$emit('send-whatsapp', signer)"
 				@customize-message="$emit('customize-message', signer)" />
 		</TransitionGroup>
 	</div>
@@ -90,6 +100,7 @@ import { computed, type PropType } from 'vue'
 
 import draggable from 'vuedraggable'
 
+import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -156,6 +167,7 @@ const emit = defineEmits<{
 	(e: 'delete-signer', signer: EditableSignerDraft): void
 	(e: 'request-signature', signer: EditableSignerDraft): void
 	(e: 'send-reminder', signer: EditableSignerDraft): void
+	(e: 'send-whatsapp', signer: EditableSignerDraft): void
 	(e: 'customize-message', signer: EditableSignerDraft): void
 	(e: 'toggle-sign-order', enabled: boolean): void
 	(e: 'signing-order-changed'): void
@@ -287,6 +299,23 @@ function canSendReminder(signer: EditableSignerDraft) {
 	}
 
 	return controller.canSignerActInOrder(signer)
+}
+
+// Administration > LibreSign > WhatsApp signing requests.
+const whatsAppEnabled = loadState<boolean>('libresign', 'whatsapp_enabled', false)
+
+/** WhatsApp, Copy link and Show QR: whoever manages signers, on a single unsigned document. */
+function canShare(signer: EditableSignerDraft) {
+	return Boolean(
+		whatsAppEnabled
+		&& props.canManageSigners
+		&& !isOriginalFileDeleted.value
+		&& filesStore.canRequestSign
+		&& file.value?.nodeType !== 'envelope'
+		&& signer?.signRequestId
+		&& !signer?.me
+		&& !controller.isSignerSigned(signer),
+	)
 }
 
 function canCustomizeMessage(signer: EditableSignerDraft) {

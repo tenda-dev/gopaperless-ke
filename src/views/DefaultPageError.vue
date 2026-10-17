@@ -24,6 +24,9 @@
 							type="error">
 							{{ error.message }}
 						</NcNoteCard>
+						<NcButton v-if="canSwitchAccount" variant="primary" @click="switchAccount">
+							{{ t('libresign', 'Switch account') }}
+						</NcButton>
 					</div>
 				</template>
 			</NcEmptyContent>
@@ -43,6 +46,8 @@ import { t } from '@nextcloud/l10n'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import { generateUrl } from '@nextcloud/router'
 
 import logoLibreSignAsset from '../../img/tenda-icon.png'
 
@@ -50,7 +55,7 @@ defineOptions({
 	name: 'DefaultPageError',
 })
 
-type ErrorRow = { message: string }
+type ErrorRow = { message: string, switchAccount?: boolean }
 
 const logoLibreSign = logoLibreSignAsset
 
@@ -65,6 +70,18 @@ const errors = computed<ErrorRow[]>(() => {
 	}
 	return []
 })
+
+const canSwitchAccount = computed(() => errors.value.some(error => error.switchAccount))
+
+/**
+ * Signed in as someone the document was not sent to. user_oidc's logout ends
+ * the SecurySign session too, so Google offers its account picker next; the
+ * cookie tells the login page (src/login.ts) to come straight back here.
+ */
+function switchAccount() {
+	document.cookie = `libresign_resume=${encodeURIComponent(window.location.pathname)}; path=/; max-age=600; SameSite=Lax`
+	window.location.assign(generateUrl('/apps/user_oidc/sls'))
+}
 
 // Use a server-provided title when available; otherwise fall back to
 // the generic error or page-not-found title.

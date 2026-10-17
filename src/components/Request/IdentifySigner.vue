@@ -31,6 +31,32 @@
 			:helper-text="nameHelperText"
 			@update:modelValue="onNameChange" />
 
+		<div v-if="whatsAppOffered && !disabled" class="whatsapp" :class="{ 'whatsapp--on': whatsAppSend }">
+			<div class="whatsapp__row">
+				<span class="whatsapp__logo" aria-hidden="true">
+					<NcLoadingIcon v-if="whatsAppChecking" :size="20" appearance="light" />
+					<NcIconSvgWrapper v-else :size="22" :svg="svgWhatsapp" />
+				</span>
+				<div class="whatsapp__text">
+					<strong>{{ t('libresign', 'Send sign request on Whatsapp') }}</strong>
+					<span class="whatsapp__hint">{{ whatsAppHint }}</span>
+				</div>
+				<NcCheckboxRadioSwitch v-model="whatsAppSend"
+					type="switch"
+					:disabled="!whatsAppUsable">
+					<span class="hidden-visually">{{ t('libresign', 'Send sign request on Whatsapp') }}</span>
+				</NcCheckboxRadioSwitch>
+			</div>
+			<NcTextField v-if="whatsAppSend"
+				v-model="whatsAppTo"
+				type="tel"
+				autocomplete="off"
+				:label="t('libresign', 'WhatsApp number')"
+				:placeholder="whatsAppAccount?.masked ?? '0712 345 678'"
+				:error="whatsAppToError !== ''"
+				:helper-text="whatsAppToError" />
+		</div>
+
 		<NcNoteCard v-if="sponsorshipEnabled && isRequester" type="info">
 			<template #icon>
 				<NcIconSvgWrapper :size="20" :svg="svgAccount" />
@@ -72,7 +98,7 @@
 				</NcButton>
 				<NcButton
 					variant="primary"
-					:disabled="!signerSelected || loading"
+					:disabled="!signerSelected || loading || whatsAppInvalid"
 					@click="saveSigner">
 					<template #icon>
 						<NcLoadingIcon v-if="loading" :size="20" />
@@ -115,6 +141,13 @@ import type {
 	Sponsorship
 } from '../../types'
 import { showError } from '../../services/toast'
+import {
+	chooseWhatsApp,
+	fetchWhatsAppAccount,
+	normalizeWhatsAppNumber,
+	type WhatsAppAccount,
+} from '../../services/whatsapp'
+import { emit as emitEventBus } from '@nextcloud/event-bus'
 
 import { useUserContextStore } from '@/store/userContext'
 
@@ -248,6 +281,98 @@ const sponsorship = computed(() => {
 	} satisfies Sponsorship
 })
 
+/* ── "Send sign request on Whatsapp" ───────────────────────────────────────── */
+
+// Administration > LibreSign > WhatsApp signing requests.
+const whatsAppEnabled = loadState<boolean>('libresign', 'whatsapp_enabled', false)
+const whatsAppAccount = ref<WhatsAppAccount | null>(null)
+const whatsAppChecking = ref(false)
+const whatsAppSend = ref(false)
+const whatsAppTo = ref('')
+
+/** Someone added by account: anyone else would sign with the local engine, not through the link. */
+const whatsAppOffered = computed(() => whatsAppEnabled
+	&& isNewSigner.value
+	&& identifyMethod.value === 'account'
+	&& !isRequester.value
+	&& filesStore.getFile()?.nodeType !== 'envelope')
+
+/** A number on file, none yet, or the check failed: the last two can still type one. */
+const whatsAppUsable = computed(() => !whatsAppChecking.value && Boolean(
+	whatsAppAccount.value?.available
+	|| ['no_number', 'unavailable'].includes(whatsAppAccount.value?.reason ?? ''),
+))
+
+const whatsAppHint = computed(() => {
+	const account = whatsAppAccount.value
+	if (whatsAppChecking.value || !account) {
+		return t('libresign', 'Checking for their WhatsApp number…')
+	}
+	if (account.available) {
+		return t('libresign', 'Number on file: {number}', { number: account.masked ?? '' })
+	}
+	switch (account.reason) {
+	case 'no_number':
+		return t('libresign', 'No WhatsApp number on file. You can type theirs.')
+	case 'not_account':
+	case 'password_account':
+		return t('libresign', 'WhatsApp needs a MIMI account')
+	case 'no_sub':
+		return t('libresign', 'WhatsApp once they sign in to GoPaperless')
+	default:
+		return t('libresign', 'Couldn\'t check for a number. You can type theirs.')
+	}
+})
+
+/** The field still holds the masked number it was filled with: send to the number on file. */
+const whatsAppOnFile = computed(() => Boolean(whatsAppAccount.value?.available) && whatsAppTo.value === whatsAppAccount.value?.masked)
+const whatsAppToError = computed(() => whatsAppTo.value.trim() !== '' && !whatsAppOnFile.value && !normalizeWhatsAppNumber(whatsAppTo.value)
+	? t('libresign', 'Enter a Kenyan mobile number, like 0712 345 678')
+	: '')
+const whatsAppInvalid = computed(() => whatsAppOffered.value && whatsAppSend.value && (
+	whatsAppToError.value !== ''
+	|| (!whatsAppAccount.value?.available && whatsAppTo.value.trim() === '')
+))
+
+function resetWhatsApp() {
+	whatsAppAccount.value = null
+	whatsAppChecking.value = false
+	whatsAppSend.value = false
+	whatsAppTo.value = ''
+}
+
+async function checkWhatsApp() {
+	resetWhatsApp()
+	if (!whatsAppOffered.value) {
+		return
+	}
+	const uid = identify.value
+	whatsAppChecking.value = true
+	const account = await fetchWhatsAppAccount(uid)
+	if (identify.value !== uid) {
+		return // another signer was picked meanwhile; its own check owns the state
+	}
+	whatsAppAccount.value = account
+	whatsAppTo.value = account.available ? account.masked ?? '' : ''
+	whatsAppChecking.value = false
+}
+
+/** After the signer is saved: the server sends when they are asked to sign. */
+async function rememberWhatsApp(uid: string, to: string) {
+	const file = filesStore.getFile()
+	const signer = (file?.signers ?? []).find((item: StoredSigner) =>
+		item.identifyMethods?.some(m => m.method === 'account' && m.value === uid))
+	try {
+		if (!file?.id || !signer?.signRequestId) {
+			throw new Error('The new signer has no sign request yet')
+		}
+		await chooseWhatsApp(file.id, signer.signRequestId, to)
+		emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'chosen' })
+	} catch {
+		showError(t('libresign', 'The signer was added, but WhatsApp could not be turned on for them'))
+	}
+}
+
 function onToggleSponsoredSigner(
 	enabled: boolean,
 ) {
@@ -289,6 +414,7 @@ function resetSelectedSignerState() {
 	identifyMethod.value = undefined
 	acceptsEmailNotifications.value = undefined
 	resetNameValidation()
+	resetWhatsApp()
 }
 
 function getMethodIcon() {
@@ -338,6 +464,8 @@ function applySelectedSigner(nextSigner: IdentifyAccountRecord | null) {
 		enableCustomMessage.value = false
 		description.value = ''
 	}
+
+	void checkWhatsApp()
 }
 
 function getSignerToEditIdentify(signerToEdit: SignerToEdit | undefined): string {
@@ -351,9 +479,13 @@ async function saveSigner() {
 	if (loading.value) {
 		return
 	}
-	if (!identifyMethod.value || !identify.value) {
+	if (!identifyMethod.value || !identify.value || whatsAppInvalid.value) {
 		return
 	}
+	const uid = identify.value
+	const whatsAppNumber = whatsAppOffered.value && whatsAppSend.value
+		? (whatsAppOnFile.value ? '' : whatsAppTo.value.trim())
+		: null
 	loading.value = true
 	const file = filesStore.getFile()
 	const signers: StoredSigner[] = Array.isArray(file?.signers) ? [...file.signers] : []
@@ -371,6 +503,9 @@ async function saveSigner() {
 		if ('success' in response && response.success === false) {
 			showError(response.message ?? t('libresign', 'Failed to save or update signature request'))
 			return
+		}
+		if (whatsAppNumber !== null) {
+			await rememberWhatsApp(uid, whatsAppNumber)
 		}
 	} catch {
 		showError(t('libresign', 'Failed to save or update signature request'))
@@ -487,6 +622,54 @@ defineExpose({
 			gap: 0.5em;
 		}
 	}
+	.whatsapp {
+		width: 100%;
+		box-sizing: border-box;
+		margin: 12px 0 16px;
+		padding: 12px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--border-radius-large);
+		transition: border-color 0.2s;
+
+		&--on {
+			border-color: #25d366;
+		}
+
+		&__row {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+		}
+
+		&__logo {
+			display: flex;
+			flex-shrink: 0;
+			align-items: center;
+			justify-content: center;
+			width: 40px;
+			height: 40px;
+			border-radius: 50%;
+			background: #25d366; // WhatsApp green
+			color: #fff;
+		}
+
+		&__text {
+			display: flex;
+			flex: 1;
+			flex-direction: column;
+			min-width: 0;
+		}
+
+		&__hint {
+			font-size: 13px;
+			color: var(--color-text-maxcontrast);
+		}
+
+		:deep(.input-field) {
+			margin-top: 12px;
+		}
+	}
+
 	.description-wrapper {
 		width: 100%;
 		margin-bottom: 16px;

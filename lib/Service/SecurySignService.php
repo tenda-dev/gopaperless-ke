@@ -70,6 +70,11 @@ class SecurySignService {
 		if ($issuer === '' || ($claims['iss'] ?? null) !== $issuer || empty($claims['sub'])) {
 			throw new \RuntimeException('The SecurySign identity provider does not match this session.', 403);
 		}
+		// WhatsApp signing requests name the signer by sub, long after this session.
+		$uid = $this->users->getUser()?->getUID();
+		if ($uid !== null && WhatsAppService::on($this->config) && $this->systemConfig->getUserValue($uid, Application::APP_ID, 'securysign_sub') !== $claims['sub']) {
+			$this->systemConfig->setUserValue($uid, Application::APP_ID, 'securysign_sub', (string)$claims['sub']);
+		}
 		return ['sub' => $claims['sub'], 'issuer' => $issuer, 'accessToken' => $token->getAccessToken()];
 	}
 
@@ -860,6 +865,9 @@ class SecurySignService {
 		if ($path === null || strlen($path) > 2048 || preg_match('/[\\\\\x00-\x20]/', $path)) {
 			return '/apps/libresign/';
 		}
+		// Without pretty URLs every page sits under /index.php. Drop it, so a
+		// signing link opened as /index.php/apps/... still comes back to itself.
+		$path = (string)preg_replace('~^/index\.php(?=/apps/)~', '', $path);
 		$decoded = rawurldecode(explode('?', $path, 2)[0]);
 		if (!str_starts_with($decoded, '/apps/libresign/') || preg_match('~(?:^|/)\.{1,2}(?:/|$)|[\\\\\x00-\x20%]~', $decoded)
 			|| preg_match('~^/apps/libresign/(?:sso|securysign)(?:/|$)~', $decoded)) {
