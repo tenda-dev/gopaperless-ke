@@ -39,9 +39,9 @@ The payments service enforces these for each signer of a document:
   Postgres advisory lock, so only one message goes.
 - A typed number gets at most 5 requests in 24 hours across all documents.
 
-The signer row says where it stands: "Sent on WhatsApp to +254 7•• ••• 166 ·
-Sat 14:02" in green, and the menu item reads "Sent · send again Sun 14:02" or
-"Try again 14:06" while it is held.
+The signer row says where it stands: "Sent on WhatsApp · Sat 14:02" in green
+(the number shows on hover), and the menu item reads "Sent · send again Sun
+14:02" or "Try again 14:06" while it is held.
 
 ## Settings
 

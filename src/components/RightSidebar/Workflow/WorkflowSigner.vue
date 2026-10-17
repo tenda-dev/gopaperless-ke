@@ -81,7 +81,8 @@
 			<div
 				v-if="whatsAppLine"
 				class="workflow-signer-whatsapp"
-				:class="{ 'workflow-signer-whatsapp--failed': whatsAppFailed, 'workflow-signer-whatsapp--sent': whatsAppSent }">
+				:class="{ 'workflow-signer-whatsapp--failed': whatsAppFailed, 'workflow-signer-whatsapp--sent': whatsAppSent }"
+				:title="whatsAppSent ? recipient?.masked ?? undefined : undefined">
 				<NcIconSvgWrapper v-if="whatsAppSent" :path="mdiCheckAll" :size="15" />
 				{{ whatsAppLine }}
 			</div>
@@ -526,7 +527,7 @@ const whatsAppLine = computed(() => {
 	}
 	if (recipient.value.available) {
 		if (whatsAppSent.value) {
-			return t('libresign', 'Sent on WhatsApp to {number} · {time}', { number: maskedNumber.value, time: time(recipient.value.lastSentAt as string) })
+			return t('libresign', 'Sent on WhatsApp · {time}', { time: time(recipient.value.lastSentAt as string) })
 		}
 		return recipient.value.chosen && (props.fileIsDraft || props.signer.status === SIGN_REQUEST_STATUS.DRAFT)
 			? t('libresign', 'WhatsApp {number} · goes with the request', { number: maskedNumber.value })
