@@ -25,17 +25,54 @@ apps behave exactly as before.
 
 ## Config keys
 
-GoPaperless: **Administration settings → LibreSign → SecurySign** sets the
-provider, the SecurySign address, the signing secret and the enrolment site. The
-same keys from the command line (app id `libresign`):
+GoPaperless: **Administration settings → LibreSign** has four SecurySign sections:
+
+- **SecurySign connection:** the login provider and the SecurySign address.
+  Both, and the signing secret, must belong to the same SecurySign (live or
+  staging). To switch, change all three, and have that SecurySign list this
+  site as an authorised signing origin.
+- **Sign with SecurySign:** a switch and the signing (SSC) secret. The switch
+  can only be on once a provider and the secret are set.
+- **MIMI passkey check:** a switch, the MIMI address, client ID and secret. The
+  switch can only be on once a provider and the secret are set. Someone with no
+  MIMI passkey is sent to MIMI's `/enrol` to make one, whichever enrolment site
+  is chosen, and comes back to the check. MIMI runs whatever GoPaperless's MIMI
+  steps they haven't done (for someone who enrolled through the website, the ID,
+  face and questions too) and moves their SecurySign certificate onto the new
+  passkey. MIMI only returns people to addresses registered for the client.
+- **Enrolment for users without a certificate:** the TendaWorld website or
+  MIMI. MIMI enrolment uses the MIMI address and client ID from the section
+  above, and MIMI only returns people to addresses registered for that client.
+
+The same keys from the command line (app id `libresign`):
 
 ```bash
 occ config:app:set libresign securysign_provider_id --value 2 --type integer
 occ config:app:set libresign securysign_url        --value https://signa.dev.securysign.com
+occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --sensitive
+occ config:app:set libresign securysign_signing_enabled --value 1 --type boolean
+occ config:app:set libresign mimi_url              --value https://gopaperless.mimi.ke
+occ config:app:set libresign mimi_client_id        --value gopaperless
+occ config:app:set libresign mimi_client_secret    --value '<MIMI secret>' --sensitive
+occ config:app:set libresign mimi_passkey_enabled  --value 1 --type boolean
+occ config:app:set libresign enrolment_site        --value tendaworld   # or mimi
 occ config:app:set libresign tendaworld_url        --value https://tendaworld.com
 occ config:app:set libresign oidc_sso_handoff_enabled --value 1 --type boolean
-occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --sensitive
+occ config:app:set libresign signing_card_layout   --value horizontal-top
 ```
+
+- `signing_card_layout` is the card on a signed PDF: `horizontal-top` (the
+  default), `horizontal` or `stacked`. It applies to documents signed with
+  SecurySign and with GoPaperless's own certificate. `horizontal-top` is one
+  composition scaled whole into the signature box: the visible signature
+  scribble with ISSUER and TIMESTAMP small against its top right and the name
+  under it. A tight box gets a smaller copy of the same card. The scribble is
+  cut to its ink first, so the canvas margin it was drawn with takes no room.
+- Both switches count as on until someone turns them off, so an instance that
+  already has a secret keeps its behaviour.
+- A MIMI address left in `tendaworld_url` is read as the MIMI address, and
+  enrolment then uses https://tendaworld.com. Saving the SecurySign settings once
+  moves it to `mimi_url`.
 
 - `securysign_provider_id` is the `user_oidc` provider id, per instance. On
   `gopaperless.ke` that is `2`; `1` is the dead `ke_mimi_id` provider. Read it
@@ -44,14 +81,14 @@ occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --
 - `oidc_sso_handoff_enabled` gates `/apps/libresign/sso`, the route the website
   links to for the return leg. Off by default, and with it off the route
   redirects to the app root, so the handoff looks like it silently does nothing.
-- `securysign_url` and `tendaworld_url` must be bare origins: https everywhere,
+- `securysign_url`, `mimi_url` and `tendaworld_url` must be bare origins: https everywhere,
   or http on `localhost` / `127.0.0.1` / `[::1]` so the flow can be driven on a
   local stack. A path, a query, a fragment or embedded credentials are rejected,
   and `localhost.example.com` is not loopback.
-- **`tendaworld_url` can come from the environment.** Nextcloud maps any
+- **`tendaworld_url` and `mimi_url` can come from the environment.** Nextcloud maps any
   `NC_`-prefixed variable into system config, so `NC_tendaworld_url` on the
   container sets it with no occ step, which is what a Dokploy or compose deploy
-  wants. `onboardingUrl()` reads app config first and falls back to the system
+  wants. GoPaperless reads app config first and falls back to the system
   value, so an image's env cannot quietly override an admin who ran occ. Verified
   on the local stack 2026-09-09:
   `docker exec -e NC_tendaworld_url=… occ config:system:get tendaworld_url`.
@@ -180,18 +217,48 @@ stamped with `metadata.securysign_certificate_id` and `metadata.securysign_card`
 match; a renewed certificate replaces the element, and **bumping `CARD_VERSION`
 re-imports for everyone**. Failures are logged and swallowed.
 
+Only the visible signature scribble is imported, never SecurySign's card. It
+comes from `POST /api/signature/visible/signing-context` when the account has a
+verified ID, and otherwise from `GET /api/signature/visible/{sub}/image`. That
+route serves the card when it has no scribble, tagged with the card's hash, and
+GoPaperless refuses it. With no scribble from either, an import that may be the
+card is deleted and the user is let in without a signature. GoPaperless asks
+them to draw one ("Define your signature") and saves it to SecurySign with
+`POST /api/signature/visible` and their login, so SecurySign keeps it for every
+app. The log says `SecurySign has no visible signature scribble for this user;
+they draw one in GoPaperless`. The line before it says why:
+
+- `SecurySign sent its card, not the visible signature scribble`: SecurySign
+  holds no scribble for the account, or it runs the image route that served
+  every user the card on Postgres (fixed in SecurySign `fix/rp-image-route-scribble`).
+- `SecurySign gave no visible signature scribble` with a status: a 403 while
+  every other call succeeds means the client is missing Keycloak's `basic`
+  scope; see "access tokens carry no `sub`" below.
+
+A 5xx from that route is an outage, not "not ready".
+
+A document signed with SecurySign takes the scribble from the signing context
+too. When SecurySign has no context for the certificate, the card is drawn from
+the certificate itself (its name and issuer) around the imported scribble, never
+LibreSign's old appearance.
+
 `JSignPdfHandler` stamps the element image into the PDF
 (`$signatureImagePath = $element->getTempFile()`), so the handwriting plus the
 template text plus the QR are what land on the page.
 
-LibreSign's own signature module is the fallback. `hasMirroredSignature()` asks
-whether a stored element carries `securysign_certificate_id`; only then are the
-mutating endpoints refused. With nothing mirrored, because the import has not run
-or has failed, the user can draw one and sign, and the next successful import
-replaces it. Without that, a failed import leaves them told to draw a signature
-the API will not let them draw, and `SignFileService::retrieveUserElement()`
-refuses the signature with "You need to define a visible signature or initials to
-sign this document."
+A SecurySign user who draws a signature in GoPaperless, a first one or a new one,
+has it saved to SecurySign first (`POST /api/signature/visible`), and it comes
+back as their imported signature. SecurySign signs the new image with the same
+key and keeps the same QR code, so the certificate and documents already signed
+are untouched. Deleting it is refused while a stored element carries
+`securysign_certificate_id` (`hasMirroredSignature()`).
+
+LibreSign's own signature module is the fallback. With nothing mirrored, because
+the import has not run or has failed, nothing is refused: the user can draw one
+and sign. Without that, a failed import leaves them told to draw a signature the
+API will not let them draw, and `SignFileService::retrieveUserElement()` refuses
+the signature with "You need to define a visible signature or initials to sign
+this document."
 
 Editing is refused at the endpoints that mutate — `createSignatureElement`,
 `patchSignatureElement`, `deleteSignatureElement` return 403 while the gate
@@ -396,6 +463,14 @@ refuses.
 **The fix is one assignment:** Keycloak → Clients → `signa-rp-15` → Client scopes
 → Add client scope → `basic` → Default. Nothing in either repo can add a claim to
 a token it does not mint.
+
+Probed 2026-10-12 on the production realm: `signa-rp-10` (staging) and
+`signa-rp-16` (local) also answer `invalid_scope` to `basic`. There Signa
+resolves the token by its `username` instead, so every call succeeds except
+`/api/signature/visible/{sub}/image`, which answers 403 `Not authorized`
+because the `sub` in the URL is not the username. Both clients need the same
+assignment. `signa-rp-10` has had it since 2026-10-13. Each user signs out and
+in once afterwards, so the session holds a token with `sub`.
 
 To re-check both tokens, from PowerShell (claim **names** only — the values are
 the user's identity):

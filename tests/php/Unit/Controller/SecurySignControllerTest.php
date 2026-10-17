@@ -36,7 +36,10 @@ final class SecurySignControllerTest extends TestCase {
 		$this->signa = $this->createMock(SecurySignService::class);
 		$this->signa->method('applies')->willReturn(true);
 		$this->signa->method('identity')->willReturn(self::IDENTITY);
-		$this->signa->method('onboardingUrl')->willReturn('https://tendaworld.test/onboarding/gopaperless');
+		$this->signa->method('enrolmentUrl')->willReturnCallback(
+			static fn (string $state, string $sub, string $email, string $returnUrl): string => 'https://tendaworld.test/onboarding/gopaperless?'
+				. http_build_query(['state' => $state, 'subject' => $sub, 'returnTo' => $returnUrl]),
+		);
 
 		$this->store = [];
 		$this->session = $this->createMock(ISession::class);
@@ -67,6 +70,8 @@ final class SecurySignControllerTest extends TestCase {
 		parse_str((string)parse_url($response->getRedirectURL(), PHP_URL_QUERY), $query);
 		self::assertSame(self::IDENTITY['sub'], $query['subject']);
 		self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $query['state']);
+		// Whichever site enrols the user, it sends them back to our return route with this state.
+		self::assertSame('https://gopaperless.test/apps/libresign/securysign/return?state=' . $query['state'], $query['returnTo']);
 		return $query['state'];
 	}
 
@@ -199,10 +204,25 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertSame(['skip' => true], $this->controller->passkeyOptions()->getData());
 	}
 
-	public function testSomeoneWithoutAMimiPasskeyIsSentToSetOneUp(): void {
+	/**
+	 * Not to the onboarding gate: it sends anyone with a certificate straight
+	 * back to the passkey page, which sent them to the gate again.
+	 */
+	public function testSomeoneWithoutAMimiPasskeyIsSentToMimiToSetOneUp(): void {
 		$this->signa->method('passkeyOptions')->willReturn(null);
+		$this->signa->method('mimiEnrolmentUrl')->willReturnCallback(
+			static fn (string $sub, string $email, string $returnUrl): string => 'https://gopaperless.mimi.test/enrol?' . http_build_query(['sub' => $sub, 'returnTo' => $returnUrl]),
+		);
+		// Where the passkey page was going to send the user.
+		$this->store['libresign.mimi.passkey_return'] = '/apps/libresign/f/document';
 
-		self::assertSame(['redirect' => '/libresign.securySign.onboard'], $this->controller->passkeyOptions()->getData());
+		$redirect = $this->controller->passkeyOptions()->getData()['redirect'];
+		parse_str((string)parse_url($redirect, PHP_URL_QUERY), $mimi);
+		parse_str((string)parse_url($mimi['returnTo'], PHP_URL_QUERY), $back);
+
+		self::assertStringStartsWith('https://gopaperless.mimi.test/enrol?', $redirect);
+		self::assertSame(self::IDENTITY['sub'], $mimi['sub']);
+		self::assertSame('/apps/libresign/f/document', $back['returnTo'], 'back to the check, then where they were going');
 	}
 
 	public function testARefusedPasskeyIsNotLetThrough(): void {

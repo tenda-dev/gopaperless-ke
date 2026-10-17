@@ -123,6 +123,7 @@ export type AdminInitialState = {
 	envelope_enabled: boolean
 	free_credits_enabled: boolean
 	free_credits_uses: number
+	admin_entitlement_grants_enabled: boolean
 	one_time_signing_enabled: boolean
 	sponsorship_enabled: boolean
 	product_default_currency: string
@@ -142,12 +143,16 @@ export type AdminInitialState = {
 	securysign_provider_id: number
 	securysign_url: string
 	tendaworld_url: string
+	mimi_url: string
 	securysign_signing_secret_set: boolean
+	securysign_signing_enabled: boolean
 	mimi_client_secret_set: boolean
 	mimi_client_id: string
 	whatsapp_enabled: boolean
 	whatsapp_api_url: string
 	whatsapp_api_key_set: boolean
+	mimi_passkey_enabled: boolean
+	enrolment_site: 'tendaworld' | 'mimi'
 	phone_mno_routing_v2_enabled: boolean
 }
 

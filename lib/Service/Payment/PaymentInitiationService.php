@@ -55,6 +55,52 @@ class PaymentInitiationService {
 	) {
 	}
 
+	/** Attach the requested pointer to a pending payment that has none. */
+	private const WORKFLOW_REUSE_ATTACH = 'attach';
+	/** Reuse the pending payment as-is (same draft). */
+	private const WORKFLOW_REUSE_SAME = 'reuse';
+	/** Expire the pending payment and recreate (points at a different draft). */
+	private const WORKFLOW_REUSE_RECREATE = 'recreate';
+	/** Strip a stale pointer from the pending payment and reuse it. */
+	private const WORKFLOW_REUSE_CLEAR = 'clear';
+
+	/**
+	 * Decide how a reusable pending card credit purchase relates to the
+	 * requested sponsorship-workflow draft pointer. Pure -- depends only on the
+	 * two UUIDs, so it is unit-testable in isolation.
+	 *
+	 * - requested present, pending absent  -> attach the requested one and reuse
+	 * - requested present, equals pending  -> reuse as-is
+	 * - requested present, differs pending -> recreate (never overwrite)
+	 * - requested absent, pending present  -> clear the stale pointer and reuse
+	 * - requested absent, pending absent   -> reuse as-is (no metadata write)
+	 *
+	 * @return self::WORKFLOW_REUSE_*
+	 */
+	private static function resolveSponsorshipWorkflowReuseAction(
+		?string $pendingUuid,
+		?string $requestedUuid,
+	): string {
+		$hasPending = $pendingUuid !== null && $pendingUuid !== '';
+		$hasRequested = $requestedUuid !== null && $requestedUuid !== '';
+
+		if (!$hasRequested) {
+			// The new purchase carries no pointer. Strip any stale pointer the
+			// pending still holds; otherwise reuse untouched (no metadata write).
+			return $hasPending
+				? self::WORKFLOW_REUSE_CLEAR
+				: self::WORKFLOW_REUSE_SAME;
+		}
+
+		if (!$hasPending) {
+			return self::WORKFLOW_REUSE_ATTACH;
+		}
+
+		return $pendingUuid === $requestedUuid
+			? self::WORKFLOW_REUSE_SAME
+			: self::WORKFLOW_REUSE_RECREATE;
+	}
+
 	/**
 	 * Start a new payment attempt.
 	 *
@@ -74,6 +120,7 @@ class PaymentInitiationService {
 		$paymentPurpose = PaymentPurpose::tryFrom($dto->purpose->value) ?? PaymentPurpose::SIGN_REQUEST;
 		$quantity = $dto->quantity;
 		$returnUrl = $dto->returnUrl;
+		$sponsorshipWorkflowFileUuid = $dto->sponsorshipWorkflowFileUuid;
 
 		$e164 = null;
 		$route = null;
@@ -161,6 +208,19 @@ class PaymentInitiationService {
 			'autoCharge' => $autoCharge->toArray(),
 		]);
 
+		// The sponsorship-workflow pointer is attached only for a card credit
+		// purchase that actually carries a draft UUID. The backend is
+		// authoritative here: a UUID supplied for any other purpose/method
+		// (e.g. mobile, certificate, sign-request) is ignored.
+		$isCardCreditPurchase
+			= $methodEnum === PaymentMethod::CARD
+			&& $paymentPurpose === PaymentPurpose::CREDIT_PURCHASE;
+
+		$isCardSponsorshipCreditPurchase
+			= $isCardCreditPurchase
+			&& $sponsorshipWorkflowFileUuid !== null
+			&& $sponsorshipWorkflowFileUuid !== '';
+
 		if ($paymentPurpose === PaymentPurpose::SIGN_REQUEST) {
 			if ($signRequestId === null) {
 				throw new RuntimeException('signRequestId is required');
@@ -228,6 +288,67 @@ class PaymentInitiationService {
 						'payment_id' => $pending->getId(),
 						'resolved_status' => $resolvedStatus->value,
 						'age_seconds' => $this->dateTimeHelper->nowImmutable()->getTimestamp() - ($pending->getCreatedAtImmutable()?->getTimestamp() ?? 0),
+					]);
+
+					$this->lifecycleService->expirePayment($pending);
+				} elseif ($isCardCreditPurchase) {
+					// Reached only after the pending passed every existing
+					// eligibility check above (not expired, provider match, method
+					// match, not stale-for-retry). We only reconcile the
+					// sponsorship-workflow navigation pointer here; we never
+					// override an expire/recreate decision made above.
+					$action = self::resolveSponsorshipWorkflowReuseAction(
+						$meta->getSponsorshipWorkflowFileUuid(),
+						$sponsorshipWorkflowFileUuid,
+					);
+
+					if ($action === self::WORKFLOW_REUSE_ATTACH) {
+						// Reused pending credit purchase without a sponsorship-workflow
+						// pointer yet: attach the current draft's pointer (metadata
+						// only, no financial change) and reuse the payment.
+						$pending->setProviderMetadataObject(
+							$meta->withSponsorshipWorkflowFileUuid($sponsorshipWorkflowFileUuid)
+						);
+						$this->paymentRepository->update($pending);
+
+						return $this->responseFactory->buildExistingPaymentResponse($pending);
+					}
+
+					if ($action === self::WORKFLOW_REUSE_CLEAR) {
+						// The new purchase carries no pointer, but the pending still
+						// holds a stale one (e.g. an abandoned sponsorship card
+						// purchase). Strip it so the user is not navigated to an
+						// unrelated draft after payment. Metadata only: no expiry or
+						// recreate, and the DPO reference / attempt id / amount /
+						// status are untouched.
+						$this->logger->info('[Payment] Clearing stale sponsorship pointer from reused credit purchase', [
+							'payment_id' => $pending->getId(),
+							'stale_file_uuid' => $meta->getSponsorshipWorkflowFileUuid(),
+						]);
+
+						$pending->setProviderMetadataObject(
+							$meta->withoutSponsorshipWorkflowFileUuid()
+						);
+						$this->paymentRepository->update($pending);
+
+						return $this->responseFactory->buildExistingPaymentResponse($pending);
+					}
+
+					if ($action === self::WORKFLOW_REUSE_SAME) {
+						// Same draft, or neither side carries a pointer -- reuse
+						// as-is (no metadata write).
+						return $this->responseFactory->buildExistingPaymentResponse($pending);
+					}
+
+					// WORKFLOW_REUSE_RECREATE: the pending payment points at a
+					// DIFFERENT draft. Never silently overwrite its association or
+					// route the user to the wrong draft: expire it (consistent with
+					// the provider/method mismatch handling above) and fall through
+					// to create a fresh payment carrying the correct pointer.
+					$this->logger->info('[Payment] Pending credit purchase points at a different sponsorship draft; expiring and recreating', [
+						'payment_id' => $pending->getId(),
+						'pending_file_uuid' => $meta->getSponsorshipWorkflowFileUuid(),
+						'requested_file_uuid' => $sponsorshipWorkflowFileUuid,
 					]);
 
 					$this->lifecycleService->expirePayment($pending);
@@ -432,6 +553,10 @@ class PaymentInitiationService {
 			// Originating application page the customer started from.
 			returnUrl: $returnUrl,
 		);
+
+		if ($isCardSponsorshipCreditPurchase) {
+			$metadata = $metadata->withSponsorshipWorkflowFileUuid($sponsorshipWorkflowFileUuid);
+		}
 
 		$payment->setProviderMetadataObject($metadata);
 		$this->paymentRepository->update($payment);

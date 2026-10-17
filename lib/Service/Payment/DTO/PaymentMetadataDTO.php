@@ -225,6 +225,67 @@ final class PaymentMetadataDTO {
 	}
 
 
+	/**
+	 * Draft file UUID recorded so the requester can be navigated back to the
+	 * document they were enriching after a DPO card credit purchase that was
+	 * triggered by the sponsorship workflow. Navigation pointer only -- never
+	 * an authorization token. Returns null when absent, malformed or empty.
+	 */
+	public function getSponsorshipWorkflowFileUuid(): ?string {
+		$workflow = $this->context['sponsorshipWorkflow'] ?? null;
+		if (!is_array($workflow)) {
+			return null;
+		}
+		$fileUuid = $workflow['fileUuid'] ?? null;
+		return is_string($fileUuid) && $fileUuid !== '' ? $fileUuid : null;
+	}
+
+
+	/**
+	 * Returns a copy with context['sponsorshipWorkflow']['fileUuid'] set,
+	 * preserving unrelated top-level context keys AND any other keys already
+	 * present inside context['sponsorshipWorkflow'].
+	 */
+	public function withSponsorshipWorkflowFileUuid(string $fileUuid): self {
+		$existingWorkflow = is_array($this->context['sponsorshipWorkflow'] ?? null)
+			? $this->context['sponsorshipWorkflow']
+			: [];
+
+		return $this->with(
+			context: array_merge($this->context, [
+				'sponsorshipWorkflow' => array_merge($existingWorkflow, [
+					'fileUuid' => $fileUuid,
+				]),
+			]),
+		);
+	}
+
+
+	/**
+	 * Returns a copy with context['sponsorshipWorkflow']['fileUuid'] removed,
+	 * preserving unrelated top-level context keys and any sibling keys inside
+	 * context['sponsorshipWorkflow']. The nested object is dropped entirely when
+	 * it becomes empty. Safe and a no-op when no pointer is present.
+	 */
+	public function withoutSponsorshipWorkflowFileUuid(): self {
+		if (!is_array($this->context['sponsorshipWorkflow'] ?? null)) {
+			return $this;
+		}
+
+		$workflow = $this->context['sponsorshipWorkflow'];
+		unset($workflow['fileUuid']);
+
+		$context = $this->context;
+		if ($workflow === []) {
+			unset($context['sponsorshipWorkflow']);
+		} else {
+			$context['sponsorshipWorkflow'] = $workflow;
+		}
+
+		return $this->with(context: $context);
+	}
+
+
 	public static function parseDate(
 		mixed $value,
 	): ?\DateTimeImmutable {

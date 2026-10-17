@@ -36,6 +36,9 @@ class StartPaymentDTO {
 		public ?string $phoneNumber = null,
 		// Where the user should be returned after payment verification
 		public ?string $returnUrl = null,
+		// Draft file UUID for a sponsorship-workflow card credit purchase, so the
+		// requester can be navigated back to that draft after the DPO redirect.
+		public ?string $sponsorshipWorkflowFileUuid = null,
 	) {
 	}
 }
