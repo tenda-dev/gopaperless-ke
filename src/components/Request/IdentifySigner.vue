@@ -54,7 +54,7 @@
 				:label="t('libresign', 'WhatsApp number')"
 				:placeholder="whatsAppAccount?.masked ?? '0712 345 678'"
 				:error="whatsAppToError !== ''"
-				:helper-text="whatsAppToError || whatsAppToHelper" />
+				:helper-text="whatsAppToError" />
 		</div>
 
 		<NcNoteCard v-if="sponsorshipEnabled && isRequester" type="info">
@@ -324,12 +324,11 @@ const whatsAppHint = computed(() => {
 	}
 })
 
-const whatsAppToError = computed(() => whatsAppTo.value.trim() !== '' && !normalizeWhatsAppNumber(whatsAppTo.value)
+/** The field still holds the masked number it was filled with: send to the number on file. */
+const whatsAppOnFile = computed(() => Boolean(whatsAppAccount.value?.available) && whatsAppTo.value === whatsAppAccount.value?.masked)
+const whatsAppToError = computed(() => whatsAppTo.value.trim() !== '' && !whatsAppOnFile.value && !normalizeWhatsAppNumber(whatsAppTo.value)
 	? t('libresign', 'Enter a Kenyan mobile number, like 0712 345 678')
 	: '')
-const whatsAppToHelper = computed(() => whatsAppAccount.value?.available
-	? t('libresign', 'Leave empty to use the number on file, or type another.')
-	: t('libresign', 'Their WhatsApp number'))
 const whatsAppInvalid = computed(() => whatsAppOffered.value && whatsAppSend.value && (
 	whatsAppToError.value !== ''
 	|| (!whatsAppAccount.value?.available && whatsAppTo.value.trim() === '')
@@ -354,6 +353,7 @@ async function checkWhatsApp() {
 		return // another signer was picked meanwhile; its own check owns the state
 	}
 	whatsAppAccount.value = account
+	whatsAppTo.value = account.available ? account.masked ?? '' : ''
 	whatsAppChecking.value = false
 }
 
@@ -483,7 +483,9 @@ async function saveSigner() {
 		return
 	}
 	const uid = identify.value
-	const whatsAppNumber = whatsAppOffered.value && whatsAppSend.value ? whatsAppTo.value.trim() : null
+	const whatsAppNumber = whatsAppOffered.value && whatsAppSend.value
+		? (whatsAppOnFile.value ? '' : whatsAppTo.value.trim())
+		: null
 	loading.value = true
 	const file = filesStore.getFile()
 	const signers: StoredSigner[] = Array.isArray(file?.signers) ? [...file.signers] : []

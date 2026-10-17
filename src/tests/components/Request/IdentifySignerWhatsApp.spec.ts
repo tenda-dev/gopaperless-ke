@@ -78,6 +78,27 @@ describe('IdentifySigner: Send sign request on Whatsapp', () => {
 		expect(fetchWhatsAppAccount).toHaveBeenCalledWith('ann@example.com')
 		expect(wrapper.vm.whatsAppUsable).toBe(true)
 		expect(wrapper.find('.whatsapp__hint').text()).toBe('Number on file: +254 7•• ••• 166')
+		expect(wrapper.vm.whatsAppTo).toBe('+254 7•• ••• 166')
+	})
+
+	it('sends to the number on file while the field keeps it, and to a typed one once changed', async () => {
+		vi.mocked(fetchWhatsAppAccount).mockResolvedValue({ available: true, masked: '+254 7•• ••• 166', reason: null })
+		const wrapper = await mountForm()
+		wrapper.vm.applySelectedSigner(ann)
+		await flushPromises()
+
+		wrapper.vm.whatsAppSend = true
+		expect(wrapper.vm.whatsAppInvalid).toBe(false)
+		await wrapper.vm.saveSigner()
+		expect(chooseWhatsApp).toHaveBeenLastCalledWith(45, 43, '')
+
+		// saving clears the form, so pick them again
+		wrapper.vm.applySelectedSigner(ann)
+		await flushPromises()
+		wrapper.vm.whatsAppSend = true
+		wrapper.vm.whatsAppTo = '0798 765 432'
+		await wrapper.vm.saveSigner()
+		expect(chooseWhatsApp).toHaveBeenLastCalledWith(45, 43, '0798 765 432')
 	})
 
 	it('needs a typed number when there is none on file, then saves the choice with it', async () => {
