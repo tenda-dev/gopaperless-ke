@@ -498,7 +498,8 @@ const whatsAppLabel = computed(() => {
 		return t('libresign', 'Sending on WhatsApp…')
 	}
 	if (availableAgainAt.value) {
-		return (recipient.value?.waitReason ?? lastSend.value?.waitReason) === 'sent'
+		// ponytail: the lastSentAt guess covers a payments service older than c72f503, which sends no waitReason
+		return (recipient.value?.waitReason ?? lastSend.value?.waitReason ?? (recipient.value?.lastSentAt ? 'sent' : null)) === 'sent'
 			? t('libresign', 'Sent · send again {time}', { time: time(availableAgainAt.value) })
 			: t('libresign', 'Try again {time}', { time: time(availableAgainAt.value) })
 	}
