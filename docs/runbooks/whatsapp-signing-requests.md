@@ -59,9 +59,9 @@ While it is off, GoPaperless behaves as if this feature were not installed:
 - Signing in as the wrong account shows "Invalid user".
 - No request or receipt message is sent, and the `sub` is not remembered at login.
 
-Typed numbers need the payments service at `b1369b7` or later (migration 039).
+Typed numbers need the payments service at `23aa53a` or later (migration 039).
 An older one ignores the typed number and sends to the number on file. The retry
-limits and the repeat answer need `c72f503` or later; an older one only keeps the
+limits and the repeat answer need `7ffd264` or later; an older one only keeps the
 one-a-day rule.
 
 The same settings from the command line:
