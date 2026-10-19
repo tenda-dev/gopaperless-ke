@@ -9,6 +9,8 @@ namespace OCA\Libresign\Tests\Unit\Handler\SignEngine;
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+use OCA\Libresign\Db\File as FileEntity;
+use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Handler\CertificateEngine\CertificateEngineFactory;
@@ -17,6 +19,7 @@ use OCA\Libresign\Handler\SignEngine\SecurySignHandler;
 use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureTextService;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\File;
 use OCP\IAppConfig;
 use PHPUnit\Framework\TestCase;
@@ -53,6 +56,20 @@ final class SecurySignHandlerTest extends TestCase {
 		$this->assertSame($now, SecurySignHandler::signingTime(new \DateTimeImmutable('@' . ($now + 24)), $now), 'SecurySign ahead of us');
 		$this->assertSame($now - 5, SecurySignHandler::signingTime(new \DateTimeImmutable('@' . ($now - 5)), $now), 'SecurySign behind us');
 		$this->assertSame($now, SecurySignHandler::signingTime(null, $now), 'no card');
+	}
+
+	/** SecurySign's frame shows the name GoPaperless shows, not the file being signed. */
+	public function testTheFrameShowsTheDocumentsGoPaperlessName(): void {
+		$entity = new FileEntity();
+		$entity->setName('Service agreement');
+		$files = $this->createMock(FileMapper::class);
+		$files->method('getByUuid')->willReturnCallback(static fn (string $uuid) => $uuid === 'known'
+			? $entity
+			: throw new DoesNotExistException('none'));
+
+		$this->assertSame('Service agreement', SecurySignHandler::documentName($files, 'known', 'Service_agreement.signed_79.pdf'));
+		$this->assertSame('Service_agreement.signed_79.pdf', SecurySignHandler::documentName($files, 'gone', 'Service_agreement.signed_79.pdf'), 'no such document');
+		$this->assertSame('Service_agreement.signed_79.pdf', SecurySignHandler::documentName($files, null, 'Service_agreement.signed_79.pdf'), 'no UUID');
 	}
 
 	public function testRefusesASignatureFromAnotherKey(): void {
