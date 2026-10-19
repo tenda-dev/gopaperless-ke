@@ -53,16 +53,18 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 		</p>
 		<?php if ($state === 'ready'): ?>
 			<button class="gp-whatsapp__button gp-whatsapp__retry" type="button" id="gp-whatsapp-retry"><?php p($l->t('Try again')); ?></button>
-			<div class="gp-whatsapp__after">
-				<?php /* whatsapp:// opens the app where they left it; the signed response brings the wa.me link to our chat. */ ?>
-				<a class="gp-whatsapp__button" id="gp-whatsapp-chat" href="whatsapp://"><?php print_unescaped($whatsappIcon); ?><?php p($l->t('Back to WhatsApp')); ?></a>
-				<a class="gp-whatsapp__button gp-whatsapp__button--quiet" href="<?php p($_['requestUrl']); ?>"><?php p($l->t('Sign another document')); ?></a>
-			</div>
 		<?php elseif ($state === 'safari'): ?>
 			<a class="gp-whatsapp__button" href="<?php p($_['safariUrl']); ?>"><?php p($l->t('Open in Safari')); ?></a>
 			<button class="gp-whatsapp__link" type="button" id="gp-whatsapp-copy"><?php p($l->t('Copy link')); ?></button>
 		<?php elseif ($state === 'login' || $state === 'no_credits'): ?>
 			<a class="gp-whatsapp__button" href="<?php p($_['signLink']); ?>"><?php p($l->t('Open in GoPaperless')); ?></a>
+		<?php endif; ?>
+		<?php if ($state === 'ready' || $state === 'signed'): ?>
+			<div class="gp-whatsapp__after">
+				<?php /* The wa.me link to our chat: from the page on 'signed', from the signed response on 'ready'. whatsapp:// opens the app where they left it. */ ?>
+				<a class="gp-whatsapp__button" id="gp-whatsapp-chat" href="<?php p($_['chatUrl'] ?: 'whatsapp://'); ?>"><?php print_unescaped($whatsappIcon); ?><?php p($l->t('Back to WhatsApp')); ?></a>
+				<a class="gp-whatsapp__button gp-whatsapp__button--quiet" href="<?php p($_['requestUrl']); ?>"><?php p($l->t('Sign another document')); ?></a>
+			</div>
 		<?php endif; ?>
 	</div>
 	<?php if ($state === 'ready'): ?>

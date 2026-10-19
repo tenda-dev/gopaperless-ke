@@ -99,6 +99,8 @@ class WhatsAppSignController extends Controller {
 			'safariUrl' => 'x-safari-' . $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]),
 			// "Sign another document": the upload page, which asks them to sign in first.
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
+			// Asked only where the page shows "Back to WhatsApp" straight away.
+			'chatUrl' => $state === 'signed' ? $this->whatsApp->chatUrl() : '',
 		], TemplateResponse::RENDER_AS_GUEST);
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain($this->signa->signingOrigin());

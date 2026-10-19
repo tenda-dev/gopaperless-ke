@@ -521,7 +521,8 @@
 		}
 	}
 
-	&[data-step='done'] .gp-whatsapp__after {
+	&[data-step='done'] .gp-whatsapp__after,
+	&[data-step='signed'] .gp-whatsapp__after {
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
