@@ -16,6 +16,7 @@ use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Service\SecurySignService;
+use OCA\Libresign\Service\SignPreview;
 use OCA\Libresign\Service\WhatsAppService;
 use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
@@ -39,6 +40,7 @@ final class WhatsAppServiceTest extends TestCase {
 	/** @var list<array{string, string, array}> */
 	private array $calls = [];
 	private SignRequestMapper&MockObject $signRequests;
+	private SignPreview&MockObject $preview;
 
 	protected function setUp(): void {
 		$this->client = $this->createMock(IClient::class);
@@ -46,6 +48,7 @@ final class WhatsAppServiceTest extends TestCase {
 		$this->signer->method('getUID')->willReturn('ann@example.com');
 		$this->signer->method('getDisplayName')->willReturn('Ann');
 		$this->signRequests = $this->createMock(SignRequestMapper::class);
+		$this->preview = $this->createMock(SignPreview::class);
 	}
 
 	private function service(string $backend = 'user_oidc'): WhatsAppService {
@@ -71,7 +74,7 @@ final class WhatsAppServiceTest extends TestCase {
 		$http = $this->createMock(IClientService::class);
 		$http->method('newClient')->willReturn($this->client);
 		return new WhatsAppService($appConfig, $config, $this->createMock(IDBConnection::class), $users, $methods, $this->signRequests, $signa,
-			$this->createMock(IURLGenerator::class), $http, $this->createMock(LoggerInterface::class));
+			$this->createMock(IURLGenerator::class), $http, $this->createMock(LoggerInterface::class), $this->preview);
 	}
 
 	private function answer(int $status, array $body): void {
@@ -142,6 +145,7 @@ final class WhatsAppServiceTest extends TestCase {
 
 	public function testSendingNamesTheSenderAndDocumentAndReportsTheOutcome(): void {
 		$this->answer(200, ['status' => 'sent', 'error' => null]);
+		$this->preview->method('pdf')->willReturn('%PDF-preview');
 
 		$result = $this->service()->send(self::file(), self::signRequest(), $this->signer);
 
@@ -149,8 +153,17 @@ final class WhatsAppServiceTest extends TestCase {
 		self::assertSame('http://payments.test/external/whatsapp/sign-request', $this->calls[0][0]);
 		$json = $this->calls[0][1]['json'];
 		self::assertStringStartsWith(self::UUID . '.', $json['link_code']);
-		unset($json['link_code']);
+		self::assertSame('%PDF-preview', base64_decode($json['preview_pdf']));
+		unset($json['link_code'], $json['preview_pdf']);
 		self::assertSame(['sub' => 'sub-ann', 'sign_request_uuid' => self::UUID, 'sender_name' => 'Ann', 'document_name' => 'NDA.pdf'], $json);
+	}
+
+	public function testWithoutAPreviewTheCardStillGoes(): void {
+		$this->answer(200, ['status' => 'sent', 'error' => null]);
+		$this->preview->method('pdf')->willThrowException(new \RuntimeException('pdftk is not installed'));
+
+		self::assertSame('sent', $this->service()->send(self::file(), self::signRequest(), $this->signer)['status']);
+		self::assertArrayNotHasKey('preview_pdf', $this->calls[0][1]['json']);
 	}
 
 	public function testTheLinkCodeLeadsBackToItsSignRequestAndNothingElse(): void {

@@ -52,6 +52,7 @@ class WhatsAppService {
 		private IURLGenerator $urls,
 		private IClientService $http,
 		private LoggerInterface $logger,
+		private SignPreview $preview,
 	) {
 	}
 
@@ -258,7 +259,15 @@ class WhatsAppService {
 			$message['to'] = $typed;
 		}
 		try {
-			$answer = $this->call('POST', 'sign-request', $message);
+			// The PDF with their box outlined, which the payments service sends ahead of the card.
+			$message['preview_pdf'] = base64_encode($this->preview->pdf($file, $signRequest));
+		} catch (\Throwable $e) {
+			// The card alone still gets them to sign.
+			$this->logger->warning('No WhatsApp preview for this signing request', ['exception' => $e]);
+		}
+		try {
+			// The preview's upload and its head start on the card take a few seconds more.
+			$answer = $this->call('POST', 'sign-request', $message, 25);
 		} catch (\Throwable $e) {
 			// Shown as "Couldn't send on WhatsApp"; the transport error is for the log.
 			$this->logger->warning('The payments service did not answer a WhatsApp send', ['exception' => $e]);
@@ -385,7 +394,7 @@ class WhatsAppService {
 	}
 
 	/** @return array{status: int, body: array<string, mixed>} */
-	private function call(string $method, string $path, ?array $json = null): array {
+	private function call(string $method, string $path, ?array $json = null, int $timeout = 10): array {
 		$url = rtrim($this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_url'), '/') . '/external/whatsapp/' . $path;
 		$options = [
 			'headers' => [
@@ -393,7 +402,7 @@ class WhatsAppService {
 				'Accept' => 'application/json',
 			],
 			'connect_timeout' => 3,
-			'timeout' => 10,
+			'timeout' => $timeout,
 			'http_errors' => false,
 			// The admin sets this URL, and locally it is the host machine.
 			'nextcloud' => ['allow_local_address' => true],
