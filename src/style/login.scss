@@ -254,81 +254,307 @@
 	}
 }
 
-// Signing from the WhatsApp card (templates/whatsapp_sign.php): the login card,
-// with SecurySign's frame edge to edge in it, white in both themes.
+// Signing from the WhatsApp card (templates/whatsapp_sign.php), laid out like
+// SecurySign's signing frame: lock kicker, title, file card, status line, pill
+// button. data-step (whatsapp-sign.ts) picks what shows. While the frame is up
+// it fills the card edge to edge.
 #body-login .guest-box.gp-whatsapp {
+	--gp-wa-brand: #04d56d;
+	--gp-wa-brand-hover: #03b95e;
+	--gp-wa-brand-soft: rgba(4, 213, 109, .14);
+	--gp-wa-file: #0071e3;
+	--gp-wa-danger: #dc2626;
+	position: relative;
 	box-sizing: border-box;
 	margin-inline: auto;
-	text-align: start;
+	text-align: center;
+
+	// As tall as the frame, so handing over to it and back doesn't jump.
+	&.gp-whatsapp--flow {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		min-height: 600px;
+	}
+
+	&[data-step='frame'] {
+		padding: 0;
+		overflow: hidden;
+
+		.gp-whatsapp__screen {
+			display: none;
+		}
+	}
 
 	p {
 		margin: 0;
-		color: var(--gp-ink);
 	}
 
-	.gp-whatsapp__from {
-		margin-bottom: 4px;
+	.gp-whatsapp__screen {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		animation: gp-wa-in .25s ease-out;
+	}
+
+	.gp-whatsapp__kicker {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: .14em;
+		text-transform: uppercase;
+		white-space: nowrap;
 		color: var(--gp-slate);
+
+		sup {
+			margin-inline-start: -4px;
+			font-size: 8px;
+			letter-spacing: 0;
+		}
+	}
+
+	.gp-whatsapp__badge {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: var(--gp-wa-brand-soft);
+		color: var(--gp-link);
+		animation: gp-wa-pop .35s cubic-bezier(.2, 1.4, .4, 1);
+	}
+
+	&[data-step='done'],
+	&[data-step='signed'] {
+		.gp-whatsapp__badge {
+			display: flex;
+		}
+
+		.gp-whatsapp__kicker {
+			display: none;
+		}
 	}
 
 	.gp-whatsapp__title {
-		margin: 0 0 12px;
-		font-size: 22px;
-		font-weight: 700;
+		margin: 8px 0 0;
+		font-size: 26px;
+		font-weight: 600;
+		line-height: 32px;
 		letter-spacing: -.02em;
+		text-wrap: balance;
 		color: var(--gp-ink);
-		overflow-wrap: anywhere;
 	}
 
-	.gp-whatsapp__iframe {
-		display: block;
-		width: calc(100% + 56px);
-		height: 520px;
-		margin: 8px -28px -28px;
-		border: 0;
-		background: #fff;
+	&[data-step='done'] .gp-whatsapp__title,
+	&[data-step='signed'] .gp-whatsapp__title {
+		margin-top: 16px;
+	}
+
+	.gp-whatsapp__file {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		box-sizing: border-box;
+		width: 100%;
+		margin-top: 24px;
+		padding: 12px;
+		border: 1px solid var(--gp-line);
+		border-radius: 16px;
+		box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+		text-align: start;
+	}
+
+	.gp-whatsapp__file-icon {
+		display: flex;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: center;
+		width: 44px;
+		height: 44px;
+		border-radius: 10px;
+		background: var(--gp-wa-file);
+		color: #fff;
+	}
+
+	.gp-whatsapp__file-text {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.gp-whatsapp__file-name,
+	.gp-whatsapp__file-meta {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.gp-whatsapp__file-name {
+		font-size: 15px;
+		font-weight: 600;
+		line-height: 20px;
+		color: var(--gp-ink);
+	}
+
+	.gp-whatsapp__file-meta {
+		font-size: 13px;
+		line-height: 18px;
+		color: var(--gp-slate);
 	}
 
 	.gp-whatsapp__status {
-		margin-top: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		max-width: 340px;
+		min-height: 40px;
+		margin-top: 20px;
+		font-size: 14px;
+		line-height: 20px;
+		text-wrap: balance;
 		color: var(--gp-slate);
+
+		svg {
+			display: none;
+			flex-shrink: 0;
+		}
+	}
+
+	&[data-step='preparing'],
+	&[data-step='opening'],
+	&[data-step='signing'] {
+		.gp-whatsapp__status {
+			font-weight: 500;
+			color: var(--gp-ink);
+		}
+
+		.gp-whatsapp__spinner {
+			display: block;
+			color: var(--gp-wa-brand);
+			animation: gp-wa-spin .8s linear infinite;
+		}
+	}
+
+	&[data-step='done'] .gp-whatsapp__status {
+		font-weight: 600;
+		color: var(--gp-link);
+	}
+
+	&[data-step='error'],
+	&[data-step='gone'] {
+		.gp-whatsapp__status {
+			color: var(--gp-wa-danger);
+		}
+
+		.gp-whatsapp__alert {
+			display: block;
+		}
 	}
 
 	.gp-whatsapp__button {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		box-sizing: border-box;
 		width: 100%;
 		min-height: 52px;
 		margin-top: 20px;
-		border-radius: var(--border-radius-element);
-		background: var(--color-primary-element);
-		color: var(--color-primary-element-text);
-		font-size: 17px;
+		padding: 14px 24px;
+		border: 0;
+		border-radius: 999px;
+		background: var(--gp-wa-brand);
+		color: #0e1116;
+		font: inherit;
+		font-size: 15px;
 		font-weight: 600;
 		text-decoration: none;
+		cursor: pointer;
+		transition: background-color .15s;
 
 		&:hover,
 		&:focus-visible {
-			background: var(--color-primary-element-hover);
+			background: var(--gp-wa-brand-hover);
 		}
 	}
 
+	// In the signing flow the button is only for starting over.
+	&.gp-whatsapp--flow:not([data-step='cancelled'], [data-step='error']) .gp-whatsapp__button {
+		display: none;
+	}
+
 	.gp-whatsapp__link {
-		display: block;
-		width: 100%;
 		margin-top: 12px;
 		border: 0;
 		background: none;
 		color: var(--gp-link);
+		font: inherit;
 		font-size: 15px;
 		font-weight: 600;
 		cursor: pointer;
 	}
 
-	[hidden] {
+	// Loads out of sight, so the screen's spinner stays up until the frame
+	// has drawn (its first SSC_RESIZE).
+	.gp-whatsapp__frame {
 		display: none;
 	}
+
+	&[data-step='opening'] .gp-whatsapp__frame {
+		display: block;
+		position: absolute;
+		inset: 0;
+		visibility: hidden;
+	}
+
+	&[data-step='frame'] .gp-whatsapp__frame {
+		display: block;
+		animation: gp-wa-in .25s ease-out;
+	}
+
+	.gp-whatsapp__iframe {
+		display: block;
+		width: 100%;
+		height: 600px;
+		border: 0;
+		background: #fff;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		*,
+		.gp-whatsapp__screen {
+			animation: none !important;
+		}
+	}
+}
+
+@keyframes gp-wa-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes gp-wa-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+}
+
+@keyframes gp-wa-pop {
+	from {
+		opacity: 0;
+		transform: scale(.6);
+	}
+}
+
+// login.ts adds "Back to GoPaperless" under every guest card; this page has
+// its own way on, or none.
+#body-login .gp-whatsapp ~ .gp-back {
+	display: none;
 }
 
 // Both added by login.ts: the logo links home, and the card gets a way back.

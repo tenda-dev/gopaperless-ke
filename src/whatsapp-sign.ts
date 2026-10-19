@@ -7,32 +7,48 @@
 // prepares the document and asks for SecurySign's approval; SecurySign's frame
 // runs the passkey prompt on its own origin (the contract SecurySignApproval.vue
 // follows); the signature it returns goes back to the server, which writes it.
+// The page shows where it is through data-step, which login.scss draws.
 
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 
 type Approval = { token: string, documentHash: string, documentName: string, origin: string }
+type Step = 'preparing' | 'opening' | 'frame' | 'signing' | 'done' | 'cancelled' | 'error'
 
 const box = document.querySelector<HTMLElement>('.gp-whatsapp')
-const status = document.getElementById('gp-whatsapp-status')
 const holder = document.getElementById('gp-whatsapp-frame')
 
-function say(text: string): void {
-	if (status) {
-		status.hidden = text === ''
-		status.textContent = text
+const SCREENS: Partial<Record<Step, [string, string]>> = {
+	preparing: [t('libresign', 'Preparing to sign'), t('libresign', 'Placing your signature on the page…')],
+	opening: [t('libresign', 'Preparing to sign'), t('libresign', 'Opening SecurySign…')],
+	signing: [t('libresign', 'Signing'), t('libresign', 'Applying your signature…')],
+	done: [t('libresign', 'Signed'), t('libresign', 'Your signed copy is on its way to you on WhatsApp.')],
+	cancelled: [t('libresign', 'Signature cancelled'), t('libresign', 'Nothing was signed.')],
+	error: [t('libresign', 'Couldn\'t sign'), t('libresign', 'The document could not be signed.')],
+}
+
+function show(step: Step, line?: string): void {
+	box!.dataset.step = step
+	const screen = SCREENS[step]
+	if (screen) {
+		document.getElementById('gp-whatsapp-title')!.textContent = screen[0]
+		document.getElementById('gp-whatsapp-line')!.textContent = line ?? screen[1]
+	}
+	const retry = document.getElementById('gp-whatsapp-retry')
+	if (retry) {
+		retry.textContent = step === 'cancelled' ? t('libresign', 'Sign again') : t('libresign', 'Try again')
 	}
 }
 
 function failed(error: unknown): void {
-	const response = (error as { response?: { status: number, data?: { error?: string, message?: string } } }).response
+	const response = (error as { response?: { status: number, data?: { message?: string } } }).response
 	if (response?.status === 409) {
 		// Signed elsewhere, not their turn any more, or out of credits: the page says which.
 		window.location.reload()
 	} else if (response?.status === 503) {
-		say(t('libresign', 'SecurySign is not answering. Try again in a minute.'))
+		show('error', t('libresign', 'SecurySign isn\'t answering. Try again in a minute.'))
 	} else {
-		say(response?.data?.message || t('libresign', 'The document could not be signed. Reload this page to try again.'))
+		show('error', response?.data?.message)
 	}
 }
 
@@ -42,11 +58,7 @@ async function sign(signature?: string): Promise<void> {
 		if (data.approval) {
 			approve(data.approval as Approval)
 		} else if (data.signed) {
-			holder?.remove()
-			say('')
-			document.querySelector('.gp-whatsapp__from')?.remove()
-			document.querySelector('.gp-whatsapp > .gp-whatsapp__title')?.remove()
-			document.getElementById('gp-whatsapp-done')!.hidden = false
+			show('done')
 		}
 	} catch (error) {
 		failed(error)
@@ -66,8 +78,19 @@ function approve(approval: Approval): void {
 		rpOrigin: window.location.origin,
 		token: approval.token,
 	})}`
-	let started = false
-	window.addEventListener('message', function onMessage(event: MessageEvent) {
+	const close = (): void => {
+		window.removeEventListener('message', onMessage)
+		clearTimeout(slow)
+		frame.remove()
+	}
+	// ponytail: a fixed wait; SecurySign's frame is one small page.
+	const slow = setTimeout(() => {
+		if (box!.dataset.step === 'opening') {
+			close()
+			show('error', t('libresign', 'SecurySign didn\'t open. Try again.'))
+		}
+	}, 20000)
+	function onMessage(event: MessageEvent): void {
 		if (event.origin !== approval.origin || event.source !== frame.contentWindow) {
 			return
 		}
@@ -76,10 +99,11 @@ function approve(approval: Approval): void {
 			if (message.height) {
 				frame.style.height = `${message.height}px`
 			}
-			// Its first size report means it is listening: ask it to sign, which
-			// opens the passkey prompt without a tap on the frame's own button.
-			if (!started) {
-				started = true
+			// Its first size report means it has drawn and is listening: show it,
+			// and ask it to sign, which opens the passkey prompt without a tap on
+			// the frame's own button.
+			if (box!.dataset.step === 'opening') {
+				show('frame')
 				frame.contentWindow?.postMessage({
 					type: 'SSC_SIGN_REQUEST',
 					documentHash: approval.documentHash,
@@ -89,24 +113,29 @@ function approve(approval: Approval): void {
 				}, approval.origin)
 			}
 		} else if (message.type === 'SSC_SIGN_COMPLETE' && message.documentHash === approval.documentHash) {
-			window.removeEventListener('message', onMessage)
-			frame.remove()
-			say(t('libresign', 'Signing…'))
+			close()
+			show('signing')
 			// The server checks this against the signer's certificate before writing it.
 			void sign(message.signatureBase64)
 		} else if (message.type === 'SSC_CLOSE_FRAME') {
-			window.removeEventListener('message', onMessage)
-			frame.remove()
-			say(t('libresign', 'Cancelled. Reload this page to sign.'))
+			close()
+			show('cancelled')
 		}
 		// SSC_SIGN_ERROR needs nothing here: the frame shows the error and a retry.
-	})
-	say('')
+	}
+	window.addEventListener('message', onMessage)
+	show('opening')
 	holder?.append(frame)
 }
 
-if (box?.dataset.state === 'ready') {
+function start(): void {
+	show('preparing')
 	void sign()
+}
+
+if (box?.dataset.step === 'preparing') {
+	document.getElementById('gp-whatsapp-retry')?.addEventListener('click', start)
+	start()
 }
 
 // The Safari hand-off: for when WhatsApp won't open the x-safari link.
