@@ -176,6 +176,21 @@ final class WhatsAppServiceTest extends TestCase {
 
 		self::assertSame(['status' => 'failed', 'error' => 'unreachable', 'availableAgainAt' => null], $service->send(self::file(), self::signRequest(), $this->signer));
 		self::assertSame('unavailable', $service->recipient(self::file(), self::signRequest())['reason']);
+		self::assertSame('', $service->chatUrl());
+	}
+
+	public function testBackToWhatsAppOpensOurChat(): void {
+		$this->answer(200, ['url' => 'https://wa.me/254700000000']);
+
+		self::assertSame('https://wa.me/254700000000', $this->service()->chatUrl());
+		self::assertStringEndsWith('/external/whatsapp/chat', $this->calls[0][0]);
+	}
+
+	/** The link goes into an href, so only a wa.me link gets through. */
+	public function testBackToWhatsAppTakesNothingButAWaMeLink(): void {
+		$this->answer(200, ['url' => 'javascript:alert(1)//https://wa.me/1']);
+
+		self::assertSame('', $this->service()->chatUrl());
 	}
 
 	public function testOnlyKenyanMobileNumbersAreTaken(): void {

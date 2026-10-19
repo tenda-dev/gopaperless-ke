@@ -359,6 +359,22 @@ class WhatsAppService {
 		};
 	}
 
+	/**
+	 * The wa.me link to the number GoPaperless's WhatsApp messages come from, for
+	 * "Back to WhatsApp". The payments service owns the number. '' when it doesn't
+	 * answer with a wa.me link.
+	 */
+	public function chatUrl(): string {
+		try {
+			$url = $this->call('GET', 'chat')['body']['url'] ?? '';
+		} catch (\Throwable $e) {
+			$this->logger->info('WhatsApp chat link unavailable', ['exception' => $e]);
+			return '';
+		}
+		// It goes into an href.
+		return is_string($url) && preg_match('#^https://wa\.me/\d+$#', $url) ? $url : '';
+	}
+
 	public function accountSigner(SignRequest $signRequest): ?IUser {
 		foreach ($this->identifyMethods->getIdentifyMethodsFromSignRequestId($signRequest->getId()) as $method) {
 			if ($method->getIdentifierKey() === 'account') {

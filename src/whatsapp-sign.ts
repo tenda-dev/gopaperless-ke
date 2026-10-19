@@ -22,7 +22,7 @@ const SCREENS: Partial<Record<Step, [string, string]>> = {
 	preparing: [t('libresign', 'Preparing to sign'), t('libresign', 'Placing your signature on the page…')],
 	opening: [t('libresign', 'Preparing to sign'), t('libresign', 'Opening SecurySign…')],
 	signing: [t('libresign', 'Signing'), t('libresign', 'Applying your signature…')],
-	done: [t('libresign', 'Signed'), t('libresign', 'Your signed copy is on its way to you on WhatsApp.')],
+	done: [t('libresign', 'Signed'), t('libresign', 'Sending a copy to Whatsapp')],
 	cancelled: [t('libresign', 'Signature cancelled'), t('libresign', 'Nothing was signed.')],
 	error: [t('libresign', 'Couldn\'t sign'), t('libresign', 'The document could not be signed.')],
 }
@@ -32,7 +32,7 @@ function show(step: Step, line?: string): void {
 	const screen = SCREENS[step]
 	if (screen) {
 		document.getElementById('gp-whatsapp-title')!.textContent = screen[0]
-		document.getElementById('gp-whatsapp-line')!.textContent = line ?? screen[1]
+		document.getElementById('gp-whatsapp-line')!.textContent = line || screen[1]
 	}
 	const retry = document.getElementById('gp-whatsapp-retry')
 	if (retry) {
@@ -58,6 +58,10 @@ async function sign(signature?: string): Promise<void> {
 		if (data.approval) {
 			approve(data.approval as Approval)
 		} else if (data.signed) {
+			// The chat with our number; without it, whatsapp:// opens the app where they left it.
+			if (data.chatUrl) {
+				document.getElementById('gp-whatsapp-chat')?.setAttribute('href', data.chatUrl)
+			}
 			show('done')
 		}
 	} catch (error) {

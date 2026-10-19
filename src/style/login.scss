@@ -439,9 +439,24 @@
 		}
 	}
 
-	&[data-step='done'] .gp-whatsapp__status {
-		font-weight: 600;
-		color: var(--gp-link);
+	.gp-whatsapp__wa {
+		display: none;
+	}
+
+	&[data-step='done'] {
+		.gp-whatsapp__status {
+			font-weight: 500;
+			color: var(--gp-ink);
+		}
+
+		.gp-whatsapp__wa {
+			display: flex;
+			color: #25d366;
+
+			svg {
+				display: block;
+			}
+		}
 	}
 
 	&[data-step='error'],
@@ -474,6 +489,7 @@
 		text-decoration: none;
 		cursor: pointer;
 		transition: background-color .15s;
+		gap: 8px;
 
 		&:hover,
 		&:focus-visible {
@@ -481,9 +497,40 @@
 		}
 	}
 
-	// In the signing flow the button is only for starting over.
-	&.gp-whatsapp--flow:not([data-step='cancelled'], [data-step='error']) .gp-whatsapp__button {
+	.gp-whatsapp__button--quiet {
+		border: 1px solid var(--gp-line);
+		background: transparent;
+		color: var(--gp-ink);
+
+		&:hover,
+		&:focus-visible {
+			background: var(--color-background-hover);
+		}
+	}
+
+	// In the signing flow: "Try again" after a failure, what's next once signed.
+	.gp-whatsapp__retry,
+	.gp-whatsapp__after {
 		display: none;
+	}
+
+	&[data-step='cancelled'],
+	&[data-step='error'] {
+		.gp-whatsapp__retry {
+			display: flex;
+		}
+	}
+
+	&[data-step='done'] .gp-whatsapp__after {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		width: 100%;
+		margin-top: 20px;
+
+		.gp-whatsapp__button {
+			margin-top: 0;
+		}
 	}
 
 	.gp-whatsapp__link {

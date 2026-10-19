@@ -16,6 +16,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Enum\ProductCode;
 use OCA\Libresign\Enum\SignRequestStatus;
+use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignApprovalRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Service\IdentifyMethodService;
@@ -96,6 +97,8 @@ class WhatsAppSignController extends Controller {
 			'signLink' => $found['signRequest'] !== null ? $this->whatsApp->signLink($found['signRequest']) : '',
 			// iOS 17+ opens x-safari-https:// links in Safari, out of the app's browser.
 			'safariUrl' => 'x-safari-' . $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]),
+			// "Sign another document": the upload page, which asks them to sign in first.
+			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
 		], TemplateResponse::RENDER_AS_GUEST);
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain($this->signa->signingOrigin());
@@ -154,7 +157,10 @@ class WhatsAppSignController extends Controller {
 			return new DataResponse(['error' => 'unavailable'], Http::STATUS_SERVICE_UNAVAILABLE);
 		} catch (\Throwable $e) {
 			$this->logger->warning('A WhatsApp signature failed', ['exception' => $e, 'signRequestId' => $signRequest->getId()]);
-			return new DataResponse(['error' => 'failed', 'message' => $e->getMessage()], Http::STATUS_UNPROCESSABLE_ENTITY);
+			// LibreSign's own messages are written for the signer ("Wrong passkey…").
+			// Anything else can name files and accounts, so the page says it generically.
+			$message = $e instanceof LibresignException ? $e->getMessage() : '';
+			return new DataResponse(['error' => 'failed', 'message' => $message], Http::STATUS_UNPROCESSABLE_ENTITY);
 		}
 
 		if ($this->sponsorship()) {
@@ -169,7 +175,7 @@ class WhatsAppSignController extends Controller {
 				$this->logger->error('A WhatsApp signature could not use its credit', ['exception' => $e, 'signRequestId' => $signRequest->getId()]);
 			}
 		}
-		return new DataResponse(['signed' => true]);
+		return new DataResponse(['signed' => true, 'chatUrl' => $this->whatsApp->chatUrl()]);
 	}
 
 	/**
