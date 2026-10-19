@@ -257,6 +257,8 @@
 // Signing from the WhatsApp card (templates/whatsapp_sign.php): the login card,
 // with SecurySign's frame edge to edge in it, white in both themes.
 #body-login .guest-box.gp-whatsapp {
+	box-sizing: border-box;
+	margin-inline: auto;
 	text-align: start;
 
 	p {
