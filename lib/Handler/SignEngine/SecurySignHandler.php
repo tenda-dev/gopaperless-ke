@@ -19,7 +19,6 @@ use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\IRequest;
 use OCP\ITempManager;
-use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 use SignerPHP\Infrastructure\Native\Contract\Pkcs7SignerInterface;
 use SignerPHP\Infrastructure\PdfCore\Buffer;
@@ -233,7 +232,7 @@ class SecurySignHandler extends Pkcs12Handler {
 
 	/** One pending signature per user and document; a second prepare replaces it. */
 	private function pendingKey(): string {
-		$uid = \OCP\Server::get(IUserSession::class)->getUser()?->getUID()
+		$uid = \OCP\Server::get(SecurySignService::class)->signer()
 			?? throw new LibresignException('Sign in to sign with SecurySign.', 401);
 		return hash('sha256', $uid . "\0" . ($this->getSignatureParams()['DocumentUUID'] ?? ''));
 	}

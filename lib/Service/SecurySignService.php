@@ -29,6 +29,15 @@ class SecurySignService {
 	 * either SecurySign source. Anything lower may be SecurySign's whole card.
 	 */
 	public const CARD_VERSION = 6;
+	/** User value: the certificate SecurySign held for the user at their last sign-in. */
+	public const REMEMBERED_CERTIFICATE = 'securysign_certificate_pem';
+
+	/**
+	 * Set by the WhatsApp signing page, which has no session: the user it signs
+	 * for. SecurySign then applies to them, with the certificate remembered at
+	 * their last sign-in. The passkey on SecurySign's frame is still the proof.
+	 */
+	private ?string $signer = null;
 
 	public function __construct(
 		private IAppConfig $config,
@@ -47,12 +56,45 @@ class SecurySignService {
 
 	public function applies(): bool {
 		$provider = $this->providerId();
+		if ($this->signer !== null) {
+			return $provider > 0 && $this->rememberedCertificate($this->signer) !== '';
+		}
 		return $provider > 0 && $this->users->isLoggedIn()
 			&& (int)$this->session->get('oidc.providerid') === $provider;
 	}
 
+	/** Signs for $uid without a session: see $signer. */
+	public function signFor(string $uid): void {
+		$this->signer = $uid;
+	}
+
+	/** Who is signing: the user the WhatsApp page signs for, or the one signed in. */
+	public function signer(): ?string {
+		return $this->signer ?? $this->users->getUser()?->getUID();
+	}
+
+	public function rememberedCertificate(string $uid): string {
+		return $this->systemConfig->getUserValue($uid, Application::APP_ID, self::REMEMBERED_CERTIFICATE);
+	}
+
+	/**
+	 * Kept for WhatsApp signing, which has no session to ask SecurySign with. A
+	 * certificate is public, and a stale one only fails: the HSM's signature
+	 * will not verify against it, so nothing is written.
+	 */
+	private function rememberCertificate(string $pem): void {
+		$uid = $this->users->getUser()?->getUID();
+		if ($uid !== null && WhatsAppService::on($this->config) && $this->rememberedCertificate($uid) !== $pem) {
+			$this->systemConfig->setUserValue($uid, Application::APP_ID, self::REMEMBERED_CERTIFICATE, $pem);
+		}
+	}
+
 	/** @return array{sub: string, issuer: string, accessToken: string} */
 	public function identity(): array {
+		if ($this->signer !== null) {
+			// No session, so no token: callers fall back (the card is drawn from the certificate).
+			throw new \RuntimeException('Signing without a session has no SecurySign token.', 401);
+		}
 		if (!$this->applies()) {
 			throw new \RuntimeException('A SecurySign OIDC session is required.', 401);
 		}
@@ -128,12 +170,21 @@ class SecurySignService {
 
 	/** The certificate SecurySign's HSM signs with for this user. */
 	public function certificatePem(): string {
+		if ($this->signer !== null) {
+			$pem = $this->rememberedCertificate($this->signer);
+			$parsed = openssl_x509_parse($pem);
+			if ($parsed === false || !self::isCurrent($parsed)) {
+				throw new \RuntimeException('Your SecurySign certificate has changed. Open GoPaperless and sign in once, then try again.', 409);
+			}
+			return $pem;
+		}
 		$data = $this->request('pki/certificates/me');
 		$pem = (string)($data['certificate']['certificatePem'] ?? '');
 		$parsed = openssl_x509_parse($pem);
 		if (($data['status'] ?? null) !== 'active' || $parsed === false || !self::isCurrent($parsed)) {
 			throw new \RuntimeException('You need an active SecurySign certificate to sign. Finish enrolment and try again.', 409);
 		}
+		$this->rememberCertificate($pem);
 		return $pem;
 	}
 
@@ -306,6 +357,7 @@ class SecurySignService {
 		if (!self::isCurrent($parsed)) {
 			return null;
 		}
+		$this->rememberCertificate((string)$leaf['certificatePem']);
 		$signature = $this->request('signature/visible', true, $identity);
 		if ($signature === null) {
 			return null;
