@@ -58,6 +58,7 @@ final class WhatsAppServiceTest extends TestCase {
 		]);
 		$config = $this->createMock(IConfig::class);
 		$config->method('getUserValue')->willReturn('sub-ann');
+		$config->method('getSystemValueString')->willReturnMap([['secret', '', 'instance-secret']]);
 		$users = $this->createMock(IUserManager::class);
 		$users->method('get')->willReturn($this->signer);
 		$account = new IdentifyMethod();
@@ -146,7 +147,26 @@ final class WhatsAppServiceTest extends TestCase {
 
 		self::assertSame(['status' => 'sent', 'error' => null, 'availableAgainAt' => null], $result);
 		self::assertSame('http://payments.test/external/whatsapp/sign-request', $this->calls[0][0]);
-		self::assertSame(['sub' => 'sub-ann', 'sign_request_uuid' => self::UUID, 'sender_name' => 'Ann', 'document_name' => 'NDA.pdf'], $this->calls[0][1]['json']);
+		$json = $this->calls[0][1]['json'];
+		self::assertStringStartsWith(self::UUID . '.', $json['link_code']);
+		unset($json['link_code']);
+		self::assertSame(['sub' => 'sub-ann', 'sign_request_uuid' => self::UUID, 'sender_name' => 'Ann', 'document_name' => 'NDA.pdf'], $json);
+	}
+
+	public function testTheLinkCodeLeadsBackToItsSignRequestAndNothingElse(): void {
+		$signRequest = self::signRequest();
+		$this->signRequests->method('getByUuid')->willReturnCallback(
+			fn (string $uuid) => $uuid === self::UUID ? $signRequest : throw new \OCP\AppFramework\Db\DoesNotExistException('none'),
+		);
+		$service = $this->service();
+		$code = $service->linkCode($signRequest);
+
+		self::assertSame($signRequest, $service->signRequestForCode($code));
+		// The uuid alone is in the signing email: it must not open the no-login page.
+		self::assertNull($service->signRequestForCode(self::UUID));
+		self::assertNull($service->signRequestForCode(self::UUID . '.' . str_repeat('A', 22)));
+		[, $mac] = explode('.', $code, 2);
+		self::assertNull($service->signRequestForCode('0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b11.' . $mac));
 	}
 
 	public function testAPaymentsServiceThatDoesNotAnswerIsAFailedSendNotAnError(): void {

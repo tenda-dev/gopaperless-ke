@@ -254,6 +254,81 @@
 	}
 }
 
+// Signing from the WhatsApp card (templates/whatsapp_sign.php): the login card,
+// with SecurySign's frame edge to edge in it, white in both themes.
+#body-login .guest-box.gp-whatsapp {
+	text-align: start;
+
+	p {
+		margin: 0;
+		color: var(--gp-ink);
+	}
+
+	.gp-whatsapp__from {
+		margin-bottom: 4px;
+		color: var(--gp-slate);
+	}
+
+	.gp-whatsapp__title {
+		margin: 0 0 12px;
+		font-size: 22px;
+		font-weight: 700;
+		letter-spacing: -.02em;
+		color: var(--gp-ink);
+		overflow-wrap: anywhere;
+	}
+
+	.gp-whatsapp__iframe {
+		display: block;
+		width: calc(100% + 56px);
+		height: 520px;
+		margin: 8px -28px -28px;
+		border: 0;
+		background: #fff;
+	}
+
+	.gp-whatsapp__status {
+		margin-top: 12px;
+		color: var(--gp-slate);
+	}
+
+	.gp-whatsapp__button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		min-height: 52px;
+		margin-top: 20px;
+		border-radius: var(--border-radius-element);
+		background: var(--color-primary-element);
+		color: var(--color-primary-element-text);
+		font-size: 17px;
+		font-weight: 600;
+		text-decoration: none;
+
+		&:hover,
+		&:focus-visible {
+			background: var(--color-primary-element-hover);
+		}
+	}
+
+	.gp-whatsapp__link {
+		display: block;
+		width: 100%;
+		margin-top: 12px;
+		border: 0;
+		background: none;
+		color: var(--gp-link);
+		font-size: 15px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	[hidden] {
+		display: none;
+	}
+}
+
 // Both added by login.ts: the logo links home, and the card gets a way back.
 #body-login .gp-home {
 	display: block;

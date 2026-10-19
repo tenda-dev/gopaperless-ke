@@ -163,6 +163,35 @@ class WhatsAppService {
 		return $this->urls->linkToRouteAbsolute('libresign.page.sign', ['uuid' => $signRequest->getUuid()]);
 	}
 
+	/**
+	 * The code in the card's "Sign with MIMI.ke" button, /p/whatsapp/<code>: the
+	 * sign request's uuid and a MAC over it. The page it opens needs no login,
+	 * so the uuid alone (it is in the signing email) must not be enough. Nothing
+	 * is stored: the MAC is checked again on the way in.
+	 */
+	public function linkCode(SignRequest $signRequest): string {
+		return $signRequest->getUuid() . '.' . $this->linkMac($signRequest->getUuid());
+	}
+
+	/** The sign request a link code names, or null for a code this instance did not make. */
+	public function signRequestForCode(string $code): ?SignRequest {
+		[$uuid, $mac] = explode('.', $code, 2) + [1 => ''];
+		if ($uuid === '' || !hash_equals($this->linkMac($uuid), $mac)) {
+			return null;
+		}
+		try {
+			return $this->signRequests->getByUuid($uuid);
+		} catch (\Throwable) {
+			return null;
+		}
+	}
+
+	private function linkMac(string $uuid): string {
+		$mac = hash_hmac('sha256', 'whatsapp-sign:' . $uuid, $this->config->getSystemValueString('secret'), true);
+		// 128 bits, URL-safe.
+		return rtrim(strtr(base64_encode(substr($mac, 0, 16)), '+/', '-_'), '=');
+	}
+
 	/** The link as an SVG data URI, drawn with the QR library the footer already uses. */
 	public function qr(string $link): string {
 		return (new SvgWriter())->write(new QrCode(data: $link, size: 240, margin: 8))->getDataUri();
@@ -221,6 +250,8 @@ class WhatsAppService {
 			'sign_request_uuid' => $signRequest->getUuid(),
 			'sender_name' => $sender->getDisplayName(),
 			'document_name' => $file->getName(),
+			// The card's "Sign with MIMI.ke" button opens /p/whatsapp/<link_code>.
+			'link_code' => $this->linkCode($signRequest),
 		];
 		$typed = $this->choice($signRequest)['to'] ?? null;
 		if ($typed !== null) {
@@ -328,7 +359,7 @@ class WhatsAppService {
 		};
 	}
 
-	private function accountSigner(SignRequest $signRequest): ?IUser {
+	public function accountSigner(SignRequest $signRequest): ?IUser {
 		foreach ($this->identifyMethods->getIdentifyMethodsFromSignRequestId($signRequest->getId()) as $method) {
 			if ($method->getIdentifierKey() === 'account') {
 				return $this->userManager->get($method->getIdentifierValue());
