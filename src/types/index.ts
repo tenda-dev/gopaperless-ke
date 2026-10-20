@@ -148,6 +148,9 @@ export type AdminInitialState = {
 	securysign_signing_enabled: boolean
 	mimi_client_secret_set: boolean
 	mimi_client_id: string
+	whatsapp_enabled: boolean
+	whatsapp_api_url: string
+	whatsapp_api_key_set: boolean
 	mimi_passkey_enabled: boolean
 	enrolment_site: 'tendaworld' | 'mimi'
 	phone_mno_routing_v2_enabled: boolean

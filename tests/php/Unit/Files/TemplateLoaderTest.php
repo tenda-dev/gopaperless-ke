@@ -92,6 +92,7 @@ final class TemplateLoaderTest extends TestCase {
 			'signature_flow' => 'none',
 			'docmdp_config' => $docMdpConfig,
 			'can_request_sign' => true,
+			'whatsapp_enabled' => false,
 		], $payload);
 	}
 

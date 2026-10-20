@@ -186,6 +186,7 @@ export type WorkflowController = {
 	openManageFiles:     () => Promise<void>
 
 	sendNotify:                (signer: EditableSignerDraft) => Promise<void>
+	sendWhatsApp:              (signer: EditableSignerDraft) => Promise<void>
 	requestSignatureForSigner: (signer: EditableSignerDraft) => void
 	confirmRequestSigner:      () => Promise<void>
 
@@ -918,6 +919,78 @@ export function useWorkflowController(
 		}
 	}
 
+	/** Requests one signer of a document that has already been requested. */
+	async function activateSigner(signRequestId: number) {
+		const f       = filesStore.getEditableFile()
+		const signers = (f.signers ?? []).map((s: EditableSignerDraft) => {
+			if (s.signRequestId === signRequestId) {
+				return {
+					...s,
+					status:     SIGN_REQUEST_STATUS.ABLE_TO_SIGN,
+					statusText: getSignRequestStatusText(SIGN_REQUEST_STATUS.ABLE_TO_SIGN),
+				}
+			}
+			return s
+		})
+		return filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
+	}
+
+	/**
+	 * "Request on WhatsApp" / "Send on WhatsApp". A draft document is requested
+	 * first, as "Request signatures" does, and a requested document with this
+	 * signer still in draft requests just them; either way the usual email goes
+	 * too. Then the payments service sends the WhatsApp message. Each signer row
+	 * hears the outcome on the event bus and refreshes itself.
+	 */
+	async function sendWhatsApp(signer: EditableSignerDraft): Promise<void> {
+		const f = filesStore.getEditableFile()
+		if (!f?.id || !signer.signRequestId) {
+			showError(t('libresign', 'Signer request not found'))
+			return
+		}
+		hasLoading.value = true
+		try {
+			if (f.status === FILE_STATUS.DRAFT || signer.status === SIGN_REQUEST_STATUS.DRAFT) {
+				const response = f.status === FILE_STATUS.DRAFT
+					? await filesStore.saveOrUpdateSignatureRequest({ status: 1 })
+					: await activateSigner(signer.signRequestId)
+				if ((response as any)?.success === false) {
+					// handled: another workflow took over, such as buying signing credits.
+					if (!(response as any)?.handled) {
+						showRequestError((response as any).error ?? new Error((response as any).message), t('libresign', 'Failed to request signatures'))
+					}
+					return
+				}
+			}
+			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'sending' })
+			const { data } = await axios.post(generateOcsUrl('/apps/libresign/api/v1/whatsapp/{fileId}/{signRequestId}', {
+				fileId: f.id,
+				signRequestId: signer.signRequestId,
+			}))
+			const result = data?.ocs?.data ?? {}
+			const again = result.availableAgainAt
+				? new Date(result.availableAgainAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+				: ''
+			if (result.status === 'sent') {
+				showSuccess(t('libresign', 'Sent on WhatsApp'), true, true)
+			} else if (result.status === 'too_soon' && result.waitReason === 'sent') {
+				showWarning(t('libresign', 'Already sent on WhatsApp. You can send it again {time}.', { time: again }))
+			} else if (result.status === 'too_soon' && result.waitReason === 'daily_limit') {
+				showWarning(t('libresign', 'Too many tries today. You can try again {time}.', { time: again }))
+			} else if (result.status === 'too_soon') {
+				showWarning(t('libresign', 'The last try just failed. You can try again {time}.', { time: again }))
+			} else {
+				showError(t('libresign', 'Couldn\'t send on WhatsApp'))
+			}
+			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, ...result })
+		} catch (error: unknown) {
+			showRequestError(error, t('libresign', 'Couldn\'t send on WhatsApp'))
+			emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'failed' })
+		} finally {
+			hasLoading.value = false
+		}
+	}
+
 	function requestSignatureForSigner(signer: EditableSignerDraft): void {
 		selectedSigner.value           = signer
 		showConfirmRequestSigner.value = true
@@ -934,19 +1007,7 @@ export function useWorkflowController(
 				return
 			}
 
-			const f       = filesStore.getEditableFile()
-			const signers = (f.signers ?? []).map((s: EditableSignerDraft) => {
-				if (s.signRequestId === selectedSignRequestId) {
-					return {
-						...s,
-						status:     SIGN_REQUEST_STATUS.ABLE_TO_SIGN,
-						statusText: getSignRequestStatusText(SIGN_REQUEST_STATUS.ABLE_TO_SIGN),
-					}
-				}
-				return s
-			})
-
-			const response = await filesStore.saveOrUpdateSignatureRequest({ signers: signers as never, status: 1 })
+			await activateSigner(selectedSignRequestId)
 			showSuccess(t('libresign', 'Signature requested'), true, true)
 			showConfirmRequestSigner.value = false
 			selectedSigner.value           = null
@@ -1119,6 +1180,7 @@ export function useWorkflowController(
 		openManageFiles,
 
 		sendNotify,
+		sendWhatsApp,
 		requestSignatureForSigner,
 		confirmRequestSigner,
 
