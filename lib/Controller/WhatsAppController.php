@@ -73,7 +73,6 @@ class WhatsAppController extends AEnvironmentAwareController {
 	 * 401: Not allowed
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/whatsapp/{fileId}/{signRequestId}', requirements: ['apiVersion' => '(v1)'])]
 	public function send(int $fileId, int $signRequestId): DataResponse {
 		return $this->guarded($fileId, $signRequestId, fn (FileEntity $file, SignRequest $signRequest, IUser $user)
@@ -115,7 +114,6 @@ class WhatsAppController extends AEnvironmentAwareController {
 	 * 422: Not a Kenyan mobile number
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'PUT', url: '/api/{apiVersion}/whatsapp/{fileId}/{signRequestId}/choice', requirements: ['apiVersion' => '(v1)'])]
 	public function choose(int $fileId, int $signRequestId, bool $send = true, string $to = ''): DataResponse {
 		return $this->guarded($fileId, $signRequestId, fn (FileEntity $file, SignRequest $signRequest)
