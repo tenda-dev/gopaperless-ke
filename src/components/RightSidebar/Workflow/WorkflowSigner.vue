@@ -207,6 +207,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { emit as emitEventBus, subscribe, unsubscribe } from '@nextcloud/event-bus'
+import type { Event as NextcloudEvent, EventHandler } from '@nextcloud/event-bus'
 import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 
@@ -461,7 +462,8 @@ watch(() => [props.canShare, props.fileId, props.signer.signRequestId, props.sig
 const RECHECK_AFTER_MS = 45_000
 let recheck: ReturnType<typeof setTimeout> | undefined
 
-function onWhatsAppChanged(event: { signRequestId: number, status: string, availableAgainAt?: string | null }) {
+const onWhatsAppChanged = ((payload: NextcloudEvent) => {
+	const event = payload as { signRequestId: number, status: string, availableAgainAt?: string | null }
 	if (event.signRequestId !== props.signer.signRequestId) {
 		return
 	}
@@ -474,7 +476,7 @@ function onWhatsAppChanged(event: { signRequestId: number, status: string, avail
 	if (event.status === 'sent') {
 		recheck = setTimeout(loadRecipient, RECHECK_AFTER_MS)
 	}
-}
+}) as EventHandler<NextcloudEvent>
 subscribe('libresign:whatsapp-changed', onWhatsAppChanged)
 onBeforeUnmount(() => {
 	unsubscribe('libresign:whatsapp-changed', onWhatsAppChanged)

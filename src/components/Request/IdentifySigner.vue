@@ -366,7 +366,7 @@ async function rememberWhatsApp(uid: string, to: string) {
 		if (!file?.id || !signer?.signRequestId) {
 			throw new Error('The new signer has no sign request yet')
 		}
-		await chooseWhatsApp(file.id, signer.signRequestId, to)
+		await chooseWhatsApp(Number(file.id), signer.signRequestId, to)
 		emitEventBus('libresign:whatsapp-changed', { signRequestId: signer.signRequestId, status: 'chosen' })
 	} catch {
 		showError(t('libresign', 'The signer was added, but WhatsApp could not be turned on for them'))
