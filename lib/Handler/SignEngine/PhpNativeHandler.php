@@ -85,6 +85,10 @@ class PhpNativeHandler extends Pkcs12Handler {
 	#[\Override]
 	public function getSignedContent(): string {
 		$pdfContent = $this->getInputFile()->getContent();
+		$alreadySigned = $this->hasExistingSignatures($pdfContent);
+		if (!$alreadySigned) {
+			$pdfContent = $this->raisePdfVersion($pdfContent);
+		}
 		$certificate = CertificateCredentialsDto::fromContent(
 			$this->getCertificate(),
 			$this->getPassword(),
@@ -104,7 +108,7 @@ class PhpNativeHandler extends Pkcs12Handler {
 		$visibleElements = $this->getVisibleElements();
 		$metadata = $this->buildMetadata();
 		$timestamp = $this->externalSigner === null ? $this->buildTimestampOptions() : null;
-		$certificationLevel = $this->resolveCertificationLevel(empty($visibleElements));
+		$certificationLevel = $this->resolveCertificationLevel($alreadySigned);
 
 		if (empty($visibleElements)) {
 			return $service->sign(SignPdfRequestDto::fromRequired(
@@ -361,19 +365,26 @@ class PhpNativeHandler extends Pkcs12Handler {
 		);
 	}
 
-	private function resolveCertificationLevel(bool $noVisibleElements): ?CertificationLevel {
-		if (!$this->docMdpConfigService->isEnabled()) {
+	/**
+	 * Only the first signature may certify. Certifying a signed PDF replaces the
+	 * catalog's /Perms entry, which breaks the first signer's certification.
+	 */
+	private function resolveCertificationLevel(bool $alreadySigned): ?CertificationLevel {
+		if ($alreadySigned || !$this->docMdpConfigService->isEnabled()) {
 			return null;
 		}
 
 		// DocMDP values mirror CertificationLevel: 1=NoChanges, 2=FormFilling, 3=FormFillAndAnnotations
-		$level = $this->docMdpConfigService->getLevel()->value;
-		// Only certify on invisible signatures or on the first visible element
-		if ($noVisibleElements || !$this->hasExistingSignatures($this->getInputFile()->getContent())) {
-			return CertificationLevel::fromInt($level);
-		}
+		return CertificationLevel::fromInt($this->docMdpConfigService->getLevel()->value);
+	}
 
-		return null;
+	/**
+	 * A later signer on JSignPdf appends with SHA-256, which needs PDF 1.6, and
+	 * cannot raise the version itself: every signature covers the header. Same
+	 * length, so the xref offsets still hold. Call it on unsigned PDFs only.
+	 */
+	private function raisePdfVersion(string $pdfContent): string {
+		return (string)preg_replace('/^%PDF-1\.[0-5]\b/', '%PDF-1.6', $pdfContent, 1);
 	}
 
 	private function hasExistingSignatures(string $pdfContent): bool {

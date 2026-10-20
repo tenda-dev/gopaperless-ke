@@ -16,7 +16,6 @@ use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\SignatureBackgroundService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\SignerElementsService;
-use OCP\Files\File;
 use OCP\IAppConfig;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -214,8 +213,7 @@ final class PhpNativeHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	#[DataProvider('providerResolveCertificationLevel')]
 	public function testResolveCertificationLevel(
 		bool $docMdpEnabled,
-		bool $noVisibleElements,
-		string $pdfContent,
+		bool $alreadySigned,
 		bool $expectNull,
 	): void {
 		$this->docMdpConfigService->method('isEnabled')->willReturn($docMdpEnabled);
@@ -224,15 +222,7 @@ final class PhpNativeHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 				->willReturn(DocMdpLevel::CERTIFIED_FORM_FILLING);
 		}
 
-		$handler = $this->getHandler();
-
-		if (!$noVisibleElements) {
-			$inputFile = $this->createMock(File::class);
-			$inputFile->method('getContent')->willReturn($pdfContent);
-			$handler->setInputFile($inputFile);
-		}
-
-		$result = $this->callPrivateMethod($handler, 'resolveCertificationLevel', $noVisibleElements);
+		$result = $this->callPrivateMethod($this->getHandler(), 'resolveCertificationLevel', $alreadySigned);
 
 		if ($expectNull) {
 			$this->assertNull($result);
@@ -243,18 +233,25 @@ final class PhpNativeHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 	public static function providerResolveCertificationLevel(): array {
 		return [
-			'DocMDP disabled always returns null' => [
-				false, true, '', true,
-			],
-			'DocMDP enabled with no visible elements certifies' => [
-				true, true, '', false,
-			],
-			'DocMDP enabled, visible elements, clean PDF certifies first signature' => [
-				true, false, '%PDF-1.4 startxref 0 %%EOF', false,
-			],
-			'DocMDP enabled, visible elements, PDF already signed skips certification' => [
-				true, false, '/ByteRange [0 0 0 0]', true,
-			],
+			'DocMDP disabled always returns null' => [false, false, true],
+			'DocMDP enabled, unsigned PDF certifies the first signature' => [true, false, false],
+			'DocMDP enabled, PDF already signed skips certification' => [true, true, true],
+		];
+	}
+
+	#[DataProvider('providerRaisePdfVersion')]
+	public function testRaisePdfVersion(string $pdfContent, string $expected): void {
+		$this->assertSame($expected, $this->callPrivateMethod($this->getHandler(), 'raisePdfVersion', $pdfContent));
+	}
+
+	public static function providerRaisePdfVersion(): array {
+		return [
+			'PDF 1.0 raised to 1.6' => ["%PDF-1.0\n%%EOF", "%PDF-1.6\n%%EOF"],
+			'PDF 1.4 raised to 1.6' => ["%PDF-1.4\n%%EOF", "%PDF-1.6\n%%EOF"],
+			'PDF 1.5 raised to 1.6' => ["%PDF-1.5\r%%EOF", "%PDF-1.6\r%%EOF"],
+			'PDF 1.6 left alone' => ["%PDF-1.6\n%%EOF", "%PDF-1.6\n%%EOF"],
+			'PDF 1.7 left alone' => ["%PDF-1.7\n%%EOF", "%PDF-1.7\n%%EOF"],
+			'PDF 2.0 left alone' => ["%PDF-2.0\n%%EOF", "%PDF-2.0\n%%EOF"],
 		];
 	}
 
