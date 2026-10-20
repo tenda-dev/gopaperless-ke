@@ -159,6 +159,28 @@ class SignRequestMapper extends CachedQBMapper {
 		return $signRequest;
 	}
 
+	/**
+	 * Resolve a sign request on a file by a raw identify-method (key, value) pair,
+	 * returning null when none matches (for conflict/idempotency checks in the
+	 * requester reconciliation). Identity lives in libresign_identify_method, so
+	 * this joins on it rather than the legacy sign_request.email column.
+	 */
+	public function getByIdentifierAndFileId(string $identifierKey, string $identifierValue, int $fileId): ?SignRequest {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('sr.*')
+			->from($this->getTableName(), 'sr')
+			->join('sr', 'libresign_identify_method', 'im', 'sr.id = im.sign_request_id')
+			->where($qb->expr()->eq('im.identifier_key', $qb->createNamedParameter($identifierKey)))
+			->andWhere($qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($identifierValue)))
+			->andWhere($qb->expr()->eq('sr.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+			->setMaxResults(1);
+		try {
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException|MultipleObjectsReturnedException) {
+			return null;
+		}
+	}
+
 	public function getByIdentifyMethodAndFileId(IIdentifyMethod $identifyMethod, int $fileId): SignRequest {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('sr.*')
@@ -199,6 +221,33 @@ class SignRequestMapper extends CachedQBMapper {
 		$signRequest = reset($signRequests);
 		$this->cacheEntity($signRequest);
 		return $signRequest;
+	}
+
+	/**
+	 * Sign-request ids for UNSIGNED, public-workflow-originated email signer rows
+	 * matching $email. Used by login-time signer self-reconciliation. Scoped to
+	 * files that have a gopaperless_public_workflows row, so deliberate email
+	 * signers in ordinary authenticated flows are never touched.
+	 *
+	 * @return int[]
+	 */
+	public function findUnsignedPublicWorkflowSignRequestIdsByEmail(string $email): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('sr.id')
+			->from($this->getTableName(), 'sr')
+			->join('sr', 'libresign_identify_method', 'im', $qb->expr()->eq('im.sign_request_id', 'sr.id'))
+			->join('sr', 'libresign_file', 'f', $qb->expr()->eq('sr.file_id', 'f.id'))
+			->join('f', 'gopaperless_public_workflows', 'pw', $qb->expr()->eq('pw.file_uuid', 'f.uuid'))
+			->where($qb->expr()->eq('im.identifier_key', $qb->createNamedParameter('email')))
+			->andWhere($qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($email)))
+			->andWhere($qb->expr()->isNull('sr.signed'));
+		$ids = [];
+		$result = $qb->executeQuery();
+		while ($row = $result->fetch()) {
+			$ids[] = (int)$row['id'];
+		}
+		$result->closeCursor();
+		return $ids;
 	}
 
 	/**

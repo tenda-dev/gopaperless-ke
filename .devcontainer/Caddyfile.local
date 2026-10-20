@@ -1,0 +1,6 @@
+# GoPaperless local HTTPS — terminates TLS with Caddy's internal CA and
+# reverse-proxies to the existing nginx container. Dev only.
+localhost {
+    reverse_proxy nginx:80
+    tls internal
+}

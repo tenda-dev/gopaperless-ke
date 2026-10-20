@@ -55,6 +55,7 @@ use OCP\Files\NotFoundException;
 use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IDBConnection;
+use OCP\IGroup;
 use OCP\IGroupManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
@@ -1382,5 +1383,194 @@ final class AccountServiceTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			->method('create');
 
 		$this->invokeRecovery('already-granted-user', new \DateTimeImmutable('2026-10-11T08:00:00+03:00'));
+	}
+
+	// --- recoverMissingEmailFromUid: populate-only (legacy uid=email) ---
+	//
+	// getEMailAddress() is the PRIMARY/system email the app reads. Recovery writes
+	// it via setSystemEMailAddress() when empty. It does NOT touch verification —
+	// trust is evaluated at reconcile time (provider / invitation marker).
+
+	private function userWithEmail(string $uid, ?string $currentEmail): IUser&MockObject {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($uid);
+		$user->method('getEMailAddress')->willReturn($currentEmail);
+		return $user;
+	}
+
+	public function testRecoverPopulatesSystemEmailFromEmailShapedUid(): void {
+		// Legacy provisioning: email empty, uid IS the email -> system email set.
+		$user = $this->userWithEmail('me@example.com', '');
+		$user->expects($this->once())->method('setSystemEMailAddress')->with('me@example.com');
+		// Recovery never touches the account manager (no verification handling).
+		$this->accountManager->expects($this->never())->method('getAccount');
+
+		$this->assertSame(
+			AccountService::EMAIL_RECOVERY_RECOVERED,
+			$this->getService()->recoverMissingEmailFromUid($user),
+		);
+	}
+
+	public function testRecoverLeavesExistingEmailUntouched(): void {
+		// Modern provisioning (uid is a uuid, email already present from the IdP):
+		// no write, no-op.
+		$user = $this->userWithEmail('ef209996-3cdc-4904-a762-623050b4b459', 'treasured@gmail.com');
+		$user->expects($this->never())->method('setSystemEMailAddress');
+		$this->accountManager->expects($this->never())->method('getAccount');
+
+		$this->assertSame(
+			AccountService::EMAIL_RECOVERY_ALREADY_PRESENT,
+			$this->getService()->recoverMissingEmailFromUid($user),
+		);
+	}
+
+	public function testRecoverSkipsWhenUidIsNotAnEmail(): void {
+		$user = $this->userWithEmail('not-an-email-uid', '');
+		$user->expects($this->never())->method('setSystemEMailAddress');
+
+		$this->assertSame(
+			AccountService::EMAIL_RECOVERY_INVALID_UID,
+			$this->getService()->recoverMissingEmailFromUid($user),
+		);
+	}
+
+	public function testRecoverSwallowsWriteFailure(): void {
+		// A write failure is handled, not propagated — login/bootstrap stays OK.
+		$user = $this->userWithEmail('me@example.com', '');
+		$user->method('setSystemEMailAddress')->willThrowException(new \RuntimeException('write failed'));
+
+		$this->assertSame(
+			AccountService::EMAIL_RECOVERY_ERROR,
+			$this->getService()->recoverMissingEmailFromUid($user),
+		);
+	}
+
+	public function testRecoverSkipsWhenNoUser(): void {
+		$this->assertSame(
+			AccountService::EMAIL_RECOVERY_SKIPPED_NO_USER,
+			$this->getService()->recoverMissingEmailFromUid(null),
+		);
+	}
+
+	// --- ensureDefaultSignerGroup: reliable signer-group catch-up ---
+
+	private function signerGroupEnabled(string $group = 'signers'): void {
+		$this->appConfig->method('getValueInt')->willReturn(1); // securysign_provider_id
+		$this->appConfig->method('getValueString')->willReturn($group); // default_signer_group
+	}
+
+	public function testEnsureSignerGroupAddsMissingMember(): void {
+		$this->signerGroupEnabled();
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$group = $this->createMock(IGroup::class);
+		$group->method('inGroup')->with($user)->willReturn(false);
+		$group->expects($this->once())->method('addUser')->with($user);
+		$this->groupManager->method('get')->with('signers')->willReturn($group);
+		$this->groupManager->expects($this->never())->method('createGroup');
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_GRANTED,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupIsNoOpWhenAlreadyMember(): void {
+		$this->signerGroupEnabled();
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$group = $this->createMock(IGroup::class);
+		$group->method('inGroup')->with($user)->willReturn(true);
+		$group->expects($this->never())->method('addUser');
+		$this->groupManager->method('get')->with('signers')->willReturn($group);
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_ALREADY_MEMBER,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupCreatesGroupWhenMissing(): void {
+		$this->signerGroupEnabled();
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$group = $this->createMock(IGroup::class);
+		$group->method('inGroup')->willReturn(false);
+		$group->expects($this->once())->method('addUser')->with($user);
+		$this->groupManager->method('get')->with('signers')->willReturn(null);
+		$this->groupManager->expects($this->once())->method('createGroup')->with('signers')->willReturn($group);
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_GRANTED,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupSkippedWhenNoTrustedProviderConfigured(): void {
+		// Both Mimi and SecurySign provider ids are 0 → stock upstream behaviour.
+		$this->appConfig->method('getValueInt')->willReturn(0);
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$this->groupManager->expects($this->never())->method('get');
+		$this->groupManager->expects($this->never())->method('createGroup');
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_SKIPPED,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupGrantsForMimiOnlyInstance(): void {
+		// Mimi (public_upload_login_provider_id) configured, SecurySign 0 — the
+		// staging config. The grant must still fire (the old SecurySign-only gate
+		// skipped it, so trusted-verified Mimi accounts never got signing rights).
+		$this->appConfig->method('getValueInt')->willReturnMap([
+			[Application::APP_ID, 'securysign_provider_id', 0, 0],
+			[Application::APP_ID, 'public_upload_login_provider_id', 0, 5],
+		]);
+		$this->appConfig->method('getValueString')->willReturn('signers');
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$group = $this->createMock(IGroup::class);
+		$group->method('inGroup')->with($user)->willReturn(false);
+		$group->expects($this->once())->method('addUser')->with($user);
+		$this->groupManager->method('get')->with('signers')->willReturn($group);
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_GRANTED,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupRefusesAdminGroup(): void {
+		$this->signerGroupEnabled('admin');
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$this->groupManager->expects($this->never())->method('get');
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_SKIPPED,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupSwallowsFailures(): void {
+		$this->signerGroupEnabled();
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('newbie');
+		$this->groupManager->method('get')->willThrowException(new \RuntimeException('database gone'));
+
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_ERROR,
+			$this->getService()->ensureDefaultSignerGroup($user),
+		);
+	}
+
+	public function testEnsureSignerGroupSkipsWhenNoUser(): void {
+		$this->groupManager->expects($this->never())->method('get');
+		$this->assertSame(
+			AccountService::SIGNER_GROUP_SKIPPED,
+			$this->getService()->ensureDefaultSignerGroup(null),
+		);
 	}
 }

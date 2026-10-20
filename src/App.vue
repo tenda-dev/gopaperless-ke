@@ -20,6 +20,7 @@
 	</NcContent>
 	<SponsorshipWorkflow v-if="isLoggedIn" />
 	<CertificateGate v-if="isLoggedIn" />
+	<PublicWorkflowClaimDialog v-if="isLoggedIn && !isSignExternalPage" />
 	<Toaster richColors position="top-right" />
 </template>
 
@@ -40,6 +41,7 @@ import LeftSidebar from './components/LeftSidebar/LeftSidebar.vue'
 import RightSidebar from './components/RightSidebar/RightSidebar.vue'
 import SponsorshipWorkflow from './components/Sponsorship/SponsorshipWorkflow.vue'
 import CertificateGate from './components/Certificate/CertificateGate.vue'
+import PublicWorkflowClaimDialog from './components/PublicWorkflow/PublicWorkflowClaimDialog.vue'
 import DefaultPageError from './views/DefaultPageError.vue'
 
 import { initialActionCode, ACTION_CODES } from './helpers/ActionMapping'

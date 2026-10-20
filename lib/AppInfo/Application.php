@@ -30,6 +30,7 @@ use OCA\Libresign\Listener\TwofactorGatewayListener;
 use OCA\Libresign\Listener\UserCreatedListener;
 use OCA\Libresign\Listener\UserDeletedListener;
 use OCA\Libresign\Listener\UserFirstTimeLoggedInListener;
+use OCA\Libresign\Listener\UserLoggedInListener;
 use OCA\Libresign\Middleware\GlobalInjectionMiddleware;
 use OCA\Libresign\Middleware\InjectionMiddleware;
 use OCA\Libresign\Notification\Notifier;
@@ -46,6 +47,7 @@ use OCP\Security\CSP\AddContentSecurityPolicyEvent;
 use OCP\User\Events\UserCreatedEvent;
 use OCP\User\Events\UserDeletedEvent;
 use OCP\User\Events\UserFirstTimeLoggedInEvent;
+use OCP\User\Events\UserLoggedInEvent;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -135,6 +137,7 @@ class Application extends App implements IBootstrap {
 
 		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
 		$context->registerEventListener(UserFirstTimeLoggedInEvent::class, UserFirstTimeLoggedInListener::class);
+		$context->registerEventListener(UserLoggedInEvent::class, UserLoggedInListener::class);
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
 
 		$context->registerDashboardWidget(PendingSignaturesWidget::class);

@@ -111,8 +111,23 @@ services:
   #     - rabbitmq
   #     - mysql
   #     - nextcloud
+  # --- GoPaperless LOCAL HTTPS (added 2026-10-20; see .https-local-record.md; remove to revert) ---
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    ports:
+      - 127.0.0.1:443:443
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
 volumes:
   mysql-init:
   mysql-data:
   nextcloud:
   rabbitmq-data:
+  caddy-data:
+  caddy-config:

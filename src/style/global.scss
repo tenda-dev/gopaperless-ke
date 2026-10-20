@@ -50,7 +50,8 @@
  * landing's first screen is one viewport tall and its footer sits below it.
  * Scoped to pages containing .pu so authenticated views keep their normal layout.
  */
-#body-public #app-content-vue:has(.pu) {
+#body-public #app-content-vue:has(.pu),
+#body-public #app-content-vue:has(.pw) {
 	padding-block-end: 0 !important;
 }
 
