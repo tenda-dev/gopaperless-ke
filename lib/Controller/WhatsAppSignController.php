@@ -14,14 +14,17 @@ use OCA\Libresign\Db\File as FileEntity;
 use OCA\Libresign\Db\FileElementMapper;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest;
+use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\ProductCode;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignApprovalRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
+use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\RequestMetadataService;
 use OCA\Libresign\Service\SecurySignService;
+use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Service\Sponsorship\SigningCoverageService;
 use OCA\Libresign\Service\Sponsorship\SigningSettlementService;
@@ -59,6 +62,9 @@ class WhatsAppSignController extends Controller {
 		private SignFileService $signFile,
 		private FileMapper $files,
 		private FileElementMapper $fileElements,
+		private UserElementMapper $userElements,
+		private SignerElementsService $signerElements,
+		private FolderService $folders,
 		private IdentifyMethodService $identifyMethods,
 		private RequestMetadataService $metadata,
 		private SigningCoverageService $coverage,
@@ -131,11 +137,9 @@ class WhatsAppSignController extends Controller {
 		$signer = $found['signer'];
 
 		$this->signa->signFor($signer->getUID());
-		// Each box on the document: the server fills in the signer's own scribble.
-		$elements = array_map(
-			static fn ($element) => ['documentElementId' => $element->getId()],
-			$this->fileElements->getByFileIdAndSignRequestId($signRequest->getFileId(), $signRequest->getId()),
-		);
+		// The scribbles are files in the signer's own folder, found through the
+		// session user on the signing page. This page has no session.
+		$this->folders->setUserId($signer->getUID());
 		try {
 			$this->signFile
 				->prepareForSigning(
@@ -148,7 +152,7 @@ class WhatsAppSignController extends Controller {
 					null,
 					'clickToSign',
 				)
-				->setVisibleElements($elements)
+				->setVisibleElements($found['elements'])
 				->storeUserMetadata($this->metadata->collectMetadata())
 				->sign();
 		} catch (SecurySignApprovalRequired $e) {
@@ -183,12 +187,13 @@ class WhatsAppSignController extends Controller {
 	/**
 	 * What the code leads to, and whether it can be signed now. state: ready,
 	 * signed, not_ready (not their turn, or not sent yet), login (no certificate
-	 * remembered: they sign in once on GoPaperless), no_credits, or gone.
+	 * remembered, or a box and no visible signature scribble: they sign in once
+	 * on GoPaperless), no_credits, or gone.
 	 *
-	 * @return array{state: string, file: ?FileEntity, signRequest: ?SignRequest, signer: ?IUser, sender: ?IUser}
+	 * @return array{state: string, file: ?FileEntity, signRequest: ?SignRequest, signer: ?IUser, sender: ?IUser, elements: ?list<array{documentElementId: int, profileNodeId: int}>}
 	 */
 	private function find(string $code): array {
-		$found = ['state' => 'gone', 'file' => null, 'signRequest' => null, 'signer' => null, 'sender' => null];
+		$found = ['state' => 'gone', 'file' => null, 'signRequest' => null, 'signer' => null, 'sender' => null, 'elements' => null];
 		$signRequest = WhatsAppService::on($this->appConfig) ? $this->whatsApp->signRequestForCode($code) : null;
 		if ($signRequest === null) {
 			return $found;
@@ -202,11 +207,17 @@ class WhatsAppSignController extends Controller {
 		if (!$signer instanceof IUser || $file->getNodeType() === 'envelope') {
 			return $found;
 		}
-		$found = ['file' => $file, 'signRequest' => $signRequest, 'signer' => $signer, 'sender' => $this->users->get($file->getUserId())] + $found;
+		$found = [
+			'file' => $file,
+			'signRequest' => $signRequest,
+			'signer' => $signer,
+			'sender' => $this->users->get($file->getUserId()),
+			'elements' => $this->scribbles($signRequest, $signer),
+		] + $found;
 		$found['state'] = match (true) {
 			$signRequest->getSigned() !== null => 'signed',
 			$signRequest->getStatusEnum() !== SignRequestStatus::ABLE_TO_SIGN => 'not_ready',
-			$this->signa->rememberedCertificate($signer->getUID()) === '' => 'login',
+			$this->signa->rememberedCertificate($signer->getUID()) === '', $found['elements'] === null => 'login',
 			$this->sponsorship() && !$this->coverage->resolveSigningCoverage(
 				signRequestId: $signRequest->getId(),
 				signerUserId: $signer->getUID(),
@@ -215,6 +226,29 @@ class WhatsAppSignController extends Controller {
 			default => 'ready',
 		};
 		return $found;
+	}
+
+	/**
+	 * The signer's own visible signature scribble in each of their boxes, as the
+	 * signing page sends it. Null when a box needs one they haven't drawn yet:
+	 * GoPaperless asks for it when they sign there.
+	 *
+	 * @return ?list<array{documentElementId: int, profileNodeId: int}>
+	 */
+	private function scribbles(SignRequest $signRequest, IUser $signer): ?array {
+		if (!$this->signerElements->canCreateSignature()) {
+			return []; // The stamp is text only.
+		}
+		$elements = [];
+		foreach ($this->fileElements->getByFileIdAndSignRequestId($signRequest->getFileId(), $signRequest->getId()) as $box) {
+			try {
+				$scribble = $this->userElements->findOne(['user_id' => $signer->getUID(), 'type' => $box->getType()]);
+			} catch (\Throwable) {
+				return null;
+			}
+			$elements[] = ['documentElementId' => $box->getId(), 'profileNodeId' => $scribble->getNodeId()];
+		}
+		return $elements;
 	}
 
 	/** Credits apply only with sponsorship on, as on the signing page. */
