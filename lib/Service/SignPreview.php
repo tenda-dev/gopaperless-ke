@@ -21,7 +21,7 @@ use OCP\Files\NotFoundException;
 use OCP\ITempManager;
 
 /**
- * The PDF a WhatsApp signer gets before the signing card: the document as it
+ * The PDF on a WhatsApp signer's signing card: the document as it
  * stands now, earlier signatures included, with a dashed box where theirs goes.
  * The box is stamped the way LibreSign stamps its footer: mPDF draws an overlay
  * page by page, pdftk lays it on the document.

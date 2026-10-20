@@ -259,14 +259,14 @@ class WhatsAppService {
 			$message['to'] = $typed;
 		}
 		try {
-			// The PDF with their box outlined, which the payments service sends ahead of the card.
+			// The PDF with their box outlined, which the payments service puts on the card.
 			$message['preview_pdf'] = base64_encode($this->preview->pdf($file, $signRequest));
 		} catch (\Throwable $e) {
-			// The card alone still gets them to sign.
+			// The card with its picture still gets them to sign.
 			$this->logger->warning('No WhatsApp preview for this signing request', ['exception' => $e]);
 		}
 		try {
-			// The preview's upload and its head start on the card take a few seconds more.
+			// The preview's upload takes a few seconds more.
 			$answer = $this->call('POST', 'sign-request', $message, 25);
 		} catch (\Throwable $e) {
 			// Shown as "Couldn't send on WhatsApp"; the transport error is for the log.
