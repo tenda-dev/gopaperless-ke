@@ -80,6 +80,9 @@ Payments service (`.env`):
 | `WHATSAPP_SIGN_PARTNERS` | `gopaperless` (the default) |
 | `WHATSAPP_TEMPLATE_SIGN_REQUEST` | Content SID of the request template |
 | `WHATSAPP_TEMPLATE_SIGN_RECEIPT` | Content SID of the receipt template |
+| `WHATSAPP_TEMPLATE_SIGN_SSC` | Content SID of the signing card (see "Signing from the card") |
+| `WHATSAPP_TEMPLATE_SIGN_SSC_PREVIEW` | Content SID of the signing card with the PDF on it |
+| `WHATSAPP_PARTNER_TEMPLATES` | staging's own templates (see "Staging") |
 | `SIGN_LINK_BASE` | only for the free-text fallback below |
 
 ## Templates to submit to Meta
@@ -92,6 +95,8 @@ variable, hence the "Hi,".
 | --- | --- | --- |
 | Request: `gopaperless_sign_request`, `HX6d1d3bf0059a9691c779e5561c9941c3`, approved as Utility 2026-10-07 | `Hi, {{1}} has sent you "{{2}}" to sign on GoPaperless.` | URL "Review and sign": `https://gopaperless.ke/apps/libresign/p/sign/{{3}}` |
 | Receipt: the already approved `document_signed_successfully`, `HX1da175d1f4390bf449864a061a5ad7ec` | `✅ Document signed successfully! 📄 {{1}} View your signed document:` | URL "View Document": `https://gopaperless.ke/apps/libresign/f/validation/{{2}}`, which accepts a sign-request uuid |
+| Signing card: `gopaperless_ssc_sign_v2`, `HXa8af5ef94c60375a5167e7b85e2038e1`, header picture `static/brand/ssc-whatsapp.png` on the payments service | `Hi, {{1}} has sent you "{{2}}" to sign on GoPaperless.` | URL "Sign with MIMI.ke": `https://gopaperless.ke/apps/libresign/p/whatsapp/{{3}}` |
+| Signing card with the PDF: `gopaperless_ssc_sign_pdf`, `HX3a1de1c5fb64d8905ab02b32cb1e45fd`, header document `https://gopaperless.astralyngroup.com/external/whatsapp/preview/{{4}}` | as above | as above |
 
 Read the live sign URL before submitting: the approved base is fixed, and it has
 to match whether production serves `/index.php`.
@@ -99,6 +104,38 @@ to match whether production serves `/index.php`.
 With a template SID unset, that message goes out as free text with a link from
 `SIGN_LINK_BASE`. WhatsApp only delivers free text to someone who messaged the
 number in the last 24 hours, so that is for testing.
+
+## Signing from the card
+
+With `WHATSAPP_TEMPLATE_SIGN_SSC` set, the request goes as the signing card. Its
+**Sign with MIMI.ke** button opens `/apps/libresign/p/whatsapp/<code>`, where the
+signer signs with their SecurySign passkey without a GoPaperless login. That needs
+a credit and their certificate, which GoPaperless remembers each time they sign in
+with SecurySign. Without one, the page asks them to sign in to GoPaperless once,
+or to buy a credit, and sign there.
+
+GoPaperless sends a copy of the document with a dashed green box where the signer
+signs. The payments service puts it on the card in place of the picture, and keeps
+it for Twilio to fetch for 24 hours. If the copy can't be made, or
+`WHATSAPP_TEMPLATE_SIGN_SSC_PREVIEW` is unset, the card goes with its picture.
+WhatsApp only approves a document template whose sample PDF it can download, so
+store one on the payments service before submitting a new one.
+
+## Staging
+
+A template's button opens one fixed host, so `staging.gopaperless.dev` has its
+own templates and its own partner key, `gopaperless-staging`. On the payments
+service:
+
+```sh
+PARTNER_API_KEYS=…,gopaperless-staging:<staging partner key>
+WHATSAPP_SIGN_PARTNERS=gopaperless,gopaperless-staging
+WHATSAPP_PARTNER_TEMPLATES={"gopaperless-staging": {"sign_request": "HXa7508cf95a8d82d1e8e2e5176869d0a1", "sign_receipt": "HXae893bea2aac92e24cec785d47c7118c", "sign_ssc": "HXc379928fabd8e8e656304ca213d57713", "sign_ssc_preview": "HX38c5712640920b91b32ed0f6c4b1961d"}}
+```
+
+These are copies of the production templates with `https://staging.gopaperless.dev/`
+in the buttons, each named with `_staging`. Staging GoPaperless uses the same
+payments address with the staging key.
 
 ## The signing link
 
