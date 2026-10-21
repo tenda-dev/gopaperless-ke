@@ -8,22 +8,22 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Tests\Unit\Service;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\File;
+use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\IdentifyMethod;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
-use OCA\Libresign\Db\FileMapper;
-use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Service\AccountService;
-use OCA\Libresign\Service\TrustedOidcProviderPolicy;
 use OCA\Libresign\Service\RequesterReconciliationService;
+use OCA\Libresign\Service\TrustedOidcProviderPolicy;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\Accounts\IAccountManager;
+use OCP\Config\IUserConfig;
 use OCP\IDBConnection;
 use OCP\IUser;
-use OCP\Config\IUserConfig;
 use OCP\IUserManager;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;

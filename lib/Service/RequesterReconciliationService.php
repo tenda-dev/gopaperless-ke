@@ -9,16 +9,15 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Db\SignRequestMapper;
-use OCA\Libresign\Db\FileMapper;
-use OCA\Libresign\Exception\LibresignException;
 use OCP\Accounts\IAccountManager;
 use OCP\Config\IUserConfig;
 use OCP\IDBConnection;
-use OCP\IUserManager;
 use OCP\IUser;
+use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
 /**
