@@ -363,7 +363,10 @@ class WhatsAppService {
 	private function accountReason(?IUser $signer): ?string {
 		return match (true) {
 			!$signer instanceof IUser => 'not_account',
-			$signer->getBackendClassName() !== 'user_oidc' || $this->signa->providerId() <= 0 => 'password_account',
+			$this->signa->providerId() <= 0 => 'password_account',
+			// An account made before its owner used MIMI keeps its backend: user_oidc
+			// signs MIMI logins into an existing account of the same name.
+			$signer->getBackendClassName() !== 'user_oidc' && $this->subFor($signer) === null => 'password_account',
 			default => null,
 		};
 	}

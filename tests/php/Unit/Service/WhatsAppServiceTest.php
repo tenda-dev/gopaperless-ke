@@ -51,7 +51,7 @@ final class WhatsAppServiceTest extends TestCase {
 		$this->preview = $this->createMock(SignPreview::class);
 	}
 
-	private function service(string $backend = 'user_oidc'): WhatsAppService {
+	private function service(string $backend = 'user_oidc', string $sub = 'sub-ann'): WhatsAppService {
 		$this->signer->method('getBackendClassName')->willReturn($backend);
 		$appConfig = $this->createMock(IAppConfig::class);
 		$appConfig->method('getValueBool')->willReturnCallback(fn () => $this->enabled);
@@ -60,7 +60,7 @@ final class WhatsAppServiceTest extends TestCase {
 			['libresign', 'whatsapp_api_key', '', false, 'key-123'],
 		]);
 		$config = $this->createMock(IConfig::class);
-		$config->method('getUserValue')->willReturn('sub-ann');
+		$config->method('getUserValue')->willReturn($sub);
 		$config->method('getSystemValueString')->willReturnMap([['secret', '', 'instance-secret']]);
 		$users = $this->createMock(IUserManager::class);
 		$users->method('get')->willReturn($this->signer);
@@ -117,13 +117,22 @@ final class WhatsAppServiceTest extends TestCase {
 		self::assertSame('key-123', $this->calls[0][1]['headers']['X-API-Key']);
 	}
 
-	public function testOnlyAccountsFromTheSecurySignLoginQualify(): void {
+	public function testAPasswordAccountThatNeverUsedMimiDoesNotQualify(): void {
 		$this->answer(200, []);
 
-		$row = $this->service('Database')->recipient(self::file(), self::signRequest());
+		$row = $this->service('Database', '')->recipient(self::file(), self::signRequest());
 
 		self::assertSame('password_account', $row['reason']);
 		self::assertSame([], $this->calls);
+	}
+
+	public function testAnOlderAccountItsOwnerSignsIntoWithMimiQualifies(): void {
+		$this->answer(200, ['available' => true, 'masked' => '+254 7•• ••• 678', 'reason' => null]);
+
+		$row = $this->service('Database')->recipient(self::file(), self::signRequest());
+
+		self::assertTrue($row['available']);
+		self::assertStringContainsString('sub=sub-ann', $this->calls[0][0]);
 	}
 
 	public function testNothingIsAskedWhenTheFeatureIsOffOrTheDocumentIsAnEnvelope(): void {
