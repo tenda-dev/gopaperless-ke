@@ -31,6 +31,8 @@ use OCA\Libresign\Listener\UserCreatedListener;
 use OCA\Libresign\Listener\UserDeletedListener;
 use OCA\Libresign\Listener\UserFirstTimeLoggedInListener;
 use OCA\Libresign\Listener\UserLoggedInListener;
+use OCA\Libresign\Listener\WhatsAppReceiptListener;
+use OCA\Libresign\Listener\WhatsAppRequestListener;
 use OCA\Libresign\Middleware\GlobalInjectionMiddleware;
 use OCA\Libresign\Middleware\InjectionMiddleware;
 use OCA\Libresign\Notification\Notifier;
@@ -134,6 +136,8 @@ class Application extends App implements IBootstrap {
 		// TwofactorGateway listener
 		$context->registerEventListener(SendSignNotificationEvent::class, TwofactorGatewayListener::class);
 		$context->registerEventListener(SignedEvent::class, TwofactorGatewayListener::class);
+		$context->registerEventListener(SignedEvent::class, WhatsAppReceiptListener::class);
+		$context->registerEventListener(SendSignNotificationEvent::class, WhatsAppRequestListener::class);
 
 		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
 		$context->registerEventListener(UserFirstTimeLoggedInEvent::class, UserFirstTimeLoggedInListener::class);

@@ -181,6 +181,12 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('mimi_passkey_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'mimi_passkey_enabled', true));
 		$this->initialState->provideInitialState('enrolment_site', $this->appConfig->getValueString(Application::APP_ID, 'enrolment_site', 'tendaworld'));
 
+		//	WHATSAPP SIGNING REQUESTS
+		//	Only whether an API key is stored reaches the page, never the key.
+		$this->initialState->provideInitialState('whatsapp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'whatsapp_enabled', false));
+		$this->initialState->provideInitialState('whatsapp_api_url', $this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_url', ''));
+		$this->initialState->provideInitialState('whatsapp_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'whatsapp_api_key', '') !== '');
+
 		//	SMS & TIARA API CONFIG
 		$this->initialState->provideInitialState('sms_otp_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sms_otp_enabled', false));
 		$this->initialState->provideInitialState('tiara_api_key_set', $this->appConfig->getValueString(Application::APP_ID, 'tiara_api_key', '') !== '');

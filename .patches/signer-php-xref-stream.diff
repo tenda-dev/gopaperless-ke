@@ -1,0 +1,14 @@
+--- a/src/Infrastructure/PdfCore/Xref/Service/XRef15Parser.php
++++ b/src/Infrastructure/PdfCore/Xref/Service/XRef15Parser.php
+@@ -14,7 +14,11 @@
+ {
+     public function parse(PdfDocument $pdfDocument, int $xrefPosition): XrefParseResult
+     {
++        // objectFromString() leaves the stream unread, so every PDF indexed by a
++        // cross-reference stream failed with "Failed to inflate FlateDecode
++        // stream". findObjectAtPos() attaches it; it needs the object number first.
+         $xrefObject = $pdfDocument->objectFromString(null, $xrefPosition);
++        $xrefObject = $pdfDocument->findObjectAtPos($xrefObject->getOid(), $xrefPosition);
+ 
+         if (! isset($xrefObject['Type']) || ($xrefObject['Type']->val() !== 'XRef')) {
+             throw new PdfCoreStructureException('Invalid xref table');

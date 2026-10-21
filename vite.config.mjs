@@ -16,6 +16,7 @@ export default createAppConfig({
 	login: resolve('src/login.ts'),
 	'legal-links': resolve('src/legal-links.ts'),
 	passkey: resolve('src/passkey.ts'),
+	'whatsapp-sign': resolve('src/whatsapp-sign.ts'),
 }, {
 	config: {
 		server: {

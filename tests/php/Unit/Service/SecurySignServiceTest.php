@@ -30,6 +30,8 @@ final class SecurySignServiceTest extends TestCase {
 			self::assertSame('/apps/libresign/', SecurySignService::returnPath($path));
 		}
 		self::assertSame('/apps/libresign/f/document?tab=sign', SecurySignService::returnPath('/apps/libresign/f/document?tab=sign'));
+		self::assertSame('/apps/libresign/p/sign/abc', SecurySignService::returnPath('/index.php/apps/libresign/p/sign/abc'));
+		self::assertSame('/apps/libresign/', SecurySignService::returnPath('/index.php//evil.test'));
 	}
 
 	public function testOnlyTheConfiguredOidcSessionIsIncluded(): void {

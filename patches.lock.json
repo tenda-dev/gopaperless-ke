@@ -1,5 +1,5 @@
 {
-    "_hash": "ab356137968384649e209979dfb836f69e34d12fc79faf576840ce575607c97d",
+    "_hash": "2af78fa434522baca9a874b43deea2d5a1285b5dfa703b2e590c1d19740c73b9",
     "patches": {
         "phpseclib/phpseclib": [
             {
@@ -7,6 +7,28 @@
                 "description": "Fix loadCRL method parameter type annotation",
                 "url": ".patches/x509-loadcrl-param-fix.diff",
                 "sha256": "958fb6e9d0c04742feed3b4807772787ca61544aecda4f849b1a5763bf6ac300",
+                "depth": 1,
+                "extra": {
+                    "provenance": "patches-file:patches.json"
+                }
+            }
+        ],
+        "jeidison/signer-php": [
+            {
+                "package": "jeidison/signer-php",
+                "description": "Write the signature field and DocMDP into the catalog's AcroForm and Perms, not onto the catalog",
+                "url": ".patches/signer-php-catalog-dictionaries.diff",
+                "sha256": "041d1397be6661e5e27f39637d2cac6362d70a27a9002f6ed20fd6cb863ea9b0",
+                "depth": 1,
+                "extra": {
+                    "provenance": "patches-file:patches.json"
+                }
+            },
+            {
+                "package": "jeidison/signer-php",
+                "description": "Read cross-reference streams, so PDFs indexed by one can be signed",
+                "url": ".patches/signer-php-xref-stream.diff",
+                "sha256": "35c34d05a84dd90fe80cac6497c74b8efeb09c8c3cee9e276dd141415407240a",
                 "depth": 1,
                 "extra": {
                     "provenance": "patches-file:patches.json"
