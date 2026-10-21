@@ -76,6 +76,9 @@ class AccountService {
 	 */
 	private const SIGNUP_BONUS_RECOVERY_CUTOFF = '2026-10-13T20:00:00+00:00';
 
+	private const PUBLIC_WORKFLOW_GROUP = 'gopaperless_public_workflow';
+	private const PUBLIC_WORKFLOW_USER_PREFIX = 'gopaperless_public_';
+
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
 	private ?\OCP\Files\File $fileToSign = null;
@@ -279,6 +282,10 @@ class AccountService {
 
 		$this->updateIdentifyMethodToAccount($signRequest->getId(), $email, $newUser->getUID());
 
+		// createToSign validates the invitation email against the sign request.
+		// Mark it as trusted for reconciliation with this local account.
+		$this->userConfig->setValueString($newUser->getUID(), Application::APP_ID, self::TRUSTED_EMAIL_KEY, $email);
+
 		if ($this->appConfig->getValueString('core', 'newUser.sendEmail', 'yes') === 'yes') {
 			try {
 				$emailTemplate = $this->newUserMail->generateTemplate($newUser, false);
@@ -375,6 +382,60 @@ class AccountService {
 			'email' => $newUser->getSystemEMailAddress(),
 			'uid' => $newUser->getUID(),
 		];
+	}
+
+	public function createTemporaryUser(): IUser {
+		$uid = self::PUBLIC_WORKFLOW_USER_PREFIX . UUIDUtil::getUUID();
+		$password = bin2hex(random_bytes(32));
+
+		$user = $this->userManager->createUser($uid, $password);
+
+		try {
+			$group = $this->groupManager->get(self::PUBLIC_WORKFLOW_GROUP);
+
+			if ($group === null) {
+				$group = $this->groupManager->createGroup(
+					self::PUBLIC_WORKFLOW_GROUP
+				);
+			}
+
+			$group->addUser($user);
+		} catch (\Throwable $e) {
+			$user->delete();
+
+			throw $e;
+		}
+
+		return $user;
+	}
+
+	public function deleteTemporaryUser(IUser $user): void {
+		if (!$this->isTemporaryUser($user)) {
+			throw new LibresignException(
+				'User is not a temporary GoPaperless user'
+			);
+		}
+
+		if (!$user->delete()) {
+			throw new LibresignException(
+				'Failed to delete temporary GoPaperless user'
+			);
+		}
+	}
+
+	public function isTemporaryUser(IUser $user): bool {
+		if (!str_starts_with(
+			$user->getUID(),
+			self::PUBLIC_WORKFLOW_USER_PREFIX
+		)) {
+			return false;
+		}
+
+		return in_array(
+			self::PUBLIC_WORKFLOW_GROUP,
+			$this->groupManager->getUserGroupIds($user),
+			true
+		);
 	}
 
 	/**
@@ -596,6 +657,107 @@ class AccountService {
 		$this->awardSignupBonus($userId);
 	}
 
+	/**
+	 * User-config key marking an email verified through a trusted invitation flow.
+	 *
+	 * Signer reconciliation uses this marker to trust the account's email.
+	 */
+	public const TRUSTED_EMAIL_KEY = 'trusted_email';
+
+	/** Email-recovery outcomes (see recoverMissingEmailFromUid). */
+	public const EMAIL_RECOVERY_SKIPPED_NO_USER = 'skipped_no_user';
+	public const EMAIL_RECOVERY_ALREADY_PRESENT = 'already_present';
+	public const EMAIL_RECOVERY_INVALID_UID = 'skipped_invalid_uid';
+	public const EMAIL_RECOVERY_RECOVERED = 'recovered';
+	public const EMAIL_RECOVERY_ERROR = 'error';
+
+	/**
+	 * Populate a missing account email from an email-shaped UID.
+	 *
+	 * Does not modify email-verification state. Trust is evaluated separately
+	 * during reconciliation. The operation is idempotent, never overwrites an
+	 * existing email, and never throws.
+	 */
+	public function recoverMissingEmailFromUid(?IUser $user): string {
+		if (!$user || $user->getUID() === '') {
+			return self::EMAIL_RECOVERY_SKIPPED_NO_USER;
+		}
+		$uid = $user->getUID();
+		try {
+			if (trim((string)($user->getEMailAddress() ?? '')) !== '') {
+				return self::EMAIL_RECOVERY_ALREADY_PRESENT;
+			}
+			if (!filter_var($uid, FILTER_VALIDATE_EMAIL)) {
+				return self::EMAIL_RECOVERY_INVALID_UID;
+			}
+			$user->setSystemEMailAddress($uid);
+			$this->logger->info('[AccountService] Recovered a missing account email from an email-shaped UID', ['user' => $uid]);
+			return self::EMAIL_RECOVERY_RECOVERED;
+		} catch (\Throwable $e) {
+			// Email recovery must not interrupt login or other account operations.
+			$this->logger->error('[AccountService] Could not recover a missing account email from the UID', [
+				'user' => $uid,
+				'exception' => $e,
+			]);
+			return self::EMAIL_RECOVERY_ERROR;
+		}
+	}
+
+	/** Default signer-group grant outcomes (see ensureDefaultSignerGroup). */
+	public const SIGNER_GROUP_SKIPPED = 'skipped';
+	public const SIGNER_GROUP_ALREADY_MEMBER = 'already_member';
+	public const SIGNER_GROUP_GRANTED = 'granted';
+	public const SIGNER_GROUP_ERROR = 'error';
+
+	/** Overridable per instance via the `default_signer_group` app setting. */
+	private const DEFAULT_SIGNER_GROUP = 'signers';
+
+	/**
+	 * Ensure the account belongs to the configured group allowed to request signing.
+	 *
+	 * Idempotent and enabled only when a trusted OIDC onboarding provider is
+	 * configured. Never grants admin privileges, creates the group if missing,
+	 * and never throws.
+	 */
+	public function ensureDefaultSignerGroup(?IUser $user): string {
+		if (!$user || $user->getUID() === '') {
+			return self::SIGNER_GROUP_SKIPPED;
+		}
+		// Enable automatic grouping when either the Mimi or SecurySign provider is configured.
+		$securysignProviderId = $this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0);
+		$mimiProviderId = $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0);
+		if ($securysignProviderId <= 0 && $mimiProviderId <= 0) {
+			return self::SIGNER_GROUP_SKIPPED;
+		}
+		$groupId = trim($this->appConfig->getValueString(Application::APP_ID, 'default_signer_group', self::DEFAULT_SIGNER_GROUP));
+		if ($groupId === '' || $groupId === 'admin') {
+			return self::SIGNER_GROUP_SKIPPED;
+		}
+		try {
+			$group = $this->groupManager->get($groupId) ?? $this->groupManager->createGroup($groupId);
+			if ($group === null) {
+				$this->logger->error('Could not create the default signer group', ['group' => $groupId]);
+				return self::SIGNER_GROUP_ERROR;
+			}
+			if ($group->inGroup($user)) {
+				return self::SIGNER_GROUP_ALREADY_MEMBER;
+			}
+			$group->addUser($user);
+			$this->logger->info('Added account to the default signer group', [
+				'user' => $user->getUID(),
+				'group' => $groupId,
+			]);
+			return self::SIGNER_GROUP_GRANTED;
+		} catch (\Throwable $e) {
+			$this->logger->error('Could not add an account to the default signer group', [
+				'user' => $user->getUID(),
+				'group' => $groupId,
+				'exception' => $e,
+			]);
+			return self::SIGNER_GROUP_ERROR;
+		}
+	}
+
 	public function getCertificateEngineName(): string {
 		return $this->certificateEngineFactory->getEngine()->getName();
 	}
@@ -798,6 +960,11 @@ class AccountService {
 		if (!$user) {
 			return false;
 		}
+
+		if ($this->isTemporaryUser($user)) {
+			return true;
+		}
+
 		$authorized = $this->appConfig->getValueArray(Application::APP_ID, 'groups_request_sign', ['admin']);
 		if (empty($authorized)) {
 			return false;

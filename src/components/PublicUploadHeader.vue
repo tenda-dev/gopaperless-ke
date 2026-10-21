@@ -12,7 +12,8 @@
 			alt="GoPaperless">
 
 		<div class="pu__bar-actions">
-			<button type="button"
+			<button v-if="showThemeToggle"
+				type="button"
 				class="pu__theme"
 				:aria-label="themeLabel"
 				:title="themeLabel"
@@ -38,9 +39,14 @@ import logoOnLight from '../../img/gopaperless-logo-ink.png'
 
 defineOptions({ name: 'PublicUploadHeader' })
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	theme: 'light' | 'dark'
-}>()
+	// The /p/upload landing offers a theme toggle; pages pinned to a single theme
+	// (the workflow, enforced light for now) hide it.
+	showThemeToggle?: boolean
+}>(), {
+	showThemeToggle: true,
+})
 
 defineEmits<{
 	signIn: []

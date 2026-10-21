@@ -214,6 +214,53 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
+	 * Public, anonymous document-preparation workflow page (/p/workflow).
+	 *
+	 * A dedicated Vue route served anonymously via the main SPA shell, like
+	 * /p/upload. Inert unless public_workflow_enabled is on; an anonymous visitor
+	 * hitting it while disabled is bounced to the app root. /p/upload is unchanged.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Workflow disabled \u2014 bounced to the app root
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/workflow')]
+	public function publicWorkflow(): TemplateResponse|RedirectResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false)) {
+			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
+		}
+
+		// Public app config (sponsorship_enabled, product pricing, …) — the SAME
+		// anonymous config the /p/upload landing exposes (getConfig(null)); no
+		// user-specific or privileged data. The public workflow's signer dialog and
+		// shell read sponsorship_enabled from here via loadState('libresign','config').
+		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
+
+		// Powers the shared public header's "Sign in" gate (PublicShell →
+		// PublicUploadHeader), identical to the /p/upload landing. Empty when no
+		// User OIDC provider is configured, in which case the client falls back to
+		// the default Nextcloud login.
+		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
+
+		Util::addScript(Application::APP_ID, 'libresign-main');
+		Util::addStyle(Application::APP_ID, 'libresign-main');
+		Util::addScript(Application::APP_ID, 'gopaperless');
+		Util::addStyle(Application::APP_ID, 'gopaperless');
+
+		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_PUBLIC);
+
+		$policy = new ContentSecurityPolicy();
+		$policy->addAllowedFrameDomain('\'self\'');
+		$policy->addAllowedWorkerSrcDomain("'self'");
+		$response->setContentSecurityPolicy($policy);
+
+		return $response;
+	}
+
+	/**
 	 * GoPaperless's Terms of Use and Data Protection Policy, as pages in the
 	 * landing's look. Anyone can read them, signed in or not, and the onboarding
 	 * gate lets them through (SecurySignMiddleware).

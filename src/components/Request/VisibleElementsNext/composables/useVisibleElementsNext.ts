@@ -13,11 +13,18 @@ import type { RailPage } from '../VePageRail.vue'
 import { FILE_STATUS } from '../../../../constants.js'
 import { useFilesStore } from '../../../../store/files.js'
 import { useSignerColors } from './useSignerColors'
-import { usePlacements, type PlacementRecord } from './usePlacements'
+import { usePlacements } from './usePlacements'
+import {
+	buildFilePagesMap as serialiseFilePagesMap,
+	buildRestorePlan as serialiseRestorePlan,
+	buildSeedRecords as serialiseSeedRecords,
+	buildVisibleElementsPayload as serialiseVisibleElements,
+	getPageHeightForFile as pageHeightForFile,
+	globalPageForFileLocal as globalPageForFileLocalIn,
+	toGlobalPage as toGlobalPageIn,
+} from '../shared/visibleElementsSerialization'
 import {
 	aggregateVisibleElementsByFiles,
-	findFileById,
-	getFileSigners,
 	getFileUrl,
 	getVisibleElementsFromDocument,
 	idsMatch,
@@ -29,7 +36,6 @@ import {
 	toVisibleElementsFile,
 	type EditableRequestChildFile,
 	type EditableRequestFile,
-	type EditableRequestSigner,
 	type EditableVisibleElementPayload,
 	type PdfObject,
 } from '../shared/visibleElementsShared'
@@ -182,23 +188,11 @@ const pdfReadOnly = computed(() => {
 const { colorMap, colorFor: paletteFor, registerKeys, reset: resetColors } = useSignerColors()
 
 function toGlobalPage(docIndex: number, localPageNumber: number): number {
-	for (const key of Object.keys(filePagesMap.value)) {
-		const info = filePagesMap.value[Number(key)]
-		if (info.fileIndex === docIndex) {
-			return info.startPage + localPageNumber - 1
-		}
-	}
-	return localPageNumber
+	return toGlobalPageIn(filePagesMap.value, docIndex, localPageNumber)
 }
 
 function globalPageForFileLocal(fileId: number, localPage: number): number {
-	for (const key of Object.keys(filePagesMap.value)) {
-		const info = filePagesMap.value[Number(key)]
-		if (info.id === fileId) {
-			return info.startPage + localPage - 1
-		}
-	}
-	return localPage
+	return globalPageForFileLocalIn(filePagesMap.value, fileId, localPage)
 }
 
 const {
@@ -452,24 +446,7 @@ async function showModal() {
 // Seed the placement model straight from the server visibleElements so counts
 // are correct the instant the modal opens, before the editor restores boxes.
 function seedPlacements() {
-	const elements = getVisibleElementsFromDocument(visibleElementsDocument.value)
-	const records: PlacementRecord[] = []
-	elements.forEach((element) => {
-		const normalised = normaliseVisibleElement(element)
-		if (!normalised) {
-			return
-		}
-		records.push({
-			id: `seed-${normalised.elementId}`,
-			signRequestId: normalised.signRequestId,
-			globalPage: globalPageForFileLocal(normalised.fileId, Number(normalised.coordinates.page)),
-			x: Number(normalised.coordinates.left),
-			y: Number(normalised.coordinates.top),
-			width: Number(normalised.coordinates.width ?? 0),
-			height: Number(normalised.coordinates.height ?? 0),
-		})
-	})
-	seed(records)
+	seed(serialiseSeedRecords(visibleElementsDocument.value, filePagesMap.value))
 }
 
 async function loadPdfEditorFiles() {
@@ -526,26 +503,7 @@ async function fetchFiles() {
 }
 
 function buildFilePagesMap() {
-	filePagesMap.value = {}
-	const filesToProcess = documentFiles.value
-	let currentPage = 1
-	filesToProcess.forEach((file, index) => {
-		const pageCount = file.metadata?.p || 0
-		const fileId = typeof file.id === 'number' ? file.id : Number(file.id)
-		if (!Number.isFinite(fileId)) {
-			currentPage += pageCount
-			return
-		}
-		for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-			filePagesMap.value[currentPage + pageIndex] = {
-				id: fileId,
-				fileIndex: index,
-				startPage: currentPage,
-				fileName: file.name ?? '',
-			}
-		}
-		currentPage += pageCount
-	})
+	filePagesMap.value = serialiseFilePagesMap(documentFiles.value)
 }
 
 function closeModal() {
@@ -566,9 +524,7 @@ function closeModal() {
 }
 
 function getPageHeightForFile(fileId: number, page: number) {
-	const filesToSearch = documentFiles.value
-	const fileInfo = filesToSearch.find(file => file.id === fileId)
-	return fileInfo?.metadata?.d?.[page - 1]?.h
+	return pageHeightForFile(documentFiles.value, fileId, page)
 }
 
 async function updateSigners() {
@@ -584,32 +540,7 @@ async function updateSigners() {
 		const pdfElements = getPdfElements()
 		const pdfEditorRef = getPdfEditor()
 
-		const fileIndexById = new Map<string, number>(filesToProcess.map((file, index) => [String(file.id), index]))
-		const elements = getVisibleElementsFromDocument(visibleElementsDocument.value)
-		const elementsByDoc = new Map<number, Array<{ element: VisibleElementRecord, signer: SignerSummaryRecord }>>()
-
-		elements.forEach((element) => {
-			const normalisedElement = normaliseVisibleElement(element)
-			if (!normalisedElement) {
-				return
-			}
-			const fileInfo = findFileById(visibleElementsFiles.value, normalisedElement.fileId)
-			if (!fileInfo) {
-				return
-			}
-			const docIndex = fileIndexById.get(String(normalisedElement.fileId))
-			if (docIndex === undefined) {
-				return
-			}
-			const signer = getFileSigners(fileInfo).find((item) => idsMatch(item.signRequestId, normalisedElement.signRequestId))
-			const signerRecord = toSignerSummaryRecord(signer)
-			if (!signerRecord) {
-				return
-			}
-			const items = elementsByDoc.get(docIndex) || []
-			items.push({ element: normalisedElement, signer: signerRecord })
-			elementsByDoc.set(docIndex, items)
-		})
+		const elementsByDoc = serialiseRestorePlan(visibleElementsDocument.value, visibleElementsFiles.value, filesToProcess)
 
 		for (const [docIndex, items] of elementsByDoc.entries()) {
 			if (typeof pdfElements?.selectPage === 'function') {
@@ -819,76 +750,13 @@ const handleShowVisibleElements: EventHandler<NextcloudEvent> = () => {
 // Ported verbatim from VisibleElements.vue. Do not alter the coordinate math
 // or the payload shape.
 function buildVisibleElements() {
-	const visibleElements: EditableVisibleElementPayload[] = []
-	const currentFiles = documentFiles.value
-	const pdfElements = getPdfElements()
-	const numDocuments = currentFiles.length
-
-	for (let docIndex = 0; docIndex < numDocuments; docIndex++) {
-		const objects = pdfElements?.getAllObjects(docIndex) || []
-		objects.forEach((object: PdfObject) => {
-			if (!object.signer) return
-
-			let globalPageNumber = object.pageNumber
-			const pageInfos = Object.keys(filePagesMap.value).map((page) => filePagesMap.value[Number(page)])
-			for (const info of pageInfos) {
-				if (info.fileIndex === docIndex) {
-					globalPageNumber = info.startPage + object.pageNumber - 1
-					break
-				}
-			}
-
-			const pageInfo = filePagesMap.value[globalPageNumber]
-			if (!pageInfo) {
-				return
-			}
-			const pageHeight = getPageHeightForFile(pageInfo.id, object.pageNumber)
-			if (!pageHeight) {
-				return
-			}
-
-			const coordinates = {
-				page: globalPageNumber,
-				width: Math.floor(object.width),
-				height: Math.floor(object.height),
-				left: Math.floor(object.x),
-				top: Math.floor(object.y),
-			}
-
-			const targetFileId = pageInfo.id
-			const pageNumber = globalPageNumber - pageInfo.startPage + 1
-
-			const fileInfo = currentFiles.find((file) => file.id === targetFileId)
-			if (!fileInfo || !Array.isArray(fileInfo.signers)) {
-				return
-			}
-			const envIdentifyMethods = Array.isArray(object.signer.identifyMethods) ? object.signer.identifyMethods : []
-			const envIdMethods = envIdentifyMethods.map((method: IdentifyMethodRecord) => `${method.method}:${method.value}`).sort().join('|')
-			const candidate = fileInfo.signers.find((signer: EditableRequestSigner) => {
-				const childIdentifyMethods = Array.isArray(signer.identifyMethods) ? signer.identifyMethods : []
-				const childIdMethods = childIdentifyMethods.map((method: IdentifyMethodRecord) => `${method.method}:${method.value}`).sort().join('|')
-				return childIdMethods === envIdMethods
-			})
-			const signRequestId = Number(candidate?.signRequestId)
-			if (!Number.isFinite(signRequestId)) {
-				return
-			}
-
-			visibleElements.push({
-				type: 'signature',
-				fileId: targetFileId,
-				signRequestId,
-				...(object.visibleElement?.elementId !== undefined ? { elementId: object.visibleElement.elementId } : {}),
-				coordinates: {
-					...coordinates,
-					page: pageNumber,
-				},
-			})
-		})
-	}
-
-	return visibleElements
+	return serialiseVisibleElements({
+		files: documentFiles.value,
+		filePagesMap: filePagesMap.value,
+		getObjects: (docIndex: number) => getPdfElements()?.getAllObjects(docIndex) || [],
+	})
 }
+
 
 async function handlePdfReady() {
 	try {

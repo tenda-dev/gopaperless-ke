@@ -17,6 +17,7 @@ use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\JSActions;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
+use OCA\Libresign\Service\RequesterReconciliationService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
@@ -59,6 +60,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		protected IL10N $l10n,
 		private IAccountManager $accountManager,
 		private AccountService $accountService,
+		private RequesterReconciliationService $reconciliationService,
 		protected SignFileService $signFileService,
 		private SignerElementsService $signerElementsService,
 		private Pkcs12Handler $pkcs12Handler,
@@ -381,6 +383,16 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 				Http::STATUS_NOT_FOUND
 			);
 		}
+		// Recover missing email addresses for accounts that predate the login fallback.
+		$this->accountService->recoverMissingEmailFromUid($user);
+
+		// Ensure accounts provisioned outside the normal creation flow receive the default signer group.
+		$this->accountService->ensureDefaultSignerGroup($user);
+
+		// Reconcile this user's eligible public-workflow signer requests after authentication.
+		$this->reconciliationService->reconcileAuthenticatedSigner($user);
+
+		$user = $this->userSession->getUser() ?? $user;
 		return new DataResponse(
 			[
 				'account' => [
@@ -605,4 +617,5 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 			], Http::STATUS_BAD_REQUEST);
 		}
 	}
+
 }

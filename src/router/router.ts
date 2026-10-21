@@ -42,6 +42,20 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/PublicUpload.vue'),
 	},
 	{
+		// Anonymous public document-preparation workflow. Renders the Concept B
+		// shell (PublicWorkflowShell). Still gated server-side by
+		// public_workflow_enabled in PageController::publicWorkflow — repointing
+		// this SPA route does not expose the flow in production. Named with the
+		// `External` suffix so router.beforeEach renders it directly
+		// (isExternal() flags every /p/ path as external).
+		path: '/p/workflow',
+		name: 'PublicWorkflowExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
+		component: () => import('../components/PublicWorkflow/PublicWorkflowShell.vue'),
+	},
+	{
 		// The Terms of Use and the Data Protection Policy, in the landing's look.
 		path: '/p/:document(terms|privacy)',
 		name: 'LegalExternal',
