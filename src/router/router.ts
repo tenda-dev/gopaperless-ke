@@ -47,8 +47,7 @@ const routes: RouteRecordRaw[] = [
 		// public_workflow_enabled in PageController::publicWorkflow — repointing
 		// this SPA route does not expose the flow in production. Named with the
 		// `External` suffix so router.beforeEach renders it directly
-		// (isExternal() flags every /p/ path as external). The original spike view
-		// (views/PublicWorkflow.vue) is retained but no longer routed.
+		// (isExternal() flags every /p/ path as external).
 		path: '/p/workflow',
 		name: 'PublicWorkflowExternal',
 		meta: {

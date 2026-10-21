@@ -284,6 +284,9 @@ class PublicWorkflowService {
 	 */
 	public function saveRequesterIdentity(PublicWorkflow $workflow, ?string $email, bool $isSigner): void {
 		$trimmed = $email !== null && trim($email) !== '' ? trim($email) : null;
+		if ($trimmed !== null && filter_var($trimmed, FILTER_VALIDATE_EMAIL) === false) {
+			throw new LibresignException('Enter a valid email address.');
+		}
 		$workflow->setRequesterEmail($trimmed);
 		$workflow->setRequesterIsSigner($isSigner);
 		$workflow->setUpdatedAt($this->timeFactory->getDateTime());

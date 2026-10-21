@@ -23,6 +23,23 @@ class PublicWorkflowMapper extends QBMapper {
 	}
 
 	/**
+	 * Expired ACTIVE workflows, oldest first, bounded so a backlogged run
+	 * stays cheap. Used by the cleanup job.
+	 *
+	 * @return list<PublicWorkflow>
+	 */
+	public function findExpiredActive(int $limit): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('status', $qb->createNamedParameter(PublicWorkflow::STATUS_ACTIVE)))
+			->andWhere($qb->expr()->lt('expires_at', $qb->createNamedParameter(new \DateTimeImmutable(), Types::DATETIME)))
+			->orderBy('expires_at', 'ASC')
+			->setMaxResults($limit);
+		return $this->findEntities($qb);
+	}
+
+	/**
 	 * Resolve a workflow by the SHA-256 hash of its capability token.
 	 *
 	 * The lookup is by the unique hash index; it does not interpret status or

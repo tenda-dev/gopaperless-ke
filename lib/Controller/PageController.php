@@ -214,43 +214,6 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * TECHNICAL SPIKE sibling page (dev only).
-	 *
-	 * A standalone, server-rendered page — deliberately NOT the Vue SPA and NOT
-	 * the /p/upload landing — for exercising the public-upload temporary-owner
-	 * spike by hand. It posts a plain multipart form to
-	 * PublicUploadSpikeController::upload(). Inert unless
-	 * public_upload_spike_enabled is switched on, in which case an anonymous
-	 * visitor hitting it is bounced to the app root.
-	 *
-	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
-	 *
-	 * 200: OK
-	 * 303: Spike disabled — bounced to the app root
-	 */
-	#[PublicPage]
-	#[NoCSRFRequired]
-	#[FrontpageRoute(verb: 'GET', url: '/p/upload-spike')]
-	public function publicUploadSpike(): TemplateResponse|RedirectResponse {
-		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_spike_enabled', false)) {
-			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
-		}
-
-		$response = new TemplateResponse(
-			Application::APP_ID,
-			'public_upload_spike',
-			['uploadUrl' => $this->urlGenerator->linkToRoute('libresign.publicUploadSpike.upload')],
-			TemplateResponse::RENDER_AS_PUBLIC,
-		);
-
-		$policy = new ContentSecurityPolicy();
-		$policy->addAllowedConnectDomain('\'self\'');
-		$response->setContentSecurityPolicy($policy);
-
-		return $response;
-	}
-
-	/**
 	 * Public, anonymous document-preparation workflow page (/p/workflow).
 	 *
 	 * A dedicated Vue route served anonymously via the main SPA shell, like

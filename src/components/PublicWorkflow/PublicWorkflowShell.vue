@@ -876,23 +876,29 @@ void status
 
 // --- landing hero: step preview + trust line ---
 .pw-hero { gap: 16px; }
+
 .pw-steps-preview {
 	display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
 	gap: 6px; margin: 0; padding: 0; list-style: none;
 }
+
 .pw-steps-preview li {
 	display: inline-flex; align-items: center; gap: 8px;
 	font-size: 0.82rem; font-weight: 500; color: var(--age-fg-muted);
 }
+
 .pw-steps-preview li:not(.pw-steps-preview__sep) {
 	padding: 9px 15px; border: 1px solid var(--age-border); border-radius: 999px; background: var(--age-surface-2);
 }
+
 .pw-steps-preview__n {
 	width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
 	font-family: var(--age-mono); font-size: 0.66rem; color: var(--age-fg-faint);
 	background: var(--age-surface); border: 1px solid var(--age-border-strong);
 }
+
 .pw-steps-preview__sep { color: var(--age-fg-faint); }
+
 .pw-trust {
 	display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
 	margin: 0; font-size: 0.78rem; color: var(--age-fg-muted);
@@ -912,8 +918,11 @@ void status
 	margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
 	color: var(--age-fg-faint);
 }
+
 .pw-emailfield { display: flex; flex-direction: column; gap: 7px; }
+
 .pw-emailfield__label { font-size: 0.78rem; font-weight: 600; color: var(--age-fg-muted); }
+
 .pw-emailfield__input {
 	border: 1px solid var(--age-border-strong); border-radius: var(--age-radius-sm);
 	padding: 11px 13px; font: inherit; font-size: 0.95rem; width: 100%; max-width: 420px;
@@ -927,6 +936,7 @@ void status
 	margin: 0; font-size: 0.84rem; color: var(--age-fg-muted);
 	strong { color: var(--age-fg); font-weight: 600; }
 }
+
 .pw-selfsign__change {
 	border: none; background: transparent; cursor: pointer; font: inherit;
 	font-size: 0.82rem; color: var(--age-green-text); text-decoration: underline; text-underline-offset: 2px; padding: 0 2px;
