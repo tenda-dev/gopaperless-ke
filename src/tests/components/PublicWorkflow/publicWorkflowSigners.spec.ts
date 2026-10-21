@@ -129,4 +129,26 @@ describe('public workflow signer persistence', () => {
 			'first@example.com', 'second@example.com', 'third@example.com',
 		])
 	})
+
+	it('Identify step persists the email with isSigner=false and mirrors it (no reload)', async () => {
+		api.saveRequester.mockResolvedValue(undefined)
+		const store = usePublicWorkflow()
+		// onIdentifyContinue persists with isSigner=false: self-signing is a
+		// separate, opt-in decision made later on the signers step.
+		await store.saveRequester('bruno@gopaperless.co.ke', false)
+		expect(api.saveRequester).toHaveBeenCalledWith('bruno@gopaperless.co.ke', false)
+		expect(store.requesterEmail.value).toBe('bruno@gopaperless.co.ke')
+		expect(store.requesterIsSigner.value).toBe(false)
+	})
+
+	it('does not mirror the requester email when persistence fails (Identify cannot advance)', async () => {
+		api.saveRequester.mockRejectedValue(new Error('network'))
+		const store = usePublicWorkflow()
+		await expect(store.saveRequester('bruno@gopaperless.co.ke', false)).rejects.toThrow()
+		// The shell gates advancing to signers on this resolving; the store stays
+		// unset so a failed save never silently carries a half-captured requester
+		// forward.
+		expect(store.requesterEmail.value).toBeNull()
+		expect(store.requesterIsSigner.value).toBe(false)
+	})
 })

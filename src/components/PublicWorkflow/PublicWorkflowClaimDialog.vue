@@ -20,11 +20,11 @@
 		@update:open="onDialogToggle">
 		<div class="pwc">
 			<p class="pwc__lead">
-				{{ t('libresign', 'You prepared this document before signing in. Transfer it to this account to send your signature requests.') }}
+				{{ t('libresign', 'We’ll move this draft into your account and open it so you can review and send. Nothing is sent yet.') }}
 			</p>
 
 			<NcNoteCard v-if="status.alreadyClaimedByMe" type="success">
-				{{ t('libresign', 'You have already claimed this document. Continue to send your signature requests.') }}
+				{{ t('libresign', 'You’ve already claimed this document. Continue to review and send it from your account.') }}
 			</NcNoteCard>
 			<NcNoteCard v-else-if="mismatch" type="warning">
 				{{ t('libresign', 'This draft was prepared with the email {requester}, which is different from your account email {account}. You can still claim it with this account, or switch accounts.', { requester: status.requesterEmail || '—', account: status.accountEmail || '—' }) }}
@@ -48,7 +48,7 @@
 					<template v-if="submitting" #icon>
 						<NcLoadingIcon :size="20" />
 					</template>
-					{{ status.alreadyClaimedByMe ? t('libresign', 'Continue') : t('libresign', 'Send signature requests') }}
+					{{ status.alreadyClaimedByMe ? t('libresign', 'Continue') : t('libresign', 'Transfer & continue') }}
 				</NcButton>
 			</div>
 		</div>
@@ -123,12 +123,15 @@ async function confirm(): Promise<void> {
 .pwc {
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
-	padding: 4px 2px 2px;
+	gap: 16px;
+	// Comfortable internal padding (was 4px 2px 2px), matching the AdminGrants
+	// GrantCreditDialog finish so this trust-critical modal reads as deliberate.
+	padding: 22px;
 
 	&__lead {
 		margin: 0;
 		font-size: 0.95rem;
+		line-height: 1.55;
 		color: var(--color-main-text);
 	}
 	&__err {

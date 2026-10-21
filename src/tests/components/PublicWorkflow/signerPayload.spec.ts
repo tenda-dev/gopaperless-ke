@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { buildSignerPayload, isDuplicateEmail, MAX_SIGNER_MESSAGE, withRequesterSigner } from '../../../components/PublicWorkflow/signerPayload'
+import { buildSignerPayload, isDuplicateEmail, isPlausibleEmail, MAX_SIGNER_MESSAGE, withRequesterSigner } from '../../../components/PublicWorkflow/signerPayload'
 import type { SignerDraft } from '../../../store/publicWorkflow'
 
 const row = (o: Partial<SignerDraft> = {}): SignerDraft => ({ displayName: 'Grace', email: 'g@example.com', ...o })
@@ -99,5 +99,21 @@ describe('withRequesterSigner', () => {
 		const input = manual()
 		withRequesterSigner(input, { requesterEmail: 'me@x.com', requesterIsSigner: true })
 		expect(input).toHaveLength(2)
+	})
+})
+
+describe('isPlausibleEmail (requester Identify + review gating)', () => {
+	it('accepts a plausible address, trimming surrounding whitespace', () => {
+		expect(isPlausibleEmail('name@example.com')).toBe(true)
+		expect(isPlausibleEmail('  bruno@gopaperless.co.ke  ')).toBe(true)
+	})
+
+	it('rejects empty, partial, or malformed input', () => {
+		expect(isPlausibleEmail('')).toBe(false)
+		expect(isPlausibleEmail('   ')).toBe(false)
+		expect(isPlausibleEmail('bruno@')).toBe(false)
+		expect(isPlausibleEmail('bruno@localhost')).toBe(false)
+		expect(isPlausibleEmail('bruno gopaperless.co.ke')).toBe(false)
+		expect(isPlausibleEmail('a@b@c.com')).toBe(false)
 	})
 })

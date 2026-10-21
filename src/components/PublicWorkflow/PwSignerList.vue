@@ -4,12 +4,17 @@
 -->
 <template>
 	<div class="pw-signers">
-		<PwSignerRow v-for="(signer, index) in signers"
-			:key="signer.signRequestId ?? index"
-			:signer="signer"
-			:is-requester="isRequesterRow(signer)"
-			@edit="$emit('edit', index)"
-			@remove="$emit('remove', index)" />
+		<!-- Blank rows (e.g. the store's seeded editable row) are never rendered as
+		     chips; the shell shows the contextual empty-state guidance instead. The
+		     v-for index stays the signers-array index, so edit/remove still act on
+		     the correct persisted row and the save payload is unchanged. -->
+		<template v-for="(signer, index) in signers" :key="signer.signRequestId ?? index">
+			<PwSignerRow v-if="signer.email.trim()"
+				:signer="signer"
+				:is-requester="isRequesterRow(signer)"
+				@edit="$emit('edit', index)"
+				@remove="$emit('remove', index)" />
+		</template>
 		<button type="button" class="pw-signers__add" @click="$emit('add')">
 			<NcIconSvgWrapper :path="mdiAccountPlusOutline" :size="16" />
 			{{ t('libresign', 'Add a signer') }}

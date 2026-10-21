@@ -22,6 +22,16 @@ export function isDuplicateEmail(email: string, existingEmails: string[]): boole
 	return value.length > 0 && existingEmails.some((e) => e.trim().toLowerCase() === value)
 }
 
+/**
+ * Minimal, forgiving plausibility check for an email address
+ * (something@something.tld). Server-side validation stays authoritative; this
+ * only gates client affordances — the requester Identify step's Continue and the
+ * review CTA — so both apply identical rules.
+ */
+export function isPlausibleEmail(email: string): boolean {
+	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
 export interface PublicSignerPayload {
 	displayName: string
 	identifyMethods: Array<{ method: string, value: string }>

@@ -30,7 +30,7 @@
 				<NcIconSvgWrapper class="pw-shell__state-ic" :path="mdiClockAlertOutline" :size="40" />
 				<h2 class="pw-shell__state-title">{{ t('libresign', 'This draft has expired') }}</h2>
 				<p class="pw-muted">{{ t('libresign', 'Drafts are kept for 72 hours. This one is no longer available — you can start a fresh one.') }}</p>
-				<button type="button" class="pw-btn pw-btn--primary" @click="start">{{ t('libresign', 'Start a new draft') }}</button>
+				<button type="button" class="pw-btn pw-btn--primary" @click="onStart">{{ t('libresign', 'Start a new draft') }}</button>
 			</div>
 
 			<!-- error -->
@@ -39,11 +39,19 @@
 				<button type="button" class="pw-btn" @click="resume">{{ t('libresign', 'Try again') }}</button>
 			</div>
 
-			<!-- idle -->
-			<div v-else-if="phase === 'idle'" class="pw-shell__state">
+			<!-- idle: compact centred hero -->
+			<div v-else-if="phase === 'idle'" class="pw-shell__state pw-hero">
 				<h1 class="pw-shell__state-title">{{ t('libresign', 'Prepare a document to sign') }}</h1>
-				<p class="pw-muted">{{ t('libresign', 'No account needed. Your draft is kept privately and never sent until you choose to.') }}</p>
-				<button type="button" class="pw-btn pw-btn--primary" @click="start">{{ t('libresign', 'Start') }}</button>
+				<p class="pw-muted">{{ t('libresign', 'No account needed. Add your document, the people who sign and where they sign — it stays a private draft until you choose to send it.') }}</p>
+				<ol class="pw-steps-preview" aria-hidden="true">
+					<li><span class="pw-steps-preview__n">1</span>{{ t('libresign', 'Prepare') }}</li>
+					<li class="pw-steps-preview__sep">→</li>
+					<li><span class="pw-steps-preview__n">2</span>{{ t('libresign', 'Fields') }}</li>
+					<li class="pw-steps-preview__sep">→</li>
+					<li><span class="pw-steps-preview__n">3</span>{{ t('libresign', 'Review') }}</li>
+				</ol>
+				<button type="button" class="pw-btn pw-btn--primary" @click="onStart">{{ t('libresign', 'Start') }}</button>
+				<p class="pw-trust">{{ t('libresign', 'No account needed · Private draft · Nothing sent until you choose') }}</p>
 			</div>
 
 			<!-- ready -->
@@ -62,18 +70,82 @@
 				</nav>
 
 				<main class="pw-shell__body">
-					<!-- PREPARE: document + signers together -->
+					<!-- PREPARE: upload → identify (requester email) → signers.
+					     All three are the single ribbon step "Prepare"; identify is an
+					     intermediate view, NOT a fourth progress stage. -->
 					<template v-if="activeView === 'prepare'">
 						<PwReassurance />
 
-						<section v-if="!hasDocument" class="pw-card">
-							<h2 class="pw-card__title">{{ t('libresign', 'Upload your document') }}</h2>
-							<p class="pw-muted">{{ t('libresign', 'Choose a PDF. It stays a private draft — nothing is sent or signed yet.') }}</p>
-							<input ref="fileInput" type="file" accept="application/pdf" class="pw-file" @change="onPick">
-							<p v-if="uploadError" class="pw-err">{{ uploadError }}</p>
-							<div v-if="uploading" class="pw-progress"><span :style="{ width: progress + '%' }" /></div>
-						</section>
+						<p v-if="justResumed" class="pw-resume" role="status">
+							<NcIconSvgWrapper :path="mdiClockOutline" :size="16" />
+							<span>{{ expiresLabel ? t('libresign', 'We kept your draft. {e}.', { e: expiresLabel }) : t('libresign', 'We kept your draft.') }}</span>
+						</p>
 
+						<!-- UPLOAD -->
+						<template v-if="prepareView === 'upload'">
+							<section v-if="!hasDocument" class="pw-card">
+								<h2 class="pw-card__title">{{ t('libresign', 'Upload your document') }}</h2>
+								<p class="pw-muted">{{ t('libresign', 'Choose a PDF. It stays a private draft — nothing is sent or signed yet.') }}</p>
+								<input ref="fileInput" type="file" accept="application/pdf" class="pw-file" @change="onPick">
+								<p v-if="uploadError" class="pw-err">{{ uploadError }}</p>
+								<div v-if="uploading" class="pw-progress"><span :style="{ width: progress + '%' }" /></div>
+							</section>
+							<template v-else>
+								<PwDocumentCard :name="documentName"
+									:pages="documentPages"
+									:expiry="expiresLabel"
+									:signer-count="enteredSignerCount"
+									@replace="onReplace" />
+								<p v-if="uploadError" class="pw-err">{{ uploadError }}</p>
+								<div class="pw-card__actions">
+									<button type="button" class="pw-btn pw-btn--primary pw-card__next" @click="prepareView = 'identify'">{{ t('libresign', 'Continue') }} →</button>
+								</div>
+							</template>
+						</template>
+
+						<!-- IDENTIFY: requester email (contact only; not a signer, not an account) -->
+						<template v-else-if="prepareView === 'identify'">
+							<PwDocumentCard :name="documentName"
+								:pages="documentPages"
+								:expiry="expiresLabel"
+								:signer-count="enteredSignerCount"
+								@replace="onReplace" />
+							<section class="pw-card">
+								<p class="pw-prepstep">{{ t('libresign', 'Step 2 of preparation') }}</p>
+								<h2 class="pw-card__title">{{ t('libresign', 'What’s your email address?') }}</h2>
+								<p class="pw-muted">{{ t('libresign', 'Tell us which email address you’re using to prepare this document. You can easily add yourself as a signer in the next step.') }}</p>
+								<div class="pw-emailfield">
+									<label class="pw-emailfield__label" for="pw-req-email">{{ t('libresign', 'Your email') }}</label>
+									<input id="pw-req-email"
+										ref="reqEmailInput"
+										v-model.trim="requesterEmail"
+										type="email"
+										class="pw-emailfield__input"
+										:class="{ 'is-invalid': requesterEmailShowError }"
+										autocomplete="email"
+										inputmode="email"
+										:aria-invalid="requesterEmailShowError || undefined"
+										aria-describedby="pw-req-note pw-req-err"
+										:placeholder="t('libresign', 'name@example.com')"
+										@blur="requesterTouched = true"
+										@keyup.enter="onIdentifyContinue">
+									<p v-if="requesterEmailShowError" id="pw-req-err" class="pw-err">{{ t('libresign', 'Enter a valid email address, like name@example.com.') }}</p>
+									<p id="pw-req-note" class="pw-selfsign__note">{{ t('libresign', 'This is your contact email for preparing the draft. Entering it doesn’t verify the address, create an account, or send anything.') }}</p>
+								</div>
+								<div class="pw-card__actions">
+									<button type="button" class="pw-btn pw-btn--ghost" @click="prepareView = 'upload'">← {{ t('libresign', 'Back') }}</button>
+									<span v-if="identifyError" class="pw-err">{{ identifyError }}</span>
+									<button type="button"
+										class="pw-btn pw-btn--primary pw-card__next"
+										:disabled="savingRequester || !requesterEmailValid"
+										@click="onIdentifyContinue">
+										{{ savingRequester ? t('libresign', 'Saving…') : t('libresign', 'Continue') }}
+									</button>
+								</div>
+							</section>
+						</template>
+
+						<!-- SIGNERS -->
 						<template v-else>
 							<PwDocumentCard :name="documentName"
 								:pages="documentPages"
@@ -85,28 +157,24 @@
 								<div class="pw-card__head">
 									<h2 class="pw-card__title">{{ t('libresign', 'Who needs to sign?') }}</h2>
 								</div>
-								<PwContextualHint v-if="signers.length === 0">
+								<p class="pw-muted">{{ t('libresign', 'Signers are the people who will sign this document. You’re preparing it as {email} — your contact email, kept separate from the signers below.', { email: requesterEmail || t('libresign', 'your email') }) }}</p>
+								<PwContextualHint v-if="enteredSignerCount === 0">
 									{{ t('libresign', 'Add the people who will sign. We only use these details when you choose to send — nothing is sent now.') }}
 								</PwContextualHint>
 								<PwSignerList :signers="signers" :requester-email="requesterIsSigner ? requesterEmail : ''" @add="openAdd(null)" @edit="openAdd($event)" @remove="removeSigner($event)" />
 								<div class="pw-selfsign">
+									<p class="pw-selfsign__ctx">
+										{{ t('libresign', 'Preparing as') }} <strong>{{ requesterEmail || t('libresign', 'your email') }}</strong>.
+										<button type="button" class="pw-selfsign__change" @click="prepareView = 'identify'">{{ t('libresign', 'Change') }}</button>
+									</p>
 									<label class="pw-selfsign__check">
 										<input v-model="requesterIsSigner" type="checkbox">
 										<span>{{ t('libresign', 'I will also sign this document') }}</span>
 									</label>
-									<div class="pw-selfsign__field">
-										<label class="pw-selfsign__label" for="pw-self-email">{{ t('libresign', 'Your email') }}</label>
-										<input id="pw-self-email"
-											v-model.trim="requesterEmail"
-											type="email"
-											class="pw-selfsign__input"
-											autocomplete="email"
-											:placeholder="t('libresign', 'name@example.com')">
-										<p class="pw-selfsign__note">{{ t('libresign', 'Used to send your signature requests and, if you sign, to add you as a signer. Nothing is sent now.') }}</p>
-									</div>
+									<p class="pw-selfsign__note">{{ t('libresign', 'Optional. Tick this to add yourself as a signer using the email above — you won’t need to retype it. Leave it off to request signatures from others only.') }}</p>
 									<p v-if="requesterPending" class="pw-selfsign__pending">
 										<NcIconSvgWrapper :path="mdiAccountPlusOutline" :size="15" />
-										<span>{{ t('libresign', 'You’ll be added as a signer when you save.') }}</span>
+										<span>{{ t('libresign', 'You’ll be added as a signer ({email}) when you save.', { email: requesterEmail }) }}</span>
 									</p>
 								</div>
 								<div v-if="sponsorshipEnabled" class="pw-help">
@@ -187,7 +255,7 @@
 										<span class="pw-sumrow__k">{{ documentName }}</span>
 										<span class="pw-sumrow__v">{{ documentPages > 0 ? t('libresign', '{n} page(s) · Draft', { n: documentPages }) : t('libresign', 'Draft') }}</span>
 									</span>
-									<button type="button" class="pw-sumrow__edit" @click="goToView('prepare')">{{ t('libresign', 'Change') }}</button>
+									<button type="button" class="pw-sumrow__edit" @click="goToPrepareUpload">{{ t('libresign', 'Change') }}</button>
 								</li>
 								<li class="pw-sumrow">
 									<NcIconSvgWrapper :path="mdiAccountGroupOutline" :size="18" />
@@ -195,7 +263,7 @@
 										<span class="pw-sumrow__k">{{ t('libresign', '{n} signer(s)', { n: enteredSignerCount }) }}</span>
 										<span v-if="signerNames" class="pw-sumrow__v">{{ signerNames }}</span>
 									</span>
-									<button type="button" class="pw-sumrow__edit" @click="goToView('prepare')">{{ t('libresign', 'Edit') }}</button>
+									<button type="button" class="pw-sumrow__edit" @click="goToPrepareSigners">{{ t('libresign', 'Edit') }}</button>
 								</li>
 								<li class="pw-sumrow">
 									<NcIconSvgWrapper :path="mdiFormatColorFill" :size="18" />
@@ -216,14 +284,14 @@
 									<span v-if="requesterEmailValid" class="pw-claim__recap-v">
 										{{ requesterEmail }}<template v-if="requesterIsSigner"> · {{ t('libresign', 'you will also sign') }}</template>
 									</span>
-									<span v-else class="pw-claim__recap-missing">{{ t('libresign', 'Add your email on the signers step') }}</span>
-									<button type="button" class="pw-sumrow__edit" @click="goToView('prepare')">{{ t('libresign', 'Edit') }}</button>
+									<span v-else class="pw-claim__recap-missing">{{ t('libresign', 'Add your email to continue') }}</span>
+									<button type="button" class="pw-sumrow__edit" @click="goToPrepareIdentify">{{ requesterEmailValid ? t('libresign', 'Edit') : t('libresign', 'Add your email') }}</button>
 								</div>
 								<button type="button"
 									class="pw-btn pw-btn--primary pw-claim__cta"
 									:disabled="signingIn || !requesterEmailValid"
 									@click="signInToSend">
-									{{ signingIn ? t('libresign', 'Redirecting…') : t('libresign', 'Sign in to send your signature requests') }}
+									{{ signingIn ? t('libresign', 'Redirecting…') : t('libresign', 'Sign in to continue') }}
 								</button>
 								<p v-if="claimError" class="pw-err">{{ claimError }}</p>
 								<p class="pw-savenote">{{ t('libresign', 'You’ll sign in to finish. Your signature requests are sent only after you confirm on the next step.') }}</p>
@@ -257,6 +325,7 @@ import {
 	mdiCheckCircleOutline,
 	mdiChevronDown,
 	mdiClockAlertOutline,
+	mdiClockOutline,
 	mdiFileDocumentOutline,
 	mdiFormatColorFill,
 	mdiHelpCircleOutline,
@@ -276,7 +345,7 @@ import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
 import PublicShell from '../PublicShell.vue'
 import { usePublicWorkflow, type SignerDraft } from '../../store/publicWorkflow'
-import { buildSignerPayload, withRequesterSigner } from './signerPayload'
+import { buildSignerPayload, isPlausibleEmail, withRequesterSigner } from './signerPayload'
 
 defineOptions({ name: 'PublicWorkflowShell' })
 
@@ -305,6 +374,14 @@ const addOpen = ref(false)
 const editIndex = ref<number | null>(null)
 const editor = ref<InstanceType<typeof PublicVisibleElements> | null>(null)
 const activeView = ref<View>('prepare')
+// Prepare is a single ribbon step with three intermediate views, in order.
+const prepareView = ref<'upload' | 'identify' | 'signers'>('upload')
+const reqEmailInput = ref<HTMLInputElement | null>(null)
+const savingRequester = ref(false)
+const identifyError = ref('')
+const requesterTouched = ref(false)
+const justResumed = ref(false)
+const startedThisSession = ref(false)
 const helpOpen = ref(false)
 const requesterEmail = ref('')
 const requesterIsSigner = ref(false)
@@ -345,12 +422,25 @@ watch(requesterIsSigner, (on) => {
 	if (i !== -1) { signers.value.splice(i, 1) }
 })
 
-onMounted(resume)
+// Resume first, then land on the right Prepare sub-view: a restored draft with a
+// document but no requester email goes to Identify; with an email, straight to
+// Signers. A fresh (non-resumed) session starts at Upload. requesterEmail is read
+// from the store (authoritative) rather than the local ref, which the watch above
+// may not have copied yet this tick.
+onMounted(async () => {
+	await resume()
+	if (phase.value === 'ready' && hasDocument.value) {
+		justResumed.value = !startedThisSession.value
+		prepareView.value = storeRequesterEmail.value ? 'signers' : 'identify'
+	} else {
+		prepareView.value = 'upload'
+	}
+})
 
 // Never strand the viewer on a stage that no longer applies: without a document
-// there is nothing to place or review, so fall back to Prepare.
+// there is nothing to place or review, so fall back to Prepare/Upload.
 watch(hasDocument, (has) => {
-	if (!has) { activeView.value = 'prepare' }
+	if (!has) { activeView.value = 'prepare'; prepareView.value = 'upload' }
 })
 
 // --- derived ---
@@ -359,7 +449,10 @@ const documentPages = computed(() => Number((doc.value as { metadata?: { p?: num
 const hasEnteredSigner = computed(() => signers.value.some((s) => s.email.trim()))
 // Requester email gate for the Review CTA: a minimal, forgiving email shape
 // (something@something.tld). Server-side validation remains authoritative.
-const requesterEmailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail.value.trim()))
+const requesterEmailValid = computed(() => isPlausibleEmail(requesterEmail.value))
+// Inline error shows only once the field has content and has been touched, so an
+// untouched/empty field is never pre-flagged (Continue is disabled regardless).
+const requesterEmailShowError = computed(() => requesterTouched.value && requesterEmail.value.trim().length > 0 && !requesterEmailValid.value)
 // Self-signing requested but the requester is not yet a saved signer row — show
 // a one-line pending hint rather than a second chip (the badged list row covers
 // the saved case, deduping against a manually added matching email).
@@ -379,24 +472,25 @@ const signerNames = computed(() => signers.value
 const editRow = computed<SignerDraft | null>(() => (editIndex.value !== null ? signers.value[editIndex.value] ?? null : null))
 const otherSigners = computed(() => signers.value.filter((_, i) => i !== editIndex.value && signers.value[i].email.trim()))
 
+// Approved three-step model. Document upload, requester-email (Identify) and
+// signer configuration all live within "Prepare".
 const stepLabels = computed(() => [
-	t('libresign', 'Document'),
-	t('libresign', 'Signers'),
+	t('libresign', 'Prepare'),
 	t('libresign', 'Fields'),
 	t('libresign', 'Review'),
 ])
-// Progress (completion) — drives the done checkmarks.
+// Progress (completion) — drives the done checkmarks. Prepare is complete once
+// signers are saved (ready to place fields).
 const currentStep = computed(() => {
-	if (!hasDocument.value) { return 0 }
-	if (!hasSavedSigners.value) { return 1 }
-	if (!hasPlacedFields.value) { return 2 }
-	return 3
+	if (!hasSavedSigners.value) { return 0 }
+	if (!hasPlacedFields.value) { return 1 }
+	return 2
 })
 // Which ribbon step the current view maps to — drives the highlight.
 const activeStepIndex = computed(() => {
-	if (activeView.value === 'fields') { return 2 }
-	if (activeView.value === 'review') { return 3 }
-	return hasDocument.value ? 1 : 0
+	if (activeView.value === 'fields') { return 1 }
+	if (activeView.value === 'review') { return 2 }
+	return 0
 })
 
 const expiresLabel = computed(() => {
@@ -412,7 +506,39 @@ function goToView(view: View): void {
 	activeView.value = view
 }
 function goToStep(i: number): void {
-	activeView.value = i >= 3 ? 'review' : i === 2 ? 'fields' : 'prepare'
+	activeView.value = i >= 2 ? 'review' : i === 1 ? 'fields' : 'prepare'
+}
+// Prepare sub-view jumps used by the Review summary's edit affordances.
+function goToPrepareUpload(): void { activeView.value = 'prepare'; prepareView.value = 'upload' }
+function goToPrepareIdentify(): void { activeView.value = 'prepare'; prepareView.value = 'identify' }
+function goToPrepareSigners(): void { activeView.value = 'prepare'; prepareView.value = 'signers' }
+
+// Start a fresh draft (distinguished from a cookie resume so the "we kept your
+// draft" line never shows for a brand-new session).
+async function onStart(): Promise<void> {
+	startedThisSession.value = true
+	justResumed.value = false
+	prepareView.value = 'upload'
+	await start()
+}
+
+// Identify step → persist the requester email as DRAFT contact info and advance
+// to signers. isSigner is intentionally false here: self-signing is a separate,
+// opt-in decision made on the signers step (folded in at saveSigners via
+// withRequesterSigner). Persistence must succeed before advancing.
+async function onIdentifyContinue(): Promise<void> {
+	requesterTouched.value = true
+	identifyError.value = ''
+	if (!requesterEmailValid.value || savingRequester.value) { return }
+	savingRequester.value = true
+	try {
+		await saveRequester(requesterEmail.value.trim(), false)
+		prepareView.value = 'signers'
+	} catch {
+		identifyError.value = t('libresign', 'Could not save your email. Please try again.')
+	} finally {
+		savingRequester.value = false
+	}
 }
 
 // --- upload ---
@@ -426,6 +552,8 @@ async function onPick(ev: Event): Promise<void> {
 		await upload(file, (e) => {
 			if (e.total) { progress.value = Math.round((e.loaded / e.total) * 100) }
 		})
+		// Success → move straight into the requester-email (Identify) step.
+		if (hasDocument.value) { prepareView.value = 'identify' }
 	} catch {
 		uploadError.value = errorMessage.value || t('libresign', 'Upload failed')
 	} finally {
@@ -746,6 +874,66 @@ void status
 	.pw-claim__cta { align-self: stretch; }
 }
 
+// --- landing hero: step preview + trust line ---
+.pw-hero { gap: 16px; }
+.pw-steps-preview {
+	display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+	gap: 6px; margin: 0; padding: 0; list-style: none;
+}
+.pw-steps-preview li {
+	display: inline-flex; align-items: center; gap: 8px;
+	font-size: 0.82rem; font-weight: 500; color: var(--age-fg-muted);
+}
+.pw-steps-preview li:not(.pw-steps-preview__sep) {
+	padding: 9px 15px; border: 1px solid var(--age-border); border-radius: 999px; background: var(--age-surface-2);
+}
+.pw-steps-preview__n {
+	width: 17px; height: 17px; border-radius: 50%; display: grid; place-items: center;
+	font-family: var(--age-mono); font-size: 0.66rem; color: var(--age-fg-faint);
+	background: var(--age-surface); border: 1px solid var(--age-border-strong);
+}
+.pw-steps-preview__sep { color: var(--age-fg-faint); }
+.pw-trust {
+	display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
+	margin: 0; font-size: 0.78rem; color: var(--age-fg-muted);
+}
+
+// --- resumed-draft welcome line ---
+.pw-resume {
+	display: flex; align-items: center; gap: 9px; margin: 0;
+	padding: 10px 12px; border-radius: var(--age-radius-sm);
+	background: var(--age-green-dim); border: 1px solid var(--age-green-border);
+	font-size: 0.82rem; color: var(--age-green-text);
+	:deep(span.icon-vue) { color: var(--age-green-text); flex: none; }
+}
+
+// --- requester-email (Identify) step ---
+.pw-prepstep {
+	margin: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+	color: var(--age-fg-faint);
+}
+.pw-emailfield { display: flex; flex-direction: column; gap: 7px; }
+.pw-emailfield__label { font-size: 0.78rem; font-weight: 600; color: var(--age-fg-muted); }
+.pw-emailfield__input {
+	border: 1px solid var(--age-border-strong); border-radius: var(--age-radius-sm);
+	padding: 11px 13px; font: inherit; font-size: 0.95rem; width: 100%; max-width: 420px;
+	background: var(--age-surface); color: var(--age-fg);
+	&:focus-visible { outline: none; border-color: var(--age-primary); box-shadow: 0 0 0 2px var(--age-focus-ring); }
+	&.is-invalid { border-color: var(--age-err-text); box-shadow: 0 0 0 2px var(--age-err-bg); }
+}
+
+// --- requester context on the signers step ---
+.pw-selfsign__ctx {
+	margin: 0; font-size: 0.84rem; color: var(--age-fg-muted);
+	strong { color: var(--age-fg); font-weight: 600; }
+}
+.pw-selfsign__change {
+	border: none; background: transparent; cursor: pointer; font: inherit;
+	font-size: 0.82rem; color: var(--age-green-text); text-decoration: underline; text-underline-offset: 2px; padding: 0 2px;
+	&:hover { color: var(--age-fg); }
+	&:focus-visible { outline: 2px solid var(--age-focus); outline-offset: 2px; }
+}
+
 // --- buttons ---
 .pw-btn {
 	display: inline-flex;
@@ -774,5 +962,13 @@ void status
 	.pw-card__actions { gap: 8px; }
 	.pw-card__actions .pw-btn--primary { flex: 1 1 100%; }
 	.pw-card__next { margin-inline-start: 0; }
+}
+
+// Respect reduced-motion: drop the ribbon/progress/chevron transitions.
+@media (prefers-reduced-motion: reduce) {
+	.pw-shell *, .pw-shell *::before, .pw-shell *::after {
+		animation-duration: 0.001ms !important;
+		transition-duration: 0.001ms !important;
+	}
 }
 </style>
