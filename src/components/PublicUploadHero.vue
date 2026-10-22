@@ -23,8 +23,34 @@
 				<p class="pu__lede">
 					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
 				</p>
+				<p v-if="resumable" class="pu__resume-note">
+					<strong>You have a draft waiting.</strong> Pick up where you left off, or start a new one.
+				</p>
 				<div class="pu__actions">
-					<button type="button"
+					<template v-if="resumable">
+						<button type="button"
+							class="pu__cta"
+							:disabled="preparing"
+							@click="$emit('resume')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiArrowRight" /></svg>
+							Resume your draft
+						</button>
+						<button type="button"
+							class="pu__cta pu__cta--ghost"
+							:disabled="preparing"
+							:aria-busy="preparing"
+							@click="onCta">
+							<template v-if="preparing">
+								<span class="pu__spinner" aria-hidden="true" />
+								Preparing…
+							</template>
+							<template v-else>
+								Upload a new document
+							</template>
+						</button>
+					</template>
+					<button v-else
+						type="button"
 						class="pu__cta"
 						:disabled="preparing"
 						:aria-busy="preparing"
@@ -64,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { mdiTrayArrowUp } from '@mdi/js'
+import { mdiArrowRight, mdiTrayArrowUp } from '@mdi/js'
 
 import laptop from '../../img/landing-desktop.webp'
 import tendaLogo from '../../img/tenda-logo-green-updated.png'
@@ -80,15 +106,20 @@ const props = withDefaults(defineProps<{
 	preparing?: boolean
 	// Parent-supplied error (e.g. invalid file, workflow could not be started).
 	errorMessage?: string
+	// The browser holds a valid, active anonymous draft: offer to resume it
+	// alongside starting a new one.
+	resumable?: boolean
 }>(), {
 	workflowEnabled: false,
 	preparing: false,
 	errorMessage: '',
+	resumable: false,
 })
 
 const emit = defineEmits<{
 	getStarted: []
 	pickFile: []
+	resume: []
 }>()
 
 function onCta(): void {
@@ -255,6 +286,29 @@ function onCta(): void {
 @media (prefers-reduced-motion: reduce) {
 	.pu__spinner {
 		animation-duration: 2s;
+	}
+}
+
+.pu__cta--ghost {
+	color: var(--ink);
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--line);
+
+	&:hover {
+		background: color-mix(in srgb, var(--ink) 5%, transparent);
+	}
+}
+
+.pu__resume-note {
+	max-width: 440px;
+	margin: 0 0 16px;
+	font-size: 15px;
+	line-height: 1.5;
+	color: var(--slate);
+
+	strong {
+		color: var(--ink);
+		font-weight: 600;
 	}
 }
 

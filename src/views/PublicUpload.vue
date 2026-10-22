@@ -11,8 +11,10 @@
 				:workflow-enabled="workflowEnabled"
 				:preparing="preparing"
 				:error-message="uploadError"
+				:resumable="resumable"
 				@get-started="gateToLogin"
-				@pick-file="openFilePicker" />
+				@pick-file="openFilePicker"
+				@resume="resumeDraft" />
 			<input v-if="!document"
 				ref="fileInput"
 				type="file"
@@ -33,7 +35,7 @@ import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 
-import { createWorkflow, uploadDocument } from '@/services/publicWorkflow'
+import { createWorkflow, getWorkflow, uploadDocument } from '@/services/publicWorkflow'
 import PublicLegal from '../components/PublicLegal.vue'
 import PublicUploadEcosystem from '../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../components/PublicUploadHeader.vue'
@@ -195,13 +197,49 @@ function goToWorkflow(): void {
 	window.location.href = generateUrl('/apps/libresign/p/workflow')
 }
 
+/**
+ * The browser may still hold a valid capability cookie for an active draft. We
+ * probe the read-only status endpoint (getWorkflow): it resolves the workflow
+ * from the cookie and never mutates, claims, or creates. If one is live we offer
+ * to resume it; anything else — no/expired/revoked workflow, or a failed check —
+ * simply leaves the normal upload CTA in place, so the probe can never break the
+ * ability to start a new workflow. Skipped when the flag is off, on a legal page,
+ * or for a signed-in visitor (who is redirected and claims via the claim dialog).
+ */
+const resumable = ref(false)
+
+async function checkResumable(): Promise<void> {
+	if (!workflowEnabled || props.document || getCurrentUser()) {
+		return
+	}
+	try {
+		await getWorkflow()
+		resumable.value = true
+	} catch {
+		resumable.value = false
+	}
+}
+
+/**
+ * Resume navigates to the canonical workflow route and lets the existing
+ * capability-based resume restore the draft. It never creates, uploads, or claims.
+ */
+function resumeDraft(): void {
+	goToWorkflow()
+}
+
+onMounted(checkResumable)
+
 defineExpose({
 	workflowEnabled,
 	preparing,
 	uploadError,
+	resumable,
 	openFilePicker,
 	onFilePicked,
 	beginAnonymousUpload,
+	checkResumable,
+	resumeDraft,
 })
 </script>
 

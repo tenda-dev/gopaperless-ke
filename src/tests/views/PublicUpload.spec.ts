@@ -4,7 +4,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { shallowMount } from '@vue/test-utils'
+import { flushPromises, shallowMount } from '@vue/test-utils'
 
 import PublicUpload from '../../views/PublicUpload.vue'
 import PublicLegal from '../../components/PublicLegal.vue'
@@ -15,6 +15,7 @@ import PublicUploadHero from '../../components/PublicUploadHero.vue'
 const replaceMock = vi.fn()
 const createWorkflowMock = vi.fn()
 const uploadDocumentMock = vi.fn()
+const getWorkflowMock = vi.fn()
 
 vi.mock('@nextcloud/auth', () => ({
 	getCurrentUser: vi.fn(() => null),
@@ -38,6 +39,7 @@ vi.mock('@nextcloud/initial-state', () => ({
 vi.mock('@/services/publicWorkflow', () => ({
 	createWorkflow: (...args: unknown[]) => createWorkflowMock(...args),
 	uploadDocument: (...args: unknown[]) => uploadDocumentMock(...args),
+	getWorkflow: (...args: unknown[]) => getWorkflowMock(...args),
 }))
 
 vi.mock('vue-router', async () => {
@@ -76,6 +78,8 @@ describe('PublicUpload', () => {
 		replaceMock.mockReset()
 		createWorkflowMock.mockReset().mockResolvedValue({})
 		uploadDocumentMock.mockReset().mockResolvedValue({ fileUuid: 'uuid' })
+		// Default: no resumable workflow (the status probe rejects, like a 401).
+		getWorkflowMock.mockReset().mockRejectedValue(new Error('401'))
 		loadStateMock.mockReset()
 		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
 		Object.defineProperty(window, 'matchMedia', {
@@ -240,5 +244,92 @@ describe('PublicUpload', () => {
 		await Promise.all([first, second])
 
 		expect(createWorkflowMock).toHaveBeenCalledOnce()
+	})
+
+	// --- Resume an existing draft (reuses GET /public-workflow) ---
+
+	function enableWorkflowFlag(): void {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) =>
+			(key === 'public_workflow_enabled' ? true : fallback))
+	}
+
+	it('does not probe for a resumable draft when the flag is disabled', async () => {
+		shallowMount(PublicUpload)
+		await flushPromises()
+		expect(getWorkflowMock).not.toHaveBeenCalled()
+	})
+
+	it('does not probe when a signed-in user lands (claiming stays in the claim dialog)', async () => {
+		enableWorkflowFlag()
+		const { getCurrentUser } = await import('@nextcloud/auth')
+		vi.mocked(getCurrentUser)
+			.mockReturnValueOnce({ uid: 'jane' } as ReturnType<typeof getCurrentUser>)
+			.mockReturnValueOnce({ uid: 'jane' } as ReturnType<typeof getCurrentUser>)
+
+		shallowMount(PublicUpload)
+		await flushPromises()
+
+		expect(getWorkflowMock).not.toHaveBeenCalled()
+	})
+
+	it('no resumable workflow: the hero stays in upload mode', async () => {
+		enableWorkflowFlag()
+		const wrapper = shallowMount(PublicUpload)
+		await flushPromises()
+
+		expect(getWorkflowMock).toHaveBeenCalledOnce()
+		expect(wrapper.findComponent(PublicUploadHero).props('resumable')).toBe(false)
+	})
+
+	it('resumable workflow: the hero offers to resume', async () => {
+		enableWorkflowFlag()
+		getWorkflowMock.mockResolvedValueOnce({ status: 'active', hasDocument: true })
+
+		const wrapper = shallowMount(PublicUpload)
+		await flushPromises()
+
+		expect(wrapper.findComponent(PublicUploadHero).props('resumable')).toBe(true)
+	})
+
+	it('resume navigates to /p/workflow without creating or uploading', async () => {
+		enableWorkflowFlag()
+		getWorkflowMock.mockResolvedValueOnce({ status: 'active', hasDocument: true })
+		const hrefSetter = spyLocationHref()
+
+		const wrapper = shallowMount(PublicUpload)
+		await flushPromises()
+		wrapper.findComponent(PublicUploadHero).vm.$emit('resume')
+
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/libresign/p/workflow')
+		expect(createWorkflowMock).not.toHaveBeenCalled()
+		expect(uploadDocumentMock).not.toHaveBeenCalled()
+	})
+
+	it('upload-new still works when a resumable draft exists', async () => {
+		enableWorkflowFlag()
+		getWorkflowMock.mockResolvedValueOnce({ status: 'active', hasDocument: true })
+		const hrefSetter = spyLocationHref()
+
+		const wrapper = shallowMount(PublicUpload)
+		await flushPromises()
+		await (wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }).beginAnonymousUpload(pdf())
+
+		expect(createWorkflowMock).toHaveBeenCalledOnce()
+		expect(uploadDocumentMock).toHaveBeenCalledOnce()
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/libresign/p/workflow')
+	})
+
+	it('a failed status probe leaves the upload flow working', async () => {
+		enableWorkflowFlag()
+		getWorkflowMock.mockRejectedValueOnce(new Error('boom'))
+		const hrefSetter = spyLocationHref()
+
+		const wrapper = shallowMount(PublicUpload)
+		await flushPromises()
+		expect(wrapper.findComponent(PublicUploadHero).props('resumable')).toBe(false)
+
+		await (wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }).beginAnonymousUpload(pdf())
+		expect(createWorkflowMock).toHaveBeenCalledOnce()
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/libresign/p/workflow')
 	})
 })
