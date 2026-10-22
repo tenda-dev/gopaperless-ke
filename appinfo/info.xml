@@ -58,6 +58,7 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 		<job>OCA\Libresign\BackgroundJob\Reminder</job>
 		<job>OCA\Libresign\BackgroundJob\UserDeleted</job>
 		<job>OCA\Libresign\BackgroundJob\CleanupStaleSigningStatus</job>
+		<job>OCA\Libresign\BackgroundJob\PublicWorkflowCleanup</job>
 		<job>OCA\Libresign\BackgroundJob\SignFileJob</job>
 		<job>OCA\Libresign\BackgroundJob\SignSingleFileJob</job>
 	</background-jobs>

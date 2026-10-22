@@ -22,7 +22,8 @@ use Psr\Log\LoggerInterface;
  * Resolves email searches to existing internal accounts.
  *
  * When a requester types an email address in the unified/email tab, this plugin
- * returns account signers for every account that has that email configured.
+ * returns account signers for every account that has that email configured,
+ * or that has the address as its uid.
  * External/unknown email addresses continue to be handled by the core email
  * plugin as regular email signers.
  */
@@ -90,8 +91,17 @@ class EmailAccountPlugin implements ISearchPlugin {
 		) ?? [];
 		$allowedGroups = array_diff($this->groupManager->getUserGroupIds($currentUser), $shareWithGroupOnlyExcludeGroupsList);
 
+		$users = $this->userManager->getByEmail($search);
+		// A MIMI account's uid is the address, but its email field stays empty
+		// when the login sent none, so getByEmail() misses it.
+		$byUid = $this->userManager->get(strtolower($search));
+		$found = array_map(fn ($user) => strtolower($user->getUID()), $users);
+		if ($byUid !== null && !in_array(strtolower($byUid->getUID()), $found, true)) {
+			$users[] = $byUid;
+		}
+
 		$items = [];
-		foreach ($this->userManager->getByEmail($search) as $user) {
+		foreach ($users as $user) {
 			if (!$user->isEnabled()) {
 				continue;
 			}

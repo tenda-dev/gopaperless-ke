@@ -29,6 +29,7 @@ use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
+use OCA\Libresign\Service\WhatsAppService;
 use OCA\Viewer\Event\LoadViewer;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -155,6 +156,7 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('signature_flow', $this->appConfig->getValueString(Application::APP_ID, 'signature_flow', \OCA\Libresign\Enum\SignatureFlow::NONE->value));
 		$this->initialState->provideInitialState('docmdp_config', $this->docMdpConfigService->getConfig());
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
+		$this->initialState->provideInitialState('whatsapp_enabled', WhatsAppService::on($this->appConfig));
 		$this->initialState->provideInitialState('admin_entitlement_grants_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'admin_entitlement_grants_enabled', false));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
@@ -209,43 +211,6 @@ class PageController extends AEnvironmentPageAwareController {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.indexFPath', ['path' => 'request']));
 		}
 		return $this->landingPage();
-	}
-
-	/**
-	 * TECHNICAL SPIKE sibling page (dev only).
-	 *
-	 * A standalone, server-rendered page — deliberately NOT the Vue SPA and NOT
-	 * the /p/upload landing — for exercising the public-upload temporary-owner
-	 * spike by hand. It posts a plain multipart form to
-	 * PublicUploadSpikeController::upload(). Inert unless
-	 * public_upload_spike_enabled is switched on, in which case an anonymous
-	 * visitor hitting it is bounced to the app root.
-	 *
-	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
-	 *
-	 * 200: OK
-	 * 303: Spike disabled — bounced to the app root
-	 */
-	#[PublicPage]
-	#[NoCSRFRequired]
-	#[FrontpageRoute(verb: 'GET', url: '/p/upload-spike')]
-	public function publicUploadSpike(): TemplateResponse|RedirectResponse {
-		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_upload_spike_enabled', false)) {
-			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
-		}
-
-		$response = new TemplateResponse(
-			Application::APP_ID,
-			'public_upload_spike',
-			['uploadUrl' => $this->urlGenerator->linkToRoute('libresign.publicUploadSpike.upload')],
-			TemplateResponse::RENDER_AS_PUBLIC,
-		);
-
-		$policy = new ContentSecurityPolicy();
-		$policy->addAllowedConnectDomain('\'self\'');
-		$response->setContentSecurityPolicy($policy);
-
-		return $response;
 	}
 
 	/**

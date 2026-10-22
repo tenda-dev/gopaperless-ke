@@ -100,7 +100,7 @@ class SignersLoader {
 			$fileData->signers[$index]->description = $signer->getDescription();
 			$fileData->signers[$index]->displayName = $signer->getDisplayName();
 			$fileData->signers[$index]->request_sign_date = $signer->getCreatedAt()->format(DateTimeInterface::ATOM);
-			$fileData->signers[$index]->metadata = $signer->getMetadata();
+			$fileData->signers[$index]->metadata = self::withoutPrivateMetadata($signer->getMetadata());
 			$fileData->signers[$index]->identifyMethods = [];
 			$fileData->signers[$index]->visibleElements = [];
 			foreach ($identifyMethods as $type => $methods) {
@@ -561,6 +561,21 @@ class SignersLoader {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Strip signer-metadata keys that must not leave the server.
+	 *
+	 * The WhatsApp choice keeps the destination number so the request can be
+	 * sent when the signer is asked; the full number is never serialized to
+	 * clients (this data feeds the public sign page too) — only the payments
+	 * service may hold it.
+	 */
+	private static function withoutPrivateMetadata(?array $metadata): ?array {
+		if (is_array($metadata['whatsapp'] ?? null)) {
+			$metadata['whatsapp'] = array_diff_key($metadata['whatsapp'], ['to' => null]);
+		}
+		return $metadata;
 	}
 
 }

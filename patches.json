@@ -6,6 +6,18 @@
 				"url": ".patches/x509-loadcrl-param-fix.diff",
 				"depth": 1
 			}
+		],
+		"jeidison/signer-php": [
+			{
+				"description": "Write the signature field and DocMDP into the catalog's AcroForm and Perms, not onto the catalog",
+				"url": ".patches/signer-php-catalog-dictionaries.diff",
+				"depth": 1
+			},
+			{
+				"description": "Read cross-reference streams, so PDFs indexed by one can be signed",
+				"url": ".patches/signer-php-xref-stream.diff",
+				"depth": 1
+			}
 		]
 	}
 }

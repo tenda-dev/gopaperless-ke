@@ -18,10 +18,10 @@ use OCA\Libresign\Exception\LibresignException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\IDBConnection;
-use OCP\Lock\ILockingProvider;
-use OCP\Lock\LockedException;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -66,7 +66,7 @@ class PublicWorkflowService {
 	 * row cannot be persisted it is compensated (deleted) so no orphan owner remains.
 	 *
 	 * @return array{workflow: PublicWorkflow, rawToken: string} rawToken is for the
-	 *         HttpOnly cookie only; never persisted or logged.
+	 *                                                           HttpOnly cookie only; never persisted or logged.
 	 */
 	public function create(): array {
 		$rawToken = bin2hex(random_bytes(self::TOKEN_BYTES));
@@ -284,6 +284,9 @@ class PublicWorkflowService {
 	 */
 	public function saveRequesterIdentity(PublicWorkflow $workflow, ?string $email, bool $isSigner): void {
 		$trimmed = $email !== null && trim($email) !== '' ? trim($email) : null;
+		if ($trimmed !== null && filter_var($trimmed, FILTER_VALIDATE_EMAIL) === false) {
+			throw new LibresignException('Enter a valid email address.');
+		}
 		$workflow->setRequesterEmail($trimmed);
 		$workflow->setRequesterIsSigner($isSigner);
 		$workflow->setUpdatedAt($this->timeFactory->getDateTime());

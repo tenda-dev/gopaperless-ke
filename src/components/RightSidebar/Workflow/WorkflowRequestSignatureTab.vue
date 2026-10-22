@@ -65,6 +65,7 @@
 			@delete-signer="filesStore.deleteSigner"
 			@request-signature="requestSignatureForSigner"
 			@send-reminder="sendNotify"
+			@send-whatsapp="sendWhatsApp"
 			@toggle-sign-order="onPreserveOrderChange"
 			@signing-order-changed="debouncedSave"
 			@customize-message="customizeMessage" />
@@ -329,6 +330,7 @@ const {
 	openFile,
 	openManageFiles,
 	sendNotify,
+	sendWhatsApp,
 	requestSignatureForSigner,
 	confirmRequestSigner,
 	closeModal,

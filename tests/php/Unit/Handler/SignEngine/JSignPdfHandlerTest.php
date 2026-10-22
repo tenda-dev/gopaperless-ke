@@ -214,6 +214,7 @@ final class JSignPdfHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 			'PDF 1.7 not changed' => ['SHA256', '%PDF-1.7', '%PDF-1.7'],
 			'PDF 2.0 not changed' => ['SHA256', '%PDF-2.0', '%PDF-2.0'],
 			'Invalid PDF not changed' => ['SHA256', 'random data', 'random data'],
+			'Signed PDF 1.4 not changed, its signature covers the header' => ['SHA256', "%PDF-1.4\n/ByteRange [0 1 2 3]", '%PDF-1.4'],
 		];
 	}
 
@@ -661,6 +662,53 @@ final class JSignPdfHandlerTest extends \OCA\Libresign\Tests\Unit\TestCase {
 
 		$this->assertCount(1, $paramsSeen);
 		$this->assertStringNotContainsString(' -cl ' . DocMdpLevel::CERTIFIED_FORM_FILLING_AND_ANNOTATIONS->name, $paramsSeen[0]);
+	}
+
+	/**
+	 * One handler signs every file of an envelope and every job of a cron run.
+	 * The second document must not inherit the first one's certification.
+	 */
+	public function testReusedHandlerStartsEachDocumentFromBaseOptions(): void {
+		if (self::$certificateEngineFactory === null || empty(self::$certificateContent)) {
+			$this->markTestSkipped('Certificate initialization failed');
+		}
+
+		$this->appConfig->setValueString('libresign', 'signature_hash_algorithm', '');
+		$this->appConfig->setValueString('libresign', 'java_path', __FILE__);
+		$this->appConfig->setValueString('libresign', 'jsignpdf_temp_path', sys_get_temp_dir());
+		$this->appConfig->setValueString('libresign', 'jsignpdf_jar_path', __FILE__);
+
+		$paramsSeen = [];
+		$mock = $this->createMock(JSignPDF::class);
+		$mock->expects($this->exactly(2))
+			->method('setParam')
+			->willReturnCallback(function (JSignParam $param) use (&$paramsSeen): void {
+				$paramsSeen[] = $param->getJSignParameters();
+			});
+		$mock->method('sign')->willReturn('content');
+
+		$docMdpConfigService = $this->createMock(DocMdpConfigService::class);
+		$docMdpConfigService->method('isEnabled')->willReturn(true);
+		$docMdpConfigService->method('getLevel')->willReturn(DocMdpLevel::CERTIFIED_FORM_FILLING);
+
+		$jSignPdfHandler = $this->getInstance();
+		$this->setDocMdpConfigService($jSignPdfHandler, $docMdpConfigService);
+		$jSignPdfHandler->setJSignPdf($mock);
+		$jSignPdfHandler->setVisibleElements([]);
+		$jSignPdfHandler->setSignatureParams(['SignerCommonName' => 'Test User']);
+		$jSignPdfHandler->setCertificate(self::$certificateContent);
+		$jSignPdfHandler->setPassword('password');
+
+		foreach (['%PDF-1.6', "%PDF-1.6\n/ByteRange [0 0 0 0]"] as $content) {
+			$inputFile = $this->createMock(\OC\Files\Node\File::class);
+			$inputFile->method('getContent')->willReturn($content);
+			$jSignPdfHandler->setInputFile($inputFile);
+			$jSignPdfHandler->getSignedContent();
+		}
+
+		$this->assertStringContainsString(' -cl ' . DocMdpLevel::CERTIFIED_FORM_FILLING->name, $paramsSeen[0]);
+		$this->assertStringNotContainsString(' -cl ', $paramsSeen[1]);
+		$this->assertSame(1, substr_count($paramsSeen[1], '--hash-algorithm'));
 	}
 
 	private static function getElement(array $attributes = [], string $imagePath = ''): VisibleElementAssoc {

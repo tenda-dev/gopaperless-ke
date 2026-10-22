@@ -162,6 +162,55 @@ class EmailAccountPluginTest extends TestCase {
 		];
 	}
 
+	#[DataProvider('providerUidIsTheEmail')]
+	public function testAnAccountWhoseUidIsTheEmailIsFoundOnce(bool $byEmail): void {
+		$appConfig = $this->applyAppConfig(['shareapi_allow_share_dialog_user_enumeration' => 'yes']);
+		$appConfig->setValueArray('libresign', 'identify_methods', [
+			['name' => 'email', 'enabled' => true],
+		]);
+
+		$currentUser = $this->createStub(IUser::class);
+		$currentUser->method('getUID')->willReturn('current');
+		$userSession = $this->createStub(IUserSession::class);
+		$userSession->method('getUser')->willReturn($currentUser);
+
+		$mimiUser = $this->createStub(IUser::class);
+		$mimiUser->method('getUID')->willReturn('signer@example.com');
+		$mimiUser->method('isEnabled')->willReturn(true);
+		$mimiUser->method('getDisplayName')->willReturn('Signer');
+
+		$userManager = $this->createStub(IUserManager::class);
+		$userManager->method('getByEmail')->willReturn($byEmail ? [$mimiUser] : []);
+		$userManager->method('get')->willReturnMap([['signer@example.com', $mimiUser]]);
+
+		$context = new SignerSearchContext();
+		$context->set('email', 'Signer@example.com', 'Signer@example.com');
+
+		$plugin = new EmailAccountPlugin(
+			$appConfig,
+			$this->createStub(IGroupManager::class),
+			$userSession,
+			$userManager,
+			$context,
+			$this->createStub(\Psr\Log\LoggerInterface::class),
+		);
+
+		$searchResult = new SearchResult();
+		$plugin->search('Signer@example.com', 10, 0, $searchResult);
+
+		$results = $searchResult->asArray();
+		$items = array_merge($results['email-account'] ?? [], $results['exact']['email-account'] ?? []);
+		$this->assertCount(1, $items);
+		$this->assertSame('signer@example.com', $items[0]['value']['shareWith']);
+	}
+
+	public static function providerUidIsTheEmail(): array {
+		return [
+			'email field empty' => ['byEmail' => false],
+			'email field set too' => ['byEmail' => true],
+		];
+	}
+
 	private function applyAppConfig(array $config): \OCP\IAppConfig {
 		$appConfig = $this->getMockAppConfigWithReset();
 		foreach ($config as $key => $value) {

@@ -12,6 +12,8 @@ import logoOnDark from '../img/gopaperless-logo.png'
 import logoOnLight from '../img/gopaperless-logo-ink.png'
 import spaceGrotesk from '../fonts/SpaceGrotesk-VariableFont_wght.ttf'
 
+import { isSigningPath } from './utils/signingPath'
+
 import './style/login.scss'
 
 const body = document.body
@@ -74,9 +76,30 @@ if (loginProvider > 0 && new URLSearchParams(window.location.search).get('direct
 		body.classList.add('gp-one-login')
 		const text = button.querySelector('.button-vue__text') ?? button
 		text.textContent = 'Log In'
+		resumeSigning(button)
 	}
 	markLogin()
 	new MutationObserver(markLogin).observe(body, { childList: true, subtree: true })
+}
+
+/**
+ * Switch account on a signing link (DefaultPageError.vue) signed out and left
+ * the document's path in a cookie. Only a signing link is honoured, and the
+ * cookie is cleared before leaving, so it cannot loop or send anyone elsewhere.
+ */
+function resumeSigning(button: HTMLAnchorElement) {
+	const match = document.cookie.match(/(?:^|; )libresign_resume=([^;]*)/)
+	if (!match) {
+		return
+	}
+	document.cookie = 'libresign_resume=; path=/; max-age=0'
+	const path = decodeURIComponent(match[1])
+	if (!isSigningPath(path)) {
+		return
+	}
+	const url = new URL(button.href, window.location.origin)
+	url.searchParams.set('redirectUrl', path)
+	window.location.assign(url.toString())
 }
 
 const card = document.querySelector('.guest-box.login-box')

@@ -9,17 +9,18 @@ declare(strict_types=1);
 namespace OCA\Libresign\Handler\SignEngine;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignApprovalRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Service\SecurySignService;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\AppData\IAppDataFactory;
 use OCP\Files\File;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\IRequest;
 use OCP\ITempManager;
-use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 use SignerPHP\Infrastructure\Native\Contract\Pkcs7SignerInterface;
 use SignerPHP\Infrastructure\PdfCore\Buffer;
@@ -134,7 +135,7 @@ class SecurySignHandler extends Pkcs12Handler {
 		$approval = [
 			'token' => self::userFacing(static fn () => $securySign->signingToken($hash, self::certificateEmail($pem))),
 			'documentHash' => $hash,
-			'documentName' => $this->getInputFile()->getName(),
+			'documentName' => self::documentName(\OCP\Server::get(FileMapper::class), $this->getSignatureParams()['DocumentUUID'] ?? null, $this->getInputFile()->getName()),
 			'origin' => $securySign->signingOrigin(),
 		];
 
@@ -149,6 +150,23 @@ class SecurySignHandler extends Pkcs12Handler {
 		$folder->newFile($key . '.attrs', $capture->attributes);
 
 		throw new SecurySignApprovalRequired($approval);
+	}
+
+	/**
+	 * The name GoPaperless shows for the document ("Service agreement"), for
+	 * SecurySign's frame, rather than the file being signed
+	 * ("Service_agreement.signed_79.pdf"). The signing token doesn't carry the
+	 * name: the frame binds it into the passkey challenge, so any name works.
+	 */
+	public static function documentName(FileMapper $files, mixed $uuid, string $fallback): string {
+		if (!is_string($uuid) || $uuid === '') {
+			return $fallback;
+		}
+		try {
+			return $files->getByUuid($uuid)->getName() ?: $fallback;
+		} catch (DoesNotExistException) {
+			return $fallback;
+		}
 	}
 
 	/** SecurySign's time when it has one, but never later than ours. */
@@ -233,7 +251,7 @@ class SecurySignHandler extends Pkcs12Handler {
 
 	/** One pending signature per user and document; a second prepare replaces it. */
 	private function pendingKey(): string {
-		$uid = \OCP\Server::get(IUserSession::class)->getUser()?->getUID()
+		$uid = \OCP\Server::get(SecurySignService::class)->signer()
 			?? throw new LibresignException('Sign in to sign with SecurySign.', 401);
 		return hash('sha256', $uid . "\0" . ($this->getSignatureParams()['DocumentUUID'] ?? ''));
 	}
