@@ -24,6 +24,8 @@ export interface ExtendedAccount {
 	certPaidAt: string | null
 	validUntil: string | null
 	isCertificateValid: boolean
+	/** The certificate bought here is a SecurySign PDC, set up on MIMI next (FIP-025). */
+	securysignResale?: boolean
 }
 
 export const useUserContextStore = defineStore('userContext', () => {
@@ -52,6 +54,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 	// hydration resolves. Gating is only asserted via `certRequired`,
 	// which is additionally guarded on `initialised`.
 	const isCertificateValid = ref(true)
+	const securysignResale = ref(false)
 
 	/**
 	 * Guards against repeated hydration calls.
@@ -106,6 +109,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 		certPaidAt.value = extended.certPaidAt
 		validUntil.value = extended.validUntil
 		isCertificateValid.value = extended.isCertificateValid
+		securysignResale.value = extended.securysignResale === true
 		createdAt.value = extended.createdAt
 	}
 
@@ -199,6 +203,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 		// pre-hydration state, and `certRequired` stays false until
 		// `initialised` flips true again on the next hydrate.
 		isCertificateValid.value = true
+		securysignResale.value = false
 
 		initialised.value = false
 		loading.value = null
@@ -215,6 +220,7 @@ export const useUserContextStore = defineStore('userContext', () => {
 		certPaidAt,
 		validUntil,
 		isCertificateValid,
+		securysignResale,
 
 		isAuthenticated,
 		certRequired,

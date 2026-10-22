@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Service\PdcResaleService;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -41,6 +42,7 @@ class SecurySignController extends Controller {
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
 		private IL10N $l10n,
+		private PdcResaleService $resale,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -58,6 +60,15 @@ class SecurySignController extends Controller {
 			$identity = $this->signa->identity();
 			if ($this->signa->isReady(true)) {
 				return new RedirectResponse($path);
+			}
+			if ($this->resale->applies()) {
+				$uid = $this->users->getUser()->getUID();
+				// GoPaperless sells the PDC: the page's certificate checkout takes the
+				// payment, and MIMI only sees the grant.
+				if (!$this->resale->paid($uid)) {
+					return new RedirectResponse($path);
+				}
+				$this->resale->grant($uid);
 			}
 			$state = bin2hex(random_bytes(32));
 			$this->session->set('libresign.securysign.onboarding', [

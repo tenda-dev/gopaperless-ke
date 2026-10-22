@@ -17,6 +17,7 @@ use OCA\Libresign\Handler\SignEngine\Pkcs12Handler;
 use OCA\Libresign\Helper\JSActions;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
+use OCA\Libresign\Service\PdcResaleService;
 use OCA\Libresign\Service\RequesterReconciliationService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
@@ -74,6 +75,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		protected SessionService $sessionService,
 		private ValidateHelper $validateHelper,
 		private IUserConfig $userConfig,
+		private PdcResaleService $resale,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -393,6 +395,14 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 		$this->reconciliationService->reconcileAuthenticatedSigner($user);
 
 		$user = $this->userSession->getUser() ?? $user;
+		$extended = $this->accountService->getExtendedAccount($user->getUID(), $user->getEMailAddress());
+		// A SecurySign user buys their PDC here (FIP-025): the checkout gates on
+		// that, whatever the certificate-gate switch says, and once it is paid the
+		// page hands them on to MIMI.
+		$extended['securysignResale'] = $this->resale->applies();
+		if ($extended['securysignResale']) {
+			$extended['isCertificateValid'] = $this->resale->certificateValid($user->getUID());
+		}
 		return new DataResponse(
 			[
 				'account' => [
@@ -400,7 +410,7 @@ class AccountController extends AEnvironmentAwareController implements ISignatur
 					'emailAddress' => $user->getEMailAddress() ?? '',
 					'displayName' => $user->getDisplayName()
 				],
-				'extended' => $this->accountService->getExtendedAccount($user->getUID(), $user->getEMailAddress()),
+				'extended' => $extended,
 				'settings' => $this->accountService->getSettings($this->userSession->getUser())
 			],
 			Http::STATUS_OK

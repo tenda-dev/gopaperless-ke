@@ -13,6 +13,7 @@ use OCA\Libresign\Controller\PageController;
 use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\PdcResaleService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\WhatsAppService;
 use OCP\AppFramework\Controller;
@@ -35,6 +36,7 @@ class SecurySignMiddleware extends Middleware {
 		private IUserSession $users,
 		private LoggerInterface $logger,
 		private IAppConfig $appConfig,
+		private PdcResaleService $resale,
 	) {
 	}
 
@@ -120,6 +122,13 @@ class SecurySignMiddleware extends Middleware {
 						'returnTo' => SecurySignService::returnPath($this->request->getRequestUri()),
 					]));
 				}
+				return $response;
+			}
+			// GoPaperless sells the PDC (FIP-025): until it is bought, the page renders
+			// with its certificate checkout. A grant that just failed renders it too,
+			// rather than bouncing off the hand-off to MIMI again.
+			if ($this->resale->applies()
+				&& (!$this->resale->paid((string)$this->users->getUser()?->getUID()) || $this->resale->heldOff())) {
 				return $response;
 			}
 			return new RedirectResponse($this->urls->linkToRoute('libresign.securySign.onboard', [

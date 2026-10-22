@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Tests\Unit\Controller;
 
 use OCA\Libresign\Controller\SecurySignController;
+use OCA\Libresign\Service\PdcResaleService;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\IL10N;
@@ -26,6 +27,7 @@ final class SecurySignControllerTest extends TestCase {
 	private const IDENTITY = ['sub' => 'google-oauth2|1', 'issuer' => 'https://idp.test/realms/signa', 'accessToken' => 'at'];
 
 	private SecurySignService&MockObject $signa;
+	private PdcResaleService&MockObject $resale;
 	private ISession $session;
 	private IUserSession $users;
 	private SecurySignController $controller;
@@ -61,7 +63,8 @@ final class SecurySignControllerTest extends TestCase {
 		$urls->method('linkToRouteAbsolute')->willReturnCallback(
 			static fn (string $route, array $params) => 'https://gopaperless.test/apps/libresign/securysign/return?' . http_build_query($params),
 		);
-		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
+		$this->resale = $this->createMock(PdcResaleService::class);
+		$this->controller = new SecurySignController($this->createMock(IRequest::class), $this->signa, $this->session, $this->users, $urls, $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class), $this->resale);
 	}
 
 	private function startOnboarding(): string {
@@ -96,6 +99,41 @@ final class SecurySignControllerTest extends TestCase {
 		self::assertSame('alice@example.test', $pending['uid']);
 		self::assertSame('/apps/libresign/f/document', $pending['returnTo']);
 		self::assertGreaterThan(time() + 3500, $pending['expires']);
+	}
+
+	/** FIP-025: a reseller user buys the PDC in GoPaperless before MIMI sees them. */
+	public function testAResellerUserWhoHasNotPaidStaysForTheCheckout(): void {
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(false);
+		$this->resale->expects(self::never())->method('grant');
+		$this->signa->expects(self::never())->method('enrolmentUrl');
+
+		$response = $this->controller->onboard('/apps/libresign/f/document');
+
+		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
+	}
+
+	public function testAPaidResellerUserIsGrantedTheirPdcBeforeMimi(): void {
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(true);
+		$this->resale->expects(self::once())->method('grant')->with('alice@example.test');
+
+		$this->startOnboarding();
+	}
+
+	public function testAFailedGrantKeepsTheUserHereSignedIn(): void {
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(true);
+		$this->resale->method('grant')->willThrowException(new \RuntimeException('no stock', 503));
+		$this->signa->expects(self::never())->method('enrolmentUrl');
+		$this->users->expects(self::never())->method('logout');
+
+		$response = $this->controller->onboard('/apps/libresign/f/document');
+
+		self::assertSame('/apps/libresign/f/document', $response->getRedirectURL());
 	}
 
 	public function testTheReturnJourneyResumesTheOriginalTaskOnceAndOnlyOnce(): void {
@@ -173,7 +211,7 @@ final class SecurySignControllerTest extends TestCase {
 		$signa = $this->createMock(SecurySignService::class);
 		$signa->method('applies')->willReturn(false);
 		$signa->expects(self::never())->method('isReady');
-		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class));
+		$controller = new SecurySignController($this->createMock(IRequest::class), $signa, $this->session, $this->users, $this->createMock(IURLGenerator::class), $this->createMock(LoggerInterface::class), $this->createMock(IL10N::class), $this->resale);
 
 		$response = $controller->onboard('/apps/libresign/f/document');
 

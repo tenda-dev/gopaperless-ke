@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { generateUrl } from '@nextcloud/router'
 import { ref, watch } from 'vue'
 
 import CertificatePayment from './CertificatePayment.vue'
@@ -69,5 +70,11 @@ function openModal(): void {
  */
 function onPaid(): void {
 	showModal.value = false
+	// The certificate was a SecurySign PDC (FIP-025): the server grants it on
+	// SecurySign and hands the user to MIMI for the identity checks.
+	if (userContext.securysignResale) {
+		window.location.assign(generateUrl('/apps/libresign/securysign/onboard') + '?returnTo='
+			+ encodeURIComponent(window.location.pathname + window.location.search))
+	}
 }
 </script>

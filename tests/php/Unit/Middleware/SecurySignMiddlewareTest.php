@@ -14,6 +14,7 @@ use OCA\Libresign\Controller\SignatureElementsController;
 use OCA\Libresign\Controller\SignFileController;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Middleware\SecurySignMiddleware;
+use OCA\Libresign\Service\PdcResaleService;
 use OCA\Libresign\Service\SecurySignService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -27,12 +28,14 @@ use Psr\Log\LoggerInterface;
 
 final class SecurySignMiddlewareTest extends TestCase {
 	private SecurySignService&MockObject $signa;
+	private PdcResaleService&MockObject $resale;
 	private IRequest&MockObject $request;
 	private SecurySignMiddleware $middleware;
 	private IURLGenerator&MockObject $urls;
 
 	protected function setUp(): void {
 		$this->signa = $this->createMock(SecurySignService::class);
+		$this->resale = $this->createMock(PdcResaleService::class);
 		$this->request = $this->createMock(IRequest::class);
 		$this->request->method('getRequestUri')->willReturn('/apps/libresign/f/document');
 		$urls = $this->createMock(IURLGenerator::class);
@@ -51,7 +54,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$appConfig = $this->createMock(IAppConfig::class);
 		$appConfig->method('getValueBool')->willReturn($whatsApp);
 		$appConfig->method('getValueString')->willReturn($whatsApp ? 'set' : '');
-		return new SecurySignMiddleware($this->signa, $this->request, $this->urls, $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $appConfig);
+		return new SecurySignMiddleware($this->signa, $this->request, $this->urls, $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $appConfig, $this->resale);
 	}
 
 	/** Upstream behaviour: with WhatsApp off, a signing link is not redirected. */
@@ -65,6 +68,41 @@ final class SecurySignMiddlewareTest extends TestCase {
 
 	private function page(): TemplateResponse {
 		return new TemplateResponse('libresign', 'main');
+	}
+
+	/** FIP-025: the page's certificate checkout sells the PDC, so an unpaid reseller user stays. */
+	public function testAResellerUserWhoHasNotPaidSeesThePageAndItsCheckout(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(false);
+		$page = $this->page();
+
+		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
+	}
+
+	public function testAPaidResellerUserGoesOnToBeSetUp(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(true);
+
+		$response = $this->middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertStringStartsWith('/apps/libresign/securysign/onboard?', $response->getRedirectURL());
+	}
+
+	/** A grant that just failed would send the user straight back to the hand-off, again and again. */
+	public function testAFailedGrantRendersThePageInsteadOfLooping(): void {
+		$this->signa->method('applies')->willReturn(true);
+		$this->signa->method('isReady')->willReturn(false);
+		$this->resale->method('applies')->willReturn(true);
+		$this->resale->method('paid')->willReturn(true);
+		$this->resale->method('heldOff')->willReturn(true);
+		$page = $this->page();
+
+		self::assertSame($page, $this->middleware->afterController($this->createMock(PageController::class), 'index', $page));
 	}
 
 	public function testASetUpUserConfirmsTheirMimiPasskeyBeforeTheAppOpens(): void {
@@ -210,7 +248,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		$ready = $this->createMock(SecurySignService::class);
 		$ready->method('applies')->willReturn(true);
 		$ready->expects(self::never())->method('isReady');
-		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
+		$other = new SecurySignMiddleware($ready, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class), $this->resale);
 		$other->beforeController($this->createMock(SignFileController::class), 'requestCodeByFileId');
 	}
 
@@ -227,7 +265,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 			$urls->method('linkToRoute')->willReturnCallback(static fn (string $route): string => '/' . $route);
 			$users = $this->createMock(IUserSession::class);
 			$users->expects(self::once())->method('logout');
-			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $users, $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
+			$middleware = new SecurySignMiddleware($signa, $this->request, $urls, $users, $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class), $this->resale);
 
 			$response = $middleware->afterController($this->createMock(PageController::class), 'index', $this->page());
 
@@ -264,7 +302,7 @@ final class SecurySignMiddlewareTest extends TestCase {
 		// And an email/password user keeps full control of their own signature.
 		$other = $this->createMock(SecurySignService::class);
 		$other->method('applies')->willReturn(false);
-		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class));
+		$middleware = new SecurySignMiddleware($other, $this->request, $this->createMock(IURLGenerator::class), $this->createMock(IUserSession::class), $this->createMock(LoggerInterface::class), $this->createMock(IAppConfig::class), $this->resale);
 		$middleware->beforeController($controller, 'createSignatureElement');
 	}
 
