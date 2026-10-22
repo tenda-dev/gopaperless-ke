@@ -12,7 +12,7 @@
   duplicate chrome.
 -->
 <template>
-	<div class="pu">
+	<div class="pu" :class="{ 'pu--fill': props.fill }">
 		<div class="pu__fold">
 			<PublicUploadHeader :theme="theme" :show-theme-toggle="false" @sign-in="gateToLogin" />
 			<div class="pu__body"><slot /></div>
@@ -29,6 +29,13 @@ import PublicUploadEcosystem from './PublicUploadEcosystem.vue'
 import PublicUploadHeader from './PublicUploadHeader.vue'
 
 defineOptions({ name: 'PublicShell' })
+
+// `fill` turns the shell into a bounded, app-like viewport: the body row becomes
+// minmax(0, 1fr) so it can't grow past the fold, letting an inner pane own its
+// scroll (e.g. the PublicWorkflowNext three-pane workspace, where the document
+// stage scrolls internally instead of scrolling the whole page). Default false
+// keeps the landing/current flows free to grow and scroll the page as before.
+const props = withDefaults(defineProps<{ fill?: boolean }>(), { fill: false })
 
 const theme = 'light' as const
 
@@ -83,12 +90,29 @@ function gateToLogin(): void {
 .pu__fold {
 	display: grid;
 	grid-template-rows: auto 1fr;
+	grid-template-columns: minmax(0, 1fr);
 	min-height: 100svh;
 }
 
 .pu__body {
 	min-height: 0;
+	min-width: 0;
 	display: flex;
 	flex-direction: column;
+}
+
+// App-like bounded mode: the fold is exactly the first screen and the body row
+// is capped (minmax(0, 1fr)) rather than growing to content, so a child pane can
+// own its own scroll. A DEFINITE height is required — `min-height: 100svh` is only
+// a floor, so in an auto-height grid the 1fr row still resolves to its content and
+// nothing bounds; `height` makes the fraction distribute from a fixed viewport.
+.pu--fill .pu__fold {
+	grid-template-rows: auto minmax(0, 1fr);
+	height: 100svh;
+	max-height: 100svh;
+}
+
+.pu--fill .pu__body {
+	overflow: hidden;
 }
 </style>

@@ -57,6 +57,20 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../components/PublicWorkflow/PublicWorkflowShell.vue'),
 	},
 	{
+		// Parallel desktop redesign of the public workflow (PublicWorkflowNext):
+		// a three-pane workspace with a persistent, read-only document stage.
+		// Built INERT alongside /p/workflow so the two can be A/B'd on staging;
+		// the current flow is untouched. Gated server-side by the SAME
+		// public_workflow_enabled flag in PageController::publicWorkflowNext.
+		// `External` suffix so router.beforeEach renders it directly.
+		path: '/p/workflow-next',
+		name: 'PublicWorkflowNextExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
+		component: () => import('../components/PublicWorkflow/PublicWorkflowNextShell.vue'),
+	},
+	{
 		// The Terms of Use and the Data Protection Policy, in the landing's look.
 		path: '/p/:document(terms|privacy)',
 		name: 'LegalExternal',

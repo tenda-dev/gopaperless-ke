@@ -14,6 +14,7 @@
 		:name="t('libresign', 'Signature positions')"
 		:close-button-contained="false"
 		:close-button-outside="true"
+		class="pve-editor-modal"
 		size="full"
 		@close="closeModal">
 		<div v-if="loading" class="pve__loading">
@@ -207,11 +208,19 @@ defineExpose({ open, closeModal, modal })
 <style scoped lang="scss">
 .pve {
 	display: flex;
+	width: 100%;
 	height: 100%;
 	min-height: 0;
+	position: relative;
 
 	&--mobile {
 		flex-direction: column;
+
+		// Reserve room so the LAST page scrolls clear of the mobile peek sheet
+		// (~208px) instead of being trapped behind it — parity with the authenticated editor.
+		:deep(.pages-container) {
+			padding-bottom: calc(208px + 16px + env(safe-area-inset-bottom, 0px));
+		}
 	}
 
 	&__loading {
@@ -263,8 +272,8 @@ defineExpose({ open, closeModal, modal })
 
 	&__center {
 		position: relative;
-		flex: 1 1 auto;
-		min-width: 0;
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
@@ -277,7 +286,7 @@ defineExpose({ open, closeModal, modal })
 
 	&__canvas {
 		position: relative;
-		flex: 1 1 auto;
+		flex: 1;
 		min-height: 0;
 	}
 
@@ -299,3 +308,26 @@ defineExpose({ open, closeModal, modal })
 	}
 }
 </style>
+
+<style lang="scss">
+/* Confined to this editor modal via its own class (which merges onto the
+   modal mask). Gives the public editor the same dark header bar as the
+   authenticated VisibleElementsNext. */
+.pve-editor-modal {
+	/* The app sets --header-height:0 on public pages (no Nextcloud top bar), so
+	   NcModal reserved no room for its absolute header and the dark bar overlapped
+	   the document. Giving the modal a real header height makes NcModal offset the
+	   content via its own calc(100% - var(--header-height)) — same as staging. */
+	--header-height: 50px;
+}
+.pve-editor-modal .modal-header {
+	background-color: #0f172a !important;
+}
+.pve-editor-modal .modal-header__name {
+	color: #fff !important;
+}
+.pve-editor-modal .modal-header .icons-menu button {
+	color: #fff !important;
+}
+</style>
+

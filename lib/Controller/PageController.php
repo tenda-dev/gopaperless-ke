@@ -264,6 +264,38 @@ class PageController extends AEnvironmentPageAwareController {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/p/workflow')]
 	public function publicWorkflow(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Parallel desktop redesign of the public workflow (/p/workflow-next).
+	 *
+	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
+	 * SAME public_workflow_enabled flag, so it exposes nothing extra in
+	 * production; it exists so the redesigned three-pane shell can be A/B'd on
+	 * staging while the current flow stays untouched. The SPA router mounts
+	 * PublicWorkflowNextShell for this path.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Workflow disabled — bounced to the app root
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/workflow-next')]
+	public function publicWorkflowNext(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Shared renderer for the public-workflow SPA page. Both /p/workflow and
+	 * /p/workflow-next delegate here so the flag gate, anonymous public config,
+	 * OIDC login state, assets and CSP stay identical across the two layouts.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 */
+	private function renderPublicWorkflowPage(): TemplateResponse|RedirectResponse {
 		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false)) {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
 		}
