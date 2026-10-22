@@ -29,7 +29,7 @@
 			<div v-else-if="phase === 'expired'" class="pw-shell__state">
 				<NcIconSvgWrapper class="pw-shell__state-ic" :path="mdiClockAlertOutline" :size="40" />
 				<h2 class="pw-shell__state-title">{{ t('libresign', 'This draft has expired') }}</h2>
-				<p class="pw-muted">{{ t('libresign', 'Drafts are kept for 72 hours. This one is no longer available — you can start a fresh one.') }}</p>
+				<p class="pw-muted">{{ t('libresign', 'This draft has expired and is no longer available — you can start a fresh one.') }}</p>
 				<button type="button" class="pw-btn pw-btn--primary" @click="onStart">{{ t('libresign', 'Start a new draft') }}</button>
 			</div>
 
@@ -113,7 +113,7 @@
 											@drop.prevent="onDrop">
 											<span class="pw-drop__ic"><NcIconSvgWrapper :path="mdiTrayArrowUp" :size="26" /></span>
 											<span class="pw-drop__title">{{ t('libresign', 'Drag a PDF here, or click to choose') }}</span>
-											<span class="pw-drop__sub">{{ t('libresign', 'Kept privately for 72 hours.') }}</span>
+											<span class="pw-drop__sub">{{ expiresLabel ? t('libresign', 'Kept private · {e}.', { e: expiresLabel }) : t('libresign', 'Kept private — nothing is sent.') }}</span>
 											<span class="pw-drop__pill">{{ t('libresign', 'PDF · 25 MB max') }}</span>
 										</div>
 										<div v-else class="pw-drop pw-drop--busy" aria-live="polite">
@@ -326,7 +326,9 @@
 							</button>
 							<p class="pw-notsent">
 								<strong>{{ t('libresign', 'Nothing has been sent, signed, or emailed.') }}</strong>
-								{{ t('libresign', 'Your draft is saved and available for 72 hours — you can keep editing or come back later.') }}
+								{{ expiresLabel
+										? t('libresign', 'Your draft is saved; {e}. Keep editing or come back before then.', { e: expiresLabel })
+										: t('libresign', 'Your draft is saved; Keep editing or come back before it expires.') }}
 							</p>
 
 							<div class="pw-claim">
@@ -555,8 +557,12 @@ const expiresLabel = computed(() => {
 	if (!expiresAt.value) { return '' }
 	const ms = new Date(expiresAt.value).getTime() - Date.now()
 	if (!Number.isFinite(ms) || ms <= 0) { return '' }
-	const hours = Math.round(ms / 3_600_000)
-	return t('libresign', 'Expires in {h}h', { h: hours })
+	const minutes = Math.round(ms / 60_000)
+	// Show minutes under an hour so a short (e.g. 1h) window never rounds to "0h".
+	if (minutes < 60) {
+		return t('libresign', 'Expires in {m}m', { m: Math.max(1, minutes) })
+	}
+	return t('libresign', 'Expires in {h}h', { h: Math.round(minutes / 60) })
 })
 
 // --- navigation ---

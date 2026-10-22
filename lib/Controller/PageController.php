@@ -334,6 +334,10 @@ class PageController extends AEnvironmentPageAwareController {
 	private function landingPage(): TemplateResponse {
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
+		// Drives the landing CTA: when on, "Upload your document" starts an anonymous
+		// draft directly; when off, it keeps the login-first gate. Same authoritative
+		// flag the workflow page and its endpoints are gated by (default false).
+		$this->initialState->provideInitialState('public_workflow_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');

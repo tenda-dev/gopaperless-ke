@@ -13,6 +13,8 @@ import PublicUploadHeader from '../../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../../components/PublicUploadHero.vue'
 
 const replaceMock = vi.fn()
+const createWorkflowMock = vi.fn()
+const uploadDocumentMock = vi.fn()
 
 vi.mock('@nextcloud/auth', () => ({
 	getCurrentUser: vi.fn(() => null),
@@ -22,10 +24,20 @@ vi.mock('@nextcloud/router', () => ({
 	generateUrl: vi.fn((path: string) => path),
 }))
 
+vi.mock('@nextcloud/l10n', () => ({
+	t: (_app: string, text: string, params?: Record<string, unknown>) =>
+		text.replace(/\{(\w+)\}/g, (_m, k) => String(params?.[k] ?? '')),
+}))
+
 const loadStateMock = vi.fn()
 
 vi.mock('@nextcloud/initial-state', () => ({
 	loadState: (...args: unknown[]) => loadStateMock(...args),
+}))
+
+vi.mock('@/services/publicWorkflow', () => ({
+	createWorkflow: (...args: unknown[]) => createWorkflowMock(...args),
+	uploadDocument: (...args: unknown[]) => uploadDocumentMock(...args),
 }))
 
 vi.mock('vue-router', async () => {
@@ -38,9 +50,32 @@ vi.mock('vue-router', async () => {
 	}
 })
 
+/** A PDF File with a controllable size (File#size is read-only in jsdom). */
+function pdf(sizeBytes = 1024): File {
+	const file = new File(['x'], 'doc.pdf', { type: 'application/pdf' })
+	Object.defineProperty(file, 'size', { value: sizeBytes })
+	return file
+}
+
+/** A change-event whose target.files is the given file (or empty for a cancel). */
+function fileEvent(file: File | null): Event {
+	const input = document.createElement('input')
+	Object.defineProperty(input, 'files', { value: file ? [file] : [], configurable: true })
+	return { target: input } as unknown as Event
+}
+
+/** Capture window.location.href assignments. */
+function spyLocationHref(): ReturnType<typeof vi.fn> {
+	const hrefSetter = vi.fn()
+	Object.defineProperty(window.location, 'href', { configurable: true, set: hrefSetter })
+	return hrefSetter
+}
+
 describe('PublicUpload', () => {
 	beforeEach(() => {
 		replaceMock.mockReset()
+		createWorkflowMock.mockReset().mockResolvedValue({})
+		uploadDocumentMock.mockReset().mockResolvedValue({ fileUuid: 'uuid' })
 		loadStateMock.mockReset()
 		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
 		Object.defineProperty(window, 'matchMedia', {
@@ -73,11 +108,7 @@ describe('PublicUpload', () => {
 	})
 
 	it('navigates to login when get-started is emitted and no OIDC provider is configured', () => {
-		const hrefSetter = vi.fn()
-		Object.defineProperty(window.location, 'href', {
-			configurable: true,
-			set: hrefSetter,
-		})
+		const hrefSetter = spyLocationHref()
 
 		const wrapper = shallowMount(PublicUpload)
 		wrapper.findComponent(PublicUploadHero).vm.$emit('get-started')
@@ -93,11 +124,7 @@ describe('PublicUpload', () => {
 			return fallback
 		})
 
-		const hrefSetter = vi.fn()
-		Object.defineProperty(window.location, 'href', {
-			configurable: true,
-			set: hrefSetter,
-		})
+		const hrefSetter = spyLocationHref()
 
 		const wrapper = shallowMount(PublicUpload)
 		wrapper.findComponent(PublicUploadHero).vm.$emit('get-started')
@@ -113,15 +140,105 @@ describe('PublicUpload', () => {
 			return fallback
 		})
 
-		const hrefSetter = vi.fn()
-		Object.defineProperty(window.location, 'href', {
-			configurable: true,
-			set: hrefSetter,
-		})
+		const hrefSetter = spyLocationHref()
 
 		const wrapper = shallowMount(PublicUpload)
 		wrapper.findComponent(PublicUploadHeader).vm.$emit('sign-in')
 
 		expect(hrefSetter).toHaveBeenCalledWith('/apps/user_oidc/login/1?redirectUrl=%2Fapps%2Flibresign%2Ff%2Frequest')
+	})
+
+	// --- Anonymous upload entry (public_workflow_enabled) ---
+
+	it('keeps the login-first CTA (flag off): the hero is told the workflow is disabled', () => {
+		const wrapper = shallowMount(PublicUpload)
+		expect(wrapper.findComponent(PublicUploadHero).props('workflowEnabled')).toBe(false)
+	})
+
+	it('flag on: the CTA opens the native file picker and creates nothing yet', async () => {
+		loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) =>
+			(key === 'public_workflow_enabled' ? true : fallback))
+
+		const wrapper = shallowMount(PublicUpload)
+		expect(wrapper.findComponent(PublicUploadHero).props('workflowEnabled')).toBe(true)
+
+		const input = wrapper.find('input[type="file"]').element as HTMLInputElement
+		const clickSpy = vi.spyOn(input, 'click').mockImplementation(() => {})
+
+		;(wrapper.vm as unknown as { openFilePicker: () => void }).openFilePicker()
+
+		expect(clickSpy).toHaveBeenCalledOnce()
+		expect(createWorkflowMock).not.toHaveBeenCalled()
+	})
+
+	it('cancelling the picker creates no workflow', async () => {
+		const wrapper = shallowMount(PublicUpload)
+		await (wrapper.vm as unknown as { onFilePicked: (e: Event) => Promise<void> }).onFilePicked(fileEvent(null))
+		expect(createWorkflowMock).not.toHaveBeenCalled()
+	})
+
+	it('rejects a non-PDF before creating a workflow', async () => {
+		const wrapper = shallowMount(PublicUpload)
+		const bad = new File(['x'], 'doc.png', { type: 'image/png' })
+		await (wrapper.vm as unknown as { onFilePicked: (e: Event) => Promise<void> }).onFilePicked(fileEvent(bad))
+		expect(createWorkflowMock).not.toHaveBeenCalled()
+		expect((wrapper.vm as unknown as { uploadError: string }).uploadError).not.toBe('')
+	})
+
+	it('rejects an oversized PDF before creating a workflow', async () => {
+		const wrapper = shallowMount(PublicUpload)
+		await (wrapper.vm as unknown as { onFilePicked: (e: Event) => Promise<void> }).onFilePicked(fileEvent(pdf(26 * 1024 * 1024)))
+		expect(createWorkflowMock).not.toHaveBeenCalled()
+		expect((wrapper.vm as unknown as { uploadError: string }).uploadError).not.toBe('')
+	})
+
+	it('on success: one workflow, one upload, then navigate to the workflow', async () => {
+		const hrefSetter = spyLocationHref()
+		const wrapper = shallowMount(PublicUpload)
+
+		await (wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }).beginAnonymousUpload(pdf())
+
+		expect(createWorkflowMock).toHaveBeenCalledOnce()
+		expect(uploadDocumentMock).toHaveBeenCalledOnce()
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/libresign/p/workflow')
+	})
+
+	it('workflow-creation failure: stays on the landing with a retryable error', async () => {
+		const hrefSetter = spyLocationHref()
+		createWorkflowMock.mockRejectedValueOnce(new Error('nope'))
+
+		const wrapper = shallowMount(PublicUpload)
+		await (wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }).beginAnonymousUpload(pdf())
+
+		expect(uploadDocumentMock).not.toHaveBeenCalled()
+		expect(hrefSetter).not.toHaveBeenCalled()
+		expect((wrapper.vm as unknown as { uploadError: string }).uploadError).not.toBe('')
+		expect((wrapper.vm as unknown as { preparing: boolean }).preparing).toBe(false)
+	})
+
+	it('upload failure after creation: recovers by navigating into the workflow page', async () => {
+		const hrefSetter = spyLocationHref()
+		uploadDocumentMock.mockRejectedValueOnce(new Error('nope'))
+
+		const wrapper = shallowMount(PublicUpload)
+		await (wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }).beginAnonymousUpload(pdf())
+
+		expect(createWorkflowMock).toHaveBeenCalledOnce()
+		expect(hrefSetter).toHaveBeenCalledWith('/apps/libresign/p/workflow')
+	})
+
+	it('ignores a concurrent second submission (no duplicate workflow)', async () => {
+		spyLocationHref()
+		let resolveCreate: (v: unknown) => void = () => {}
+		createWorkflowMock.mockImplementation(() => new Promise((resolve) => { resolveCreate = resolve }))
+
+		const wrapper = shallowMount(PublicUpload)
+		const vm = wrapper.vm as unknown as { beginAnonymousUpload: (f: File) => Promise<void> }
+		const first = vm.beginAnonymousUpload(pdf())
+		const second = vm.beginAnonymousUpload(pdf())
+		resolveCreate({})
+		await Promise.all([first, second])
+
+		expect(createWorkflowMock).toHaveBeenCalledOnce()
 	})
 })

@@ -30,7 +30,7 @@
 			<div v-else-if="phase === 'expired'" class="pw-shell__state">
 				<NcIconSvgWrapper class="pw-shell__state-ic" :path="mdiClockAlertOutline" :size="40" />
 				<h2 class="pw-shell__state-title">{{ t('libresign', 'This draft has expired') }}</h2>
-				<p class="pw-muted">{{ t('libresign', 'Drafts are kept for 72 hours. This one is no longer available — you can start a fresh one.') }}</p>
+				<p class="pw-muted">{{ t('libresign', 'This draft has expired and is no longer available — you can start a fresh one.') }}</p>
 				<button type="button" class="pw-btn pw-btn--primary" @click="onStart">{{ t('libresign', 'Start a new draft') }}</button>
 			</div>
 
@@ -138,7 +138,7 @@
 											@drop.prevent="onDrop">
 											<span class="pw-drop__ic"><NcIconSvgWrapper :path="mdiTrayArrowUp" :size="26" /></span>
 											<span class="pw-drop__title">{{ t('libresign', 'Drag a PDF here, or click to choose') }}</span>
-											<span class="pw-drop__sub">{{ t('libresign', 'Kept privately for 72 hours.') }}</span>
+											<span class="pw-drop__sub">{{ expiresLabel ? t('libresign', 'Kept private · {e}.', { e: expiresLabel }) : t('libresign', 'Kept private — nothing is sent.') }}</span>
 											<span class="pw-drop__pill">{{ t('libresign', 'PDF · {n}MB max', { n: MAX_FILE_SIZE_MB }) }}</span>
 										</div>
 										<div v-else class="pw-drop pw-drop--busy" aria-live="polite">
@@ -277,7 +277,9 @@
 								</ul>
 								<p class="pw-notsent">
 									<strong>{{ t('libresign', 'Nothing has been sent, signed, or emailed.') }}</strong>
-									{{ t('libresign', 'Your draft is saved and available for 72 hours — you can keep editing or come back later.') }}
+									{{ expiresLabel
+										? t('libresign', 'Your draft is saved; {e}. Keep editing or come back before then.', { e: expiresLabel })
+										: t('libresign', 'Your draft is saved; Keep editing or come back before it expires.') }}
 								</p>
 								<div class="pw-claim">
 									<div class="pw-claim__recap">
@@ -391,6 +393,7 @@ import PublicVisibleElements from './PublicVisibleElements.vue'
 import PublicShell from '../PublicShell.vue'
 import { usePublicWorkflow, type SignerDraft } from '../../store/publicWorkflow'
 import { buildSignerPayload, isPlausibleEmail } from './signerPayload'
+import { MAX_FILE_SIZE_MB, validatePublicUploadFile } from './uploadValidation'
 
 defineOptions({ name: 'PublicWorkflowNextShell' })
 
@@ -398,12 +401,9 @@ const sponsorshipEnabled = (
 	loadState('libresign', 'config', {}) as { sponsorship_enabled?: boolean }
 ).sponsorship_enabled ?? false
 
-// Client-side upload cap, mirroring the authenticated RequestPicker
-// (MAX_FILE_SIZE_MB = 25). The public backend only enforces the instance limit,
-// so this keeps the public flow consistent with the rest of the product and makes
-// the "25MB max" copy true.
-const MAX_FILE_SIZE_MB = 25
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+// Upload cap + PDF validation live in ./uploadValidation so the drop zone here and
+// the /p/upload landing's direct upload share one rule set. MAX_FILE_SIZE_MB is
+// still referenced by the "25MB max" copy below.
 
 type View = 'prepare' | 'fields' | 'review'
 
@@ -533,8 +533,12 @@ const expiresLabel = computed(() => {
 	if (!expiresAt.value) { return '' }
 	const ms = new Date(expiresAt.value).getTime() - Date.now()
 	if (!Number.isFinite(ms) || ms <= 0) { return '' }
-	const hours = Math.round(ms / 3_600_000)
-	return t('libresign', 'Expires in {h}h', { h: hours })
+	const minutes = Math.round(ms / 60_000)
+	// Show minutes under an hour so a short (e.g. 1h) window never rounds to "0h".
+	if (minutes < 60) {
+		return t('libresign', 'Expires in {m}m', { m: Math.max(1, minutes) })
+	}
+	return t('libresign', 'Expires in {h}h', { h: Math.round(minutes / 60) })
 })
 
 // --- navigation ---
@@ -660,9 +664,10 @@ async function onIdentifyContinue(): Promise<void> {
 // --- upload ---
 async function uploadFile(file: File): Promise<void> {
 	uploadError.value = ''
-	// Reject over-size files client-side before upload, matching RequestPicker.
-	if (file.size > MAX_FILE_SIZE_BYTES) {
-		uploadError.value = t('libresign', 'That file is larger than {n}MB. Choose a smaller PDF.', { n: MAX_FILE_SIZE_MB })
+	// Reject invalid/over-size files client-side before upload (shared rules).
+	const validationError = validatePublicUploadFile(file)
+	if (validationError) {
+		uploadError.value = validationError
 		return
 	}
 	uploading.value = true

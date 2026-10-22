@@ -24,12 +24,25 @@
 					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
 				</p>
 				<div class="pu__actions">
-					<button type="button" class="pu__cta" @click="$emit('getStarted')">
-						<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
-						Upload your document
+					<button type="button"
+						class="pu__cta"
+						:disabled="preparing"
+						:aria-busy="preparing"
+						@click="onCta">
+						<template v-if="preparing">
+							<span class="pu__spinner" aria-hidden="true" />
+							Preparing your document…
+						</template>
+						<template v-else>
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
+							Upload your document
+						</template>
 					</button>
 					<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
 				</div>
+				<p v-if="errorMessage" class="pu__err" role="alert">
+					{{ errorMessage }}
+				</p>
 			</div>
 
 			<div class="pu__stage">
@@ -59,9 +72,35 @@ import phone from '../../img/landing-mobile.webp'
 
 defineOptions({ name: 'PublicUploadHero' })
 
-defineEmits<{
+const props = withDefaults(defineProps<{
+	// When true, the public workflow is enabled: the CTA opens a file picker for a
+	// direct anonymous upload. When false, it keeps the login-first gate.
+	workflowEnabled?: boolean
+	// Parent is mid create-then-upload; the CTA shows progress and is inert.
+	preparing?: boolean
+	// Parent-supplied error (e.g. invalid file, workflow could not be started).
+	errorMessage?: string
+}>(), {
+	workflowEnabled: false,
+	preparing: false,
+	errorMessage: '',
+})
+
+const emit = defineEmits<{
 	getStarted: []
+	pickFile: []
 }>()
+
+function onCta(): void {
+	if (props.preparing) {
+		return
+	}
+	if (props.workflowEnabled) {
+		emit('pickFile')
+	} else {
+		emit('getStarted')
+	}
+}
 </script>
 
 <style scoped lang="scss">
@@ -183,6 +222,47 @@ defineEmits<{
 		outline: 2px solid var(--ink);
 		outline-offset: 2px;
 	}
+}
+
+.pu__cta:disabled {
+	cursor: default;
+	opacity: .85;
+
+	&:hover {
+		background: var(--brand);
+	}
+
+	&:active {
+		transform: none;
+	}
+}
+
+.pu__spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid color-mix(in srgb, var(--on-brand) 35%, transparent);
+	border-top-color: var(--on-brand);
+	border-radius: 50%;
+	animation: pu-spin .7s linear infinite;
+}
+
+@keyframes pu-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pu__spinner {
+		animation-duration: 2s;
+	}
+}
+
+.pu__err {
+	margin: -4px 0 0;
+	font-size: 14px;
+	line-height: 1.5;
+	color: #c0392b;
 }
 
 .pu__how {
