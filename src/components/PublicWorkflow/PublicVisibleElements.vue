@@ -320,12 +320,15 @@ defineExpose({ open, closeModal, modal })
 	   content via its own calc(100% - var(--header-height)) — same as staging. */
 	--header-height: 50px;
 }
+
 .pve-editor-modal .modal-header {
 	background-color: #0f172a !important;
 }
+
 .pve-editor-modal .modal-header__name {
 	color: #fff !important;
 }
+
 .pve-editor-modal .modal-header .icons-menu button {
 	color: #fff !important;
 }

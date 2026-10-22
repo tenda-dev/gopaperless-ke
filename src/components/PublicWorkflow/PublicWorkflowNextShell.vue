@@ -367,14 +367,12 @@ import {
 	mdiCheck,
 	mdiClose,
 	mdiCheckCircleOutline,
-	mdiChevronDown,
 	mdiClockAlertOutline,
 	mdiClockOutline,
 	mdiEyeOffOutline,
 	mdiEyeOutline,
 	mdiFileDocumentOutline,
 	mdiFormatColorFill,
-	mdiHelpCircleOutline,
 	mdiMapMarkerOutline,
 	mdiTrayArrowUp,
 } from '@mdi/js'
@@ -436,7 +434,6 @@ const identifyError = ref('')
 const requesterTouched = ref(false)
 const justResumed = ref(false)
 const startedThisSession = ref(false)
-const helpOpen = ref(false)
 // One-shot guard: on the first FORWARD entry to an empty signers step, the only
 // possible action is to open the add-signer dialog, so we open it once. Set true
 // after firing so it never re-opens after a cancel, and never on back-navigation
