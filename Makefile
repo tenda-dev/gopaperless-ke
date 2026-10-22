@@ -117,7 +117,7 @@ appstore:
 	@test -d js || (echo "Error: js/ directory missing. Run 'npm run build' first." && exit 1)
 	@test -d css || (echo "Error: css/ directory missing. Run 'npm run build' first." && exit 1)
 	@test -d dist || (echo "Error: dist/ directory missing. Run 'npm run build' first." && exit 1)
-	@test -f dist/pdf.worker.min-*.mjs || (echo "Error: pdf.worker.min-*.mjs missing in dist/. Run 'npm run build' first." && exit 1)
+	@find dist -maxdepth 1 -name 'pdf.worker.min-*.mjs' | grep -q . || (echo "Error: pdf.worker.min-*.mjs missing in dist/. Run 'npm run build' first." && exit 1)
 
 	cp -r \
 		appinfo \
