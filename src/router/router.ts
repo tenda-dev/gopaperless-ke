@@ -59,8 +59,7 @@ const routes: RouteRecordRaw[] = [
 		// Legacy single-column shell (PublicWorkflowShell / Concept B), kept available
 		// at an explicit legacy route — same pattern as /f/filelist/legacy. Gated
 		// server-side by the SAME public_workflow_enabled flag in
-		// PageController::publicWorkflowLegacy. The original spike view
-		// (views/PublicWorkflow.vue) is retained but no longer routed.
+		// PageController::publicWorkflowLegacy.
 		path: '/p/workflow-legacy',
 		name: 'PublicWorkflowLegacyExternal',
 		meta: {
