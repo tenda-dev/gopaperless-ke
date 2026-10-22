@@ -43,7 +43,11 @@ class PublicWorkflowCleanup extends TimedJob {
 		// Default every 30 minutes; admin-configurable via
 		// public_workflow_cleanup_interval_minutes, floored at 1 minute. The batch
 		// bound keeps each run cheap.
-		$minutes = max(1, $appConfig->getValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', 30));
+		$minutes = 30;
+		try {
+			$minutes = max(1, $appConfig->getValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', 30));
+		} catch (\Throwable) {
+		}
 		$this->setInterval($minutes * 60);
 	}
 

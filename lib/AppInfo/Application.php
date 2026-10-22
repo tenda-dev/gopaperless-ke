@@ -77,11 +77,25 @@ class Application extends App implements IBootstrap {
 				if ($build === '' || $build === $appConfig->getValueString(self::APP_ID, 'js_build')) {
 					return;
 				}
-				$appConfig->setValueInt('theming', 'cachebuster', $appConfig->getValueInt('theming', 'cachebuster') + 1);
+				// Theming owns this key and reads it as a STRING; writing it as an
+				// int makes its (and our) reads throw AppConfigTypeConflictException.
+				$current = (int)$appConfig->getValueString('theming', 'cachebuster', '0');
+				$appConfig->setValueString('theming', 'cachebuster', (string)($current + 1));
 				$appConfig->setValueString(self::APP_ID, 'js_build', $build);
 			} catch (\Throwable $e) {
-				// Stale browser caches are not worth a LibreSign that cannot boot.
-				$logger->warning('Could not refresh the asset cachebuster', ['exception' => $e]);
+				// An earlier release mistyped theming/cachebuster as int. Delete and
+				// re-create it as a string so theming's reads work again.
+				try {
+					$appConfig->deleteKey('theming', 'cachebuster');
+					$appConfig->setValueString('theming', 'cachebuster', '1');
+					$build = (string)@filemtime(__DIR__ . '/../../js/libresign-main.mjs');
+					if ($build !== '') {
+						$appConfig->setValueString(self::APP_ID, 'js_build', $build);
+					}
+				} catch (\Throwable $e2) {
+					// Stale browser caches are not worth a LibreSign that cannot boot.
+					$logger->warning('Could not refresh the asset cachebuster', ['exception' => $e2]);
+				}
 			}
 		});
 	}

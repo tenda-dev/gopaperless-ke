@@ -737,7 +737,13 @@ class PublicWorkflowService {
 	 * expiresAt, so this one value governs both.
 	 */
 	private function expiryHours(): int {
-		return max(1, $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_expiry_hours', self::EXPIRY_HOURS));
+		// Type-tolerant: a string-typed value must fall back to the default, not
+		// throw. The admin endpoint repairs the stored type.
+		try {
+			return max(1, $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_expiry_hours', self::EXPIRY_HOURS));
+		} catch (\Throwable) {
+			return self::EXPIRY_HOURS;
+		}
 	}
 
 	public function isExpired(PublicWorkflow $workflow): bool {
