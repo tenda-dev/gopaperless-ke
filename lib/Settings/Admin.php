@@ -153,6 +153,12 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
 		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
 		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
+		// Anonymous document-preparation workflow
+		$this->initialState->provideInitialState('public_workflow_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false));
+		// Draft/capability lifetime in hours (default 1h, see PublicWorkflowService::EXPIRY_HOURS).
+		$this->initialState->provideInitialState('public_workflow_expiry_hours', $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_expiry_hours', 1));
+		// Expired-workflow cleanup job interval in minutes (default 30m, see PublicWorkflowCleanup).
+		$this->initialState->provideInitialState('public_workflow_cleanup_interval_minutes', $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', 30));
 		// Public Upload login destination; provider id 0 keeps the default Nextcloud login.
 		// Independent of the separate OIDC SSO handoff feature.
 		$this->initialState->provideInitialState('public_upload_login_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0));

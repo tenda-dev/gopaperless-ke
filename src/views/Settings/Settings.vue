@@ -37,6 +37,7 @@
 		<SponsorshipSettings />
 		<ProductPricing />
 		<PublicLanding />
+		<PublicWorkflow />
 		<SsoSettings />
 		<SecurySignSettings />
 		<WhatsAppSettings />
@@ -77,6 +78,7 @@ import OneTimeSigning from './OneTimeSigning.vue'
 import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'
 import PublicLanding from './PublicLanding.vue'
+import PublicWorkflow from './PublicWorkflow.vue'
 import SsoSettings from './SsoSettings.vue'
 import SecurySignSettings from './SecurySignSettings.vue'
 import WhatsAppSettings from './WhatsAppSettings.vue'

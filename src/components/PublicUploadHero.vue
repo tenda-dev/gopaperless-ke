@@ -23,13 +23,52 @@
 				<p class="pu__lede">
 					Upload your document, add your signers, place the signature fields, and send it — the whole process takes just a couple of minutes.
 				</p>
+				<p v-if="resumable" class="pu__resume-note">
+					<strong>You have a draft waiting.</strong> Pick up where you left off, or start a new one.
+				</p>
 				<div class="pu__actions">
-					<button type="button" class="pu__cta" @click="$emit('getStarted')">
-						<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
-						Upload your document
+					<template v-if="resumable">
+						<button type="button"
+							class="pu__cta"
+							:disabled="preparing"
+							@click="$emit('resume')">
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiArrowRight" /></svg>
+							Resume your draft
+						</button>
+						<button type="button"
+							class="pu__cta pu__cta--ghost"
+							:disabled="preparing"
+							:aria-busy="preparing"
+							@click="onCta">
+							<template v-if="preparing">
+								<span class="pu__spinner" aria-hidden="true" />
+								Preparing…
+							</template>
+							<template v-else>
+								Upload a new document
+							</template>
+						</button>
+					</template>
+					<button v-else
+						type="button"
+						class="pu__cta"
+						:disabled="preparing"
+						:aria-busy="preparing"
+						@click="onCta">
+						<template v-if="preparing">
+							<span class="pu__spinner" aria-hidden="true" />
+							Preparing your document…
+						</template>
+						<template v-else>
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path :d="mdiTrayArrowUp" /></svg>
+							Upload your document
+						</template>
 					</button>
 					<a class="pu__how" href="https://tendaworld.com/gopaperless" target="_blank" rel="noopener">See how it works</a>
 				</div>
+				<p v-if="errorMessage" class="pu__err" role="alert">
+					{{ errorMessage }}
+				</p>
 			</div>
 
 			<div class="pu__stage">
@@ -51,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { mdiTrayArrowUp } from '@mdi/js'
+import { mdiArrowRight, mdiTrayArrowUp } from '@mdi/js'
 
 import laptop from '../../img/landing-desktop.webp'
 import tendaLogo from '../../img/tenda-logo-green-updated.png'
@@ -59,9 +98,40 @@ import phone from '../../img/landing-mobile.webp'
 
 defineOptions({ name: 'PublicUploadHero' })
 
-defineEmits<{
+const props = withDefaults(defineProps<{
+	// When true, the public workflow is enabled: the CTA opens a file picker for a
+	// direct anonymous upload. When false, it keeps the login-first gate.
+	workflowEnabled?: boolean
+	// Parent is mid create-then-upload; the CTA shows progress and is inert.
+	preparing?: boolean
+	// Parent-supplied error (e.g. invalid file, workflow could not be started).
+	errorMessage?: string
+	// The browser holds a valid, active anonymous draft: offer to resume it
+	// alongside starting a new one.
+	resumable?: boolean
+}>(), {
+	workflowEnabled: false,
+	preparing: false,
+	errorMessage: '',
+	resumable: false,
+})
+
+const emit = defineEmits<{
 	getStarted: []
+	pickFile: []
+	resume: []
 }>()
+
+function onCta(): void {
+	if (props.preparing) {
+		return
+	}
+	if (props.workflowEnabled) {
+		emit('pickFile')
+	} else {
+		emit('getStarted')
+	}
+}
 </script>
 
 <style scoped lang="scss">
@@ -183,6 +253,70 @@ defineEmits<{
 		outline: 2px solid var(--ink);
 		outline-offset: 2px;
 	}
+}
+
+.pu__cta:disabled {
+	cursor: default;
+	opacity: .85;
+
+	&:hover {
+		background: var(--brand);
+	}
+
+	&:active {
+		transform: none;
+	}
+}
+
+.pu__spinner {
+	width: 16px;
+	height: 16px;
+	border: 2px solid color-mix(in srgb, var(--on-brand) 35%, transparent);
+	border-top-color: var(--on-brand);
+	border-radius: 50%;
+	animation: pu-spin .7s linear infinite;
+}
+
+@keyframes pu-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pu__spinner {
+		animation-duration: 2s;
+	}
+}
+
+.pu__cta--ghost {
+	color: var(--ink);
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--line);
+
+	&:hover {
+		background: color-mix(in srgb, var(--ink) 5%, transparent);
+	}
+}
+
+.pu__resume-note {
+	max-width: 440px;
+	margin: 0 0 16px;
+	font-size: 15px;
+	line-height: 1.5;
+	color: var(--slate);
+
+	strong {
+		color: var(--ink);
+		font-weight: 600;
+	}
+}
+
+.pu__err {
+	margin: -4px 0 0;
+	font-size: 14px;
+	line-height: 1.5;
+	color: #c0392b;
 }
 
 .pu__how {

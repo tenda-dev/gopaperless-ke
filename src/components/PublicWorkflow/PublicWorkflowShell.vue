@@ -29,7 +29,7 @@
 			<div v-else-if="phase === 'expired'" class="pw-shell__state">
 				<NcIconSvgWrapper class="pw-shell__state-ic" :path="mdiClockAlertOutline" :size="40" />
 				<h2 class="pw-shell__state-title">{{ t('libresign', 'This draft has expired') }}</h2>
-				<p class="pw-muted">{{ t('libresign', 'Drafts are kept for 72 hours. This one is no longer available — you can start a fresh one.') }}</p>
+				<p class="pw-muted">{{ t('libresign', 'This draft has expired and is no longer available — you can start a fresh one.') }}</p>
 				<button type="button" class="pw-btn pw-btn--primary" @click="onStart">{{ t('libresign', 'Start a new draft') }}</button>
 			</div>
 
@@ -56,17 +56,26 @@
 
 			<!-- ready -->
 			<div v-else-if="phase === 'ready'" class="pw-shell__panel">
-				<nav class="pw-ribbon" :aria-label="t('libresign', 'Progress')">
-					<button v-for="(label, i) in stepLabels"
-						:key="i"
-						type="button"
-						class="pw-ribbon__step"
-						:class="{ 'is-done': i < currentStep, 'is-current': i === activeStepIndex }"
-						:aria-current="i === activeStepIndex ? 'step' : undefined"
-						@click="goToStep(i)">
-						<span class="pw-ribbon__dot">{{ i < currentStep ? '✓' : i + 1 }}</span>
-						<span class="pw-ribbon__label">{{ label }}</span>
-					</button>
+				<nav class="pw-chips" :aria-label="t('libresign', 'Progress')">
+					<template v-for="(label, i) in stepLabels" :key="i">
+						<button
+							type="button"
+							class="pw-chip"
+							:class="{ 'is-done': i < activeStepIndex && stepReachable(i), 'is-current': i === activeStepIndex }"
+							:aria-current="i === activeStepIndex ? 'step' : undefined"
+							:disabled="!stepReachable(i)"
+							@click="goToStep(i)">
+							<span class="pw-chip__dot">
+								<NcIconSvgWrapper v-if="i < activeStepIndex && stepReachable(i)" :path="mdiCheck" :size="13" />
+								<template v-else>{{ i + 1 }}</template>
+							</span>
+							<span class="pw-chip__label">{{ label }}</span>
+							<span v-if="i === 0 && activeStepIndex === 0" class="pw-chip__sub" aria-hidden="true">
+								<i v-for="n in 3" :key="n" :class="{ 'is-on': n - 1 < prepareSubIndex, 'is-cur': n - 1 === prepareSubIndex }" />
+							</span>
+						</button>
+						<span v-if="i < stepLabels.length - 1" class="pw-chips__sep" aria-hidden="true" />
+					</template>
 				</nav>
 
 				<main class="pw-shell__body">
@@ -74,7 +83,7 @@
 					     All three are the single ribbon step "Prepare"; identify is an
 					     intermediate view, NOT a fourth progress stage. -->
 					<template v-if="activeView === 'prepare'">
-						<PwReassurance />
+						<PwReassurance v-if="prepareView !== 'upload'" />
 
 						<p v-if="justResumed" class="pw-resume" role="status">
 							<NcIconSvgWrapper :path="mdiClockOutline" :size="16" />
@@ -83,19 +92,55 @@
 
 						<!-- UPLOAD -->
 						<template v-if="prepareView === 'upload'">
-							<section v-if="!hasDocument" class="pw-card">
-								<h2 class="pw-card__title">{{ t('libresign', 'Upload your document') }}</h2>
-								<p class="pw-muted">{{ t('libresign', 'Choose a PDF. It stays a private draft — nothing is sent or signed yet.') }}</p>
-								<input ref="fileInput" type="file" accept="application/pdf" class="pw-file" @change="onPick">
-								<p v-if="uploadError" class="pw-err">{{ uploadError }}</p>
-								<div v-if="uploading" class="pw-progress"><span :style="{ width: progress + '%' }" /></div>
-							</section>
+							<div v-if="!hasDocument" class="pw-up">
+								<div class="pw-up__scroll">
+									<div class="pw-stage">
+										<p class="pw-prepstep">{{ t('libresign', 'Prepare · Step 1 of 3') }}</p>
+										<h2 class="pw-stage__title">{{ t('libresign', 'Add your document') }}</h2>
+										<p class="pw-stage__sub">{{ t('libresign', 'Upload the PDF you need signed. It becomes a private draft — nothing is sent or signed yet.') }}</p>
+										<PwReassurance />
+										<div v-if="!uploading"
+											class="pw-drop"
+											:class="{ 'is-drag': dragOver }"
+											role="button"
+											tabindex="0"
+											:aria-label="t('libresign', 'Choose a PDF, or drag one here')"
+											@click="fileInput?.click()"
+											@keydown.enter.prevent="fileInput?.click()"
+											@keydown.space.prevent="fileInput?.click()"
+											@dragover.prevent="dragOver = true"
+											@dragleave="dragOver = false"
+											@drop.prevent="onDrop">
+											<span class="pw-drop__ic"><NcIconSvgWrapper :path="mdiTrayArrowUp" :size="26" /></span>
+											<span class="pw-drop__title">{{ t('libresign', 'Drag a PDF here, or click to choose') }}</span>
+											<span class="pw-drop__sub">{{ expiresLabel ? t('libresign', 'Kept private · {e}.', { e: expiresLabel }) : t('libresign', 'Kept private — nothing is sent.') }}</span>
+											<span class="pw-drop__pill">{{ t('libresign', 'PDF · 25 MB max') }}</span>
+										</div>
+										<div v-else class="pw-drop pw-drop--busy" aria-live="polite">
+											<NcLoadingIcon :size="32" :name="t('libresign', 'Uploading…')" />
+											<span class="pw-drop__title">{{ t('libresign', 'Uploading…') }}</span>
+											<div class="pw-progress"><span :style="{ width: progress + '%' }" /></div>
+										</div>
+										<input ref="fileInput" type="file" accept="application/pdf" class="pw-hidden-file" @change="onPick">
+										<p v-if="uploadError" class="pw-err" role="alert">{{ uploadError }}</p>
+									</div>
+								</div>
+								<div class="pw-stage-foot">
+									<div class="pw-stage-foot__in">
+										<p class="pw-savenote">{{ t('libresign', 'Step 1 of 3 · Prepare') }}</p>
+										<button type="button" class="pw-btn pw-btn--primary pw-stage-foot__cta" :disabled="!hasDocument" @click="prepareView = 'identify'">
+											{{ t('libresign', 'Continue') }} →
+										</button>
+									</div>
+								</div>
+							</div>
 							<template v-else>
 								<PwDocumentCard :name="documentName"
 									:pages="documentPages"
 									:expiry="expiresLabel"
 									:signer-count="enteredSignerCount"
-									@replace="onReplace" />
+									@replace="onReplace"
+						@view="previewOpen = true" />
 								<p v-if="uploadError" class="pw-err">{{ uploadError }}</p>
 								<div class="pw-card__actions">
 									<button type="button" class="pw-btn pw-btn--primary pw-card__next" @click="prepareView = 'identify'">{{ t('libresign', 'Continue') }} →</button>
@@ -109,7 +154,8 @@
 								:pages="documentPages"
 								:expiry="expiresLabel"
 								:signer-count="enteredSignerCount"
-								@replace="onReplace" />
+								@replace="onReplace"
+						@view="previewOpen = true" />
 							<section class="pw-card">
 								<p class="pw-prepstep">{{ t('libresign', 'Step 2 of preparation') }}</p>
 								<h2 class="pw-card__title">{{ t('libresign', 'What’s your email address?') }}</h2>
@@ -151,7 +197,8 @@
 								:pages="documentPages"
 								:expiry="expiresLabel"
 								:signer-count="enteredSignerCount"
-								@replace="onReplace" />
+								@replace="onReplace"
+						@view="previewOpen = true" />
 
 							<section class="pw-card">
 								<div class="pw-card__head">
@@ -273,9 +320,15 @@
 									<button type="button" class="pw-sumrow__edit" @click="goToView('fields')">{{ t('libresign', 'Adjust') }}</button>
 								</li>
 							</ul>
+							<button type="button" class="pw-btn pw-btn--ghost pw-viewdoc" @click="previewOpen = true">
+								<NcIconSvgWrapper :path="mdiFileDocumentOutline" :size="16" />
+								{{ t('libresign', 'View document') }}
+							</button>
 							<p class="pw-notsent">
 								<strong>{{ t('libresign', 'Nothing has been sent, signed, or emailed.') }}</strong>
-								{{ t('libresign', 'Your draft is saved and available for 72 hours — you can keep editing or come back later.') }}
+								{{ expiresLabel
+										? t('libresign', 'Your draft is saved; {e}. Keep editing or come back before then.', { e: expiresLabel })
+										: t('libresign', 'Your draft is saved; Keep editing or come back before it expires.') }}
 							</p>
 
 							<div class="pw-claim">
@@ -301,6 +354,8 @@
 				</main>
 			</div>
 
+			<PwDocumentPreview :open="previewOpen" :name="documentName" :pages="documentPages" @update:open="previewOpen = $event" />
+
 			<PwAddSignerDialog
 				:open="addOpen"
 				:editing="editIndex !== null"
@@ -322,6 +377,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
 	mdiAccountGroupOutline,
 	mdiAccountPlusOutline,
+	mdiCheck,
 	mdiCheckCircleOutline,
 	mdiChevronDown,
 	mdiClockAlertOutline,
@@ -330,6 +386,7 @@ import {
 	mdiFormatColorFill,
 	mdiHelpCircleOutline,
 	mdiMapMarkerOutline,
+	mdiTrayArrowUp,
 } from '@mdi/js'
 import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
@@ -340,6 +397,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import PwAddSignerDialog from './PwAddSignerDialog.vue'
 import PwContextualHint from './PwContextualHint.vue'
 import PwDocumentCard from './PwDocumentCard.vue'
+import PwDocumentPreview from './PwDocumentPreview.vue'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
@@ -371,6 +429,8 @@ const uploadError = ref('')
 const savingSigners = ref(false)
 const prepError = ref('')
 const addOpen = ref(false)
+const previewOpen = ref(false)
+const dragOver = ref(false)
 const editIndex = ref<number | null>(null)
 const editor = ref<InstanceType<typeof PublicVisibleElements> | null>(null)
 const activeView = ref<View>('prepare')
@@ -497,15 +557,29 @@ const expiresLabel = computed(() => {
 	if (!expiresAt.value) { return '' }
 	const ms = new Date(expiresAt.value).getTime() - Date.now()
 	if (!Number.isFinite(ms) || ms <= 0) { return '' }
-	const hours = Math.round(ms / 3_600_000)
-	return t('libresign', 'Expires in {h}h', { h: hours })
+	const minutes = Math.round(ms / 60_000)
+	// Show minutes under an hour so a short (e.g. 1h) window never rounds to "0h".
+	if (minutes < 60) {
+		return t('libresign', 'Expires in {m}m', { m: Math.max(1, minutes) })
+	}
+	return t('libresign', 'Expires in {h}h', { h: Math.round(minutes / 60) })
 })
 
 // --- navigation ---
 function goToView(view: View): void {
 	activeView.value = view
 }
+function stepReachable(i: number): boolean {
+	// Chips never allow skipping into an incomplete stage: Fields needs saved
+	// signers, Review needs placed fields. Going back is always allowed.
+	if (i === 0) { return true }
+	if (i === 1) { return hasSavedSigners.value }
+	return hasSavedSigners.value && hasPlacedFields.value
+}
+// Sub-step position within Prepare, for the active chip's progress dots.
+const prepareSubIndex = computed(() => ({ upload: 0, identify: 1, signers: 2 })[prepareView.value] ?? 0)
 function goToStep(i: number): void {
+	if (!stepReachable(i)) { return }
 	activeView.value = i >= 2 ? 'review' : i === 1 ? 'fields' : 'prepare'
 }
 // Prepare sub-view jumps used by the Review summary's edit affordances.
@@ -542,9 +616,7 @@ async function onIdentifyContinue(): Promise<void> {
 }
 
 // --- upload ---
-async function onPick(ev: Event): Promise<void> {
-	const file = (ev.target as HTMLInputElement).files?.[0]
-	if (!file) { return }
+async function uploadFile(file: File): Promise<void> {
 	uploadError.value = ''
 	uploading.value = true
 	progress.value = 0
@@ -560,6 +632,20 @@ async function onPick(ev: Event): Promise<void> {
 		uploading.value = false
 		if (fileInput.value) { fileInput.value.value = '' }
 	}
+}
+async function onPick(ev: Event): Promise<void> {
+	const file = (ev.target as HTMLInputElement).files?.[0]
+	if (file) { await uploadFile(file) }
+}
+function onDrop(ev: DragEvent): void {
+	dragOver.value = false
+	const file = ev.dataTransfer?.files?.[0]
+	if (!file) { return }
+	if (file.type !== 'application/pdf') {
+		uploadError.value = t('libresign', 'Please choose a PDF file.')
+		return
+	}
+	void uploadFile(file)
 }
 function onReplace(): void {
 	// One document per workflow: replacing is not supported, so prompt to start a
@@ -628,6 +714,7 @@ void status
 	display: flex;
 	flex-direction: column;
 	min-height: 100%;
+	min-width: 0;
 	color: var(--age-fg);
 	font-family: var(--tenda-font-family, 'Space Grotesk', -apple-system, system-ui, sans-serif);
 
@@ -651,6 +738,7 @@ void status
 		flex-direction: column;
 		flex: 1 1 auto;
 		min-height: 0;
+		min-width: 0;
 	}
 
 	// --- centred state screens (loading / idle / expired / error) ---
@@ -669,6 +757,7 @@ void status
 
 	&__body {
 		flex: 1 1 auto;
+		min-width: 0;
 		padding: 20px max(16px, env(safe-area-inset-left, 0px)) 48px;
 		display: flex;
 		flex-direction: column;
@@ -713,54 +802,79 @@ void status
 
 .pw-progress > span { display: block; height: 100%; background: var(--age-primary); transition: width 0.2s; }
 
-// --- progress ribbon ---
-.pw-ribbon {
+// --- progress chips (Prepare / Fields / Review) ---
+.pw-chips {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	justify-content: center;
+	flex-wrap: nowrap;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
 	overflow-x: auto;
-	padding: 12px 4px;
+	scrollbar-width: none;
+	-webkit-overflow-scrolling: touch;
+	padding: 12px 2px;
 	border-bottom: 1px solid var(--age-border);
 
-	&__step {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		white-space: nowrap;
-		color: var(--age-fg-faint);
-		font-size: 0.82rem;
-		font-weight: 500;
-		background: transparent;
-		border: none;
-		border-radius: var(--age-radius-sm);
-		padding: 6px 10px;
-		cursor: pointer;
+	&::-webkit-scrollbar { display: none; }
+	&__sep { flex: none; align-self: center; width: 14px; height: 1.5px; background: var(--age-border); }
+}
 
-		&:not(:last-child)::after {
-			content: '';
-			width: 20px;
-			height: 1px;
-			background: var(--age-border);
-			margin-inline-start: 4px;
-		}
-		&:hover { color: var(--age-fg-muted); background: var(--age-surface-2); }
-		&:focus-visible { outline: 2px solid var(--age-focus); outline-offset: 1px; }
+// On phones the chips scroll horizontally from the start rather than centring,
+// so the first stage stays anchored and the row never wraps.
+@media (max-width: 767px) {
+	.pw-chips {
+		justify-content: flex-start;
+		// Fade the scrollable edges so it reads as a scroller with more stages off-screen.
+		-webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+		mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
 	}
+}
+
+.pw-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	white-space: nowrap;
+	flex: none;
+	border: 1px solid var(--age-border);
+	background: var(--age-surface);
+	color: var(--age-fg-faint);
+	border-radius: 999px;
+	padding: 6px 14px 6px 7px;
+	font: inherit;
+	font-size: 0.82rem;
+	font-weight: 500;
+	min-height: 38px;
+	cursor: default;
+	transition: color 0.18s, background 0.18s, border-color 0.18s, box-shadow 0.18s;
+
 	&__dot {
-		width: 20px;
-		height: 20px;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		border: 1px solid var(--age-border-strong);
-		font-size: 0.7rem;
-		font-family: var(--age-mono);
-		flex: none;
+		width: 22px; height: 22px; flex: none; border-radius: 50%;
+		display: grid; place-items: center;
+		font-family: var(--age-mono); font-size: 0.72rem;
+		border: 1px solid var(--age-border-strong); color: var(--age-fg-faint);
+		background: var(--age-surface-2);
 	}
-	&__step.is-done { color: var(--age-fg-muted); }
-	&__step.is-done .pw-ribbon__dot { background: var(--age-primary); border-color: transparent; color: var(--age-primary-text); }
-	&__step.is-current { color: var(--age-fg); font-weight: 600; }
-	&__step.is-current .pw-ribbon__dot { border-color: var(--age-primary); color: var(--age-primary); box-shadow: 0 0 0 3px var(--age-focus-ring); }
+	&__label { line-height: 1; }
+	&__sub { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: 2px; }
+	&__sub i { width: 5px; height: 5px; border-radius: 50%; background: var(--age-border-strong); }
+	&__sub i.is-on { background: var(--age-primary); }
+	&__sub i.is-cur { background: var(--age-primary); box-shadow: 0 0 0 3px var(--age-focus-ring); }
+
+	&[disabled] { cursor: not-allowed; }
+	&.is-done {
+		color: var(--age-fg); border-color: var(--age-green-border); cursor: pointer;
+	}
+	&.is-done .pw-chip__dot { background: var(--age-primary); border-color: transparent; color: var(--age-primary-text); }
+	&.is-done:hover { background: var(--age-green-dim); }
+	&.is-current {
+		color: var(--age-fg); font-weight: 600;
+		border-color: var(--age-primary); box-shadow: 0 0 0 3px var(--age-focus-ring);
+	}
+	&.is-current .pw-chip__dot { border-color: var(--age-primary); color: var(--age-green-text); }
+	&:not([disabled]):focus-visible { outline: 2px solid var(--age-focus); outline-offset: 2px; }
 }
 
 // --- cards ---
@@ -772,6 +886,7 @@ void status
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	animation: pw-rise 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 
 	&__head { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
 	&__title { font-size: 1rem; font-weight: 600; margin: 0; }
@@ -801,7 +916,16 @@ void status
 	border: 1px solid var(--age-border);
 	border-radius: var(--age-radius-sm);
 
-	:deep(span.icon-vue) { color: var(--age-green-text); flex: none; }
+	:deep(span.icon-vue) {
+		flex: none;
+		width: 36px;
+		height: 36px;
+		border-radius: 9px;
+		display: grid;
+		place-items: center;
+		color: var(--age-green-text);
+		background: var(--age-green-dim);
+	}
 	&__text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
 	&__k { font-weight: 600; font-size: 0.88rem; color: var(--age-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	&__v { font-size: 0.8rem; color: var(--age-fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -959,22 +1083,151 @@ void status
 	padding: 9px 16px;
 	border-radius: var(--age-radius-sm);
 	cursor: pointer;
+	transition: background 0.16s, border-color 0.16s, transform 0.1s;
 
 	&--primary { background: var(--age-primary); border-color: transparent; color: var(--age-primary-text); }
 	&--ghost { background: transparent; border-color: transparent; color: var(--age-fg-muted); font-weight: 500; }
 	&--ghost:hover { color: var(--age-fg); background: var(--age-surface-2); }
+	&:active:not(:disabled) { transform: translateY(1px); }
 	&:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 // --- responsive: tighten + stack the primary action on small screens ---
 @media (max-width: 500px) {
 	.pw-shell__body { padding-inline: max(14px, env(safe-area-inset-left, 0px)); gap: 14px; }
-	.pw-card__actions { gap: 8px; }
+	// Pin the stage's primary actions to the viewport bottom on phones, bled to
+	// the card edges and clearing the home indicator, so the next step is always
+	// reachable without scrolling.
+	.pw-card__actions {
+		position: sticky;
+		bottom: 0;
+		gap: 8px;
+		margin: 6px -16px -16px;
+		padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+		background: var(--age-surface);
+		border-top: 1px solid var(--age-border);
+		z-index: 2;
+	}
 	.pw-card__actions .pw-btn--primary { flex: 1 1 100%; }
 	.pw-card__next { margin-inline-start: 0; }
 }
 
 // Respect reduced-motion: drop the ribbon/progress/chevron transitions.
+.pw-viewdoc { align-self: flex-start; margin-top: 2px; }
+
+// --- upload stage (task-focused north-star layout) ---
+.pw-up {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.pw-up__scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	padding: 24px 0;
+}
+
+.pw-stage {
+	width: 100%;
+	max-width: 560px;
+	margin: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	animation: pw-rise 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+
+	&__title {
+		margin: 2px 0 0;
+		font-family: var(--tenda-font-family, 'Space Grotesk', -apple-system, sans-serif);
+		font-size: clamp(1.7rem, 4.2vw, 2.3rem);
+		font-weight: 700;
+		letter-spacing: -0.03em;
+		line-height: 1.05;
+		color: var(--age-fg);
+	}
+	&__sub {
+		margin: 0;
+		font-size: 0.98rem;
+		line-height: 1.55;
+		color: var(--age-fg-muted);
+		max-width: 46ch;
+	}
+}
+
+.pw-hidden-file { display: none; }
+
+.pw-drop {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 11px;
+	text-align: center;
+	min-height: 200px;
+	padding: 32px 22px;
+	border: 1.5px dashed var(--age-border-strong);
+	border-radius: var(--age-radius);
+	background: var(--age-surface-2);
+	cursor: pointer;
+	transition: border-color 0.18s, background 0.18s;
+
+	&:hover,
+	&.is-drag,
+	&:focus-visible {
+		border-color: var(--age-primary);
+		background: var(--age-green-dim);
+		outline: none;
+	}
+	&--busy { cursor: default; }
+	&__ic {
+		width: 54px;
+		height: 54px;
+		border-radius: 15px;
+		display: grid;
+		place-items: center;
+		background: var(--age-surface);
+		border: 1px solid var(--age-border);
+		color: var(--age-green-text);
+	}
+	&__title { font-size: 1rem; font-weight: 600; color: var(--age-fg); }
+	&__sub { font-size: 0.85rem; color: var(--age-fg-muted); }
+	&__pill {
+		font-family: var(--age-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.06em;
+		color: var(--age-fg-faint);
+		padding: 4px 11px;
+		border-radius: 999px;
+		border: 1px solid var(--age-border);
+		background: var(--age-surface);
+	}
+	.pw-progress { width: 100%; max-width: 280px; margin-top: 2px; }
+}
+
+.pw-stage-foot {
+	flex: none;
+	border-top: 1px solid var(--age-border);
+	margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+	padding: 14px max(16px, env(safe-area-inset-left, 0px)) calc(14px + env(safe-area-inset-bottom, 0px));
+
+	&__in {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+}
+
+@keyframes pw-rise {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.pw-shell *, .pw-shell *::before, .pw-shell *::after {
 		animation-duration: 0.001ms !important;

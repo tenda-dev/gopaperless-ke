@@ -214,11 +214,13 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Public, anonymous document-preparation workflow page (/p/workflow).
+	 * Canonical public, anonymous document-preparation workflow page (/p/workflow).
 	 *
 	 * A dedicated Vue route served anonymously via the main SPA shell, like
-	 * /p/upload. Inert unless public_workflow_enabled is on; an anonymous visitor
-	 * hitting it while disabled is bounced to the app root. /p/upload is unchanged.
+	 * /p/upload. The SPA router now mounts the redesigned three-pane shell
+	 * (PublicWorkflowNextShell) for this path. Inert unless public_workflow_enabled
+	 * is on; an anonymous visitor hitting it while disabled is bounced to the app
+	 * root. /p/upload is unchanged.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
@@ -229,6 +231,58 @@ class PageController extends AEnvironmentPageAwareController {
 	#[NoCSRFRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/p/workflow')]
 	public function publicWorkflow(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Legacy single-column public workflow page (/p/workflow-legacy).
+	 *
+	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
+	 * SAME public_workflow_enabled flag; the SPA router mounts the legacy
+	 * PublicWorkflowShell for this path. Kept available so the previous layout
+	 * stays reachable after the redesign became canonical.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Workflow disabled — bounced to the app root
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/workflow-legacy')]
+	public function publicWorkflowLegacy(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Compatibility alias for the former A/B path (/p/workflow-next).
+	 *
+	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
+	 * SAME public_workflow_enabled flag, so it exposes nothing extra in
+	 * production. The SPA router redirects this path to the canonical
+	 * /p/workflow, so old staging links and bookmarks keep working.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Workflow disabled — bounced to the app root
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/workflow-next')]
+	public function publicWorkflowNext(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Shared renderer for the public-workflow SPA page. /p/workflow,
+	 * /p/workflow-legacy and /p/workflow-next all delegate here so the flag gate,
+	 * anonymous public config, OIDC login state, assets and CSP stay identical
+	 * across the canonical, legacy and alias paths.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 */
+	private function renderPublicWorkflowPage(): TemplateResponse|RedirectResponse {
 		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false)) {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
 		}
@@ -280,6 +334,10 @@ class PageController extends AEnvironmentPageAwareController {
 	private function landingPage(): TemplateResponse {
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
+		// Drives the landing CTA: when on, "Upload your document" starts an anonymous
+		// draft directly; when off, it keeps the login-first gate. Same authoritative
+		// flag the workflow page and its endpoints are gated by (default false).
+		$this->initialState->provideInitialState('public_workflow_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');

@@ -11,8 +11,8 @@
 			<div class="pw-doc__name" :title="name">{{ name || t('libresign', 'Your document') }}</div>
 			<div class="pw-doc__sub">{{ subtitle }}</div>
 		</div>
-		<button v-if="canReplace" type="button" class="pw-doc__replace" @click="$emit('replace')">
-			{{ t('libresign', 'Replace') }}
+		<button type="button" class="pw-doc__view" @click="$emit('view')">
+			{{ t('libresign', 'View') }}
 		</button>
 	</div>
 </template>
@@ -31,7 +31,7 @@ const props = withDefaults(defineProps<{
 	/** Signer count, folded into the summary when > 0. */
 	signerCount?: number
 }>(), { name: '', pages: 0, canReplace: true, expiry: '', signerCount: 0 })
-defineEmits<{ replace: [] }>()
+defineEmits<{ replace: [], view: [] }>()
 const subtitle = computed(() => {
 	const parts: string[] = []
 	if (props.pages && props.pages > 0) {
@@ -66,11 +66,13 @@ const subtitle = computed(() => {
 	&__meta { min-width: 0; flex: 1 1 auto; }
 	&__name { font-weight: 600; font-size: 0.95rem; color: var(--age-fg, var(--color-main-text)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	&__sub { font-size: 0.78rem; color: var(--age-fg-muted, var(--color-text-maxcontrast)); margin-top: 2px; }
-	&__replace {
-		flex: none; border: 1px solid var(--age-border, var(--color-border)); background: transparent;
-		color: var(--age-fg-muted, var(--color-text-maxcontrast)); font: inherit; font-size: 0.82rem;
-		padding: 6px 12px; border-radius: var(--age-radius-sm, 8px); cursor: pointer;
-		&:hover { color: var(--age-fg, var(--color-main-text)); border-color: var(--age-border-strong, var(--color-border-dark)); }
+	&__view {
+		flex: none; border: none; background: transparent;
+		color: var(--age-green-text, var(--color-success)); font: inherit; font-size: 0.82rem; font-weight: 600;
+		padding: 6px 10px; border-radius: var(--age-radius-sm, 8px); cursor: pointer;
+		transition: background 0.16s;
+		&:hover { background: var(--age-green-dim, rgba(4, 213, 109, 0.12)); }
+		&:focus-visible { outline: 2px solid var(--age-focus, var(--color-primary-element)); outline-offset: 2px; }
 	}
 }
 </style>

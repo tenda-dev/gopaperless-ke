@@ -7,7 +7,20 @@
 	<div class="pu" :class="{ 'pu--dark': theme === 'dark', 'pu--fit': !document }">
 		<div class="pu__fold">
 			<PublicUploadHeader :theme="theme" @sign-in="gateToLogin" @toggle-theme="toggleTheme" />
-			<PublicUploadHero v-if="!document" @get-started="gateToLogin" />
+			<PublicUploadHero v-if="!document"
+				:workflow-enabled="workflowEnabled"
+				:preparing="preparing"
+				:error-message="uploadError"
+				:resumable="resumable"
+				@get-started="gateToLogin"
+				@pick-file="openFilePicker"
+				@resume="resumeDraft" />
+			<input v-if="!document"
+				ref="fileInput"
+				type="file"
+				accept="application/pdf"
+				class="pu__hidden-file"
+				@change="onFilePicked">
 			<PublicLegal v-else :document="document" />
 		</div>
 		<PublicUploadEcosystem />
@@ -19,12 +32,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
+import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 
+import { createWorkflow, getWorkflow, uploadDocument } from '@/services/publicWorkflow'
 import PublicLegal from '../components/PublicLegal.vue'
 import PublicUploadEcosystem from '../components/PublicUploadEcosystem.vue'
 import PublicUploadHeader from '../components/PublicUploadHeader.vue'
 import PublicUploadHero from '../components/PublicUploadHero.vue'
+import { validatePublicUploadFile } from '../components/PublicWorkflow/uploadValidation'
 
 defineOptions({ name: 'PublicUpload' })
 
@@ -102,9 +118,136 @@ function gateToLogin(): void {
 	const target = generateUrl('/apps/libresign/f/request')
 	window.location.href = generateUrl('/login') + '?redirect_url=' + encodeURIComponent(target)
 }
+
+/**
+ * Public workflow gate, provided by the landing page controller (default false).
+ * When on, "Upload your document" starts an anonymous draft directly; when off,
+ * the CTA keeps the existing login-first behaviour above.
+ */
+const workflowEnabled = loadState<boolean>('libresign', 'public_workflow_enabled', false)
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const preparing = ref(false)
+const uploadError = ref('')
+
+/**
+ * Open the native file picker. We create NOTHING on the click itself — only once
+ * a valid file is actually selected — so cancelling the dialog leaves no workflow
+ * or temporary account behind.
+ */
+function openFilePicker(): void {
+	if (preparing.value) {
+		return
+	}
+	uploadError.value = ''
+	fileInput.value?.click()
+}
+
+async function onFilePicked(event: Event): Promise<void> {
+	const input = event.target as HTMLInputElement
+	const file = input.files?.[0] ?? null
+	// Reset the input so re-picking the same file after an error fires change again.
+	input.value = ''
+	if (!file) {
+		return // picker cancelled → do nothing
+	}
+	const validationError = validatePublicUploadFile(file)
+	if (validationError) {
+		uploadError.value = validationError
+		return
+	}
+	await beginAnonymousUpload(file)
+}
+
+/**
+ * One gesture: create the anonymous workflow (which sets the capability cookie),
+ * upload the file, then hand off to /p/workflow. The `preparing` guard makes a
+ * second submission impossible, so repeated clicks can never create a duplicate
+ * workflow. We navigate with a full load, so the workflow page boots fresh and
+ * its existing resume reads the uploaded document back from the cookie — we never
+ * depend on this File surviving the hop.
+ */
+async function beginAnonymousUpload(file: File): Promise<void> {
+	if (preparing.value) {
+		return
+	}
+	preparing.value = true
+	uploadError.value = ''
+	let created = false
+	try {
+		await createWorkflow()
+		created = true
+		await uploadDocument(file)
+		goToWorkflow()
+	} catch {
+		if (created) {
+			// The session exists and its cookie is set; hand off to the workflow page's
+			// own drop zone to retry the upload rather than stranding the visitor or
+			// faking success. The abandoned draft, if any, is purged by the cleanup job.
+			goToWorkflow()
+			return
+		}
+		// Creation itself failed: stay on the landing with a retryable error.
+		uploadError.value = t('libresign', 'We couldn’t start your document. Please try again.')
+		preparing.value = false
+	}
+}
+
+function goToWorkflow(): void {
+	window.location.href = generateUrl('/apps/libresign/p/workflow')
+}
+
+/**
+ * The browser may still hold a valid capability cookie for an active draft. We
+ * probe the read-only status endpoint (getWorkflow): it resolves the workflow
+ * from the cookie and never mutates, claims, or creates. If one is live we offer
+ * to resume it; anything else — no/expired/revoked workflow, or a failed check —
+ * simply leaves the normal upload CTA in place, so the probe can never break the
+ * ability to start a new workflow. Skipped when the flag is off, on a legal page,
+ * or for a signed-in visitor (who is redirected and claims via the claim dialog).
+ */
+const resumable = ref(false)
+
+async function checkResumable(): Promise<void> {
+	if (!workflowEnabled || props.document || getCurrentUser()) {
+		return
+	}
+	try {
+		await getWorkflow()
+		resumable.value = true
+	} catch {
+		resumable.value = false
+	}
+}
+
+/**
+ * Resume navigates to the canonical workflow route and lets the existing
+ * capability-based resume restore the draft. It never creates, uploads, or claims.
+ */
+function resumeDraft(): void {
+	goToWorkflow()
+}
+
+onMounted(checkResumable)
+
+defineExpose({
+	workflowEnabled,
+	preparing,
+	uploadError,
+	resumable,
+	openFilePicker,
+	onFilePicked,
+	beginAnonymousUpload,
+	checkResumable,
+	resumeDraft,
+})
 </script>
 
 <style scoped lang="scss">
+.pu__hidden-file {
+	display: none;
+}
+
 .pu {
 	// Self-contained palette so the landing renders consistently regardless of
 	// the surrounding Nextcloud theme (the rest of the app forces light mode).

@@ -44,19 +44,51 @@ defineEmits<{ add: [], edit: [index: number], remove: [index: number] }>()
 </script>
 <style scoped lang="scss">
 .pw-signers {
-	// Chips wrap naturally on desktop and collapse to a single column on narrow
-	// screens; the add control sits inline as the trailing item.
-	display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+	// Desktop: centred wrapping chips, the add control trailing the row.
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+
 	&__add {
-		display: inline-flex; align-items: center; gap: 7px;
-		border: 1px dashed var(--age-border-strong, var(--color-border-dark)); background: transparent;
-		color: var(--age-fg-muted, var(--color-text-maxcontrast)); font: inherit; font-size: 0.82rem; font-weight: 500;
-		padding: 8px 13px; border-radius: 999px; cursor: pointer;
-		&:hover { color: var(--age-green-text, var(--color-success)); border-color: var(--age-green-border, var(--color-success)); }
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 7px;
+		border: 1px dashed var(--age-border-strong, var(--color-border-dark));
+		background: transparent;
+		color: var(--age-fg-muted, var(--color-text-maxcontrast));
+		font: inherit;
+		font-size: 0.82rem;
+		font-weight: 500;
+		padding: 8px 13px;
+		border-radius: 999px;
+		cursor: pointer;
+		transition: color 0.16s, border-color 0.16s, background 0.16s;
+		&:hover {
+			color: var(--age-green-text, var(--color-success));
+			border-color: var(--age-green-border, var(--color-success));
+			background: var(--age-green-dim, transparent);
+		}
+		&:focus-visible { outline: 2px solid var(--age-focus, var(--color-primary-element)); outline-offset: 2px; }
 	}
 }
-@media (max-width: 500px) {
-	.pw-signers { flex-direction: column; align-items: stretch; }
-	.pw-signers__add { align-self: flex-start; }
+
+// Mobile: full-width stacked rows, add control as a full-width rectangle.
+@media (max-width: 767px) {
+	.pw-signers {
+		flex-direction: column;
+		align-items: stretch;
+		justify-content: flex-start;
+	}
+	.pw-signers__add {
+		// On mobile the add action leads the stacked list, not buried beneath it.
+		order: -1;
+		align-self: stretch;
+		min-height: 48px;
+		padding: 12px;
+		border-radius: var(--age-radius-sm, 8px);
+	}
 }
 </style>

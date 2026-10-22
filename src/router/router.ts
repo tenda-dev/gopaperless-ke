@@ -42,18 +42,40 @@ const routes: RouteRecordRaw[] = [
 		component: () => import('../views/PublicUpload.vue'),
 	},
 	{
-		// Anonymous public document-preparation workflow. Renders the Concept B
-		// shell (PublicWorkflowShell). Still gated server-side by
-		// public_workflow_enabled in PageController::publicWorkflow — repointing
-		// this SPA route does not expose the flow in production. Named with the
-		// `External` suffix so router.beforeEach renders it directly
-		// (isExternal() flags every /p/ path as external).
+		// Canonical anonymous public document-preparation workflow. Now renders the
+		// redesigned three-pane workspace (PublicWorkflowNextShell) with a persistent,
+		// read-only document stage. Still gated server-side by public_workflow_enabled
+		// in PageController::publicWorkflow — repointing this SPA route does not expose
+		// the flow in production. Named with the `External` suffix so router.beforeEach
+		// renders it directly (isExternal() flags every /p/ path as external).
 		path: '/p/workflow',
 		name: 'PublicWorkflowExternal',
 		meta: {
 			hideLeftSidebar: true,
 		},
+		component: () => import('../components/PublicWorkflow/PublicWorkflowNextShell.vue'),
+	},
+	{
+		// Legacy single-column shell (PublicWorkflowShell / Concept B), kept available
+		// at an explicit legacy route — same pattern as /f/filelist/legacy. Gated
+		// server-side by the SAME public_workflow_enabled flag in
+		// PageController::publicWorkflowLegacy.
+		path: '/p/workflow-legacy',
+		name: 'PublicWorkflowLegacyExternal',
+		meta: {
+			hideLeftSidebar: true,
+		},
 		component: () => import('../components/PublicWorkflow/PublicWorkflowShell.vue'),
+	},
+	{
+		// Compatibility alias: the redesigned experience is now canonical at
+		// /p/workflow. Staging links / bookmarks to the former A/B path keep working
+		// by redirecting to the canonical URL. PageController::publicWorkflowNext still
+		// serves the (flag-gated) SPA so this target is reachable before the client
+		// redirect runs; the redirect resolves to PublicWorkflowExternal (External
+		// suffix), which router.beforeEach renders directly without a further bounce.
+		path: '/p/workflow-next',
+		redirect: { path: '/p/workflow' },
 	},
 	{
 		// The Terms of Use and the Data Protection Policy, in the landing's look.
