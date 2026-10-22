@@ -153,12 +153,15 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('public_upload_landing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_upload_landing_enabled', false));
 		$this->initialState->provideInitialState('public_account_creation_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_account_creation_enabled', false));
 		$this->initialState->provideInitialState('public_accept_terms_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_accept_terms_enabled', false));
-		// Anonymous document-preparation workflow
-		$this->initialState->provideInitialState('public_workflow_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false));
+		// Anonymous document-preparation workflow. The reads are type-tolerant:
+		// a value written by a direct OCP.AppConfig call (string) would otherwise
+		// throw AppConfigTypeConflictException and white-screen these settings.
+		// Saving via the admin endpoint re-stores correct types.
+		$this->initialState->provideInitialState('public_workflow_enabled', self::safeBool($this->appConfig, 'public_workflow_enabled', false));
 		// Draft/capability lifetime in hours (default 1h, see PublicWorkflowService::EXPIRY_HOURS).
-		$this->initialState->provideInitialState('public_workflow_expiry_hours', $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_expiry_hours', 1));
+		$this->initialState->provideInitialState('public_workflow_expiry_hours', self::safeInt($this->appConfig, 'public_workflow_expiry_hours', 1));
 		// Expired-workflow cleanup job interval in minutes (default 30m, see PublicWorkflowCleanup).
-		$this->initialState->provideInitialState('public_workflow_cleanup_interval_minutes', $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', 30));
+		$this->initialState->provideInitialState('public_workflow_cleanup_interval_minutes', self::safeInt($this->appConfig, 'public_workflow_cleanup_interval_minutes', 30));
 		// Public Upload login destination; provider id 0 keeps the default Nextcloud login.
 		// Independent of the separate OIDC SSO handoff feature.
 		$this->initialState->provideInitialState('public_upload_login_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'public_upload_login_provider_id', 0));
@@ -303,5 +306,27 @@ class Admin implements ISettings {
 		}
 
 		return 'nextcloud';
+	}
+
+	/**
+	 * Type-tolerant app-config reads for values a direct OCP.AppConfig write may
+	 * have mistyped: a stored string makes the typed getter throw
+	 * AppConfigTypeConflictException, which would white-screen the admin page.
+	 * Saving via the admin endpoint re-stores the correct type.
+	 */
+	private static function safeBool(IAppConfig $config, string $key, bool $default): bool {
+		try {
+			return $config->getValueBool(Application::APP_ID, $key, $default);
+		} catch (\Throwable) {
+			return $default;
+		}
+	}
+
+	private static function safeInt(IAppConfig $config, string $key, int $default): int {
+		try {
+			return $config->getValueInt(Application::APP_ID, $key, $default);
+		} catch (\Throwable) {
+			return $default;
+		}
 	}
 }

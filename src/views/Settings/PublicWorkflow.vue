@@ -38,8 +38,11 @@
 </template>
 
 <script setup lang="ts">
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { loadState } from '@nextcloud/initial-state'
 import { t } from '@nextcloud/l10n'
+import axios from '@nextcloud/axios'
+import { generateOcsUrl } from '@nextcloud/router'
 import { ref } from 'vue'
 
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
@@ -56,22 +59,38 @@ const workflowEnabled = ref(loadState<AdminInitialState['public_workflow_enabled
 const expiryHours = ref(loadState<AdminInitialState['public_workflow_expiry_hours']>('libresign', 'public_workflow_expiry_hours', 1))
 const cleanupIntervalMinutes = ref(loadState<AdminInitialState['public_workflow_cleanup_interval_minutes']>('libresign', 'public_workflow_cleanup_interval_minutes', 30))
 
+// Never write app config through OCP.AppConfig here: string-typed values make
+// the server's typed reads throw. The admin endpoint stores correct types (and
+// repairs values a direct write mistyped).
+async function save() {
+	try {
+		await axios.post(generateOcsUrl('/apps/libresign/api/v1/admin/public-workflow-config'), {
+			enabled: workflowEnabled.value,
+			expiryHours: Math.max(1, Math.floor(Number(expiryHours.value) || 1)),
+			cleanupIntervalMinutes: Math.max(1, Math.floor(Number(cleanupIntervalMinutes.value) || 1)),
+		})
+		showSuccess(t('libresign', 'Public workflow settings saved'))
+	} catch (err) {
+		const message = (err as { response?: { data?: { ocs?: { data?: { error?: string } } } } })?.response?.data?.ocs?.data?.error
+		showError(message ?? t('libresign', 'Could not save the public workflow settings'))
+	}
+}
+
 function saveWorkflowEnabled() {
-	OCP.AppConfig.setValue('libresign', 'public_workflow_enabled', workflowEnabled.value ? '1' : '0')
+	// v-model has already applied the new switch state.
+	save()
 }
 
 // Floor both at 1 to match the server-side clamp (expiry can never be 0 hours,
 // cleanup can never run every 0 minutes). The server re-clamps regardless.
 function saveExpiryHours() {
-	const parsed = Math.max(1, Math.floor(Number(expiryHours.value) || 1))
-	expiryHours.value = parsed
-	OCP.AppConfig.setValue('libresign', 'public_workflow_expiry_hours', String(parsed))
+	expiryHours.value = Math.max(1, Math.floor(Number(expiryHours.value) || 1))
+	save()
 }
 
 function saveCleanupInterval() {
-	const parsed = Math.max(1, Math.floor(Number(cleanupIntervalMinutes.value) || 1))
-	cleanupIntervalMinutes.value = parsed
-	OCP.AppConfig.setValue('libresign', 'public_workflow_cleanup_interval_minutes', String(parsed))
+	cleanupIntervalMinutes.value = Math.max(1, Math.floor(Number(cleanupIntervalMinutes.value) || 1))
+	save()
 }
 
 defineExpose({

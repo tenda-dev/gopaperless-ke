@@ -1368,6 +1368,32 @@ class AdminController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Persist the public document-preparation workflow settings.
+	 *
+	 * The admin UI must never write app config through OCP.AppConfig directly:
+	 * string-typed values make the typed reads (getValueBool/getValueInt) throw
+	 * AppConfigTypeConflictException. Saving here stores correct types and, in
+	 * doing so, repairs values a direct write mistyped.
+	 *
+	 * @param bool $enabled Whether anonymous visitors can prepare documents
+	 * @param int $expiryHours How long an anonymous draft stays resumable
+	 * @param int $cleanupIntervalMinutes How often the cleanup job runs
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>
+	 *
+	 * 200: Configuration saved successfully
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/public-workflow-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setPublicWorkflowConfig(bool $enabled = false, int $expiryHours = 1, int $cleanupIntervalMinutes = 30): DataResponse {
+		$this->appConfig->setValueBool(Application::APP_ID, 'public_workflow_enabled', $enabled);
+		$this->appConfig->setValueInt(Application::APP_ID, 'public_workflow_expiry_hours', max(1, $expiryHours));
+		$this->appConfig->setValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', max(1, $cleanupIntervalMinutes));
+		return new DataResponse([
+			'message' => $this->l10n->t('Public workflow settings saved'),
+		]);
+	}
+
+	/**
 	 * Persist FX provider API credentials.
 	 *
 	 * @param string|null $exchangeRateApiKey ExchangeRate-API key

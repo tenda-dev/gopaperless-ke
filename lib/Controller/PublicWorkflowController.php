@@ -533,7 +533,14 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 	}
 
 	private function disabledResponse(): ?DataResponse {
-		if (!$this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false)) {
+		// Type-tolerant: a value mistyped by a direct OCP.AppConfig write (string)
+		// must read as off, not throw. The admin endpoint repairs the stored type.
+		$enabled = false;
+		try {
+			$enabled = $this->appConfig->getValueBool(Application::APP_ID, 'public_workflow_enabled', false);
+		} catch (\Throwable) {
+		}
+		if (!$enabled) {
 			return $this->error($this->l10n->t('Public workflow is disabled'), Http::STATUS_NOT_FOUND);
 		}
 		return null;
