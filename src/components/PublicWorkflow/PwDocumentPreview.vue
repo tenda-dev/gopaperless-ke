@@ -75,7 +75,7 @@ defineOptions({ name: 'PwDocumentPreview' })
 let workerConfigured = false
 async function ensureWorker(): Promise<void> {
 	if (workerConfigured) { return }
-	const mod = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+	const mod = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
 	;(pdfjsLib as unknown as { GlobalWorkerOptions: { workerSrc: string } }).GlobalWorkerOptions.workerSrc = (mod as { default: string }).default
 	workerConfigured = true
 }
