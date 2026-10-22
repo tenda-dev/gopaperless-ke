@@ -214,11 +214,13 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Public, anonymous document-preparation workflow page (/p/workflow).
+	 * Canonical public, anonymous document-preparation workflow page (/p/workflow).
 	 *
 	 * A dedicated Vue route served anonymously via the main SPA shell, like
-	 * /p/upload. Inert unless public_workflow_enabled is on; an anonymous visitor
-	 * hitting it while disabled is bounced to the app root. /p/upload is unchanged.
+	 * /p/upload. The SPA router now mounts the redesigned three-pane shell
+	 * (PublicWorkflowNextShell) for this path. Inert unless public_workflow_enabled
+	 * is on; an anonymous visitor hitting it while disabled is bounced to the app
+	 * root. /p/upload is unchanged.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
@@ -233,13 +235,32 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Parallel desktop redesign of the public workflow (/p/workflow-next).
+	 * Legacy single-column public workflow page (/p/workflow-legacy).
+	 *
+	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
+	 * SAME public_workflow_enabled flag; the SPA router mounts the legacy
+	 * PublicWorkflowShell for this path. Kept available so the previous layout
+	 * stays reachable after the redesign became canonical.
+	 *
+	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
+	 *
+	 * 200: OK
+	 * 303: Workflow disabled — bounced to the app root
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'GET', url: '/p/workflow-legacy')]
+	public function publicWorkflowLegacy(): TemplateResponse|RedirectResponse {
+		return $this->renderPublicWorkflowPage();
+	}
+
+	/**
+	 * Compatibility alias for the former A/B path (/p/workflow-next).
 	 *
 	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
 	 * SAME public_workflow_enabled flag, so it exposes nothing extra in
-	 * production; it exists so the redesigned three-pane shell can be A/B'd on
-	 * staging while the current flow stays untouched. The SPA router mounts
-	 * PublicWorkflowNextShell for this path.
+	 * production. The SPA router redirects this path to the canonical
+	 * /p/workflow, so old staging links and bookmarks keep working.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
@@ -254,9 +275,10 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Shared renderer for the public-workflow SPA page. Both /p/workflow and
-	 * /p/workflow-next delegate here so the flag gate, anonymous public config,
-	 * OIDC login state, assets and CSP stay identical across the two layouts.
+	 * Shared renderer for the public-workflow SPA page. /p/workflow,
+	 * /p/workflow-legacy and /p/workflow-next all delegate here so the flag gate,
+	 * anonymous public config, OIDC login state, assets and CSP stay identical
+	 * across the canonical, legacy and alias paths.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 */

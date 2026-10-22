@@ -23,6 +23,7 @@ use OCA\Libresign\Service\PublicWorkflowService;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\IAppConfig;
 use OCP\IDBConnection;
 use OCP\IUser;
 use OCP\IUserManager;
@@ -48,6 +49,7 @@ final class PublicWorkflowServiceTest extends TestCase {
 	private ILockingProvider&MockObject $lockingProvider;
 	private IUserManager&MockObject $userManager;
 	private ITimeFactory&MockObject $timeFactory;
+	private IAppConfig&MockObject $appConfig;
 	private LoggerInterface&MockObject $logger;
 	private PublicWorkflowService $service;
 
@@ -64,9 +66,14 @@ final class PublicWorkflowServiceTest extends TestCase {
 		$this->lockingProvider = $this->createMock(ILockingProvider::class);
 		$this->userManager = $this->createMock(IUserManager::class);
 		$this->timeFactory = $this->createMock(ITimeFactory::class);
+		$this->appConfig = $this->createMock(IAppConfig::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
 		$this->timeFactory->method('getDateTime')->willReturnCallback(
 			fn () => new \DateTime('2026-10-16T12:00:00+00:00')
+		);
+		// Unconfigured: return each caller's default, so expiry stays the 1h default.
+		$this->appConfig->method('getValueInt')->willReturnCallback(
+			fn (string $app, string $key, int $default = 0): int => $default
 		);
 		$this->service = new PublicWorkflowService(
 			$this->connection,
@@ -80,6 +87,7 @@ final class PublicWorkflowServiceTest extends TestCase {
 			$this->lockingProvider,
 			$this->userManager,
 			$this->timeFactory,
+			$this->appConfig,
 			$this->logger,
 		);
 	}

@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\File;
 use OCA\Libresign\Db\FileElementMapper;
 use OCA\Libresign\Db\FileMapper;
@@ -17,6 +18,7 @@ use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\IAppConfig;
 use OCP\IDBConnection;
 use OCP\IUser;
 use OCP\IUserManager;
@@ -40,7 +42,7 @@ use Psr\Log\LoggerInterface;
 class PublicWorkflowService {
 	public const COOKIE_NAME = 'gopaperless_pw';
 	private const TOKEN_BYTES = 32;         // 256-bit capability
-	private const EXPIRY_HOURS = 72;
+	private const EXPIRY_HOURS = 1;      // 1 hour
 	private const HASH_HEX_LENGTH = 64;     // sha256 hex
 
 	public function __construct(
@@ -55,6 +57,7 @@ class PublicWorkflowService {
 		private ILockingProvider $lockingProvider,
 		private IUserManager $userManager,
 		private ITimeFactory $timeFactory,
+		private IAppConfig $appConfig,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -76,7 +79,7 @@ class PublicWorkflowService {
 
 		try {
 			$now = $this->timeFactory->getDateTime();
-			$expiresAt = (clone $now)->modify('+' . self::EXPIRY_HOURS . ' hours');
+			$expiresAt = (clone $now)->modify('+' . $this->expiryHours() . ' hours');
 
 			$workflow = new PublicWorkflow();
 			$workflow->setTokenHash($tokenHash);
@@ -724,6 +727,17 @@ class PublicWorkflowService {
 			$normalised[] = $element;
 		}
 		return $normalised;
+	}
+
+	/**
+	 * Draft/capability lifetime in hours. Admin-configurable via
+	 * public_workflow_expiry_hours; falls back to EXPIRY_HOURS and is floored at
+	 * 1 hour so a misconfiguration can never expire drafts (and their cookies)
+	 * instantly. The capability cookie's Max-Age is derived from the resulting
+	 * expiresAt, so this one value governs both.
+	 */
+	private function expiryHours(): int {
+		return max(1, $this->appConfig->getValueInt(Application::APP_ID, 'public_workflow_expiry_hours', self::EXPIRY_HOURS));
 	}
 
 	public function isExpired(PublicWorkflow $workflow): bool {

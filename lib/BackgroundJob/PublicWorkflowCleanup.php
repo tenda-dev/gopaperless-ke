@@ -8,11 +8,13 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\BackgroundJob;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Db\PublicWorkflowMapper;
 use OCA\Libresign\Service\AccountService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
+use OCP\IAppConfig;
 use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
@@ -31,14 +33,18 @@ class PublicWorkflowCleanup extends TimedJob {
 
 	public function __construct(
 		ITimeFactory $time,
+		IAppConfig $appConfig,
 		private PublicWorkflowMapper $mapper,
 		private IUserManager $userManager,
 		private AccountService $accountService,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct($time);
-		// Every 30 minutes; the batch bound keeps each run cheap.
-		$this->setInterval(30 * 60);
+		// Default every 30 minutes; admin-configurable via
+		// public_workflow_cleanup_interval_minutes, floored at 1 minute. The batch
+		// bound keeps each run cheap.
+		$minutes = max(1, $appConfig->getValueInt(Application::APP_ID, 'public_workflow_cleanup_interval_minutes', 30));
+		$this->setInterval($minutes * 60);
 	}
 
 	protected function run($argument): void {
