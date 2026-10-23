@@ -640,46 +640,49 @@ user one PDC from stock GoPaperless bought in advance. Off by default.
    `certificate_purchase`). It shows for these users whatever
    `certificate_gate_enabled` says.
 2. Once the payment settles, the page sends them to `/securysign/onboard`.
-3. That handler trades their login token at Keycloak (standard token exchange,
-   audience `securysign_entitlement_audience`, scope `entitlement:grant`) and
-   calls `POST /api/rp/entitlements/grant` with
-   `{"product": "pdc", "units": 1, "idempotencyKey": "gp-pdc-<payment attempt id>"}`.
-   No price is sent. The key is kept as the user value `securysign_pdc_granted`,
-   and Signa replays a repeated key, so a retry never grants twice.
-4. Then MIMI's `/enrol`, as before. MIMI sees the grant and skips its payment
-   step.
+3. That handler gets GoPaperless's own token from Keycloak (client credentials,
+   with the provider's client id and secret) and calls
+   `POST /api/rp/entitlements/grant` with
+   `{"product": "pdc", "units": 1, "userKey": "kc:<sub>", "idempotencyKey": "gp-pdc-<payment attempt id>"}`.
+   Signa takes the unit out of the stock GoPaperless prepaid (409 when it has
+   run out). No price is sent. The key is kept as the user value
+   `securysign_pdc_granted`, and Signa replays a repeated key, so a retry never
+   grants twice.
+4. Then MIMI's `/enrol`, as before. When MIMI issues the certificate, Signa uses
+   up the GoPaperless grant, whichever client id MIMI issues under.
 
-The grant runs in the user's session because it needs their token. An M-Pesa
-or DPO settlement arrives server to server, with no session. If the grant fails,
-the gate renders the page for a minute instead of sending the user back to the
-hand-off in a loop (`PdcResaleService::heldOff()`), and signing stays refused
-until they are set up.
+The grant runs during `/securysign/onboard` because that is where GoPaperless
+reads the user's SecurySign `sub`. If it fails, the gate renders the page for a
+minute instead of sending the user back to the hand-off in a loop
+(`PdcResaleService::heldOff()`), and signing stays refused until they are set
+up.
 
 ### Config
 
 | Key | Default | Meaning |
 |---|---|---|
 | `pdc_resale_enabled` | off | The switch. Only users signed in through the SecurySign provider are affected. |
-| `securysign_entitlement_audience` | `signa-entitlement-gateway` | The Keycloak client whose audience Signa's grant API accepts. |
 
 The price is the `CERTIFICATE_ACCESS` row in `oc_gopaperless_products` (KES 300
 when the row is first created, from `product_certificate_access_price`).
 
 ```
 occ config:app:set libresign pdc_resale_enabled --value=1 --type=boolean
-occ config:app:set libresign securysign_entitlement_audience --value=signa-entitlement-gateway
 ```
 
 ### Do not switch it on until
 
-- Signa accepts the exchanged token on `POST /api/rp/entitlements/grant`
-  (FIP-025 PR-C, on top of #918), draws grants from GoPaperless's stock, and the
-  stock has been bought.
-- Keycloak lets this provider's client exchange tokens for that audience with
-  scope `entitlement:grant` (PR-B), and the client has the `basic` scope, or the
-  exchanged token carries no `sub`.
-- MIMI skips its payment step for a user who holds a PDC grant. Before that,
-  users pay twice.
+- Signa runs #918 with the stock change stacked on it
+  (`feat/unit-entitlements-stock`), `FEATURE_UNIT_ENTITLEMENTS` is on, and a
+  SecurySign admin has loaded GoPaperless's PDC stock
+  (`POST /api/rp/admin/units`, against the payment GoPaperless made).
+- This provider's Keycloak client has "Service accounts" switched on, so it can
+  get a client-credentials token, and the `basic` scope. Without `basic`, Signa
+  keys MIMI's users by email and the grant is never found.
+- MIMI takes a grant as payment. Today its certificate step still asks the
+  payments API for a subscription, so a user who paid GoPaperless fails at the
+  last step. GoPaperless also needs no price on MIMI (SecurySign's
+  `POST /api/rp/admin/mimi`, `price_kes: null`), or users pay twice.
 - GoPaperless signs people in on the same realm as MIMI.
 
 Someone who paid MIMI but never finished setting up has no certificate yet, so
@@ -690,5 +693,8 @@ the checkout asks them to pay again. Look for them before switching it on.
 - No admin UI. Set the keys with occ.
 - A later certificate purchase is a new grant, but what MIMI does with a second
   PDC is still undecided.
-- No `act` claim. Keycloak 26.6 has no delegation, so Signa identifies
-  GoPaperless by the token's `azp`.
+- The grant no longer needs the user's token, so it could move to payment
+  settlement (with the stored `securysign_sub`). It stays at the hand-off for
+  now, where the `sub` is always fresh.
+- Signing credits. Signa takes a signature unit at the signing frame, but
+  GoPaperless does not grant them yet.

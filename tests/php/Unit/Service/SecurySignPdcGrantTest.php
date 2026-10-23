@@ -29,7 +29,7 @@ final class SecurySignPdcGrantTest extends TestCase {
 	private array $posts = [];
 
 	/** A signed-in SecurySign user; Keycloak and Signa answer with these statuses. */
-	private function service(int $exchangeStatus, int $grantStatus): SecurySignService {
+	private function service(int $tokenStatus, int $grantStatus): SecurySignService {
 		$config = $this->createMock(IAppConfig::class);
 		$config->method('getValueInt')->willReturn(1);
 		$config->method('getValueString')->willReturnCallback(
@@ -89,12 +89,12 @@ final class SecurySignPdcGrantTest extends TestCase {
 		});
 
 		$client = $this->createMock(IClient::class);
-		$client->method('post')->willReturnCallback(function (string $url, array $options) use ($exchangeStatus, $grantStatus): IResponse {
+		$client->method('post')->willReturnCallback(function (string $url, array $options) use ($tokenStatus, $grantStatus): IResponse {
 			$this->posts[] = ['url' => $url, 'options' => $options];
-			$exchange = $url === self::TOKEN_ENDPOINT;
+			$token = $url === self::TOKEN_ENDPOINT;
 			$response = $this->createMock(IResponse::class);
-			$response->method('getStatusCode')->willReturn($exchange ? $exchangeStatus : $grantStatus);
-			$response->method('getBody')->willReturn($exchange && $exchangeStatus === 200 ? '{"access_token":"exchanged"}' : '{"error":"no"}');
+			$response->method('getStatusCode')->willReturn($token ? $tokenStatus : $grantStatus);
+			$response->method('getBody')->willReturn($token && $tokenStatus === 200 ? '{"access_token":"client-token"}' : '{"error":"no"}');
 			return $response;
 		});
 		$clients = $this->createMock(IClientService::class);
@@ -103,27 +103,23 @@ final class SecurySignPdcGrantTest extends TestCase {
 		return new SecurySignService($config, $this->createMock(IConfig::class), $session, $users, $container, $clients, $this->createMock(LoggerInterface::class));
 	}
 
-	public function testTheGrantCarriesAKeycloakVouchedTokenAndNoPrice(): void {
+	public function testTheGrantIsGoPaperlessOwnTokenNamingTheUserAndNoPrice(): void {
 		$this->service(200, 200)->grantPdc('gp-pdc-attempt-1');
 
 		self::assertCount(2, $this->posts);
-		[$exchange, $grant] = $this->posts;
-		self::assertSame(self::TOKEN_ENDPOINT, $exchange['url']);
+		[$token, $grant] = $this->posts;
+		self::assertSame(self::TOKEN_ENDPOINT, $token['url']);
+		// GoPaperless's client token, not the user's: Signa reads the RP from it.
 		self::assertSame([
-			'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange',
+			'grant_type' => 'client_credentials',
 			'client_id' => 'signa-rp-test',
 			'client_secret' => 'client-secret',
-			'subject_token' => 'login-token',
-			'subject_token_type' => 'urn:ietf:params:oauth:token-type:access_token',
-			'requested_token_type' => 'urn:ietf:params:oauth:token-type:access_token',
-			'audience' => 'signa-entitlement-gateway',
-			'scope' => 'entitlement:grant',
-		], $exchange['options']['form_params']);
+		], $token['options']['form_params']);
 
 		self::assertSame('https://signa.test/api/rp/entitlements/grant', $grant['url']);
-		self::assertSame('Bearer exchanged', $grant['options']['headers']['Authorization']);
-		// Who the user is comes from the token; what GoPaperless charged never leaves.
-		self::assertSame(['product' => 'pdc', 'units' => 1, 'idempotencyKey' => 'gp-pdc-attempt-1'], $grant['options']['json']);
+		self::assertSame('Bearer client-token', $grant['options']['headers']['Authorization']);
+		// The user by their Keycloak id; what GoPaperless charged never leaves.
+		self::assertSame(['product' => 'pdc', 'units' => 1, 'userKey' => 'kc:google-1', 'idempotencyKey' => 'gp-pdc-attempt-1'], $grant['options']['json']);
 	}
 
 	public function testARefusedGrantIsAnOutageNotADeadSession(): void {
@@ -136,10 +132,10 @@ final class SecurySignPdcGrantTest extends TestCase {
 		}
 	}
 
-	public function testNoGrantIsSentWhenKeycloakRefusesTheExchange(): void {
+	public function testNoGrantIsSentWhenKeycloakRefusesTheClientToken(): void {
 		try {
 			$this->service(400, 200)->grantPdc('gp-pdc-attempt-1');
-			self::fail('a refused exchange was accepted');
+			self::fail('a refused client token was accepted');
 		} catch (\RuntimeException $e) {
 			self::assertSame(503, $e->getCode());
 		}

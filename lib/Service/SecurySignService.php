@@ -270,15 +270,16 @@ class SecurySignService {
 	}
 
 	/**
-	 * Grants the signed-in user one PDC from GoPaperless's stock on Signa
-	 * (FIP-025). No price is sent: what GoPaperless charged stays here. Signa
-	 * reads the user from the exchanged token, never from the body, and replays
-	 * a repeated key instead of granting twice.
+	 * Grants the signed-in user one PDC from the stock GoPaperless prepaid on
+	 * Signa (FIP-025 §3.3). No price is sent: what GoPaperless charged stays
+	 * here. Signa takes the grant from GoPaperless's stock (409 when it has run
+	 * out) and replays a repeated key instead of granting twice.
 	 */
 	public function grantPdc(string $idempotencyKey): void {
 		$response = $this->send('post', $this->signingOrigin() . '/api/rp/entitlements/grant', [
-			'headers' => ['Authorization' => 'Bearer ' . $this->exchangedToken(), 'Accept' => 'application/json'],
-			'json' => ['product' => 'pdc', 'units' => 1, 'idempotencyKey' => $idempotencyKey],
+			'headers' => ['Authorization' => 'Bearer ' . $this->clientToken(), 'Accept' => 'application/json'],
+			// Signa keys a user by their Keycloak id, as every consume point does.
+			'json' => ['product' => 'pdc', 'units' => 1, 'userKey' => 'kc:' . $this->identity()['sub'], 'idempotencyKey' => $idempotencyKey],
 		]);
 		if ($response->getStatusCode() !== 200) {
 			$this->logger->error('SecurySign refused a PDC grant', [
@@ -291,13 +292,12 @@ class SecurySignService {
 	}
 
 	/**
-	 * The user's token traded at Keycloak for a short-lived one that only Signa's
-	 * entitlement API accepts (standard token exchange, Keycloak 26.2+). Its `sub`
-	 * is the user and its `azp` this RP, both vouched for by Keycloak.
-	 * ponytail: no `act` claim until Keycloak 26.8's delegation; `azp` names us.
+	 * GoPaperless's own token (client credentials): FIP-025 §3.3 has an RP's
+	 * backend authorize units with it. Its `azp` is this RP and its subject the
+	 * client's service account, which is how Signa knows the grant is ours. It
+	 * needs "Service accounts" switched on for this client in Keycloak.
 	 */
-	private function exchangedToken(): string {
-		$identity = $this->identity();
+	private function clientToken(): string {
 		$provider = $this->provider();
 		$secret = (string)$provider->getClientSecret();
 		if ($secret !== '') {
@@ -310,20 +310,15 @@ class SecurySignService {
 		$discovery = $this->container->get('OCA\\UserOIDC\\Service\\DiscoveryService')->obtainDiscovery($provider);
 		$response = $this->send('post', (string)($discovery['token_endpoint'] ?? ''), [
 			'form_params' => [
-				'grant_type' => 'urn:ietf:params:oauth:grant-type:token-exchange',
+				'grant_type' => 'client_credentials',
 				'client_id' => $provider->getClientId(),
 				'client_secret' => $secret,
-				'subject_token' => $identity['accessToken'],
-				'subject_token_type' => 'urn:ietf:params:oauth:token-type:access_token',
-				'requested_token_type' => 'urn:ietf:params:oauth:token-type:access_token',
-				'audience' => $this->config->getValueString(Application::APP_ID, 'securysign_entitlement_audience', 'signa-entitlement-gateway'),
-				'scope' => 'entitlement:grant',
 			],
 		]);
 		$body = (string)$response->getBody();
 		$token = json_decode($body, true)['access_token'] ?? null;
 		if ($response->getStatusCode() !== 200 || !is_string($token) || $token === '') {
-			$this->logger->error('Keycloak refused the token exchange for a PDC grant', [
+			$this->logger->error('Keycloak refused GoPaperless\'s client token for a PDC grant', [
 				'status' => $response->getStatusCode(),
 				'body' => substr($body, 0, 500),
 			]);
