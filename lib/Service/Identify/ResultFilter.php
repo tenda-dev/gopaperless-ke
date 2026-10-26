@@ -39,6 +39,12 @@ class ResultFilter {
 	}
 
 	private function scoreItem(array $item): int {
+		// Explicit account matches must take precedence over generic email
+		// results when both resolve to the same shareWith identifier.
+		if (($item['method'] ?? null) === 'account') {
+			return 3;
+		}
+
 		$label = (string)($item['label'] ?? '');
 		$unique = (string)($item['shareWithDisplayNameUnique'] ?? '');
 		$shareWith = (string)($item['value']['shareWith'] ?? '');
