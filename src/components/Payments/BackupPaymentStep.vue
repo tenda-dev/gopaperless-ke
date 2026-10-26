@@ -19,13 +19,13 @@
 						</div>
 
 						<span class="notecard-doc__name">
-							{{ document?.name ?? 'Document' }}
+							{{ presentation.summary.title }}
 						</span>
 					</div>
 
 					<!-- Reason -->
 					<div class="notecard-reason">
-						Signing fee — one-time charge
+						{{ presentation.summary.subtitle }}
 					</div>
 
 					<!-- FX -->
@@ -255,7 +255,9 @@
 					</svg>
 					<div class="status-text">
 						<span class="status-text__main">Still waiting for payment confirmation</span>
-						<span class="status-text__sub">Click Retry Payment below to check the latest payment status.</span>
+						<span class="status-text__sub">
+							Click Retry Payment below to check the latest payment status.
+						</span>
 					</div>
 				</div>
 
@@ -280,6 +282,21 @@
 						<polyline points="20,6 9,17 4,12" />
 					</svg>
 					<span class="status-text__main">Payment confirmed</span>
+				</div>
+
+
+				<!-- CANCELLED -->
+				<div v-else-if="payment.state.value === 'cancelled'" class="status-box status-box--warning">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+						stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<circle cx="12" cy="12" r="10" />
+						<line x1="15" y1="9" x2="9" y2="15" />
+						<line x1="9" y1="9" x2="15" y2="15" />
+					</svg>
+					<div class="status-text">
+						<span class="status-text__main">Payment cancelled</span>
+						<span class="status-text__sub">You can still try again whenever you're ready</span>
+					</div>
 				</div>
 
 			</div>
@@ -360,7 +377,7 @@
  *
  * Responsibilities:
  * - capture phone input
- * - resolve provider (Daraja vs DPO)
+ * - resolve provider hint (Daraja vs DPO)
  * - handle UX phases (detect → confirm → charge)
  * - trigger usePayment actions
  *
@@ -381,33 +398,46 @@ import {
 	type MobilePaymentContext,
 	type PaymentMethod,
 	type ResolvedPaymentRoute,
-	type HydratedPayment
+	type HydratedPayment,
+	type SelectedMno,
+	type PaymentPurpose,
+	type PaymentPresentation
 } from '@/payment'
-import { getProductByCode } from '@/payment/product'
-import { getUser } from '@/payment/user'
 import { showError, showInfo, showSuccess } from '@/services/toast'
 
+import { loadState } from '@nextcloud/initial-state'
 import { resolvePhone, formatAsYouType } from '@/utils/phoneResolver'
+import type { SupportedRegion } from '@/utils/phoneResolver'
 import { normaliseRegion } from '@/utils/mobileMoney'
 import '@/style/global.scss'
 import PaymentRouteSummary from './PaymentRouteSummary.vue'
 import { usePaymentRecovery } from '@/payment/usePaymentRecovery'
 import { usePaymentRouting } from '@/payment/usePaymentRouting'
+import type { ProductPricing } from '@/composables/useProductPricing'
+import { useUserContextStore } from '@/store/userContext.ts'
+import type { Product } from '@/payment/product.ts'
 
 // ─────────────────────────────────────────────────────────────
 // Props / Emits
 // ─────────────────────────────────────────────────────────────
 
 const props = defineProps<{
-	signUuid: string
-	signRequestId: number
-	document: any
-	signer: any
+	signUuid?: string
+	signRequestId?: number
+	sponsorshipWorkflowFileUuid?: string
+	paymentPurpose: PaymentPurpose
+	quantity: number
 	productCode: string
+	pricing: ProductPricing
 	initialPayment?: HydratedPayment | null
+	presentation: PaymentPresentation
 }>()
 
-const emit = defineEmits(['payment-success', 'state-change'])
+const emit = defineEmits([
+	'payment-success',
+	'state-change',
+	'payment-runtime-invalid',
+])
 
 // ─────────────────────────────────────────────────────────────
 // External state
@@ -415,13 +445,23 @@ const emit = defineEmits(['payment-success', 'state-change'])
 
 const payment = usePayment()
 const { discardRecovery } = usePaymentRecovery()
-const {   } = usePaymentRouting()
+const routing = usePaymentRouting()
+const userContext = useUserContextStore()
+
+/**
+ * Backend may resolve signUuid from signRequestId during initiate().
+ * Cache the resolved UUID so phase-2 validation and the charge call
+ * can proceed even when the parent component only passed signRequestId.
+ */
+const resolvedSignUuid = ref<string | null>(props.signUuid ?? null)
+const effectiveSignUuid = computed(() => resolvedSignUuid.value ?? props.signUuid ?? null)
 
 // ─────────────────────────────────────────────────────────────
 // UI state
 // ─────────────────────────────────────────────────────────────
 
 const selectedMethod = ref<PaymentMethod>('mobile')
+const defaultPhoneRegion = loadState<SupportedRegion>('libresign', 'default_phone_region', 'KE')
 const phoneFocused = ref(false)
 const phoneInputRef = ref<HTMLInputElement | null>(null)
 const phoneInput = ref('')
@@ -429,7 +469,7 @@ const resolution = ref<ReturnType<typeof resolvePhone> | null>(null)
 const instructions = ref<string | null>(null)
 const processingStage = ref(0)
 
-const product = ref<any>(null)
+const product = ref<Product | null>(null)
 const user = ref<any>(null)
 const isLoadingData = ref(true)
 const hasEmittedSuccess = ref(false)
@@ -480,12 +520,18 @@ const mnoDetection = reactive<{
 const detectedRegion = ref<string>('KE')
 
 const isDaraja = computed(() => {
-	const hydratedPayment = props.initialPayment
-	if (hydratedPayment && hydratedPayment.method === 'mobile') {
-		return hydratedPayment.provider === 'daraja'
+	/**
+	 * ACTIVE EXECUTION CONTEXT
+	 * Backend-selected provider is source of truth.
+	 */
+	if (payment.provider.value) {
+		return payment.provider.value === 'daraja'
 	}
 
-	// Wait for input resolution to set
+	/**
+	 * PRE-EXECUTION UX HINT
+	 * Used before orchestration begins.
+	 */
 	return resolution.value?.provider === 'daraja'
 })
 
@@ -556,6 +602,9 @@ const buttonLabel = computed(() => {
 			return 'Retry payment'
 
 		case 'error':
+			return 'Try again'
+
+		case 'cancelled':
 			return 'Try again'
 
 		case 'processing':
@@ -687,6 +736,12 @@ const paymentDisplayLabel = computed(() => {
 	return null
 })
 
+const estimatedAmount = computed(() =>
+	product.value && props.quantity
+		? product.value.amount * props.quantity
+		: 0
+)
+
 const displayAmount = computed(() => {
 	if (!product.value) {
 		return null
@@ -720,7 +775,7 @@ const displayAmount = computed(() => {
 	// fallback before payment creation
 	return {
 		primary: formatAmount(
-			product.value.amount,
+			estimatedAmount.value,
 			product.value.currency
 		),
 
@@ -755,6 +810,34 @@ const canEditProvider = computed(() => {
 	)
 })
 
+const paymentSummaryTitle = computed(() => {
+	switch (payment.paymentPurpose.value) {
+		case 'credit_purchase':
+			return props.quantity === 1
+					? '1 Signing Credit'
+					: `${props.quantity} Signing Credits`
+
+		case 'sign_request':
+			return 'Signature Payment'
+
+		default:
+			return 'Payment'
+	}
+})
+
+const paymentSummarySubtitle = computed(() => {
+	switch (payment.paymentPurpose.value) {
+		case 'credit_purchase':
+			return 'One-time purchase'
+
+		case 'sign_request':
+			return 'One-time signing fee'
+
+		default:
+			return 'Secure payment'
+	}
+})
+
 /**
  * Sync payment state → parent modal
  */
@@ -776,6 +859,14 @@ watch(() => payment.state.value, (state) => {
 watch(phoneInput, (val) => {
 	if (isHydrating.value) return
 
+	/**
+	 * Prevent runtime provider drift during
+	 * active orchestration session.
+	 */
+	if (payment.providerLocked.value) {
+		return
+	}
+
 	const formatted = formatAsYouType(val)
 
 	if (formatted !== val) {
@@ -783,7 +874,7 @@ watch(phoneInput, (val) => {
 		return
 	}
 
-	const res = resolvePhone(formatted)
+	const res = resolvePhone(formatted, defaultPhoneRegion)
 
 	resolution.value = res
 
@@ -865,7 +956,7 @@ async function openMnoSelector() {
 	}
 }
 
-function selectMnoOption(option: { provider: string; country: string }) {
+function selectMnoOption(option: MnoOption) {
 	mnoDetection.selected = option
 	mnoDetection.mno = option.provider
 	mnoDetection.country = option.country
@@ -913,124 +1004,296 @@ async function handlePay() {
 
 // To be used within handlePay
 async function handleMobilePayment() {
-	const r = resolution.value
-	if (!r?.isValid) {
 
-		showError(`Enter a valid phone number. Please check the format and try again.`)
+	const resolvedPhone = resolution.value
 
-		return
-	}
-
-	if (r.provider === 'daraja') {
-		payment.state.value = 'initiating'
-
-		const res = await payment.initiateOnly({
-			provider: 'daraja',
-			paymentMethod: 'mobile',
-			phoneNumber: r.e164,
-			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
-			productCode: props.productCode,
-			userId: user.value?.uid,
-			userEmail: props.signer.email,
-			purpose: 'sign_request',
-		})
-
-		if (res.flow !== 'callback') {
-			payment.state.value = 'idle'
-			showError('Unexpected payment flow')
-			return
-		}
-
-		instructions.value = res.instructions ?? 'Check your phone and enter your M-Pesa PIN'
-
-		// TODO:
-		// move processing transition into usePayment
-		// for consistency with chargeExistingReference()
-		mnoDetection.reference = res.reference
-		payment.state.value = 'processing'
-
-		payment.startPolling(
-			res.reference,
-			res.flow
+	if (!resolvedPhone?.isValid) {
+		showError(
+			'Enter a valid phone number and try again.'
 		)
 
 		return
 	}
 
-	// ===================================================
-	// DPO PHASE 1
-	// First click = detect/setup only
-	// ===================================================
-
-	if (!mnoDetection.reference) {
+   /**
+	* MOBILE PAYMENT PHASE 1
+	*
+	* Creates or initiates a payment session.
+	*
+	* Depending on backend routing strategy this may:
+	* - already dispatch provider execution
+	* - return a verified auto-charge instruction
+	* - require explicit MNO confirmation
+	* - create a resumable payment reference
+	*/
+	if (!payment.activeReference.value) {
 
 		payment.state.value = 'initiating'
 
-		const res = await payment.initiateOnly({
+		const response = await payment.initiateOnly({
+			// UX/provider preference hint only.
+			// Backend remains orchestration authority.
+			provider: isDaraja.value
+				? 'daraja'
+				: 'dpo',
+
 			paymentMethod: 'mobile',
-			phoneNumber: r.e164,
+			phoneNumber: resolvedPhone.e164,
 			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
+			signUuid: effectiveSignUuid.value ?? undefined,
 			productCode: props.productCode,
 			userId: user.value?.uid,
-			userEmail: props.signer.email,
-			purpose: 'sign_request',
+			userEmail: user.value?.emailAddress,
+			purpose: payment.paymentPurpose.value!,
+			quantity: props.quantity,
 		})
-
-		if (!res?.reference || !res?.flow) {
+		/**
+		 * Defensive validation.
+		 *
+		 * A payment session without:
+		 * - reference
+		 * - flow
+		 *
+		 * is considered unrecoverable.
+		 */
+		if (!response?.reference || !response?.flow) {
 			payment.state.value = 'error'
+			payment.error.value =
+				'Unable to start payment session. Please try again.'
+
+			showError(`Unable to start payment session.`)
+
+			setTimeout(() => {
+				showInfo(
+					'Restarting payment session. Please try again.'
+				)
+				payment.activeReference.value = null
+				mnoDetection.reference = null
+				resetPaymentFlow()
+				emit('payment-runtime-invalid')
+			}, 2500)
 
 			throw new Error(
-				'Invalid payment initiation response'
+				'[Payment] invalid initiation response'
 			)
 		}
+		/**
+		 * Active payment runtime reference.
+		 *
+		 * Source of truth for:
+		 * - recovery
+		 * - polling
+		 * - reconciliation
+		 * - resume flows
+		 */
+		payment.activeReference.value =
+			response.reference
 
+		// Assign provider to payment execution state and lock provider (BE routing truth)
+		payment.lockPaymentProvider(response.provider)
+
+		if (response.paymentPurpose) {
+			payment.lockPaymentPurpose(response.paymentPurpose)
+		}
+
+		/**
+		 * Cache backend-resolved signer UUID. The parent may only have
+		 * passed signRequestId, but charge() needs the UUID.
+		 */
+		if (response.signUuid) {
+			resolvedSignUuid.value = response.signUuid
+		}
+
+		/**
+		 * Shared mobile payment display context.
+		 */
 		mobilePaymentContext.value = {
-			displayAmount: res.displayAmount,
-			displayAmountFormatted: res.displayAmountFormatted,
-			displayCurrency: res.displayCurrency,
-			phoneNumber: res.phoneNumber,
+			displayAmount:
+				response.displayAmount,
+
+			displayAmountFormatted:
+				response.displayAmountFormatted,
+
+			displayCurrency:
+				response.displayCurrency,
+
+			phoneNumber:
+				response.phoneNumber,
 		}
 
-		const region = normaliseRegion(res.country)
-		if (region) detectedRegion.value = region
+		/**
+		 * Hydrate detected region.
+		 *
+		 * Prefer backend-resolved region first,
+		 * otherwise fallback to FE normalization.
+		 */
+		const resolvedRegion =
+			response.phoneNumberRegion ??
+			normaliseRegion(response.country)
 
-		mnoDetection.reference = res.reference
-		mnoDetection.confidence = res.confidence
-		mnoDetection.mno = res.mno
-		mnoDetection.country = res.country
-		mnoDetection.options = res.options ?? []
+		if (resolvedRegion) {
+			detectedRegion.value =
+				resolvedRegion
+		}
 
+		/**
+		 * Preserve backwards compatibility
+		 * while payment.activeReference becomes
+		 * the primary runtime reference source.
+		 */
+		mnoDetection.reference =
+			response.reference
+
+		mnoDetection.confidence =
+			response.confidence
+
+		mnoDetection.mno =
+			response.mno
+
+		mnoDetection.country =
+			response.country
+
+		mnoDetection.options =
+			response.options ?? []
+
+		/**
+		 * ==================================================
+		 * CALLBACK / AUTO-EXECUTION FLOWS
+		 * ==================================================
+		 *
+		 * Provider execution already occurred.
+		 * FE should immediately begin reconciliation.
+		 */
+		if (routing.shouldStartPolling(response)) {
+
+			instructions.value =
+				response.instructions ??
+				'Check your phone and complete the payment request.'
+
+			payment.state.value = 'processing'
+
+			payment.startPolling(
+				response.reference,
+				response.flow,
+				(status) => {
+					if (status === 'FAILED' || status === 'CANCELLED') {
+						handleTerminalReset()
+					}
+				}
+			)
+
+			return
+		}
+
+		/**
+		 * ==================================================
+		 * MOBILE_DIRECT / SELECTION FLOWS
+		 * ==================================================
+		 */
+
+		switch (response.confidence) {
+
+			case 'high':
+				mnoDetection.state = 'detected'
+				break
+
+			case 'ambiguous':
+				mnoDetection.state = 'suggested'
+				break
+
+			case 'unknown':
+			default:
+				mnoDetection.state = 'requires-selection'
+				break
+		}
+
+		if (response.autoCharge?.enabled) {
+			// Auto-charge requires the provider-native execution key.
+			// autoCharge.mno is the canonical MNO identity and must not be
+			// sent to the provider charge endpoint.
+			const mno = response.autoCharge?.providerMnoKey
+			const country = response.autoCharge?.country
+            const reference = payment.activeReference.value
+			const phoneNumber =
+				mobilePaymentContext.value?.phoneNumber ??
+				normalisedPhone.value
+
+			const isSignRequest = (payment.paymentPurpose.value ?? props.paymentPurpose) === 'sign_request'
+
+			if (isSignRequest && (!props.signRequestId || !effectiveSignUuid.value)) return
+
+			if (
+				mno &&
+				country &&
+				reference &&
+				phoneNumber
+			) {
+				mnoDetection.selected = {
+					provider: mno,
+					country: country,
+				}
+				mnoDetection.state = 'selected'
+                const signRequestId = props.signRequestId ?? 0
+				const signUuid = effectiveSignUuid.value ?? ''
+
+				await payment.chargeExistingReference(
+					{
+						reference:
+						payment.activeReference.value,
+						phoneNumber,
+						mno: mnoDetection.selected.provider,
+						mnoCountry: mnoDetection.selected.country,
+						signRequestId,
+						signUuid,
+					},
+					(status) => {
+						if (status === 'FAILED' || status === 'CANCELLED') {
+							handleTerminalReset()
+						}
+					}
+				)
+
+			    return
+			}
+		}
+
+		/**
+		 * Waiting for explicit user confirmation.
+		 */
 		payment.state.value = 'idle'
-
-		// high
-		if (res.confidence === 'high') {
-			mnoDetection.state = 'detected'
-		}
-
-		// ambiguous
-		else if (res.confidence === 'ambiguous') {
-			mnoDetection.state = 'suggested'
-		}
-
-		// unknown
-		else {
-			mnoDetection.state = 'requires-selection'
-		}
 
 		return
 	}
 
-	// ===================================================
-	// DPO PHASE 2
-	// User explicitly confirmed
-	// ===================================================
+	/**
+	 * ==================================================
+	 * MOBILE PAYMENT PHASE 2
+	 * ==================================================
+	 *
+	 * User explicitly confirmed:
+	 * - MNO
+	 * - country
+	 *
+	 * Existing payment reference is charged.
+	 */
 
-	const mnoToUse = mnoDetection.selected?.provider ?? mnoDetection.mno
-	const countryToUse = mnoDetection.selected?.country ?? mnoDetection.country
+	const mnoToUse =
+		mnoDetection.selected?.provider ??
+		mnoDetection.mno
 
-	if (mnoDetection.reference) {
+	const countryToUse =
+		mnoDetection.selected?.country ??
+		mnoDetection.country
+
+	/**
+	 * Prevent execution before provider
+	 * selection requirements are satisfied.
+	 */
+	if (
+		payment.activeReference.value &&
+		!payment.alreadyCharged
+	) {
+
 		const readyForCharge =
 			mnoDetection.state === 'detected' ||
 			(
@@ -1039,20 +1302,78 @@ async function handleMobilePayment() {
 			)
 
 		if (!readyForCharge) {
-			showError('Please select your mobile provider')
+
+			showError(
+				'Please select your mobile network provider to continue.'
+			)
 
 			return
 		}
 	}
 
-	await payment.chargeExistingReference({
-		reference: mnoDetection.reference!,
-		phoneNumber: normalisedPhone.value,
-		mno: mnoToUse ?? undefined,
-		mnoCountry: countryToUse ?? undefined,
-		signRequestId: props.signRequestId,
-		signUuid: props.signUuid
-	})
+	/**
+	 * Prefer backend-confirmed phone context.
+	 * Fallback to current normalized input.
+	 */
+	const phoneNumber =
+		mobilePaymentContext.value?.phoneNumber ??
+		normalisedPhone.value
+
+	/**
+	 * Final defensive validation before charge.
+	 *
+	 * signRequestId / signUuid are only meaningful for the sign_request purpose
+	 * other purposes (e.g. credit_purchase) legitimately have neither, so they are
+	 * only required when the resolved purpose is sign_request.
+	 */
+	const isSignRequest = (payment.paymentPurpose.value ?? props.paymentPurpose) === 'sign_request'
+	if (
+		!payment.activeReference.value ||
+		!phoneNumber ||
+		!mnoToUse ||
+		!countryToUse ||
+		(isSignRequest && (!props.signRequestId || !effectiveSignUuid.value))
+	) {
+
+		payment.state.value = 'error'
+
+		payment.error.value =
+			'Unable to continue payment. Please restart the payment process.'
+
+		showError(
+			'Payment session expired or became invalid. Restarting payment flow.'
+		)
+
+		payment.activeReference.value = null
+		mnoDetection.reference = null
+		setTimeout(() => {
+			resetPaymentFlow()
+			emit('payment-runtime-invalid')
+		}, 2500)
+
+		throw new Error(
+			'[Payment] invalid charge payload'
+		)
+	}
+
+	const signRequestId = props.signRequestId ?? 0
+	const signUuid = effectiveSignUuid.value ?? ''
+	await payment.chargeExistingReference(
+		{
+			reference:
+			payment.activeReference.value,
+			phoneNumber,
+			mno: mnoToUse,
+			mnoCountry: countryToUse,
+			signRequestId,
+			signUuid,
+		},
+		(status) => {
+			if (status === 'FAILED' || status === 'CANCELLED') {
+				handleTerminalReset()
+			}
+		}
+	)
 }
 
 // To be used within handlePay
@@ -1063,16 +1384,25 @@ async function handleCardPayment() {
 	// State handled directly in usePayment
 	// If initiation is successful, usePayment will
 	// handle the redirect and subsequent state changes.
-	await payment.startPayment({
-		signRequestId: props.signRequestId,
-		signUuid: props.signUuid,
-		paymentMethod: 'card',
-		userEmail: props.signer.email,
-		userId: user.value?.uid,
-		productCode: props.productCode,
-		redirectUrl: payment.buildPaymentRedirectUrl(),
-		purpose: 'sign_request',
-	})
+	await payment.startPayment(
+		{
+			provider: 'dpo',
+			signRequestId: props.signRequestId,
+			signUuid: effectiveSignUuid.value ?? undefined,
+			paymentMethod: 'card',
+			userEmail: user.value?.emailAddress,
+			userId: user.value?.uid,
+			productCode: props.productCode,
+			redirectUrl: payment.buildPaymentRedirectUrl(),
+			returnUrl: payment.buildPaymentReturnUrl(),
+			sponsorshipWorkflowFileUuid: props.sponsorshipWorkflowFileUuid,
+			quantity: props.quantity,
+			purpose: payment.paymentPurpose.value ?? 'sign_request'
+	    },
+		(status) => {
+            if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
+        }
+    )
 }
 
 /**
@@ -1083,16 +1413,35 @@ async function handleCardPayment() {
  */
 async function retryPayment() {
 	try {
-		const payRes = await payment.startPayment({
-			signRequestId: props.signRequestId,
-			signUuid: props.signUuid,
-			paymentMethod: selectedMethod.value === 'card' ? 'card' : 'mobile',
-			phoneNumber: normalisedPhone.value || undefined,
-			userEmail: props.signer.email,
-			userId: user.value?.uid,
-			productCode: props.productCode,
-			purpose: 'sign_request',
-		})
+		const paymentMethod = selectedMethod.value === 'card' ? 'card' : 'mobile'
+		const isCardPaymentMethod = paymentMethod === 'card'
+		let redirectUrl: string | null = null
+		let returnUrl: string | null = null
+
+		if (isCardPaymentMethod) {
+			redirectUrl = payment.buildPaymentRedirectUrl()
+			returnUrl = payment.buildPaymentReturnUrl()
+		}
+		const payRes = await payment.startPayment(
+			{
+				signRequestId: props.signRequestId,
+				signUuid: effectiveSignUuid.value ?? undefined,
+				paymentMethod,
+				phoneNumber: normalisedPhone.value || undefined,
+				userEmail: user.value?.emailAddress,
+				userId: user.value?.uid,
+				productCode: props.productCode,
+				quantity: props.quantity,
+				purpose: payment.paymentPurpose.value ?? 'sign_request',
+				redirectUrl,
+				returnUrl,
+				// Scope the pointer to the card flow; mobile retries never carry it.
+				sponsorshipWorkflowFileUuid: isCardPaymentMethod ? props.sponsorshipWorkflowFileUuid : undefined,
+			},
+			(status) => {  // ← onTerminal callback
+				if (status === 'FAILED' || status === 'CANCELLED') handleTerminalReset()
+			}
+	    )
 
 		if (!payRes) return
 
@@ -1106,9 +1455,20 @@ async function retryPayment() {
 			return
 		}
 
+		payment.activeReference.value = payRes.reference
+		// Assign provider to payment execution state and lock provider (BE routing truth)
+		payment.lockPaymentProvider(payRes.provider)
 		mnoDetection.reference = payRes.reference
 		instructions.value = payRes.instructions ?? null
-		selectedMethod.value = payRes.flow === 'redirect' ? 'card' : 'mobile'
+		selectedMethod.value = payRes.method
+		payment.alreadyCharged.value = !!payRes.alreadyCharged
+		if (payRes.paymentPurpose) {
+			payment.lockPaymentPurpose(payRes.paymentPurpose)
+		}
+
+		if (payRes.signUuid) {
+			resolvedSignUuid.value = payRes.signUuid
+		}
 
 		if (payRes.flow === 'redirect') return
 
@@ -1120,42 +1480,56 @@ async function retryPayment() {
 		}
 
 		if (payRes.flow === 'mobile_direct') {
-			mnoDetection.confidence = payRes.confidence
-			mnoDetection.mno = payRes.mno
-			mnoDetection.country = payRes.country
 
-			if (payRes.requiresProviderSelection) {
+			const selected = payRes.selected;
+			const isSelectedValid = !!selected && isValidSelectedProvider(selected)
+			mnoDetection.confidence = payRes.confidence
+
+			mnoDetection.mno = isSelectedValid ? selected.mno : payRes.mno
+			mnoDetection.country = isSelectedValid ? selected.country : payRes.country
+
+			// Polling handled in handleBackendDirectedFlow in usePayment
+			if (payRes.alreadyCharged) {
+				// Add retry count for mobile_direct polling
+				payment.retryCount.value += 1
+				mnoDetection.state =
+					isSelectedValid
+						? 'selected'
+						: 'detected'
+
+				return
+			}
+
+			if (!isSelectedValid && payRes.requiresProviderSelection) {
 				mnoDetection.state = 'requires-selection'
 				mnoDetection.showSelector = true
 				mnoDetection.options = payRes.options ?? []
 				return
 			}
 
-			if (payRes.alreadyCharged) {
-				// Add retry count for mobile_direct polling
-				payment.retryCount.value += 1
-				mnoDetection.state =
-					mnoDetection.selected
-						? 'selected'
-						: 'detected'
-
-				payment.startPolling(
-					payRes.reference,
-					payRes.flow
-				)
-
-				return
-			}
-
-			if (mnoDetection.selected) {
+			if (isSelectedValid) {
 				mnoDetection.state = 'selected'
+				mnoDetection.showSelector = false
 			} else {
-				mnoDetection.state =
-					payRes.confidence === 'high'
-						? 'detected'
-						: payRes.confidence === 'ambiguous'
-							? 'suggested'
-							: 'requires-selection'
+
+				switch (payRes.confidence) {
+
+					case 'high':
+					    mnoDetection.showSelector = false
+						mnoDetection.state = 'detected'
+						break
+
+					case 'ambiguous':
+					    mnoDetection.showSelector = true
+						mnoDetection.state = 'suggested'
+						break
+
+					case 'unknown':
+					default:
+					    mnoDetection.showSelector = true
+						mnoDetection.state = 'requires-selection'
+						break
+				}
 			}
 
 			mnoDetection.options = payRes.options ?? []
@@ -1175,12 +1549,13 @@ function selectMethod(m: PaymentMethod) {
 	selectedMethod.value = m
 }
 
-function confirmSuggestedMno() {
-	mnoDetection.selected = {
-		provider: mnoDetection.mno!,
-		country: mnoDetection.country!,
-	}
-	mnoDetection.state = 'selected'
+function isValidSelectedProvider(
+	selected?: SelectedMno | null
+): boolean {
+	return !!(
+		selected?.mno &&
+		selected?.country
+	)
 }
 
 function formatAmount(amount: number, currency: string) {
@@ -1217,7 +1592,6 @@ function resetMnoDetectionState() {
 	mnoDetection.options = []
 	mnoDetection.selected = null
 	mnoDetection.showSelector = false
-	payment.activeReference.value = null
 }
 
 /**
@@ -1237,7 +1611,6 @@ function hydratePaymentState(
 		hydratedPaymentPayload,
 	)
 
-	// Deep copy to discard props hydratedPayment
 	const hydratedPayment = hydratedPaymentPayload
 
 	isHydrating.value = true
@@ -1262,22 +1635,33 @@ function hydratePaymentState(
 			hydratedPayment.phoneNumber
 
 		const resolved = resolvePhone(
-				hydratedPayment.phoneNumber,
-			)
+			hydratedPayment.phoneNumber,
+			defaultPhoneRegion,
+		)
 
 		resolution.value = resolved
 
-		if (!hydratedPayment.phoneNumberRegion) {
+		if (hydratedPayment.phoneNumberRegion) {
+
+			detectedRegion.value =
+				hydratedPayment.phoneNumberRegion
+
+			mnoDetection.country =
+				hydratedPayment.phoneNumberCountry ?? null
+
+		} else {
+
+			const resolved = resolvePhone(
+				hydratedPayment.phoneNumber,
+				defaultPhoneRegion,
+			)
+
+			resolution.value = resolved
 
 			if (resolved.region) {
 				detectedRegion.value =
 					resolved.region
 			}
-	    } else {
-
-		   detectedRegion.value = hydratedPayment.phoneNumberRegion
-		   mnoDetection.country = hydratedPayment.phoneNumberCountry ?? null
-
 		}
 	}
 	/**
@@ -1308,8 +1692,11 @@ function hydratePaymentState(
 	 * Restore payment references state
 	 */
 	payment.activeReference.value = hydratedPayment.reference
-
+    payment.lockPaymentProvider(hydratedPayment.provider)
 	payment.alreadyCharged.value = !!hydratedPayment.alreadyCharged
+	if (hydratedPayment.paymentPurpose) {
+		payment.lockPaymentPurpose(hydratedPayment.paymentPurpose);
+	}
 
 	/**
 	 * Restore MNO detection state
@@ -1329,11 +1716,14 @@ function hydratePaymentState(
 	mnoDetection.options =
 		hydratedPayment.options ?? []
 
+	const selected = hydratedPayment.selected
+	const isSelectedValid = selected && isValidSelectedProvider(selected)
+
 	mnoDetection.selected =
-		hydratedPayment.selected
+		isSelectedValid
 			? {
-				provider: hydratedPayment.selected.mno,
-				country: hydratedPayment.selected.country,
+				provider: selected.mno,
+				country: selected.country,
 			}
 			: null
 
@@ -1341,64 +1731,75 @@ function hydratePaymentState(
 	 * Restore provider selection state
 	 */
 
-	if (hydratedPayment.selected) {
+	if (isSelectedValid) {
 
 		mnoDetection.state = 'selected'
 
-	} else if (
-		hydratedPayment.requiresProviderSelection
-	) {
-
-		mnoDetection.state =
-			hydratedPayment.confidence === 'ambiguous'
-				? 'suggested'
-				: 'requires-selection'
-
 	} else {
 
-		mnoDetection.state = 'detected'
+		switch (hydratedPayment.confidence) {
+
+			case 'high':
+				mnoDetection.state = 'detected'
+				break
+
+			case 'ambiguous':
+				mnoDetection.state = 'suggested'
+				break
+
+			case 'unknown':
+			default:
+				mnoDetection.state =
+					'requires-selection'
+				break
+		}
 	}
+
+	mnoDetection.showSelector =
+		mnoDetection.state === 'suggested'
+		|| mnoDetection.state === 'requires-selection'
 
 	const {
 		method,
-		provider,
 		redirectUrl
 	} = hydratedPayment
 
-
-	const shouldResumePolling =
-		method === 'mobile' &&
-		(
-			provider === 'daraja' ||
-			(provider === 'dpo' && hydratedPayment.alreadyCharged)
-		)
-
-	payment.state.value =
-		shouldResumePolling
-			? 'processing'
-			: 'idle'
-	/**
-	 * Restart polling if
-	 * DARAJA - Payment exists
-	 * DPO - payment already charged (instructions can only be set after DPO chargeExistingReference
-	 */
-	if (shouldResumePolling) {
-		payment.startPolling(
-			hydratedPayment.reference,
-			hydratedPayment.flow,
-		)
-	}
-
-	// We redirect or we can ignore (not sure about this tbh)
+	// We redirect or we can ignore
 	if (method === 'card' && redirectUrl) {
 		discardRecovery()
 		window.location.replace(redirectUrl)
 		return
 	}
 
+	const shouldResumePolling = routing.shouldStartPolling(hydratedPayment)
+
+	payment.state.value =
+		shouldResumePolling
+			? 'processing'
+			: 'idle'
+
+	if (shouldResumePolling) {
+		payment.startPolling(
+			hydratedPayment.reference,
+			hydratedPayment.flow,
+			(status) => {
+				if (status === 'FAILED' || status === 'CANCELLED') {
+					handleTerminalReset()
+				}
+			}
+		)
+	}
+
 	requestAnimationFrame(() => {
 		isHydrating.value = false
 	})
+}
+
+function handleTerminalReset() {
+    resetMnoDetectionState()
+    payment.activeReference.value = null
+    payment.alreadyCharged.value = false
+    payment.resetProviderLock()
 }
 
 async function handleCancelPaymentSession() {
@@ -1411,14 +1812,12 @@ async function handleCancelPaymentSession() {
 function resetPaymentFlow() {
 
 	selectMethod('mobile')
-	payment.state.value = 'idle'
 	phoneInput.value = ''
 	detectedRegion.value = 'KE'
 	instructions.value = null
 	mobilePaymentContext.value = null
 	processingStage.value = 0
 	hasShownOfflineToast = false
-	payment.alreadyCharged.value = false
 
 	resetMnoDetectionState()
 }
@@ -1432,16 +1831,16 @@ onMounted(async () => {
 		showInfo('This is a demo environment. No real money is being transacted.')
 	}
 	try {
-		const [u, p] = await Promise.all([
-			getUser(),
-			getProductByCode(props.productCode),
-		])
-		user.value = u
-		product.value = p
+		const { uid, emailAddress, phoneNumber } = useUserContextStore()
+		user.value = { uid, emailAddress, phoneNumber }
+		product.value = props.pricing.product.value
 
 		if (props.initialPayment) {
 			hydratePaymentState(props.initialPayment)
+		} else {
+			payment.paymentPurpose.value = props.paymentPurpose;
 		}
+
 	} catch (e) {
 		showError('Failed to load payment data')
 	} finally {
