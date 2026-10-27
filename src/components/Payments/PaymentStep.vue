@@ -578,7 +578,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
-@use './tokens' as pay;
+@use './tokens.scss' as pay;
 
 .payment-step {
 	@include pay.pay-tokens;

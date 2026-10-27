@@ -69,39 +69,10 @@ export function usePaymentDisplay(options: PaymentDisplayOptions) {
 		return null
 	})
 
-	const paymentSummaryTitle = computed(() => {
-		switch (options.paymentPurpose.value) {
-			case 'credit_purchase':
-				return quantity.value === 1
-					? '1 Signing Credit'
-					: `${quantity.value} Signing Credits`
-
-			case 'sign_request':
-				return 'Signature Payment'
-
-			default:
-				return 'Payment'
-		}
-	})
-
-	const paymentSummarySubtitle = computed(() => {
-		switch (options.paymentPurpose.value) {
-			case 'credit_purchase':
-				return 'One-time purchase'
-
-			case 'sign_request':
-				return 'One-time signing fee'
-
-			default:
-				return 'Secure payment'
-		}
-	})
 
 	return {
 		estimatedAmount,
 		displayAmount,
 		paymentDisplayLabel,
-		paymentSummaryTitle,
-		paymentSummarySubtitle,
 	}
 }

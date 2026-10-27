@@ -94,9 +94,7 @@ export function usePaymentSession({
 	paymentDisplayLabel,
 }: PaymentSession) {
 
-	const {
-		isOffline,
-	} = useNetworkState()
+	useNetworkState()
 
 	/**
 	 * Effective signer UUID: prefer the backend-resolved UUID cached in
