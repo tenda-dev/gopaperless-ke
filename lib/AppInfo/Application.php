@@ -77,17 +77,19 @@ class Application extends App implements IBootstrap {
 				if ($build === '' || $build === $appConfig->getValueString(self::APP_ID, 'js_build')) {
 					return;
 				}
-				// Theming owns this key and reads it as a STRING; writing it as an
-				// int makes its (and our) reads throw AppConfigTypeConflictException.
-				$current = (int)$appConfig->getValueString('theming', 'cachebuster', '0');
-				$appConfig->setValueString('theming', 'cachebuster', (string)($current + 1));
+				// Theming owns this key; NC 34 core reads AND writes it as an int
+				// (ThemingDefaults::increaseCacheBuster). The row must stay int-typed:
+				// a string write here makes core's getAppValueInt() throw
+				// AppConfigTypeConflictException on every page render.
+				$appConfig->setValueInt('theming', 'cachebuster', $appConfig->getValueInt('theming', 'cachebuster', 0) + 1);
 				$appConfig->setValueString(self::APP_ID, 'js_build', $build);
 			} catch (\Throwable $e) {
-				// An earlier release mistyped theming/cachebuster as int. Delete and
-				// re-create it as a string so theming's reads work again.
+				// A legacy or previously mistyped row may not be int-typed, which
+				// makes the read/write above throw. Delete and re-create it as an
+				// int so theming's reads work again.
 				try {
 					$appConfig->deleteKey('theming', 'cachebuster');
-					$appConfig->setValueString('theming', 'cachebuster', '1');
+					$appConfig->setValueInt('theming', 'cachebuster', 1);
 					$build = (string)@filemtime(__DIR__ . '/../../js/libresign-main.mjs');
 					if ($build !== '') {
 						$appConfig->setValueString(self::APP_ID, 'js_build', $build);
