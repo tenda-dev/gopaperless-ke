@@ -13,6 +13,33 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class ResultFilterTest extends TestCase {
+	public function testUnifyPrefersAccountMethodOverEmailWhenDuplicateShareWith(): void {
+		$filter = new ResultFilter();
+		$items = [
+			[
+				'label' => 'person@example.com',
+				'method' => 'email',
+				'shareWithDisplayNameUnique' => 'person@example.com',
+				'value' => [
+					'shareWith' => 'person@example.com',
+				],
+			],
+			[
+				'label' => 'Person',
+				'method' => 'account',
+				'shareWithDisplayNameUnique' => 'person@example.com',
+				'value' => [
+					'shareWith' => 'person@example.com',
+				],
+			],
+		];
+
+		$result = $filter->unify([$items]);
+
+		$this->assertCount(1, $result);
+		$this->assertSame('account', $result[0]['method']);
+	}
+
 	public function testUnifyPrefersCustomLabelWhenDuplicateShareWith(): void {
 		$filter = new ResultFilter();
 		$items = [
