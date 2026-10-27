@@ -335,7 +335,7 @@
 									class="pw-btn pw-btn--primary pwn__grow"
 									:disabled="signingIn || !requesterEmailValid"
 									@click="signInToSend">
-									{{ signingIn ? t('libresign', 'Redirecting…') : t('libresign', 'Sign in to continue') }} →
+									{{ signingIn ? t('libresign', 'Redirecting…') : t('libresign', 'Continue') }} →
 								</button>
 							</template>
 						</div>

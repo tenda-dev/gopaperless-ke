@@ -247,3 +247,11 @@ export interface PaymentPresentation {
 		subtitle: string
 	}
 }
+export interface PaymentSessionContext {
+	signUuid?: string
+	signRequestId?: number
+	sponsorshipWorkflowFileUuid?: string
+	productCode: string
+	quantity: number
+	purpose: PaymentPurpose
+}

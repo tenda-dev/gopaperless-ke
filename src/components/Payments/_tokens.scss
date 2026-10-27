@@ -1,0 +1,62 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/**
+ * Defines semantic design tokens for the payment UI.
+ *
+ * Maps payment-specific tokens to Nextcloud theme variables where available,
+ * allowing components to inherit the active theme's surfaces, text, borders,
+ * and status colors. Payment-specific values are kept here to maintain a
+ * consistent visual language across the payment flow.
+ *
+ * Apply this mixin to the `.payment-step` root so its custom properties
+ * cascade to nested elements. Other payment components can reuse the same
+ * tokens by including the mixin in their own root selector:
+ *
+ *   @use '.../Payments/tokens' as pay;
+ *
+ *   .my-part {
+ *       @include pay.pay-tokens;
+ *   }
+ *
+ * Custom properties that reference GoPaperless status tokens or fixed brand
+ * colors retain their existing definitions; this mixin centralises their
+ * usage rather than redefining the underlying theme.
+ */
+@mixin pay-tokens {
+	--pay-surface: var(--color-main-background);
+	--pay-sunken: var(--color-background-hover, var(--color-background-dark, rgba(127, 127, 127, 0.08)));
+	--pay-border: var(--color-border);
+	--pay-border-strong: var(--color-border-dark, var(--color-border));
+	--pay-fg: var(--color-main-text);
+	--pay-fg-muted: var(--color-text-maxcontrast);
+	--pay-fg-faint: var(--color-text-maxcontrast);
+
+	// Shared signing-flow accent colors, also used by credit purchase components.
+	--pay-green: #04d56d;
+	--pay-green-ink: #03b85e;
+	--pay-green-wash: rgba(4, 213, 109, 0.12);
+	--pay-green-line: rgba(4, 213, 109, 0.32);
+	--pay-green-text: #0a6636;
+
+	--pay-info: var(--color-primary-element, #3b6fb0);
+	--pay-info-wash: var(--gp-info-bg, rgba(59, 111, 176, 0.12));
+
+	// Use shared GoPaperless status tokens to keep feedback consistent across the app.
+	--pay-ok-bg: var(--gp-success-bg);
+	--pay-ok-text: var(--gp-success-text);
+	--pay-err-bg: var(--gp-error-bg);
+	--pay-err-text: var(--gp-error-text);
+	--pay-warn-bg: rgba(200, 146, 0, 0.16);
+	--pay-warn-text: #8a6d00;
+
+	--pay-radius: 16px;
+	--pay-radius-sm: 12px;
+	--pay-radius-xs: 10px;
+	--pay-shadow-sm: 0 1px 2px rgba(16, 32, 55, 0.05);
+
+	--pay-font-display: "Space Grotesk", var(--font-face, system-ui, sans-serif);
+	--pay-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}

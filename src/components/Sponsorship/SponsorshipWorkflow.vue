@@ -45,7 +45,7 @@ const requiredCredits = computed(
 )
 
 const minQuantity = computed(
-	() => sponsorshipError.value?.requiredCredits ?? 1,
+	() => sponsorshipError.value?.missingCredits ?? 1,
 )
 
 const presentation: PaymentPresentation = {
