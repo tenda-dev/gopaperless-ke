@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace OCA\Libresign\Controller;
 
 use DateTimeInterface;
+use InvalidArgumentException;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Enum\DocMdpLevel;
@@ -25,6 +26,7 @@ use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Install\ConfigureCheckService;
 use OCA\Libresign\Service\Install\InstallService;
 use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
+use OCA\Libresign\Service\Operations\Analytics\Report\PeriodReportService;
 use OCA\Libresign\Service\ReminderService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SignatureBackgroundService;
@@ -94,6 +96,7 @@ class AdminController extends AEnvironmentAwareController {
 		private IGroupManager $groupManager,
 		private IUserSession $userSession,
 		private LoggerInterface $logger,
+		private PeriodReportService $periodReportService,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 		$this->eventSource = $this->eventSourceFactory->create();
@@ -1035,6 +1038,87 @@ class AdminController extends AEnvironmentAwareController {
 		} catch (\Exception $e) {
 			return new DataResponse([
 				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist the Operations period email report switch and schedule
+	 *
+	 * Recipients are the members of the groups configured for the Operations
+	 * dashboard. The switch defaults to off and is independent of the dashboard
+	 * switch. Enabling the report, or changing its schedule while enabled, never
+	 * triggers a report for a period that fell due earlier.
+	 *
+	 * @param bool $enabled Whether the period email report is enabled
+	 * @param array{frequency?: string, weekday?: int, dayOfMonth?: int, time?: string, timezone?: string} $schedule Schedule; empty keeps the stored schedule
+	 * @return DataResponse<Http::STATUS_OK, array{message: string, next: array{dueAt: string, periodFrom: string, periodTo: string, timezone: string}|null}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Settings saved
+	 * 400: Invalid schedule
+	 * 500: Internal server error
+	 */
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/operations-email-reports/config', requirements: ['apiVersion' => '(v1)'])]
+	public function setOperationsEmailReportsConfig(bool $enabled = false, array $schedule = []): DataResponse {
+		try {
+			$this->periodReportService->saveConfig($enabled, $schedule);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Settings saved'),
+				'next' => $this->periodReportService->nextRun(),
+			]);
+		} catch (InvalidArgumentException) {
+			return new DataResponse([
+				'error' => $this->l10n->t('Invalid report schedule'),
+			], Http::STATUS_BAD_REQUEST);
+		} catch (\Exception $e) {
+			$this->logger->error('Failed to save Operations email report settings', ['exception' => get_class($e)]);
+			return new DataResponse([
+				'error' => $this->l10n->t('Could not save the report settings'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Send a test Operations report to one address
+	 *
+	 * Sends to the given address, or to the signed-in administrator's own
+	 * account email when none is given. Uses the stored schedule, never writes
+	 * the sent marker and never contacts the report recipients.
+	 *
+	 * @param string $email Address to send the test to; empty uses the administrator's account email
+	 * @return DataResponse<Http::STATUS_OK, array{message: string}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Test email sent
+	 * 400: No valid email address to send to
+	 * 500: The email could not be built or sent
+	 */
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/operations-email-reports/test', requirements: ['apiVersion' => '(v1)'])]
+	public function sendOperationsEmailReportTest(string $email = ''): DataResponse {
+		$user = $this->userSession->getUser();
+		$email = trim($email);
+		if ($email === '' && $user !== null) {
+			$email = trim((string)$user->getEMailAddress());
+		}
+		if ($user === null || $email === '') {
+			return new DataResponse([
+				'error' => $this->l10n->t('Enter an email address, or add one to your account in your personal settings.'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+		try {
+			$this->periodReportService->sendTest($email, $user->getDisplayName());
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Test email sent.'),
+			]);
+		} catch (InvalidArgumentException) {
+			return new DataResponse([
+				'error' => $this->l10n->t('That email address is not valid.'),
+			], Http::STATUS_BAD_REQUEST);
+		} catch (\Throwable $e) {
+			$this->logger->error('Failed to send the Operations test email', ['exception' => get_class($e)]);
+			return new DataResponse([
+				'error' => $this->l10n->t('The test email could not be sent. Check the mail server settings.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

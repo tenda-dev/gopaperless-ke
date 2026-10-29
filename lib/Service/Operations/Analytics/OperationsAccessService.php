@@ -25,10 +25,17 @@ use OCP\IUser;
  *
  * Fails closed: a missing/mistyped flag reads as disabled, and a mistyped
  * group list reads as the default (admins only).
+ *
+ * The `operations` group is created lazily the first time an authorization
+ * check runs with the feature enabled (see ensureOperationsGroup()). Nothing
+ * is added to it and `operations_groups` is never modified.
  */
 class OperationsAccessService {
 	public const CONFIG_ENABLED = 'operations_dashboard_enabled';
 	public const CONFIG_GROUPS = 'operations_groups';
+
+	/** Nextcloud group created on demand so it never has to be set up by hand. */
+	public const OPERATIONS_GROUP_NAME = 'operations';
 
 	/** @var list<string> */
 	public const DEFAULT_GROUPS = ['admin'];
@@ -38,6 +45,8 @@ class OperationsAccessService {
 		private IGroupManager $groupManager,
 	) {
 	}
+
+	private bool $groupEnsured = false;
 
 	public function isEnabled(): bool {
 		try {
@@ -73,10 +82,30 @@ class OperationsAccessService {
 		));
 	}
 
+	/**
+	 * Creates the `operations` group when it does not exist. Best effort: a
+	 * failure must never turn an authorization check into an error, and it is
+	 * attempted at most once per instance (one request).
+	 */
+	public function ensureOperationsGroup(): void {
+		if ($this->groupEnsured) {
+			return;
+		}
+		$this->groupEnsured = true;
+		try {
+			if (!$this->groupManager->groupExists(self::OPERATIONS_GROUP_NAME)) {
+				$this->groupManager->createGroup(self::OPERATIONS_GROUP_NAME);
+			}
+		} catch (\Throwable) {
+			// Intentionally silent: access decisions do not depend on the group existing.
+		}
+	}
+
 	public function isAuthorized(?IUser $user): bool {
 		if ($user === null || $user->getUID() === '') {
 			return false;
 		}
+		$this->ensureOperationsGroup();
 		if ($this->groupManager->isAdmin($user->getUID())) {
 			return true;
 		}

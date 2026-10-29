@@ -103,4 +103,48 @@ final class OperationsAccessServiceTest extends TestCase {
 			$this->assertSame(Http::STATUS_FORBIDDEN, $e->getCode());
 		}
 	}
+
+	public function testOperationsGroupIsCreatedLazilyWhenMissing(): void {
+		$this->groupManager->method('groupExists')->with('operations')->willReturn(false);
+		$this->groupManager->expects($this->once())->method('createGroup')->with('operations');
+		$this->groupManager->method('isAdmin')->willReturn(true);
+
+		$this->assertSame('operations', OperationsAccessService::OPERATIONS_GROUP_NAME);
+		$this->assertTrue($this->service->isAuthorized($this->user()));
+		// A second check in the same request does not look again.
+		$this->assertTrue($this->service->isAuthorized($this->user()));
+	}
+
+	public function testExistingOperationsGroupIsNotRecreated(): void {
+		$this->groupManager->method('groupExists')->willReturn(true);
+		$this->groupManager->expects($this->never())->method('createGroup');
+		$this->groupManager->method('isAdmin')->willReturn(true);
+
+		$this->service->isAuthorized($this->user());
+	}
+
+	public function testGroupCreationFailureNeverBreaksTheAccessDecision(): void {
+		$this->groupManager->method('groupExists')->willThrowException(new \RuntimeException('backend down'));
+		$this->groupManager->method('isAdmin')->willReturn(true);
+
+		$this->assertTrue($this->service->isAuthorized($this->user()));
+	}
+
+	public function testGroupIsNotCreatedWhileTheFeatureIsDisabledOrForAnonymous(): void {
+		$this->appConfig->method('getValueBool')->willReturn(false);
+		$this->groupManager->expects($this->never())->method('createGroup');
+
+		$this->assertFalse($this->service->canAccess($this->user()));
+		$this->assertFalse($this->service->isAuthorized(null));
+	}
+
+	public function testCreatingTheGroupDoesNotGrantAccessOrChangeTheConfiguredGroups(): void {
+		$this->groupManager->method('groupExists')->willReturn(false);
+		$this->groupManager->method('isAdmin')->willReturn(false);
+		$this->groupManager->method('getUserGroupIds')->willReturn(['staff']);
+		$this->appConfig->method('getValueArray')->willReturn(['ops']);
+		$this->appConfig->expects($this->never())->method('setValueArray');
+
+		$this->assertFalse($this->service->isAuthorized($this->user()));
+	}
 }
