@@ -78,6 +78,19 @@
 					</NcAppNavigationItem>
 				</div>
 
+				<div class="sidebar-section" v-if="operationsDashboardEnabled">
+					<NcAppNavigationItem
+						:to="{name: 'Operations'}"
+						:name="t('libresign', 'Operations')"
+						@click="unselectFile">
+						<template #icon>
+							<div class="icon-wrapper">
+								<NcIconSvgWrapper :path="mdiChartBoxOutline" :size="20" />
+							</div>
+						</template>
+					</NcAppNavigationItem>
+				</div>
+
 				<div class="sidebar-section" v-if="isAdmin">
 					<p class="section-title">Admin Actions</p>
 					<!-- ADMIN LINKS -->
@@ -137,6 +150,7 @@ import {
 	mdiFolderOutline,
 	mdiShieldLockOutline,
 	mdiAnimationOutline,
+	mdiChartBoxOutline,
 	mdiCreditCardPlusOutline,
 	mdiPlus,
 	mdiCloudUpload,
@@ -173,6 +187,8 @@ const config = loadState('libresign', 'config', {
 	isApprover: false,
 })
 const adminEntitlementGrantsEnabled = loadState('libresign', 'admin_entitlement_grants_enabled', false)
+// Visibility only; the server authorizes every operations request.
+const operationsDashboardEnabled = loadState('libresign', 'operations_dashboard_enabled', false)
 
 const isAdmin = computed(() => {
 	const user = getCurrentUser()

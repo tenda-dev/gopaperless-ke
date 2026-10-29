@@ -111,6 +111,28 @@ export type AdminDocMdpConfigState = {
 	defaultLevel: number
 	availableLevels: AdminDocMdpLevelOption[]
 }
+export type OperationsEmailFrequency = 'daily' | 'weekly' | 'monthly'
+
+export type OperationsEmailSchedule = {
+	frequency: OperationsEmailFrequency
+	/** ISO weekday, 1 = Monday .. 7 = Sunday */
+	weekday: number
+	/** 1..28 */
+	dayOfMonth: number
+	/** HH:MM, local to timezone */
+	time: string
+	/** IANA timezone identifier */
+	timezone: string
+}
+
+export type OperationsEmailNext = {
+	/** UTC instant, YYYY-MM-DDTHH:MM:SSZ */
+	dueAt: string
+	periodFrom: string
+	periodTo: string
+	timezone: string
+}
+
 export type AdminInitialState = {
 	docmdp_config: AdminDocMdpConfigState
 	signature_engine: SignatureEngineId
@@ -124,6 +146,11 @@ export type AdminInitialState = {
 	free_credits_enabled: boolean
 	free_credits_uses: number
 	admin_entitlement_grants_enabled: boolean
+	operations_dashboard_admin_enabled: boolean
+	operations_dashboard_admin_groups: string[]
+	operations_email_reports_admin_enabled: boolean
+	operations_email_reports_admin_schedule: OperationsEmailSchedule
+	operations_email_reports_admin_next: OperationsEmailNext | null
 	one_time_signing_enabled: boolean
 	sponsorship_enabled: boolean
 	product_default_currency: string

@@ -33,6 +33,8 @@
 		<Confetti />
 		<FreeCredits />
 		<AdminEntitlementGrants />
+		<AdminOperationsDashboard />
+		<AdminOperationsPeriodReports />
 		<OneTimeSigning />
 		<SponsorshipSettings />
 		<ProductPricing />
@@ -74,6 +76,8 @@ import VisibleElementsNext from './VisibleElementsNext.vue'
 import ExpirationRules from './ExpirationRules.vue'
 import FreeCredits from './FreeCredits.vue'
 import AdminEntitlementGrants from './AdminEntitlementGrants.vue'
+import AdminOperationsDashboard from './AdminOperationsDashboard.vue'
+import AdminOperationsPeriodReports from './AdminOperationsPeriodReports.vue'
 import OneTimeSigning from './OneTimeSigning.vue'
 import SponsorshipSettings from './SponsorshipSettings.vue'
 import ProductPricing from './ProductPricing.vue'

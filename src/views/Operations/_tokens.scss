@@ -1,0 +1,52 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/**
+ * Operations dashboard tokens, mapped to Nextcloud theme variables so light and
+ * dark mode are respected. Brand green is used sparingly (accents only).
+ * Apply on the view root; children inherit.
+ *
+ *   @use './tokens' as ops;
+ *   .operations-dashboard { @include ops.ops-tokens; }
+ */
+@mixin ops-tokens {
+	--ops-surface: var(--color-main-background);
+	--ops-sunken: var(--color-background-hover, rgba(127, 127, 127, 0.08));
+	--ops-border: var(--color-border);
+	--ops-border-strong: var(--color-border-dark, var(--color-border));
+	--ops-fg: var(--color-main-text);
+	--ops-fg-muted: var(--color-text-maxcontrast);
+	--ops-fg-faint: var(--color-text-maxcontrast);
+
+	--ops-green: #04d56d;
+	--ops-green-strong: #05b85f;
+	--ops-green-ink: #03b85e;
+	--ops-green-line: rgba(4, 213, 109, 0.32);
+	--ops-green-text: #0a6636;
+	--ops-green-wash: rgba(4, 213, 109, 0.12);
+
+	--ops-ok: var(--gp-success-text, var(--color-success, #1e7e34));
+	--ops-warn: #c89200;
+	--ops-warn-text: #8a6d00;
+	--ops-warn-wash: rgba(200, 146, 0, 0.16);
+	--ops-crit: var(--gp-error-text, var(--color-error, #c82333));
+	--ops-info: var(--color-primary-element, #2563eb);
+
+	// Categorical: DPO = blue, Daraja = teal.
+	--ops-cat-a: #2563eb;
+	--ops-cat-b: #0d9488;
+	--ops-grid: rgba(127, 127, 127, 0.18);
+
+	// Same scale as the payment UI (--pay-radius / -sm / -xs).
+	--ops-radius: 16px;
+	--ops-radius-sm: 12px;
+	--ops-radius-xs: 10px;
+	--ops-shadow-sm: 0 1px 2px rgba(16, 32, 55, 0.05);
+	--ops-focus-ring: 0 0 0 3px rgba(4, 213, 109, 0.24);
+	--ops-ease: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+
+	--ops-font-display: "Space Grotesk", var(--font-face, system-ui, sans-serif);
+	--ops-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
