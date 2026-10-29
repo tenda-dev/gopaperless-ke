@@ -24,6 +24,7 @@ use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Install\ConfigureCheckService;
 use OCA\Libresign\Service\Install\InstallService;
+use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
 use OCA\Libresign\Service\ReminderService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SignatureBackgroundService;
@@ -994,6 +995,39 @@ class AdminController extends AEnvironmentAwareController {
 		try {
 			$normalizedGroups = array_values(array_map(static fn (mixed $group): string => (string)$group, $groups));
 			$this->appConfig->setValueArray(Application::APP_ID, 'groups_request_sign', $normalizedGroups);
+
+			return new DataResponse([
+				'message' => $this->l10n->t('Settings saved'),
+			]);
+		} catch (\Exception $e) {
+			return new DataResponse([
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Persist the Operations dashboard switch and its allowed groups
+	 *
+	 * Administrators always keep access when the switch is on; the group list
+	 * only grants additional access. The switch defaults to off.
+	 *
+	 * @param bool $enabled Whether the Operations dashboard is enabled
+	 * @param list<string> $groups Extra group IDs allowed to view the dashboard
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR, LibresignErrorResponse, array{}>
+	 *
+	 * 200: Settings saved
+	 * 500: Internal server error
+	 */
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/operations-dashboard/config', requirements: ['apiVersion' => '(v1)'])]
+	public function setOperationsDashboardConfig(bool $enabled = false, array $groups = []): DataResponse {
+		try {
+			$normalizedGroups = array_values(array_unique(array_filter(
+				array_map(static fn (mixed $group): string => trim((string)$group), $groups),
+				static fn (string $group): bool => $group !== '',
+			)));
+			$this->appConfig->setValueBool(Application::APP_ID, OperationsAccessService::CONFIG_ENABLED, $enabled);
+			$this->appConfig->setValueArray(Application::APP_ID, OperationsAccessService::CONFIG_GROUPS, $normalizedGroups);
 
 			return new DataResponse([
 				'message' => $this->l10n->t('Settings saved'),

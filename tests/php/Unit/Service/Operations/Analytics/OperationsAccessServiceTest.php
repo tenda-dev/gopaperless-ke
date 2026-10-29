@@ -70,6 +70,16 @@ final class OperationsAccessServiceTest extends TestCase {
 		$this->assertFalse($this->service->isAuthorized($this->user('bob')));
 	}
 
+	public function testAdminCanAccessWhenEnabledEvenIfNotInConfiguredGroups(): void {
+		$this->appConfig->method('getValueBool')->willReturn(true);
+		$this->appConfig->method('getValueArray')->willReturn(['gopaperless-operations']);
+		$this->groupManager->method('isAdmin')->willReturn(true);
+		$this->groupManager->method('getUserGroupIds')->willReturn(['admin']);
+
+		$this->assertTrue($this->service->canAccess($this->user('root')));
+		$this->service->assertAccess($this->user('root'));
+	}
+
 	public function testNullUserIsNeverAuthorized(): void {
 		$this->assertFalse($this->service->isAuthorized(null));
 	}

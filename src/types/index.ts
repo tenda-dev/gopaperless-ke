@@ -124,6 +124,8 @@ export type AdminInitialState = {
 	free_credits_enabled: boolean
 	free_credits_uses: number
 	admin_entitlement_grants_enabled: boolean
+	operations_dashboard_admin_enabled: boolean
+	operations_dashboard_admin_groups: string[]
 	one_time_signing_enabled: boolean
 	sponsorship_enabled: boolean
 	product_default_currency: string

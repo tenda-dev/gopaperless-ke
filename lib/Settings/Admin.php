@@ -16,6 +16,7 @@ use OCA\Libresign\Service\CertificatePolicyService;
 use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
 use OCA\Libresign\Service\Payment\MnoRoutingRegistry;
 use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Service\SecurySignService;
@@ -53,6 +54,7 @@ class Admin implements ISettings {
 		private PhoneOverrideAdminService $phoneOverrideAdminService,
 		private MnoRoutingRegistry $mnoRoutingRegistry,
 		private UserOidcProviderService $userOidcProviderService,
+		private OperationsAccessService $operationsAccessService,
 	) {
 	}
 	#[\Override]
@@ -127,6 +129,9 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('free_credits_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'free_credits_enabled', true));
 		$this->initialState->provideInitialState('free_credits_uses', $this->appConfig->getValueInt(Application::APP_ID, 'free_credits_uses', 2));
 		$this->initialState->provideInitialState('admin_entitlement_grants_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'admin_entitlement_grants_enabled', false));
+		//	OPERATIONS DASHBOARD (default off; admins always allowed when on)
+		$this->initialState->provideInitialState('operations_dashboard_admin_enabled', $this->operationsAccessService->isEnabled());
+		$this->initialState->provideInitialState('operations_dashboard_admin_groups', $this->operationsAccessService->getOperationsGroups());
 		$this->initialState->provideInitialState('one_time_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'one_time_signing_enabled', true));
 		$this->initialState->provideInitialState('sponsorship_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'sponsorship_enabled', false));
 

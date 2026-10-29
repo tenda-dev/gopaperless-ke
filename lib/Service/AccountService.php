@@ -76,8 +76,8 @@ class AccountService {
 	 */
 	private const SIGNUP_BONUS_RECOVERY_CUTOFF = '2026-10-13T20:00:00+00:00';
 
-	private const PUBLIC_WORKFLOW_GROUP = 'gopaperless_public_workflow';
-	private const PUBLIC_WORKFLOW_USER_PREFIX = 'gopaperless_public_';
+	public const PUBLIC_WORKFLOW_GROUP = 'gopaperless_public_workflow';
+	public const PUBLIC_WORKFLOW_USER_PREFIX = 'gopaperless_public_';
 
 	private ?SignRequest $signRequest = null;
 	private ?\OCA\Libresign\Db\File $fileData = null;
