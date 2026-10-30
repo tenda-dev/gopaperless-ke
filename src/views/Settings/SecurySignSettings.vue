@@ -72,12 +72,8 @@
 					:label="t('libresign', 'MIMI client ID')"
 					:helper-text="t('libresign', 'Empty means gopaperless')"
 					placeholder="gopaperless" />
-				<NcPasswordField
-					v-model="mimiClientSecret"
-					:label="t('libresign', 'MIMI client secret')"
-					:placeholder="mimiClientSecretSet ? t('libresign', 'Saved. Type a new one to replace it.') : ''" />
 				<p class="securysign-settings__hint">
-					{{ t('libresign', 'Needs a login provider and the MIMI client secret.') }}
+					{{ t('libresign', 'Needs a login provider and the MIMI client ID. GoPaperless proves who it is to MIMI with a short-lived token from its SecurySign client, so that client needs service accounts and MIMI in its audience. No MIMI secret is stored.') }}
 				</p>
 				<NcButton type="submit" variant="primary" :disabled="saving">
 					{{ t('libresign', 'Save') }}
@@ -153,15 +149,13 @@ const signingSecret = ref('')
 const mimiPasskeyEnabled = ref(loadState<AdminInitialState['mimi_passkey_enabled']>('libresign', 'mimi_passkey_enabled', true))
 const mimiUrl = ref(loadState<AdminInitialState['mimi_url']>('libresign', 'mimi_url', ''))
 const mimiClientId = ref(loadState<AdminInitialState['mimi_client_id']>('libresign', 'mimi_client_id', ''))
-const mimiClientSecretSet = ref(loadState<AdminInitialState['mimi_client_secret_set']>('libresign', 'mimi_client_secret_set', false))
-const mimiClientSecret = ref('')
 const enrolmentSite = ref(loadState<AdminInitialState['enrolment_site']>('libresign', 'enrolment_site', 'tendaworld'))
 const tendaworldUrl = ref(loadState<AdminInitialState['tendaworld_url']>('libresign', 'tendaworld_url', ''))
 const saving = ref(false)
 
 // A switch can only be on once what it needs is there, saved or being typed.
 const canSign = computed(() => provider.value.id !== 0 && (signingSecretSet.value || signingSecret.value.trim() !== ''))
-const canCheckPasskey = computed(() => provider.value.id !== 0 && (mimiClientSecretSet.value || mimiClientSecret.value.trim() !== ''))
+const canCheckPasskey = computed(() => provider.value.id !== 0 && mimiClientId.value.trim() !== '')
 
 async function save() {
 	saving.value = true
@@ -174,14 +168,11 @@ async function save() {
 			mimiPasskeyEnabled: mimiPasskeyEnabled.value,
 			mimiUrl: mimiUrl.value.trim(),
 			mimiClientId: mimiClientId.value.trim(),
-			mimiClientSecret: mimiClientSecret.value.trim(),
 			enrolmentSite: enrolmentSite.value,
 			tendaworldUrl: tendaworldUrl.value.trim(),
 		})
 		signingSecretSet.value ||= signingSecret.value.trim() !== ''
 		signingSecret.value = ''
-		mimiClientSecretSet.value ||= mimiClientSecret.value.trim() !== ''
-		mimiClientSecret.value = ''
 		showSuccess(t('libresign', 'SecurySign settings saved'))
 	} catch (error) {
 		const message = (error as { response?: { data?: { ocs?: { data?: { error?: string } } } } }).response?.data?.ocs?.data?.error

@@ -1271,11 +1271,10 @@ class AdminController extends AEnvironmentAwareController {
 	 * @param string $url SecurySign's address, such as https://securysign.com
 	 * @param string $tendaworldUrl The TendaWorld website's address; empty means https://tendaworld.com
 	 * @param string $signingSecret SecurySign signing (SSC) secret; empty keeps the stored one
-	 * @param string $mimiClientSecret GoPaperless's MIMI partner secret, for the passkey check after sign-in; empty keeps the stored one
 	 * @param string $mimiClientId GoPaperless's MIMI partner client ID (its subdomain); empty means gopaperless
 	 * @param string $mimiUrl MIMI's address, for the passkey check and MIMI enrolment; empty means https://gopaperless.mimi.ke
 	 * @param bool $signingEnabled Whether SecurySign users sign with SecurySign once the signing secret is set
-	 * @param bool $mimiPasskeyEnabled Whether SecurySign users confirm with their MIMI passkey after sign-in once the MIMI secret is set
+	 * @param bool $mimiPasskeyEnabled Whether SecurySign users confirm with their MIMI passkey after sign-in once the MIMI client ID is set
 	 * @param 'tendaworld'|'mimi' $enrolmentSite Where users without a certificate enrol
 	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignErrorResponse, array{}>
 	 *
@@ -1289,7 +1288,6 @@ class AdminController extends AEnvironmentAwareController {
 		string $url = '',
 		string $tendaworldUrl = '',
 		string $signingSecret = '',
-		string $mimiClientSecret = '',
 		string $mimiClientId = '',
 		string $mimiUrl = '',
 		bool $signingEnabled = true,
@@ -1320,7 +1318,6 @@ class AdminController extends AEnvironmentAwareController {
 		$this->setPaymentConfig('securysign_url', rtrim($url, '/'));
 		$this->setPaymentConfig('tendaworld_url', rtrim($tendaworldUrl, '/'));
 		$this->setPaymentConfig('securysign_signing_secret', $signingSecret, true);
-		$this->setPaymentConfig('mimi_client_secret', $mimiClientSecret, true);
 		// Empty clears it, and the default (gopaperless) applies.
 		$this->setPaymentConfig('mimi_client_id', $mimiClientId);
 		$this->setPaymentConfig('mimi_url', rtrim($mimiUrl, '/'));

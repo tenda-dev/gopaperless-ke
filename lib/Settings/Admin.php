@@ -176,7 +176,6 @@ class Admin implements ISettings {
 		$this->initialState->provideInitialState('mimi_url', $addresses['mimi']);
 		$this->initialState->provideInitialState('securysign_signing_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'securysign_signing_secret', '') !== '');
 		$this->initialState->provideInitialState('securysign_signing_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'securysign_signing_enabled', true));
-		$this->initialState->provideInitialState('mimi_client_secret_set', $this->appConfig->getValueString(Application::APP_ID, 'mimi_client_secret', '') !== '');
 		$this->initialState->provideInitialState('mimi_client_id', $this->appConfig->getValueString(Application::APP_ID, 'mimi_client_id', ''));
 		$this->initialState->provideInitialState('mimi_passkey_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'mimi_passkey_enabled', true));
 		$this->initialState->provideInitialState('enrolment_site', $this->appConfig->getValueString(Application::APP_ID, 'enrolment_site', 'tendaworld'));

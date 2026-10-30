@@ -34,8 +34,13 @@ GoPaperless: **Administration settings → LibreSign** has four SecurySign secti
   site as an authorised signing origin.
 - **Sign with SecurySign:** a switch and the signing (SSC) secret. The switch
   can only be on once a provider and the secret are set.
-- **MIMI passkey check:** a switch, the MIMI address, client ID and secret. The
-  switch can only be on once a provider and the secret are set. Someone with no
+- **MIMI passkey check:** a switch, the MIMI address and client ID. The switch
+  can only be on once a provider and the client ID are set. There is no MIMI
+  secret: GoPaperless calls MIMI with a short-lived token from its SecurySign
+  client (client credentials, the token the unit grants use), so that Keycloak
+  client needs "Service accounts" on and an audience mapper naming MIMI's
+  client. Delete a secret left from before with
+  `occ config:app:delete libresign mimi_client_secret`. Someone with no
   MIMI passkey is sent to MIMI's `/enrol` to make one, whichever enrolment site
   is chosen, and comes back to the check. MIMI runs whatever GoPaperless's MIMI
   steps they haven't done (for someone who enrolled through the website, the ID,
@@ -54,7 +59,6 @@ occ config:app:set libresign securysign_signing_secret --value '<SSC secret>' --
 occ config:app:set libresign securysign_signing_enabled --value 1 --type boolean
 occ config:app:set libresign mimi_url              --value https://gopaperless.mimi.ke
 occ config:app:set libresign mimi_client_id        --value gopaperless
-occ config:app:set libresign mimi_client_secret    --value '<MIMI secret>' --sensitive
 occ config:app:set libresign mimi_passkey_enabled  --value 1 --type boolean
 occ config:app:set libresign enrolment_site        --value tendaworld   # or mimi
 occ config:app:set libresign tendaworld_url        --value https://tendaworld.com
@@ -70,7 +74,7 @@ occ config:app:set libresign signing_card_layout   --value horizontal-top
   under it. A tight box gets a smaller copy of the same card. The scribble is
   cut to its ink first, so the canvas margin it was drawn with takes no room.
 - Both switches count as on until someone turns them off, so an instance that
-  already has a secret keeps its behaviour.
+  already has the signing secret or the MIMI client ID keeps its behaviour.
 - A MIMI address left in `tendaworld_url` is read as the MIMI address, and
   enrolment then uses https://tendaworld.com. Saving the SecurySign settings once
   moves it to `mimi_url`.

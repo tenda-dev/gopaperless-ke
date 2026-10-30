@@ -341,11 +341,11 @@ class SecurySignService {
 		$body = (string)$response->getBody();
 		$token = json_decode($body, true)['access_token'] ?? null;
 		if ($response->getStatusCode() !== 200 || !is_string($token) || $token === '') {
-			$this->logger->error('Keycloak refused GoPaperless\'s client token for a PDC grant', [
+			$this->logger->error('Keycloak refused GoPaperless\'s client token', [
 				'status' => $response->getStatusCode(),
 				'body' => substr($body, 0, 500),
 			]);
-			throw new \RuntimeException('SecurySign could not confirm your session for the certificate. Please retry shortly.', 503);
+			throw new \RuntimeException('SecurySign could not confirm GoPaperless. Please retry shortly.', 503);
 		}
 		return $token;
 	}
@@ -851,12 +851,12 @@ class SecurySignService {
 
 	/**
 	 * Whether this session still owes the MIMI passkey check that follows
-	 * sign-in. Off while the switch is off or the MIMI client secret is unset.
+	 * sign-in. Off while the switch is off or the MIMI client ID is unset.
 	 */
 	public function passkeyPending(): bool {
 		return $this->applies()
 			&& $this->config->getValueBool(Application::APP_ID, 'mimi_passkey_enabled', true)
-			&& $this->config->getValueString(Application::APP_ID, 'mimi_client_secret') !== ''
+			&& $this->config->getValueString(Application::APP_ID, 'mimi_client_id') !== ''
 			&& $this->session->get(self::PASSKEY_KEY) === null;
 	}
 
@@ -921,15 +921,20 @@ class SecurySignService {
 		return $this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless');
 	}
 
-	/** @return array{status: int, body: array} */
+	/**
+	 * Calls MIMI's partner API with GoPaperless's own short-lived token, the
+	 * same one the unit grants use. MIMI holds no GoPaperless secret: it checks
+	 * the token against the realm's keys, so the token must name MIMI's client
+	 * in its audience (an audience mapper on our Keycloak client).
+	 *
+	 * @return array{status: int, body: array}
+	 */
 	private function mimi(string $action, array $payload): array {
+		$token = $this->clientToken();
 		try {
 			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/passkey/' . $action, [
 				'json' => $payload,
-				'auth' => [
-					$this->mimiClientId(),
-					$this->config->getValueString(Application::APP_ID, 'mimi_client_secret'),
-				],
+				'headers' => ['Authorization' => 'Bearer ' . $token],
 				'connect_timeout' => 3,
 				'timeout' => 10,
 				'allow_redirects' => false,
