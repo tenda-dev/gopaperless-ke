@@ -113,9 +113,10 @@ class SecurySignService {
 		if ($issuer === '' || ($claims['iss'] ?? null) !== $issuer || empty($claims['sub'])) {
 			throw new \RuntimeException('The SecurySign identity provider does not match this session.', 403);
 		}
-		// WhatsApp signing requests name the signer by sub, long after this session.
+		// Credit grants and WhatsApp signing both need the stable Keycloak subject
+		// after this browser session has gone away.
 		$uid = $this->users->getUser()?->getUID();
-		if ($uid !== null && WhatsAppService::on($this->config) && $this->systemConfig->getUserValue($uid, Application::APP_ID, 'securysign_sub') !== $claims['sub']) {
+		if ($uid !== null && $this->systemConfig->getUserValue($uid, Application::APP_ID, 'securysign_sub') !== $claims['sub']) {
 			$this->systemConfig->setUserValue($uid, Application::APP_ID, 'securysign_sub', (string)$claims['sub']);
 		}
 		return ['sub' => $claims['sub'], 'issuer' => $issuer, 'accessToken' => $token->getAccessToken()];
@@ -288,6 +289,28 @@ class SecurySignService {
 			]);
 			// Never 401/403: a refused grant (no stock, an RP not set up) is not a dead session.
 			throw new \RuntimeException('SecurySign could not record your certificate (HTTP ' . $response->getStatusCode() . '). Please retry shortly.', 503);
+		}
+	}
+
+	/**
+	 * Grants prepaid SecurySign signature units after GoPaperless settles a
+	 * SIGN_DOCUMENT credit purchase. The caller supplies the stored Keycloak
+	 * subject because this runs without a browser session.
+	 */
+	public function grantSignatureUnits(string $userKey, int $units, string $idempotencyKey): void {
+		if ($units <= 0 || !str_starts_with($userKey, 'kc:')) {
+			throw new \InvalidArgumentException('A positive signature grant needs a Keycloak user key.');
+		}
+		$response = $this->send('post', $this->signingOrigin() . '/api/rp/entitlements/grant', [
+			'headers' => ['Authorization' => 'Bearer ' . $this->clientToken(), 'Accept' => 'application/json'],
+			'json' => ['product' => 'signature', 'units' => $units, 'userKey' => $userKey, 'idempotencyKey' => $idempotencyKey],
+		]);
+		if ($response->getStatusCode() !== 200) {
+			$this->logger->error('SecurySign refused a signature-unit grant', [
+				'status' => $response->getStatusCode(),
+				'body' => substr((string)$response->getBody(), 0, 500),
+			]);
+			throw new \RuntimeException('SecurySign could not record the signing credit. Please retry shortly.', 503);
 		}
 	}
 

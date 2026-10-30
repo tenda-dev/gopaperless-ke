@@ -36,6 +36,7 @@ class PaymentFinalizerService {
 		private PaymentDateTimeHelper $dateTimeHelper,
 		private ExtendedAccountService $extendedAccountService,
 		private PhoneMnoVerificationService $phoneMnoVerificationService,
+		private SignatureUnitOutbox $signatureUnitOutbox,
 	) {
 	}
 
@@ -98,6 +99,7 @@ class PaymentFinalizerService {
 			};
 
 			$this->phoneMnoVerificationService->verify($payment);
+			$this->signatureUnitOutbox->enqueue($payment);
 
 			$this->db->commit();
 

@@ -74,8 +74,8 @@ class PdcResaleService {
 
 	/**
 	 * Grants the PDC behind $uid's latest certificate purchase on Signa, once.
-	 * Runs in the user's session, because the grant is made with their own token:
-	 * a payment settles server to server, where there is none.
+	 * Runs during the hand-off, when the user's SecurySign subject is available.
+	 * SecurySignService uses GoPaperless's service account to make the grant.
 	 *
 	 * A failure holds the hand-off to MIMI for a minute, so the gate renders the
 	 * page instead of sending the user back here in a loop.

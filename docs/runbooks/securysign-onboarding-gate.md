@@ -18,7 +18,7 @@ links and legacy accounts never see it and keep the local signing engine.
 | Website payment and enrolment continuation | code complete, script tested |
 | Importing the SecurySign visible signature | code complete, unit tested |
 | Signing with the user's own SecurySign certificate | working against production SecurySign on the local stack (2026-09-28: `pdfsig` valid, issuer Signa Hardware CA). Off until the signing secret is set. See "Signing with the user's SecurySign certificate" |
-| Selling the PDC in GoPaperless (FIP-025) | code complete, unit tested, **off by default**. Waits on Signa and MIMI. See "Reselling PDCs (FIP-025)" |
+| Selling the PDC in GoPaperless (FIP-025) | Checkout handoff and grant code built, **off by default**. Waits on Signa and MIMI. See "Reselling PDCs (FIP-025)" |
 
 Nothing is enabled until `securysign_provider_id` is set to a positive value.
 With it unset, `SecurySignService::applies()` returns false everywhere and both
@@ -679,10 +679,8 @@ occ config:app:set libresign pdc_resale_enabled --value=1 --type=boolean
 - This provider's Keycloak client has "Service accounts" switched on, so it can
   get a client-credentials token, and the `basic` scope. Without `basic`, Signa
   keys MIMI's users by email and the grant is never found.
-- MIMI takes a grant as payment. Today its certificate step still asks the
-  payments API for a subscription, so a user who paid GoPaperless fails at the
-  last step. GoPaperless also needs no price on MIMI (SecurySign's
-  `POST /api/rp/admin/mimi`, `price_kes: null`), or users pay twice.
+- MIMI's FIP-025 PDC check is deployed. It must accept a GoPaperless grant and
+  skip its own checkout for that purchase.
 - GoPaperless signs people in on the same realm as MIMI.
 
 Someone who paid MIMI but never finished setting up has no certificate yet, so
@@ -696,5 +694,7 @@ the checkout asks them to pay again. Look for them before switching it on.
 - The grant no longer needs the user's token, so it could move to payment
   settlement (with the stored `securysign_sub`). It stays at the hand-off for
   now, where the `sub` is always fresh.
-- Signing credits. Signa takes a signature unit at the signing frame, but
-  GoPaperless does not grant them yet.
+- Signing credits are queued with each settled `SIGN_DOCUMENT` credit purchase
+  for a user who has a remembered SecurySign subject. The timed job grants
+  them from GoPaperless's Signa stock. Local GoPaperless signing is never put
+  in that queue, including while SecurySign is unavailable.

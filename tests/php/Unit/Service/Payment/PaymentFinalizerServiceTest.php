@@ -19,6 +19,8 @@ use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\ExtendedAccount\ExtendedAccountService;
 use OCA\Libresign\Service\Payment\PaymentDateTimeHelper;
 use OCA\Libresign\Service\Payment\PaymentFinalizerService;
+use OCA\Libresign\Service\Payment\PhoneMnoVerificationService;
+use OCA\Libresign\Service\Payment\SignatureUnitOutbox;
 use OCA\Libresign\Tests\Unit\TestCase;
 use OCP\IAppConfig;
 use OCP\IDBConnection;
@@ -35,6 +37,8 @@ final class PaymentFinalizerServiceTest extends TestCase {
 	private ExtendedAccountMapper&MockObject $extendedAccountMapper;
 	private IAppConfig&MockObject $appConfig;
 	private ExtendedAccountService $extendedAccountService;
+	private PhoneMnoVerificationService&MockObject $phoneMnoVerificationService;
+	private SignatureUnitOutbox&MockObject $signatureUnitOutbox;
 	private PaymentFinalizerService $service;
 
 	/**
@@ -78,6 +82,8 @@ final class PaymentFinalizerServiceTest extends TestCase {
 			$this->logger,
 			$this->appConfig,
 		);
+		$this->phoneMnoVerificationService = $this->createMock(PhoneMnoVerificationService::class);
+		$this->signatureUnitOutbox = $this->createMock(SignatureUnitOutbox::class);
 
 		$this->service = new PaymentFinalizerService(
 			$this->entitlementService,
@@ -86,6 +92,8 @@ final class PaymentFinalizerServiceTest extends TestCase {
 			$this->logger,
 			$this->dateTimeHelper,
 			$this->extendedAccountService,
+			$this->phoneMnoVerificationService,
+			$this->signatureUnitOutbox,
 		);
 	}
 
@@ -127,6 +135,16 @@ final class PaymentFinalizerServiceTest extends TestCase {
 		$this->assertLessThan($renew, $begin, 'Renewal must run after beginTransaction');
 		$this->assertLessThan($commit, $renew, 'Renewal must run before commit');
 		$this->assertNotContains('rollBack', $this->calls);
+	}
+
+	public function testSettledSecurySignCreditPurchaseQueuesSignatureUnits(): void {
+		$payment = $this->newPayment(PaymentPurpose::CREDIT_PURCHASE);
+		$payment->setProductCode('SIGN_DOCUMENT');
+		$payment->setProductUses(3);
+
+		$this->signatureUnitOutbox->expects($this->once())->method('enqueue')->with($payment);
+
+		$this->service->finalisePayment($payment);
 	}
 
 	#[DataProvider('provideEntitlementPurposes')]
