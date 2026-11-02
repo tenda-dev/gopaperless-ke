@@ -35,8 +35,8 @@ final class DateRange {
 	}
 
 	/**
-	 * @param string $from  YYYY-MM-DD (inclusive) or '' for the default window
-	 * @param string $to    YYYY-MM-DD (inclusive) or '' for the default window
+	 * @param string $from YYYY-MM-DD (inclusive) or '' for the default window
+	 * @param string $to YYYY-MM-DD (inclusive) or '' for the default window
 	 * @throws InvalidRangeException
 	 */
 	public static function fromRequest(string $from, string $to, string $tz = '', ?DateTimeImmutable $now = null): self {

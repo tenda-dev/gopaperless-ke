@@ -17,7 +17,9 @@ final class InvalidRangeException extends \InvalidArgumentException {
 	public const RANGE_TOO_LARGE = 'range_too_large';
 	public const INVALID_PARAMS = 'invalid_params';
 
-	public function __construct(public readonly string $reason) {
+	public function __construct(
+		public readonly string $reason,
+	) {
 		parent::__construct($reason);
 	}
 }
