@@ -12,6 +12,7 @@ import logoOnDark from '../img/gopaperless-logo.png'
 import logoOnLight from '../img/gopaperless-logo-ink.png'
 import spaceGrotesk from '../fonts/SpaceGrotesk-VariableFont_wght.ttf'
 
+import { askBrowser, isHandOffPath } from './utils/passkeyBrowser'
 import { isSigningPath } from './utils/signingPath'
 
 import './style/login.scss'
@@ -48,6 +49,19 @@ new FontFace('Space Grotesk', `url("${spaceGrotesk}")`, { weight: '300 700' })
 // and the card offers no exit, so someone who lands here by mistake is stuck.
 const webroot = (window as unknown as { OC?: { getRootPath?: () => string } }).OC?.getRootPath?.() ?? ''
 const landing = `${webroot}/apps/libresign/p/upload`
+
+// A browser that can't run a passkey can't finish this login, so on its way to one
+// of our pages (the receipt's "View Document", "Sign another document") it gets the
+// hand-off. Limited to our pages so that an app's own web view logging in to
+// Nextcloud is left alone.
+const handOffTo = new URLSearchParams(window.location.search).get('redirect_url') ?? ''
+if (isHandOffPath(handOffTo)) {
+	void askBrowser().then(({ ok }) => {
+		if (!ok) {
+			window.location.replace(`${webroot}/apps/libresign/p/open-in-browser?to=${encodeURIComponent(handOffTo)}`)
+		}
+	})
+}
 
 const logo = document.querySelector('#header .logo')
 if (logo?.parentElement) {

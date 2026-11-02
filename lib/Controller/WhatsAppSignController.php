@@ -37,8 +37,6 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\AppFramework\Http\RedirectResponse;
-use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IAppConfig;
 use OCP\IRequest;
@@ -86,17 +84,13 @@ class WhatsAppSignController extends Controller {
 	public function page(string $code): TemplateResponse {
 		$found = $this->find($code);
 		$state = $found['state'];
-		// These three go on to a passkey or a sign-in. The others need neither here,
-		// and "Sign another document" on 'signed' is caught at the login page.
-		$browserLinks = in_array($state, ['ready', 'login', 'no_credits'], true)
-			? self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
-			: null;
-		if ($browserLinks !== null) {
-			$state = 'browser';
-		}
+		// These three go on to a passkey or a sign-in, so whatsapp-sign.ts asks the
+		// browser first. The others need neither here, and "Sign another document" on
+		// 'signed' is caught at the login page.
+		$checked = in_array($state, ['ready', 'login', 'no_credits'], true);
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
-		if ($state === 'ready' || $state === 'browser') {
+		if ($checked) {
 			Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
 		}
 		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
@@ -105,7 +99,9 @@ class WhatsAppSignController extends Controller {
 			'senderName' => $found['sender']?->getDisplayName() ?? '',
 			'signUrl' => $this->urls->linkToRoute('libresign.whatsAppSign.sign', ['code' => $code]),
 			'signLink' => $found['signRequest'] !== null ? $this->whatsApp->signLink($found['signRequest']) : '',
-			'browserLinks' => $browserLinks,
+			'browserLinks' => $checked
+				? self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
+				: null,
 			// "Sign another document": the upload page, which asks them to sign in first.
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
 			// Asked only where the page shows "Back to WhatsApp" straight away.
@@ -120,30 +116,27 @@ class WhatsAppSignController extends Controller {
 
 	/**
 	 * The same hand-off for a page behind the login, such as "View Document" on the
-	 * WhatsApp receipt: nobody can sign in inside WhatsApp's browser, so
-	 * LoginPageListener sends them here. Any other browser goes straight on to the
-	 * page, which is also where Copy link ends up.
+	 * WhatsApp receipt: login.ts sends a browser that can't run a passkey here.
+	 * whatsapp-sign.ts asks the browser again, because this is also where Copy link
+	 * ends up, and any that can goes straight on to the page.
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
 	#[AnonRateLimit(limit: 30, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/p/open-in-browser')]
-	public function openInBrowser(string $to = ''): Response {
+	public function openInBrowser(string $to = ''): TemplateResponse {
 		if (!self::isHandOffPath($to)) {
 			$to = $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']);
-		}
-		$browserLinks = self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->getAbsoluteURL($to));
-		if ($browserLinks === null) {
-			return new RedirectResponse($to);
 		}
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
 		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
-			'state' => 'browser',
+			'state' => 'checking',
 			'documentName' => '',
 			'signUrl' => '',
-			'browserLinks' => $browserLinks,
+			'target' => $to,
+			'browserLinks' => self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->getAbsoluteURL($to)),
 		], TemplateResponse::RENDER_AS_GUEST);
 		$response->cacheFor(0);
 		return $response;
@@ -159,11 +152,10 @@ class WhatsAppSignController extends Controller {
 	}
 
 	/**
-	 * Links out of a browser that can't use a passkey, or null where it can.
-	 * WhatsApp's browser can't, on either phone: iOS keeps passkeys in an app's web
-	 * view to that app's own domains, and an Android web view has them only for
-	 * sites its app enabled. "[WA4A/<version>;]" is WhatsApp on Android and has been
-	 * seen without "; wv)", which marks any Android web view.
+	 * The links a phone can use to leave this browser, or null where there are none
+	 * and Copy link is the way out. The user agent only picks the kind of link. Whether
+	 * they are offered at all is the browser's own answer (whatsapp-sign.ts), because a
+	 * web view's user agent can read like anything, Chrome included.
 	 *
 	 * "chrome" comes first because Google Password Manager lives there. "other" is
 	 * for phones without it: Safari on iPhone (iOS 17+ opens x-safari-https:// out of
@@ -175,13 +167,14 @@ class WhatsAppSignController extends Controller {
 	public static function browserLinks(string $userAgent, string $pageUrl): ?array {
 		$address = (string)preg_replace('#^https?://#', '', $pageUrl);
 		return match (true) {
-			str_contains($userAgent, '[WAiOS/') => [
-				'chrome' => 'googlechromes://' . $address,
-				'other' => 'x-safari-https://' . $address,
-			],
-			str_contains($userAgent, '[WA4A/'), str_contains($userAgent, '; wv)') => [
+			str_contains($userAgent, 'Android') => [
 				'chrome' => 'intent://' . $address . '#Intent;scheme=https;package=com.android.chrome;end',
 				'other' => 'intent://' . $address . '#Intent;scheme=https;end',
+			],
+			// "[WAiOS/" is for an iPad whose browser reads as a Mac.
+			preg_match('#iPhone|iPad|iPod|\[WAiOS/#', $userAgent) === 1 => [
+				'chrome' => 'googlechromes://' . $address,
+				'other' => 'x-safari-https://' . $address,
 			],
 			default => null,
 		};
