@@ -84,15 +84,15 @@ class WhatsAppSignController extends Controller {
 	public function page(string $code): TemplateResponse {
 		$found = $this->find($code);
 		$state = $found['state'];
-		// WhatsApp's own browser on iPhone (user agent ends in "[WAiOS/<version>]")
-		// can't use a passkey: iOS keeps passkeys in an app's web view to that
-		// app's own domains. The same page in Safari can.
-		if ($state === 'ready' && str_contains($this->request->getHeader('User-Agent'), '[WAiOS/')) {
-			$state = 'safari';
+		$browserLinks = $state === 'ready'
+			? self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
+			: null;
+		if ($browserLinks !== null) {
+			$state = 'browser';
 		}
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
-		if ($state === 'ready' || $state === 'safari') {
+		if ($state === 'ready' || $state === 'browser') {
 			Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
 		}
 		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
@@ -101,8 +101,7 @@ class WhatsAppSignController extends Controller {
 			'senderName' => $found['sender']?->getDisplayName() ?? '',
 			'signUrl' => $this->urls->linkToRoute('libresign.whatsAppSign.sign', ['code' => $code]),
 			'signLink' => $found['signRequest'] !== null ? $this->whatsApp->signLink($found['signRequest']) : '',
-			// iOS 17+ opens x-safari-https:// links in Safari, out of the app's browser.
-			'safariUrl' => 'x-safari-' . $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]),
+			'browserLinks' => $browserLinks,
 			// "Sign another document": the upload page, which asks them to sign in first.
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
 			// Asked only where the page shows "Back to WhatsApp" straight away.
@@ -113,6 +112,35 @@ class WhatsAppSignController extends Controller {
 		$response->setContentSecurityPolicy($policy);
 		$response->cacheFor(0);
 		return $response;
+	}
+
+	/**
+	 * Links out of a browser that can't use a passkey, or null where it can.
+	 * WhatsApp's browser can't, on either phone: iOS keeps passkeys in an app's web
+	 * view to that app's own domains, and an Android web view has them only for
+	 * sites its app enabled. "[WA4A/<version>;]" is WhatsApp on Android and has been
+	 * seen without "; wv)", which marks any Android web view.
+	 *
+	 * "chrome" comes first because Google Password Manager lives there. "other" is
+	 * for phones without it: Safari on iPhone (iOS 17+ opens x-safari-https:// out of
+	 * the app's browser), the default browser or chooser on Android (the intent names
+	 * no app, so it can also stay put, which is why the page offers Copy link too).
+	 *
+	 * @return ?array{chrome: string, other: string}
+	 */
+	public static function browserLinks(string $userAgent, string $pageUrl): ?array {
+		$address = (string)preg_replace('#^https?://#', '', $pageUrl);
+		return match (true) {
+			str_contains($userAgent, '[WAiOS/') => [
+				'chrome' => 'googlechromes://' . $address,
+				'other' => 'x-safari-https://' . $address,
+			],
+			str_contains($userAgent, '[WA4A/'), str_contains($userAgent, '; wv)') => [
+				'chrome' => 'intent://' . $address . '#Intent;scheme=https;package=com.android.chrome;end',
+				'other' => 'intent://' . $address . '#Intent;scheme=https;end',
+			],
+			default => null,
+		};
 	}
 
 	/**

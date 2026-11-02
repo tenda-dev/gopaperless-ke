@@ -142,12 +142,12 @@ if (box?.dataset.step === 'preparing') {
 	start()
 }
 
-// The Safari hand-off: for when WhatsApp won't open the x-safari link.
+// The hand-off to another browser: for when WhatsApp won't open the buttons' links.
 document.getElementById('gp-whatsapp-copy')?.addEventListener('click', async (event) => {
 	const button = event.currentTarget as HTMLButtonElement
 	try {
 		await navigator.clipboard.writeText(window.location.href)
-		button.textContent = t('libresign', 'Link copied. Paste it in Safari.')
+		button.textContent = t('libresign', 'Link copied. Paste it in your browser.')
 	} catch {
 		button.textContent = window.location.href
 	}

@@ -135,6 +135,7 @@ sequenceDiagram
 | 13 | Senders find other people only by their full email address. | Partial matches only find yourself and people you have sent documents to (privacy rule from #25), and the Email identification method must be on. | |
 | 14 | The template buttons point at production. | `https://gopaperless.ke/apps/libresign/...` with no `/index.php`, fixed when Meta approved them. | |
 | 15 | Hash-only clients are a separate workflow. | When the client keeps the document and sends only a hash, GoPaperless cannot build the PDF signature. Not covered here. | Yes |
+| 16 | WhatsApp's in-app browser can't use passkeys, on either phone. | Detected by `[WAiOS/`, `[WA4A/` or `; wv)`, it gets "Open in Chrome" first, for Google Password Manager (`googlechromes://` on iPhone, an `intent://` naming Chrome on Android). "Use another browser" is Safari on iPhone (`x-safari-https://`) and the default browser on Android (an `intent://` naming no app). Copy link is the last resort. A link pasted into a chat opens in the default browser, so test with the template button. | Yes: not yet tried on a device |
 
 ## Before go-live
 
