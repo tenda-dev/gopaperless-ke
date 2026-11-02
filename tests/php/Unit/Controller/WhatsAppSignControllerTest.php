@@ -40,4 +40,25 @@ final class WhatsAppSignControllerTest extends TestCase {
 	public function testLinksOutOnlyFromBrowsersThatCantUsePasskeys(string $userAgent, ?array $expected): void {
 		$this->assertSame($expected, WhatsAppSignController::browserLinks($userAgent, self::PAGE));
 	}
+
+	public static function handOffPaths(): array {
+		return [
+			'the receipt\'s View Document' => ['/apps/libresign/f/validation/8c1e2f6a-3b7d-4c9e-8a21-5d6f7e8a9b0c', true],
+			'Sign another document' => ['/apps/libresign/f/request', true],
+			'nothing' => ['', false],
+			'another app, such as a web view logging in' => ['/login/flow', false],
+			'another site' => ['https://evil.example/apps/libresign/f/request', false],
+			'another site, no scheme' => ['//evil.example/apps/libresign/f/request', false],
+			'adding to the intent link' => ['/apps/libresign/x#Intent;package=evil;end', false],
+			'adding to the intent link, no #' => ['/apps/libresign/x;package=evil;end', false],
+			'a query' => ['/apps/libresign/x?y=1', false],
+			'climbing out' => ['/apps/libresign/../../login', false],
+			'a trailing newline' => ["/apps/libresign/f/request\n", false],
+		];
+	}
+
+	#[DataProvider('handOffPaths')]
+	public function testHandsOffOnlyOurOwnPlainPaths(string $path, bool $expected): void {
+		$this->assertSame($expected, WhatsAppSignController::isHandOffPath($path));
+	}
 }

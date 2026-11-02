@@ -37,6 +37,8 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\RedirectResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IAppConfig;
 use OCP\IRequest;
@@ -84,7 +86,9 @@ class WhatsAppSignController extends Controller {
 	public function page(string $code): TemplateResponse {
 		$found = $this->find($code);
 		$state = $found['state'];
-		$browserLinks = $state === 'ready'
+		// These three go on to a passkey or a sign-in. The others need neither here,
+		// and "Sign another document" on 'signed' is caught at the login page.
+		$browserLinks = in_array($state, ['ready', 'login', 'no_credits'], true)
 			? self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
 			: null;
 		if ($browserLinks !== null) {
@@ -112,6 +116,46 @@ class WhatsAppSignController extends Controller {
 		$response->setContentSecurityPolicy($policy);
 		$response->cacheFor(0);
 		return $response;
+	}
+
+	/**
+	 * The same hand-off for a page behind the login, such as "View Document" on the
+	 * WhatsApp receipt: nobody can sign in inside WhatsApp's browser, so
+	 * LoginPageListener sends them here. Any other browser goes straight on to the
+	 * page, which is also where Copy link ends up.
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 30, period: 60)]
+	#[FrontpageRoute(verb: 'GET', url: '/p/open-in-browser')]
+	public function openInBrowser(string $to = ''): Response {
+		if (!self::isHandOffPath($to)) {
+			$to = $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']);
+		}
+		$browserLinks = self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->getAbsoluteURL($to));
+		if ($browserLinks === null) {
+			return new RedirectResponse($to);
+		}
+		Util::addStyle(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-login');
+		Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
+		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
+			'state' => 'browser',
+			'documentName' => '',
+			'signUrl' => '',
+			'browserLinks' => $browserLinks,
+		], TemplateResponse::RENDER_AS_GUEST);
+		$response->cacheFor(0);
+		return $response;
+	}
+
+	/**
+	 * Whether the login page may hand this path to another browser: our own pages
+	 * only, and no "#", ";" or "?", because it ends up inside an intent:// link and
+	 * must not be able to add to it.
+	 */
+	public static function isHandOffPath(string $path): bool {
+		return preg_match('#^/apps/libresign/[\w/-]+$#D', $path) === 1;
 	}
 
 	/**

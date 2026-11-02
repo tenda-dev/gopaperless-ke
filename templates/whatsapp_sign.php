@@ -13,7 +13,7 @@ $state = $_['state'];
 // whatsapp-sign.ts moves the screen through its steps and hands over to the frame.
 $screens = [
 	'ready' => [$l->t('Preparing to sign'), $l->t('Placing your signature on the page…')],
-	'browser' => [$l->t('Open in Chrome'), $l->t('WhatsApp\'s browser can\'t use passkeys. Open this page in Chrome to sign.')],
+	'browser' => [$l->t('Open in Chrome'), $l->t('WhatsApp\'s browser can\'t use passkeys. Open this page in Chrome to continue.')],
 	'signed' => [$l->t('Already signed'), $l->t('You\'ve already signed this document.')],
 	'not_ready' => [$l->t('Not ready to sign'), $l->t('It isn\'t your turn to sign yet. You\'ll get a WhatsApp message when it is.')],
 	'login' => [$l->t('Sign in to GoPaperless once'), $l->t('To sign from WhatsApp, sign in to GoPaperless once. You can sign this document there now.')],
