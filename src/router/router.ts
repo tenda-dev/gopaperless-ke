@@ -292,7 +292,18 @@ const routes: RouteRecordRaw[] = [
 		path: '/f/dashboard',
 		name: 'Dashboard',
 		component: () => import('../views/Dashboard/Dashboard.vue'),
-	}
+	},
+	{
+		// Visibility gate only; the operations API enforces access server-side.
+		path: '/f/operations',
+		name: 'Operations',
+		beforeEnter: () => {
+			if (!loadState('libresign', 'operations_dashboard_enabled', false)) {
+				return { path: '/' }
+			}
+		},
+		component: () => import('../views/Operations/OperationsDashboard.vue'),
+	},
 ]
 
 const router: Router = createRouter({

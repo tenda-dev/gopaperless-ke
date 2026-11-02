@@ -24,6 +24,7 @@ use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
@@ -80,6 +81,7 @@ class PageController extends AEnvironmentPageAwareController {
 		private IURLGenerator $urlGenerator,
 		private ConfigService $docMdpConfigService,
 		private IAppManager $appManager,
+		private OperationsAccessService $operationsAccessService,
 	) {
 		parent::__construct(
 			request: $request,
@@ -158,6 +160,8 @@ class PageController extends AEnvironmentPageAwareController {
 		$this->initialState->provideInitialState('legal_information', $this->appConfig->getValueString(Application::APP_ID, 'legal_information'));
 		$this->initialState->provideInitialState('whatsapp_enabled', WhatsAppService::on($this->appConfig));
 		$this->initialState->provideInitialState('admin_entitlement_grants_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'admin_entitlement_grants_enabled', false));
+		// Visibility only (nav/route); the operations endpoints enforce access server-side.
+		$this->initialState->provideInitialState('operations_dashboard_enabled', $this->operationsAccessService->canAccess($this->userSession->getUser()));
 
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');

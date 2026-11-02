@@ -84,4 +84,44 @@ describe('LeftSidebar', () => {
 			expect(icon.attributes('data-path')).toBeTruthy()
 		}
 	})
+
+	describe('operations nav entry', () => {
+		const mountWith = (operationsEnabled: boolean) => {
+			loadStateMock.mockImplementation((_app: string, key: string, fallback: unknown) => {
+				if (key === 'operations_dashboard_enabled') return operationsEnabled
+				if (key === 'can_request_sign') return true
+				if (key === 'config') return { identificationDocumentsFlow: false, isApprover: false }
+				return fallback
+			})
+			getCurrentUserMock.mockReturnValue({ isAdmin: false })
+			return mount(LeftSidebar, {
+				global: {
+					stubs: {
+						NcAppNavigation: { name: 'NcAppNavigation', template: '<nav><slot name="list" /><slot name="footer" /></nav>' },
+						NcAppNavigationItem: {
+							name: 'NcAppNavigationItem',
+							props: ['to', 'name'],
+							template: '<div class="nav-item" :data-route="to && to.name"><slot name="icon" /></div>',
+						},
+						NcAppNavigationSettings: true,
+						NcIconSvgWrapper: { name: 'NcIconSvgWrapper', props: ['path', 'size'], template: '<i class="menu-icon" />' },
+						NcButton: true,
+						CreditsSummaryCard: true,
+						LogoWoodmark: true,
+						Settings: true,
+					},
+				},
+			})
+		}
+
+		it('is hidden when the bootstrap flag is false (default)', () => {
+			const wrapper = mountWith(false)
+			expect(wrapper.find('[data-route="Operations"]').exists()).toBe(false)
+		})
+
+		it('is shown when the bootstrap flag is true', () => {
+			const wrapper = mountWith(true)
+			expect(wrapper.find('[data-route="Operations"]').exists()).toBe(true)
+		})
+	})
 })

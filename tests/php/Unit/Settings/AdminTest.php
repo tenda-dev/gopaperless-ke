@@ -14,12 +14,19 @@ use OCA\Libresign\Service\CertificatePolicyService;
 use OCA\Libresign\Service\DocMdp\ConfigService as DocMdpConfigService;
 use OCA\Libresign\Service\FooterService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
+use OCA\Libresign\Service\Operations\Analytics\Report\PeriodReportService;
+use OCA\Libresign\Service\Operations\Analytics\Report\PeriodSchedule;
+use OCA\Libresign\Service\Payment\MnoRoutingRegistry;
+use OCA\Libresign\Service\Payment\PhoneOverrideAdminService;
 use OCA\Libresign\Service\SignatureBackgroundService;
+use OCA\Libresign\Service\SignatureProfile\SignatureProfileService;
 use OCA\Libresign\Service\SignatureTextService;
 use OCA\Libresign\Service\UserOidcProviderService;
 use OCA\Libresign\Settings\Admin;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IAppConfig;
+use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 
 /**
@@ -37,6 +44,7 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 	private FooterService&MockObject $footerService;
 	private DocMdpConfigService&MockObject $docMdpConfigService;
 	private UserOidcProviderService&MockObject $userOidcProviderService;
+	private PeriodReportService&MockObject $periodReportService;
 	public function setUp(): void {
 		$this->initialState = $this->createMock(IInitialState::class);
 		$this->identifyMethodService = $this->createMock(IdentifyMethodService::class);
@@ -48,17 +56,24 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->footerService = $this->createMock(FooterService::class);
 		$this->docMdpConfigService = $this->createMock(DocMdpConfigService::class);
 		$this->userOidcProviderService = $this->createMock(UserOidcProviderService::class);
+		$this->periodReportService = $this->createMock(PeriodReportService::class);
 		$this->admin = new Admin(
 			$this->initialState,
 			$this->identifyMethodService,
 			$this->certificateEngineFactory,
 			$this->certificatePolicyService,
 			$this->appConfig,
+			$this->createMock(IConfig::class),
 			$this->signatureTextService,
 			$this->signatureBackgroundService,
 			$this->footerService,
 			$this->docMdpConfigService,
+			$this->createMock(SignatureProfileService::class),
+			$this->createMock(PhoneOverrideAdminService::class),
+			$this->createMock(MnoRoutingRegistry::class),
 			$this->userOidcProviderService,
+			$this->createMock(OperationsAccessService::class),
+			$this->periodReportService,
 		);
 	}
 
@@ -78,16 +93,16 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 				$provided[$key] = $value;
 			});
 
-		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\IEngineHandler::class);
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\AEngineHandler::class);
 		$engine->method('getName')->willReturn('JSignPdf');
 		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
 		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
 		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
-		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8);
-		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8);
-		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100);
-		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200);
-		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100.0);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200.0);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8.0);
 		$this->signatureTextService->method('getTemplate')->willReturn('');
 		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
 		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
@@ -111,16 +126,16 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 				$provided[$key] = $value;
 			});
 
-		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\IEngineHandler::class);
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\AEngineHandler::class);
 		$engine->method('getName')->willReturn('JSignPdf');
 		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
 		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
 		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
-		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8);
-		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8);
-		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100);
-		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200);
-		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100.0);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200.0);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8.0);
 		$this->signatureTextService->method('getTemplate')->willReturn('');
 		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
 		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
@@ -146,16 +161,16 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 				$provided[$key] = $value;
 			});
 
-		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\IEngineHandler::class);
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\AEngineHandler::class);
 		$engine->method('getName')->willReturn('JSignPdf');
 		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
 		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
 		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
-		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8);
-		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8);
-		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100);
-		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200);
-		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8);
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100.0);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200.0);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8.0);
 		$this->signatureTextService->method('getTemplate')->willReturn('');
 		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
 		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
@@ -181,5 +196,41 @@ final class AdminTest extends \OCA\Libresign\Tests\Unit\TestCase {
 		$this->assertSame([
 			['id' => 2, 'label' => 'GoPaperless OIDC'],
 		], $provided['user_oidc_providers']);
+	}
+
+	public function testGetFormProvidesPeriodReportInitialState(): void {
+		$provided = [];
+		$this->initialState
+			->method('provideInitialState')
+			->willReturnCallback(function (string $key, mixed $value) use (&$provided): void {
+				$provided[$key] = $value;
+			});
+		$this->periodReportService->method('isEnabled')->willReturn(true);
+		$this->periodReportService->method('getSchedule')->willReturn(PeriodSchedule::default());
+		$this->periodReportService->method('nextRun')->willReturn(null);
+
+		$engine = $this->createMock(\OCA\Libresign\Handler\CertificateEngine\AEngineHandler::class);
+		$engine->method('getName')->willReturn('JSignPdf');
+		$this->certificateEngineFactory->method('getEngine')->willReturn($engine);
+		$this->signatureTextService->method('parse')->willReturn(['parsed' => '']);
+		$this->signatureTextService->method('getDefaultTemplate')->willReturn('');
+		$this->signatureTextService->method('getDefaultTemplateFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getSignatureFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getFullSignatureHeight')->willReturn(100.0);
+		$this->signatureTextService->method('getFullSignatureWidth')->willReturn(200.0);
+		$this->signatureTextService->method('getTemplateFontSize')->willReturn(8.0);
+		$this->signatureTextService->method('getTemplate')->willReturn('');
+		$this->identifyMethodService->method('getIdentifyMethodsSettings')->willReturn([]);
+		$this->signatureBackgroundService->method('getSignatureBackgroundType')->willReturn('');
+		$this->footerService->method('getTemplateVariablesMetadata')->willReturn([]);
+		$this->footerService->method('getTemplate')->willReturn('');
+		$this->footerService->method('isDefaultTemplate')->willReturn(true);
+		$this->docMdpConfigService->method('getConfig')->willReturn([]);
+
+		$this->admin->getForm();
+
+		$this->assertTrue($provided['operations_email_reports_admin_enabled']);
+		$this->assertSame(PeriodSchedule::default()->toArray(), $provided['operations_email_reports_admin_schedule']);
+		$this->assertNull($provided['operations_email_reports_admin_next']);
 	}
 }

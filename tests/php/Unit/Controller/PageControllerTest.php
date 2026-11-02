@@ -22,6 +22,7 @@ use OCA\Libresign\Service\File\FileListService;
 use OCA\Libresign\Service\FileAccessService;
 use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SessionService;
 use OCA\Libresign\Service\SignerElementsService;
@@ -134,6 +135,7 @@ final class PageControllerTest extends TestCase {
 				'getConfig' => [],
 			]),
 			appManager: \OCP\Server::get(IAppManager::class),
+			operationsAccessService: $this->createMock(OperationsAccessService::class),
 		);
 	}
 
@@ -227,6 +229,7 @@ final class PageControllerTest extends TestCase {
 				'getConfig' => [],
 			]),
 			appManager: $appManager,
+			operationsAccessService: $this->createMock(OperationsAccessService::class),
 		);
 	}
 
