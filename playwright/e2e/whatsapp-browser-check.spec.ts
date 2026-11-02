@@ -45,7 +45,14 @@ const browsers = {
 	neverAnswers: () => {
 		window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => new Promise(() => {})
 	},
+	brandedWebView: () => {
+		Object.defineProperty(navigator, 'userAgentData', { value: { brands: [{ brand: 'Chromium', version: '141' }, { brand: 'Android WebView', version: '141' }] } })
+	},
 }
+
+const WHATSAPP_ANDROID = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.124 Mobile Safari/537.36 [WA4A/2.25.32.75;]'
+const ANDROID_WEB_VIEW = 'Mozilla/5.0 (Linux; Android 14; SM-A546E; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36'
+const WHATSAPP_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1 [WAiOS/2.25.31]'
 
 /**
  * SecurySign's side, counting the signing POSTs. The frame reports its size like the
@@ -209,6 +216,59 @@ test.describe('the card, on an Android phone reading as plain Chrome', () => {
 		await page.getByRole('button', { name: 'Try here anyway' }).click()
 		await expect(card(page)).toHaveAttribute('data-step', 'frame')
 		expect(securySign.posts()).toBe(1)
+	})
+})
+
+// Each flag alone is enough, with every other one saying this browser is fine.
+for (const [name, device, userAgent] of [
+	['[WA4A/', android, WHATSAPP_ANDROID],
+	['; wv)', android, ANDROID_WEB_VIEW],
+	['[WAiOS/', iphone, WHATSAPP_IPHONE],
+] as const) {
+	test.describe(`a user agent with ${name}`, () => {
+		test.use({ ...device, userAgent })
+
+		test('gets the hand-off on the card, before anything is prepared', async ({ page, context }) => {
+			const securySign = await standInSecurySign(context, HANGS)
+			await page.addInitScript(browsers.saysYes)
+			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+			await atHandOff(page)
+			await page.getByText('Technical details').click()
+			await expect(page.locator('#gp-whatsapp-details')).toContainText('User agent names an in-app browser: yes')
+			await expect(page.locator('#gp-whatsapp-details')).toContainText('Platform passkey check: yes')
+			expect(securySign.posts()).toBe(0)
+		})
+
+		test('gets the hand-off at the login', async ({ page }) => {
+			await page.addInitScript(browsers.saysYes)
+			await page.goto(`/login?redirect_url=${TARGET}`)
+			await page.waitForURL(/\/p\/open-in-browser/)
+			await atHandOff(page)
+		})
+
+		test('can still try here anyway', async ({ page, context }) => {
+			await standInSecurySign(context, HANGS)
+			await page.addInitScript(browsers.saysYes)
+			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+			await atHandOff(page)
+			await page.getByRole('button', { name: 'Try here anyway' }).click()
+			await expect(card(page)).toHaveAttribute('data-step', 'frame')
+		})
+	})
+}
+
+test.describe('the Android WebView brand, under a user agent reading as plain Chrome', () => {
+	test.use(android)
+
+	test('gets the hand-off, before anything is prepared', async ({ page, context }) => {
+		const securySign = await standInSecurySign(context, HANGS)
+		await page.addInitScript(browsers.saysYes)
+		await page.addInitScript(browsers.brandedWebView)
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await atHandOff(page)
+		await page.getByText('Technical details').click()
+		await expect(page.locator('#gp-whatsapp-details')).toContainText('Brands: Chromium, Android WebView')
+		expect(securySign.posts()).toBe(0)
 	})
 })
 

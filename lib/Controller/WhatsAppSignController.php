@@ -153,9 +153,9 @@ class WhatsAppSignController extends Controller {
 
 	/**
 	 * The links a phone can use to leave this browser, or null where there are none
-	 * and Copy link is the way out. The user agent only picks the kind of link. Whether
-	 * they are offered at all is the browser's own answer (whatsapp-sign.ts), because a
-	 * web view's user agent can read like anything, Chrome included.
+	 * and Copy link is the way out. This only picks the kind of link. Whether they are
+	 * offered at all is decided in the browser, from several flags (passkeyBrowser.ts),
+	 * because a web view's user agent can read like anything, Chrome included.
 	 *
 	 * "chrome" comes first because Google Password Manager lives there. "other" is
 	 * for phones without it: Safari on iPhone (iOS 17+ opens x-safari-https:// out of

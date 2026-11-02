@@ -10,8 +10,8 @@
 // The page shows where it is through data-step, which login.scss draws.
 //
 // Any browser that can't run the passkey prompt gets the hand-off to another one:
-// before the frame if the browser says so itself, or when the frame reports that
-// the prompt failed.
+// before the frame if any flag says so (utils/passkeyBrowser.ts), or when the frame
+// reports that the prompt failed.
 
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
@@ -58,6 +58,8 @@ function offerBrowser(tryLabel: string, reason: string): void {
 	document.getElementById('gp-whatsapp-details')!.textContent = [
 		`Reason: ${reason}`,
 		`User agent: ${navigator.userAgent}`,
+		`User agent names an in-app browser: ${answer ? (answer.inAppUserAgent ? 'yes' : 'no') : 'not asked yet'}`,
+		`Brands: ${answer ? (answer.brands.join(', ') || 'none') : 'not asked yet'}`,
 		`PublicKeyCredential: ${answer ? (answer.credentialApi ? 'present' : 'missing') : 'not asked yet'}`,
 		`Touch screen: ${answer ? (answer.touchScreen ? 'yes' : 'no') : 'not asked yet'}`,
 		`Platform passkey check: ${answer?.platformCheck ?? 'not asked yet'}`,
