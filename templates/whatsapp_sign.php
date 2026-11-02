@@ -13,7 +13,7 @@ $state = $_['state'];
 // whatsapp-sign.ts moves the screen through its steps and hands over to the frame.
 $screens = [
 	'ready' => [$l->t('Preparing to sign'), $l->t('Placing your signature on the page…')],
-	'safari' => [$l->t('Open in Safari'), $l->t('WhatsApp\'s browser can\'t use passkeys. Open this page in Safari to sign.')],
+	'browser' => [$l->t('Open in Chrome'), $l->t('WhatsApp\'s browser can\'t use passkeys. Open this page in Chrome to continue.')],
 	'signed' => [$l->t('Already signed'), $l->t('You\'ve already signed this document.')],
 	'not_ready' => [$l->t('Not ready to sign'), $l->t('It isn\'t your turn to sign yet. You\'ll get a WhatsApp message when it is.')],
 	'login' => [$l->t('Sign in to GoPaperless once'), $l->t('To sign from WhatsApp, sign in to GoPaperless once. You can sign this document there now.')],
@@ -53,8 +53,9 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 		</p>
 		<?php if ($state === 'ready'): ?>
 			<button class="gp-whatsapp__button gp-whatsapp__retry" type="button" id="gp-whatsapp-retry"><?php p($l->t('Try again')); ?></button>
-		<?php elseif ($state === 'safari'): ?>
-			<a class="gp-whatsapp__button" href="<?php p($_['safariUrl']); ?>"><?php p($l->t('Open in Safari')); ?></a>
+		<?php elseif ($state === 'browser'): ?>
+			<a class="gp-whatsapp__button" href="<?php p($_['browserLinks']['chrome']); ?>"><?php p($l->t('Open in Chrome')); ?></a>
+			<a class="gp-whatsapp__button gp-whatsapp__button--quiet" href="<?php p($_['browserLinks']['other']); ?>"><?php p($l->t('Use another browser')); ?></a>
 			<button class="gp-whatsapp__link" type="button" id="gp-whatsapp-copy"><?php p($l->t('Copy link')); ?></button>
 		<?php elseif ($state === 'login' || $state === 'no_credits'): ?>
 			<a class="gp-whatsapp__button" href="<?php p($_['signLink']); ?>"><?php p($l->t('Open in GoPaperless')); ?></a>
