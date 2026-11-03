@@ -9,14 +9,11 @@ declare(strict_types=1);
 namespace OCA\Libresign\Listener;
 
 use OCA\Libresign\AppInfo\Application;
-use OCA\Libresign\Controller\WhatsAppSignController;
 use OCP\AppFramework\Http\Events\BeforeLoginTemplateRenderedEvent;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\IAppConfig;
-use OCP\IRequest;
-use OCP\IURLGenerator;
 use OCP\Util;
 
 /**
@@ -35,35 +32,11 @@ class LoginPageListener implements IEventListener {
 	public function __construct(
 		private IAppConfig $appConfig,
 		private IInitialState $initialState,
-		private IRequest $request,
-		private IURLGenerator $urls,
 	) {
-	}
-
-	/**
-	 * Nobody can sign in inside WhatsApp's browser, so on its way to one of our
-	 * pages (the receipt's "View Document", "Sign another document") it goes to the
-	 * same hand-off as signing. Limited to our pages so that an app's own web view
-	 * logging in to Nextcloud is left alone.
-	 */
-	private function leaveWhatsAppBrowser(): void {
-		$to = (string)$this->request->getParam('redirect_url', '');
-		if (!WhatsAppSignController::isHandOffPath($to)
-			|| WhatsAppSignController::browserLinks($this->request->getHeader('User-Agent'), $to) === null) {
-			return;
-		}
-		// ponytail: a meta refresh, because this event can't answer with a redirect.
-		Util::addHeader('meta', [
-			'http-equiv' => 'refresh',
-			'content' => '0;url=' . $this->urls->linkToRoute('libresign.whatsAppSign.openInBrowser', ['to' => $to]),
-		]);
 	}
 
 	#[\Override]
 	public function handle(Event $event): void {
-		if ($event instanceof BeforeLoginTemplateRenderedEvent) {
-			$this->leaveWhatsAppBrowser();
-		}
 		if (!$this->appConfig->getValueBool(Application::APP_ID, 'custom_login_page_enabled', true)) {
 			return;
 		}

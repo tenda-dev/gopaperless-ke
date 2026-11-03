@@ -29,15 +29,17 @@ final class WhatsAppSignControllerTest extends TestCase {
 			'WhatsApp on iPhone' => ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1 [WAiOS/2.25.31]', self::IPHONE],
 			'WhatsApp on Android' => ['Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.124 Mobile Safari/537.36 [WA4A/2.25.32.75;]', self::ANDROID],
 			'any Android web view' => ['Mozilla/5.0 (Linux; Android 14; SM-A546E; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36', self::ANDROID],
-			'Chrome on Android signs here' => ['Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', null],
-			'Chrome on iPhone signs here' => ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1', null],
-			'Safari on iPhone signs here' => ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1', null],
-			'no user agent signs here' => ['', null],
+			'Android reading as plain Chrome' => ['Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', self::ANDROID],
+			'Chrome on iPhone' => ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1', self::IPHONE],
+			'Safari on iPhone' => ['Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1', self::IPHONE],
+			'WhatsApp on an iPad reading as a Mac' => ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15 [WAiOS/2.25.31]', self::IPHONE],
+			'a computer has no links' => ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', null],
+			'no user agent has no links' => ['', null],
 		];
 	}
 
 	#[DataProvider('userAgents')]
-	public function testLinksOutOnlyFromBrowsersThatCantUsePasskeys(string $userAgent, ?array $expected): void {
+	public function testTheUserAgentOnlyPicksTheKindOfLink(string $userAgent, ?array $expected): void {
 		$this->assertSame($expected, WhatsAppSignController::browserLinks($userAgent, self::PAGE));
 	}
 
