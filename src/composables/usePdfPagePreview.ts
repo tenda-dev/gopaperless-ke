@@ -39,6 +39,9 @@ export function usePdfPagePreview(url: string) {
 	const canvasRefs = new Map<number, HTMLCanvasElement>()
 	let pageProxies: PageProxy[] = []
 	let loadToken = 0
+	// The newest loaded document; destroyed when superseded or on destroy(),
+	// otherwise every reload() leaks a pdfjs document (memory + worker).
+	let currentPdf: { destroy: () => Promise<void> } | null = null
 	// The single in-flight pdf.js RenderTask, if any. Cancelled whenever a new
 	// render pass starts (reload, or a fresh render()) so a stale draw can't
 	// finish after a newer pass has already repainted the same keyed canvas.
@@ -108,6 +111,9 @@ export function usePdfPagePreview(url: string) {
 			const data = await res.arrayBuffer()
 			if (token !== loadToken) { return }
 			const pdf = await pdfjsLib.getDocument({ data }).promise
+			if (token !== loadToken) { pdf.destroy(); return }
+			currentPdf?.destroy().catch(() => {})
+			currentPdf = pdf
 			const metas: PdfPageInfo[] = []
 			for (let i = 1; i <= pdf.numPages; i++) {
 				const page = await pdf.getPage(i)
@@ -140,6 +146,8 @@ export function usePdfPagePreview(url: string) {
 	function destroy(): void {
 		loadToken++
 		cancelActiveRender()
+		currentPdf?.destroy().catch(() => {})
+		currentPdf = null
 	}
 
 	return { status, pages, displayWidth, containerEl, setCanvasRef, measure, render, reload, destroy }

@@ -22,7 +22,7 @@
 -->
 <template>
 	<section class="pw-stage" :class="{ 'is-empty': status !== 'ready' }">
-		<div v-if="props.showBar" class="pw-stage__bar">
+		<div class="pw-stage__bar">
 			<div ref="metaWrap" class="pw-stage__doc-wrap">
 				<button type="button"
 					class="pw-stage__doc"
@@ -126,12 +126,7 @@ const props = withDefaults(defineProps<{
 	active?: boolean
 	pages?: number
 	expiry?: string
-	/** Hide the built-in doc-chip + meta popover. Set false when a parent (e.g.
-	 *  PwStageControl) owns a single conjoined pill and embeds this component for
-	 *  its canvas/overlay rendering only. Defaults true — unchanged for the
-	 *  existing PublicWorkflowNextShell usage. */
-	showBar?: boolean
-}>(), { active: true, pages: 0, expiry: '', showBar: true })
+}>(), { active: true, pages: 0, expiry: '' })
 
 // pdf.js worker — configured once, matched to the directly-imported main build
 // (same pattern as PwDocumentPreview / helpers/pdfWorker).
@@ -156,8 +151,8 @@ type Status = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error'
 type PageInfo = { pageNumber: number, pointWidth: number, pointHeight: number }
 
 const status = ref<Status>('idle')
-// Additive: lets a wrapper (PwStageControl) know when the canvas/overlay render
-// is actually ready, without duplicating the fetch/pdf.js lifecycle below.
+// Additive: lets a parent know when the canvas/overlay render is actually
+// ready, without duplicating the fetch/pdf.js lifecycle below.
 const emit = defineEmits<{ 'status-change': [status: Status] }>()
 watch(status, (s) => emit('status-change', s), { immediate: true })
 const pages = ref<PageInfo[]>([])

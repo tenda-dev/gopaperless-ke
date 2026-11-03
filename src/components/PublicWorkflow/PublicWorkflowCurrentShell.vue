@@ -67,19 +67,6 @@
 							<NcIconSvgWrapper :path="mdiClose" :size="18" />
 						</button>
 
-						<!-- Conjoined pill (pw-stagectl__bar) is disabled while the content area
-						     is rebuilt around the authenticated flow's title/Documents/card
-						     composition below — NOT deleted, kept for later reactivation. -->
-						<PwStageControl v-if="false"
-							:document="(doc as any)"
-							:has-document="hasDocument"
-							:active="true"
-							:name="documentName"
-							:pages="documentPages"
-							:expiry="expiresLabel"
-							:signer-count="enteredSignerCount"
-							:status-label="stageStatusLabel"
-							:status-variant="stageStatusVariant" />
 
 						<!-- Pre-upload: no title here — the rail's dropzone already says "Add
 						     your document"; repeating that above the empty pane was the misleading
@@ -156,8 +143,6 @@
 									<!-- {{ t('libresign', 'Back') }} -->
 								</button>
 								<span class="pwn__pnav-title">{{ t('libresign', 'Document action centre') }}</span>
-								<!-- disabled, not deleted — this slot is now "Document action centre" above -->
-								<span v-if="false" class="pwn__stepcount">{{ panelNav.step }}</span>
 							</div>
 
 							<!-- document details strip, mirrors WorkflowHeader.vue — icon, status
@@ -258,10 +243,6 @@
 
 								<!-- ADD SIGNERS -->
 								<template v-else>
-									<!-- <h2 class="pwn__title">{{ addSignersTitle }}</h2>
-									<PwContextualHint v-if="enteredSignerCount === 0">
-										{{ t('libresign', 'Add the people who will sign. We only use these details when you choose to send — nothing is sent now.') }}
-									</PwContextualHint> -->
 									<div class="pwn__signers-head">
 										<span class="pwn__signers-head-label">{{ t('libresign', 'Signers') }}</span>
 										<button type="button" class="pwn__signers-head-add" @click="openAdd(null)">
@@ -449,12 +430,10 @@ import {
 	mdiChevronUp,
 	mdiClockAlertOutline,
 	mdiEyeOutline,
-	mdiFile,
 	mdiFileDocumentOutline,
 	mdiFormatColorFill,
 	mdiPlus,
-	mdiTrayArrowUp,
-	mdiVectorSquareEdit
+	mdiTrayArrowUp
 } from '@mdi/js'
 import { loadState } from '@nextcloud/initial-state'
 import { translate as t, translatePlural as n } from '@nextcloud/l10n'
@@ -471,7 +450,6 @@ import PwDocumentCard from './PwDocumentCard.vue'
 import PwDocumentInlinePreview from './PwDocumentInlinePreview.vue'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
-import PwStageControl from './PwStageControl.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
 import PublicShell from '../PublicShell.vue'
 import { usePublicWorkflow, type SignerDraft } from '../../store/publicWorkflow'
@@ -491,7 +469,7 @@ const sponsorshipEnabled = (
 type View = 'prepare' | 'fields' | 'review'
 
 const {
-	phase, status, expiresAt, hasDocument, errorMessage,
+	phase, expiresAt, hasDocument, errorMessage,
 	resume, start, upload, saveSigners, saveRequester,
 	signers, visibleElements, document: doc,
 	requesterEmail: storeRequesterEmail, requesterIsSigner: storeRequesterIsSigner,
@@ -518,7 +496,6 @@ const reqEmailInput = ref<HTMLInputElement | null>(null)
 const savingRequester = ref(false)
 const identifyError = ref('')
 const requesterTouched = ref(false)
-const justResumed = ref(false)
 const startedThisSession = ref(false)
 // One-shot guard: on the first FORWARD entry to an empty signers step, the only
 // possible action is to open the add-signer dialog, so we open it once. Set true
@@ -559,7 +536,6 @@ watch(storeRequesterIsSigner, (v) => { selfSign.value = v === true }, { immediat
 onMounted(async () => {
 	await resume()
 	if (phase.value === 'ready' && hasDocument.value) {
-		justResumed.value = !startedThisSession.value
 		prepareView.value = storeRequesterEmail.value ? 'signers' : 'identify'
 		// Reconstruct which signer row is the requester from authoritative state:
 		// explicit intent (persisted) + the server's set. Email is only the join key.
@@ -590,10 +566,6 @@ const hasPlacedFields = computed(() => visibleElements.value.length > 0)
 // signer AND no save in flight or failed (#2/#4 — never advance on unsaved work).
 const canEnterFields = computed(() => hasSavedSigners.value && !signersSaving.value && signersError.value === '')
 const enteredSignerCount = computed(() => signers.value.filter((s) => s.email.trim()).length)
-// "Add signers" at first; "Add more signers" once anyone (you included) is in.
-const addSignersTitle = computed(() => (enteredSignerCount.value > 0
-	? t('libresign', 'Add more signers')
-	: t('libresign', 'Add signers')))
 const signerNames = computed(() => signers.value
 	.filter((s) => s.email.trim())
 	.map((s) => s.displayName.trim() || s.email.trim())
@@ -698,7 +670,10 @@ function stepReachable(i: number): boolean {
 // the numbered WorkflowStepper above doesn't sub-divide Prepare.)
 function goToStep(i: number): void {
 	if (!stepReachable(i)) { return }
-	activeView.value = i >= 2 ? 'review' : i === 1 ? 'fields' : 'prepare'
+	if (i === 0) { activeView.value = 'prepare'; prepareView.value = 'identify' }
+	else if (i === 1) { activeView.value = 'prepare'; prepareView.value = 'signers' }
+	else if (i === 2) { activeView.value = 'fields' }
+	else { activeView.value = 'review' }
 }
 function goToPrepareIdentify(): void { activeView.value = 'prepare'; prepareView.value = 'identify' }
 function goToPrepareSigners(): void { activeView.value = 'prepare'; prepareView.value = 'signers' }
@@ -706,9 +681,6 @@ function goToPrepareSigners(): void { activeView.value = 'prepare'; prepareView.
 // Approach A: a single step label + a Back affordance live at the top of the
 // panel; the footer carries only the forward move. `back` is null on the first
 // screen (Upload), where there is nowhere to step back to.
-// step text is unused now (the eyebrow is disabled — see pwn__stepcount — in
-// favour of "Document action centre"), kept current so it's not stale if the
-// eyebrow comes back.
 const panelNav = computed<{ step: string, back: null | (() => void) }>(() => {
 	if (activeView.value === 'fields') { return { step: t('libresign', 'Step 3 · Setup positions'), back: goToPrepareSigners } }
 	if (activeView.value === 'review') { return { step: t('libresign', 'Step 4 · Review'), back: () => goToView('fields') } }
@@ -719,8 +691,6 @@ const panelNav = computed<{ step: string, back: null | (() => void) }>(() => {
 
 async function onStart(): Promise<void> {
 	startedThisSession.value = true
-	justResumed.value = false
-	prepareView.value = 'upload'
 	await start()
 }
 
@@ -875,9 +845,7 @@ function openEditor(): void {
 	void editor.value?.open()
 }
 
-// Keep the store binding explicit; `status` and reqEmailInput are intentionally referenced.
-void status
-void reqEmailInput
+// Keep the store binding explicit: reqEmailInput is a template ref.
 </script>
 
 <style scoped lang="scss">
@@ -990,7 +958,7 @@ void reqEmailInput
 }
 
 /* document stage: pre-upload empty state, or post-upload title + Documents
-   subheader + card (pw-stagectl__bar is disabled — see the v-if="false" above). */
+   subheader + card. */
 .pwn__stage {
 	grid-area: stage;
 	min-width: 0;
@@ -1094,7 +1062,7 @@ void reqEmailInput
 	position: absolute;
 	top: 4px;
 	bottom: 4px;
-	left: 4px;
+	inset-inline-start: 4px;
 	width: calc(50% - 4px);
 	background: var(--age-surface, var(--color-main-background));
 	border-radius: calc(var(--age-radius-sm, 8px) - 1px);
@@ -1427,29 +1395,6 @@ void reqEmailInput
 	margin: 0;
 }
 
-/* In-body step action (Save signers, Place/Edit signature fields). The footer
-   holds navigation only; the step's own commit action lives here with its data. */
-.pwn__action {
-	display: flex;
-	align-items: center;
-	flex-wrap: wrap;
-	gap: 10px;
-	margin-top: 2px;
-}
-
-.pwn__saved {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 12.5px;
-	font-weight: 600;
-	color: var(--age-success-fg, #0a6636);
-}
-
-.pwn__saved :deep(span.icon-vue) {
-	color: var(--age-success-fg, #0a6636);
-}
-
 .pwn__done :deep(span.icon-vue) {
 	color: var(--age-success-fg, #0a6636);
 	flex: none;
@@ -1609,22 +1554,6 @@ void reqEmailInput
 	border-top: 1px solid var(--age-border, var(--color-border));
 }
 
-.pw-selfsign__ctx {
-	font-size: 13px;
-	color: var(--age-fg-muted, var(--color-text-maxcontrast));
-	margin: 0;
-}
-
-.pw-selfsign__change {
-	border: none;
-	background: none;
-	font: inherit;
-	font-size: 12.5px;
-	color: var(--age-success-fg, #0a6636);
-	cursor: pointer;
-	padding: 0 0 0 4px;
-}
-
 .pw-selfsign__check {
 	display: inline-flex;
 	align-items: center;
@@ -1644,16 +1573,6 @@ void reqEmailInput
 	color: var(--age-fg-faint, var(--color-text-maxcontrast));
 	margin: 0;
 }
-
-.pw-selfsign__pending {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	font-size: 12.5px;
-	color: var(--age-fg-muted, var(--color-text-maxcontrast));
-	margin: 0;
-}
-
 
 .pw-help {
 	border: 1px solid var(--age-border, var(--color-border));
@@ -1702,21 +1621,7 @@ void reqEmailInput
 }
 
 
-.pw-fieldstat {
-	display: flex;
-	align-items: center;
-	gap: 9px;
-	font-size: 13px;
-	color: var(--age-fg-muted, var(--color-text-maxcontrast));
-	margin: 0;
-}
-
-.pw-fieldstat :deep(span.icon-vue) {
-	color: var(--age-success-fg, #0a6636);
-	flex: none;
-}
-
-.pw-summary {
+.pw-help__note {
 	list-style: none;
 	margin: 0;
 	padding: 0;
@@ -1898,7 +1803,7 @@ void reqEmailInput
 		justify-content: center;
 		position: fixed;
 		z-index: 46;
-		right: 18px;
+		inset-inline-end: 18px;
 		bottom: calc(100px + env(safe-area-inset-bottom, 0px));
 		width: 52px;
 		height: 52px;

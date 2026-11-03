@@ -35,6 +35,12 @@ function makePageProxy(pointWidth: number, pointHeight: number, task: { promise:
 	}
 }
 
+/** A fake pdf.js PDFDocumentProxy — numPages/getPage plus the destroy() the
+ *  composable calls when a document is superseded or released. */
+function makeDoc(numPages: number, getPage: ReturnType<typeof vi.fn>, destroy?: ReturnType<typeof vi.fn>) {
+	return { numPages, getPage, destroy: destroy ?? vi.fn(async () => {}) }
+}
+
 function okResponse() {
 	return { status: 200, ok: true, headers: { get: () => 'application/pdf' }, arrayBuffer: async () => new ArrayBuffer(0) }
 }
@@ -82,7 +88,7 @@ describe('usePdfPagePreview', () => {
 
 		const rt = makeRenderTask()
 		const proxy = makePageProxy(600, 800, rt.task)
-		const doc = { numPages: 1, getPage: pageGetter([proxy], p.setCanvasRef) }
+		const doc = makeDoc(1, pageGetter([proxy], p.setCanvasRef))
 		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(okResponse())
 		getDocumentMock.mockReturnValue({ promise: Promise.resolve(doc) })
 
@@ -106,8 +112,8 @@ describe('usePdfPagePreview', () => {
 		const rt2 = makeRenderTask()
 		const proxy1 = makePageProxy(600, 800, rt1.task)
 		const proxy2 = makePageProxy(600, 800, rt2.task)
-		const doc1 = { numPages: 1, getPage: pageGetter([proxy1], p.setCanvasRef) }
-		const doc2 = { numPages: 1, getPage: pageGetter([proxy2], p.setCanvasRef) }
+		const doc1 = makeDoc(1, pageGetter([proxy1], p.setCanvasRef))
+		const doc2 = makeDoc(1, pageGetter([proxy2], p.setCanvasRef))
 		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(okResponse())
 		getDocumentMock
 			.mockReturnValueOnce({ promise: Promise.resolve(doc1) })
@@ -123,6 +129,7 @@ describe('usePdfPagePreview', () => {
 		expect(rt1.cancel).toHaveBeenCalledTimes(1)
 
 		await waitUntil(() => { if (proxy2.render.mock.calls.length === 0) { throw new Error('not yet') } })
+		expect(doc1.destroy).toHaveBeenCalledTimes(1)
 		rt2.resolve()
 		await Promise.all([first, second])
 
@@ -138,7 +145,7 @@ describe('usePdfPagePreview', () => {
 
 		const rt = makeRenderTask(true)
 		const proxy = makePageProxy(600, 800, rt.task)
-		const doc = { numPages: 1, getPage: pageGetter([proxy], p.setCanvasRef) }
+		const doc = makeDoc(1, pageGetter([proxy], p.setCanvasRef))
 		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(okResponse())
 		getDocumentMock.mockReturnValue({ promise: Promise.resolve(doc) })
 
@@ -147,6 +154,7 @@ describe('usePdfPagePreview', () => {
 
 		p.destroy()
 		expect(rt.cancel).toHaveBeenCalledTimes(1)
+		expect(doc.destroy).toHaveBeenCalledTimes(1)
 		await pending
 
 		// Page metadata was already known (status flips to 'ready' as soon as

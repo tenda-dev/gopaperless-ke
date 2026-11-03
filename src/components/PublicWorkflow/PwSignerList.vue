@@ -89,8 +89,8 @@ defineEmits<{ add: [], edit: [index: number], remove: [index: number] }>()
 }
 
 // Mobile: full-width stacked rows, add control as a full-width rectangle.
-// Same treatment applies unconditionally for the 'row' layout (PwStageControl's
-// row-card signers), not just under the mobile breakpoint.
+// Same treatment applies unconditionally for the 'row' layout too,
+// not just under the mobile breakpoint.
 @media (max-width: 767px) {
 	.pw-signers:not(.pw-signers--row) {
 		flex-direction: column;
@@ -106,6 +106,7 @@ defineEmits<{ add: [], edit: [index: number], remove: [index: number] }>()
 		border-radius: var(--age-radius-sm, 8px);
 	}
 }
+
 .pw-signers--row {
 	flex-direction: column;
 	align-items: stretch;

@@ -192,6 +192,7 @@ const initials = computed(() => ((props.signer.email || '').trim().split('@')[0]
 		.pw-chip__remove { width: 48px; }
 	}
 }
+
 .pw-chip--row {
 	display: flex;
 	align-items: center;
@@ -210,6 +211,7 @@ const initials = computed(() => ((props.signer.email || '').trim().split('@')[0]
 	flex: 1 1 auto;
 	text-align: start;
 }
+
 .pw-chip__name {
 	font-size: 0.9rem;
 	font-weight: 600;
@@ -218,12 +220,14 @@ const initials = computed(() => ((props.signer.email || '').trim().split('@')[0]
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
 .pw-chip--row .pw-chip__email {
 	font-size: 0.78rem;
 	font-weight: 400;
 	color: var(--age-fg-muted, var(--color-text-maxcontrast));
 	max-width: none;
 }
+
 .pw-chip--row {
 	.pw-chip__open { flex: 1 1 auto; align-items: center; gap: 12px; padding: 12px 14px; }
 	.pw-chip__av {

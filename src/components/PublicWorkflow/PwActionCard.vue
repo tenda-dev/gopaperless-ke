@@ -127,6 +127,7 @@ defineEmits<{ primary: [], secondary: [] }>()
 	&:active:not(:disabled) { transform: translateY(1px); }
 	&[disabled] { opacity: 0.45; cursor: not-allowed; }
 }
+
 .pw-btn--primary {
 	background: var(--age-success, var(--color-primary-element));
 	border-color: transparent;
