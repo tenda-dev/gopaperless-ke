@@ -50,7 +50,7 @@ const browsers = {
 	},
 }
 
-const WHATSAPP_ANDROID = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.7390.124 Mobile Safari/537.36 [WA4A/2.25.32.75;]'
+const WHATSAPP_ANDROID = 'Mozilla/5.0 (Linux; Android 12; SM-G990U3 Build/SP1A.210812.016) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36 WA4A/2.26.42.74'
 const ANDROID_WEB_VIEW = 'Mozilla/5.0 (Linux; Android 14; SM-A546E; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36'
 const WHATSAPP_IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1 [WAiOS/2.25.31]'
 
@@ -221,7 +221,7 @@ test.describe('the card, on an Android phone reading as plain Chrome', () => {
 
 // Each flag alone is enough, with every other one saying this browser is fine.
 for (const [name, device, userAgent] of [
-	['[WA4A/', android, WHATSAPP_ANDROID],
+	['WA4A/', android, WHATSAPP_ANDROID],
 	['; wv)', android, ANDROID_WEB_VIEW],
 	['[WAiOS/', iphone, WHATSAPP_IPHONE],
 ] as const) {

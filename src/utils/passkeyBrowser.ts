@@ -26,7 +26,7 @@ export type BrowserAnswer = {
 const TRY_HERE = 'gp-passkey-try-here'
 
 // ponytail: only the tokens we've seen. Add one when a phone's Technical details show it.
-const IN_APP_USER_AGENT = /\[WAiOS\/|\[WA4A\/|; wv\)/
+const IN_APP_USER_AGENT = /\[WAiOS\/|WA4A\/|; wv\)/
 
 // ponytail: a fixed wait, for web views whose promise never settles. Longer than a
 // slow phone's first call to Play Services; it only delays those web views.
