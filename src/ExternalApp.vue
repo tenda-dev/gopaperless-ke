@@ -30,11 +30,12 @@ useForceLightMode()
 // Override server.css layout rules that assume authenticated header layout.
 // `html body #content` beats the specificity of server.css selectors.
 html body #content {
+	// Let inset: 0 determine the fixed element's viewport size.
+	// Explicit 100vw/100vh dimensions can exceed the visible mobile viewport
+	// when browser chrome is present, leaving content taller than the screen.
 	position: fixed;
 	inset: 0;
 	margin: 0;
-	width: 100vw;
-	height: 100vh;
 	border-radius: 0;
 }
 

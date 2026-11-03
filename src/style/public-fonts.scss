@@ -1,0 +1,18 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+/**
+ * Registers Space Grotesk for the anonymous workflow bundle.
+ * Unlike the authenticated entry point, external.ts does not load custom.scss.
+ * Only the font face is shared; authenticated Nextcloud chrome overrides
+ * must not leak into the public application.
+ */
+@font-face {
+	font-family: "Space Grotesk";
+	src: url("../../fonts/SpaceGrotesk-VariableFont_wght.ttf") format("truetype");
+	font-weight: 200 900;
+	font-style: normal;
+	font-display: swap;
+}

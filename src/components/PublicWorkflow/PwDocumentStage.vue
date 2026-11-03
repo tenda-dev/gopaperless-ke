@@ -1,27 +1,24 @@
 <!--
-  - SPDX-FileCopyrightText: 2026 Tenda World
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <!--
-  Persistent, READ-ONLY document stage for the redesigned public workflow
-  (PublicWorkflowNext). It renders the workflow's OWN draft PDF from the
-  capability-gated public endpoint (/p/workflow/pdf, cookie-resolved server
-  side — the exact source the field editor uses) and projects the placed
-  signature positions back onto the rendered pages as inert, signer-coloured
-  boxes.
+  Persistent, read-only document stage for the public workflow.
 
-  Isolation: it NEVER mounts PdfEditorNext and shares no state with
-  usePublicVisibleElements. It consumes the shared serialisation engine
-  (getVisibleElementsFromDocument + normaliseVisibleElement) and signer colours
-  (useSignerColors) read-only, so it cannot disturb placement. Boxes are
-  pointer-events:none; the overlay is purely presentational. The element source
-  is reactive (store document), so a save in the editor updates the overlay with
-  no PDF re-fetch.
+  Renders the workflow's draft PDF alongside signer-coloured overlays
+  representing its saved signature positions. Overlay data is derived
+  reactively from the workflow document, so changes made in the editor
+  are reflected without reloading the PDF.
 
-  Coordinate contract (verified): stored coordinates are PDF points, top-left
-  origin — x=left, y=top, width, height — on a document-LOCAL page number. Each
-  page's point dimensions come from pdf.js getViewport({scale:1}); the overlay
-  scale is cssDisplayedWidth / pagePointWidth.
+  The stage is independent of the PDF editor and consumes the shared
+  visible-element serialization and signer-colour utilities read-only.
+  Overlays are non-interactive and cannot modify document positions.
+
+ Coordinate contract:
+  - Positions are stored in PDF points, using a top-left origin.
+  - Page numbers are document-local.
+  - Page dimensions are obtained from pdf.js at scale 1.
+  - Overlay scale is calculated as displayed page width / PDF page width.
 -->
 <template>
 	<section class="pw-stage" :class="{ 'is-empty': status !== 'ready' }">
@@ -154,6 +151,10 @@ type Status = 'idle' | 'loading' | 'ready' | 'unavailable' | 'error'
 type PageInfo = { pageNumber: number, pointWidth: number, pointHeight: number }
 
 const status = ref<Status>('idle')
+// Additive: lets a parent know when the canvas/overlay render is actually
+// ready, without duplicating the fetch/pdf.js lifecycle below.
+const emit = defineEmits<{ 'status-change': [status: Status] }>()
+watch(status, (s) => emit('status-change', s), { immediate: true })
 const pages = ref<PageInfo[]>([])
 const displayWidth = ref<number>(480)
 const scrollEl = ref<HTMLElement | null>(null)
