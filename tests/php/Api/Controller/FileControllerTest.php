@@ -226,6 +226,72 @@ final class FileControllerTest extends ApiTestCase {
 	}
 
 	/**
+	 * Signers of a file must be able to load its thumbnail: the file list shows
+	 * every file associated with the user (owner or signer), and the thumbnail
+	 * endpoints used to allow the owner only, 403-ing every signer-listed file.
+	 *
+	 * @runInSeparateProcess
+	 */
+	public function testGetThumbnailByFileIdForSigner(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->createAccount('signer', 'password');
+		$this->getMockAppConfig();
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('signer:password'),
+			])
+			->withPath('/api/v1/file/thumbnail/file_id/' . $file->getId())
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 */
+	public function testGetThumbnailByNodeIdForSigner(): void {
+		$owner = $this->createAccount('owner', 'password');
+		$this->createAccount('signer', 'password');
+		$this->getMockAppConfig();
+
+		$file = $this->requestSignFile([
+			'file' => ['base64' => base64_encode(file_get_contents(__DIR__ . '/../../fixtures/pdfs/small_valid.pdf'))],
+			'name' => 'test.pdf',
+			'signers' => [[
+				'identifyMethods' => [[
+					'method' => 'account',
+					'mandatory' => 0,
+					'value' => 'signer',
+				]],
+			]],
+			'userManager' => $owner,
+		]);
+
+		$this->request
+			->withRequestHeader([
+				'Authorization' => 'Basic ' . base64_encode('signer:password'),
+			])
+			->withPath('/api/v1/file/thumbnail/' . $file->getNodeId())
+			->assertResponseCode(200);
+
+		$this->assertRequest();
+	}
+
+	/**
 	 * @runInSeparateProcess
 	 */
 	public function testValidateCanViewDocumentDefaultsToTrueWhenRestrictionDisabled(): void {
