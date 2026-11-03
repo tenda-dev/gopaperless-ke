@@ -596,7 +596,8 @@ class SignRequestMapper extends CachedQBMapper {
 		return $count > 0;
 	}
 
-	public function getFilesToSearchProvider(IUser $user, string $fileName, int $limit, int $offset): array {		$filter = [
+	public function getFilesToSearchProvider(IUser $user, string $fileName, int $limit, int $offset): array {
+		$filter = [
 			'page' => ($offset / $limit) + 1,
 			'length' => $limit,
 			'fileName' => $fileName,
