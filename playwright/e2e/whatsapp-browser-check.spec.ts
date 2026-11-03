@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-// Who gets the hand-off to another browser, on the real card and login pages.
+// Who gets the hand-off to Chrome, on the real card and login pages.
 // Only SecurySign is a stand-in: its frame and the signing POST, because the real
 // ones need a certificate and a real signer. The ceremony test runs a real
 // navigator.credentials.get in that frame, on Chrome's virtual authenticator.
@@ -30,6 +30,8 @@ test.skip(!READY, 'needs GP_WHATSAPP_READY_CODE')
 
 const card = (page: Page) => page.locator('.gp-whatsapp')
 const atHandOff = (page: Page) => expect(card(page)).toHaveAttribute('data-step', 'browser')
+/** Every button and link on the card that a person can see, so nothing extra creeps back. */
+const actions = (page: Page) => card(page).locator('a:visible, button:visible')
 
 /** Browsers as they answer in the wild. */
 const browsers = {
@@ -47,6 +49,18 @@ const browsers = {
 	},
 	brandedWebView: () => {
 		Object.defineProperty(navigator, 'userAgentData', { value: { brands: [{ brand: 'Chromium', version: '141' }, { brand: 'Android WebView', version: '141' }] } })
+	},
+	brandedChrome: () => {
+		Object.defineProperty(navigator, 'userAgentData', { value: { brands: [{ brand: 'Chromium', version: '141' }, { brand: 'Google Chrome', version: '141' }] } })
+	},
+	// The browser running these tests is Chrome, whatever the device it plays, so a test
+	// about any other browser has to say so.
+	notChrome: () => {
+		Object.defineProperty(navigator, 'userAgentData', { value: { brands: [{ brand: 'Chromium', version: '141' }, { brand: 'Samsung Internet', version: '141' }] } })
+	},
+	// As on an iPhone, where no browser has this API.
+	noBrands: () => {
+		Object.defineProperty(navigator, 'userAgentData', { value: undefined })
 	},
 }
 
@@ -136,22 +150,21 @@ test.describe('the card, on an Android phone reading as plain Chrome', () => {
 
 	const openCard = (page: Page) => page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 
-	test('a browser with no PublicKeyCredential gets the hand-off and prepares nothing', async ({ page, context }) => {
+	test('a browser with no PublicKeyCredential gets one primary and one secondary, and prepares nothing', async ({ page, context }) => {
 		const securySign = await standInSecurySign(context, HANGS)
 		await page.addInitScript(browsers.missingApi)
 		await openCard(page)
 		await atHandOff(page)
+		await expect(actions(page)).toHaveText(['Open in Chrome', 'Copy link'])
 		const address = new URL(page.url()).host + new URL(page.url()).pathname
 		await expect(page.getByRole('link', { name: 'Open in Chrome' })).toHaveAttribute('href', `intent://${address}#Intent;scheme=https;package=com.android.chrome;end`)
-		await expect(page.getByRole('link', { name: 'Use another browser' })).toHaveAttribute('href', `intent://${address}#Intent;scheme=https;end`)
-		await expect(page.getByRole('button', { name: 'Copy link to paste in Chrome' })).toBeVisible()
-		await page.getByText('Technical details').click()
-		await expect(page.locator('#gp-whatsapp-details')).toContainText('PublicKeyCredential: missing')
+		await expect(page.locator('#gp-whatsapp-copy svg')).toBeVisible()
 		expect(securySign.posts()).toBe(0)
 	})
 
 	test('a phone whose platform check says no gets the hand-off', async ({ page, context }) => {
 		const securySign = await standInSecurySign(context, HANGS)
+		await page.addInitScript(browsers.notChrome)
 		await page.addInitScript(browsers.saysNo)
 		await openCard(page)
 		await atHandOff(page)
@@ -160,11 +173,10 @@ test.describe('the card, on an Android phone reading as plain Chrome', () => {
 
 	test('a phone whose platform check never answers gets the hand-off', async ({ page, context }) => {
 		const securySign = await standInSecurySign(context, HANGS)
+		await page.addInitScript(browsers.notChrome)
 		await page.addInitScript(browsers.neverAnswers)
 		await openCard(page)
 		await atHandOff(page)
-		await page.getByText('Technical details').click()
-		await expect(page.locator('#gp-whatsapp-details')).toContainText('Platform passkey check: no answer')
 		expect(securySign.posts()).toBe(0)
 	})
 
@@ -177,45 +189,49 @@ test.describe('the card, on an Android phone reading as plain Chrome', () => {
 		await expect(page.locator('.gp-whatsapp__browser')).toBeHidden()
 	})
 
-	test('a browser that says yes and fails the real ceremony gets the hand-off, with Try again', async ({ page, context }) => {
+	test('a browser that says yes and fails the real ceremony gets the hand-off', async ({ page, context }) => {
 		// A passkey for another credential id, so the prompt really rejects.
-		const securySign = await standInSecurySign(context, CEREMONY, Buffer.from('a-credential-it-does-not-hold').toString('base64'))
+		await standInSecurySign(context, CEREMONY, Buffer.from('a-credential-it-does-not-hold').toString('base64'))
 		await virtualPasskey(page)
+		await page.addInitScript(browsers.notChrome)
 		await openCard(page)
 		await atHandOff(page)
 		await expect(page.locator('iframe')).toHaveCount(0)
-		await page.getByText('Technical details').click()
-		await expect(page.locator('#gp-whatsapp-details')).toContainText('Reason: frame error: NotAllowedError')
-		await expect(page.locator('#gp-whatsapp-details')).toContainText('Platform passkey check: yes')
-
-		await page.getByRole('button', { name: 'Try again' }).click()
-		await expect.poll(securySign.posts).toBe(2)
-		await atHandOff(page)
+		await expect(actions(page)).toHaveText(['Open in Chrome', 'Copy link'])
 	})
 
-	test('a prompt that hangs still has a way out under the frame', async ({ page, context }) => {
+	test('nothing extra shows while signing, even with an old stylesheet', async ({ page, context }) => {
+		await context.route('**/libresign-login.css*', (route) => route.fulfill({ contentType: 'text/css', body: '' }))
 		await standInSecurySign(context, HANGS)
 		await page.addInitScript(browsers.saysYes)
 		await openCard(page)
 		await expect(card(page)).toHaveAttribute('data-step', 'frame')
-		const escape = page.getByRole('button', { name: 'Not working? Open in another browser' })
-		await expect(escape).toBeVisible()
-		const frameBottom = (await page.locator('iframe').boundingBox())!
-		expect((await escape.boundingBox())!.y).toBeGreaterThanOrEqual(frameBottom.y + frameBottom.height)
-		await escape.click()
-		await atHandOff(page)
-		await expect(page.locator('iframe')).toHaveCount(0)
-		await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+		await expect(page.locator('.gp-whatsapp__browser')).toBeHidden()
+		await expect(page.getByText('Not working?')).toHaveCount(0)
 	})
+})
 
-	test('Try here anyway goes on to the frame, and a phone with no lock isn\'t stuck', async ({ page, context }) => {
+test.describe('in Chrome itself, where the hand-off leads', () => {
+	test.use(android)
+
+	test('a phone with no screen lock goes on to the frame instead of being sent to Chrome again', async ({ page, context }) => {
 		const securySign = await standInSecurySign(context, HANGS)
+		await page.addInitScript(browsers.brandedChrome)
 		await page.addInitScript(browsers.saysNo)
-		await openCard(page)
-		await atHandOff(page)
-		await page.getByRole('button', { name: 'Try here anyway' }).click()
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 		await expect(card(page)).toHaveAttribute('data-step', 'frame')
 		expect(securySign.posts()).toBe(1)
+	})
+
+	test('a failed ceremony offers Try again, not Chrome', async ({ page, context }) => {
+		const securySign = await standInSecurySign(context, FAILS)
+		await page.addInitScript(browsers.brandedChrome)
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await expect(card(page)).toHaveAttribute('data-step', 'error')
+		await expect(page.locator('iframe')).toHaveCount(0)
+		await expect(page.locator('.gp-whatsapp__browser')).toBeHidden()
+		await page.getByRole('button', { name: 'Try again' }).click()
+		await expect.poll(securySign.posts).toBe(2)
 	})
 })
 
@@ -228,14 +244,30 @@ for (const [name, device, userAgent] of [
 	test.describe(`a user agent with ${name}`, () => {
 		test.use({ ...device, userAgent })
 
-		test('gets the hand-off on the card, before anything is prepared', async ({ page, context }) => {
+		test('opens on the hand-off and prepares nothing', async ({ page, context }) => {
 			const securySign = await standInSecurySign(context, HANGS)
 			await page.addInitScript(browsers.saysYes)
 			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 			await atHandOff(page)
-			await page.getByText('Technical details').click()
-			await expect(page.locator('#gp-whatsapp-details')).toContainText('User agent names an in-app browser: yes')
-			await expect(page.locator('#gp-whatsapp-details')).toContainText('Platform passkey check: yes')
+			await expect(actions(page)).toHaveText(['Open in Chrome', 'Copy link'])
+			await page.waitForTimeout(500)
+			await expect(page.locator('iframe')).toHaveCount(0)
+			expect(securySign.posts()).toBe(0)
+		})
+
+		test('a phone holding the old script can\'t start signing', async ({ page, context }) => {
+			// What #59's script did: start on 'preparing', and go straight to the frame.
+			await context.route('**/libresign-whatsapp-sign.mjs*', (route) => route.fulfill({
+				contentType: 'text/javascript',
+				body: `const box = document.querySelector('.gp-whatsapp')
+					if (box?.dataset.step === 'preparing') { fetch(box.dataset.signUrl, { method: 'POST' }) }`,
+			}))
+			await context.route('**/libresign-login.css*', (route) => route.fulfill({ contentType: 'text/css', body: '' }))
+			const securySign = await standInSecurySign(context, HANGS)
+			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+			await atHandOff(page)
+			await expect(page.getByRole('link', { name: 'Open in Chrome' })).toBeVisible()
+			await page.waitForTimeout(500)
 			expect(securySign.posts()).toBe(0)
 		})
 
@@ -246,13 +278,21 @@ for (const [name, device, userAgent] of [
 			await atHandOff(page)
 		})
 
-		test('can still try here anyway', async ({ page, context }) => {
-			await standInSecurySign(context, HANGS)
-			await page.addInitScript(browsers.saysYes)
-			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
-			await atHandOff(page)
-			await page.getByRole('button', { name: 'Try here anyway' }).click()
-			await expect(card(page)).toHaveAttribute('data-step', 'frame')
+		test.describe('with no script at all', () => {
+			test.use({ javaScriptEnabled: false })
+
+			test('the card opens on the hand-off', async ({ page }) => {
+				await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+				await atHandOff(page)
+				await expect(page.getByRole('link', { name: 'Open in Chrome' })).toBeVisible()
+				await expect(page.getByRole('heading', { name: 'Open in Chrome' })).toBeVisible()
+			})
+
+			test('/p/open-in-browser opens on the hand-off', async ({ page }) => {
+				await page.goto(`/apps/libresign/p/open-in-browser?to=${TARGET}`)
+				await atHandOff(page)
+				await expect(page.getByRole('link', { name: 'Open in Chrome' })).toBeVisible()
+			})
 		})
 	})
 }
@@ -266,8 +306,6 @@ test.describe('the Android WebView brand, under a user agent reading as plain Ch
 		await page.addInitScript(browsers.brandedWebView)
 		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 		await atHandOff(page)
-		await page.getByText('Technical details').click()
-		await expect(page.locator('#gp-whatsapp-details')).toContainText('Brands: Chromium, Android WebView')
 		expect(securySign.posts()).toBe(0)
 	})
 })
@@ -275,14 +313,29 @@ test.describe('the Android WebView brand, under a user agent reading as plain Ch
 test.describe('the card, on an iPhone', () => {
 	test.use(iphone)
 
-	test('an in-app browser that says no is offered Chrome, then Safari', async ({ page, context }) => {
+	test('an in-app browser that says no is offered Chrome and Copy link', async ({ page, context }) => {
 		await standInSecurySign(context, HANGS)
+		await page.addInitScript(browsers.noBrands)
 		await page.addInitScript(browsers.saysNo)
 		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 		await atHandOff(page)
+		await expect(actions(page)).toHaveText(['Open in Chrome', 'Copy link'])
 		const address = new URL(page.url()).host + new URL(page.url()).pathname
 		await expect(page.getByRole('link', { name: 'Open in Chrome' })).toHaveAttribute('href', `googlechromes://${address}`)
-		await expect(page.getByRole('link', { name: 'Use another browser' })).toHaveAttribute('href', `x-safari-https://${address}`)
+	})
+
+	test('Chrome on iPhone isn\'t sent to Chrome again', async ({ browser }) => {
+		const context = await browser.newContext({
+			...iphone,
+			userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.0.0 Mobile/15E148 Safari/604.1',
+		})
+		const page = await context.newPage()
+		await standInSecurySign(context, FAILS)
+		await page.addInitScript(browsers.noBrands)
+		await page.addInitScript(browsers.saysNo)
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await expect(card(page)).toHaveAttribute('data-step', 'error')
+		await context.close()
 	})
 })
 
@@ -297,14 +350,47 @@ test.describe('the card, on a computer', () => {
 		expect(securySign.posts()).toBe(1)
 	})
 
-	test('a failed ceremony gets the hand-off with Copy link and no phone links', async ({ page, context }) => {
+	test('a failed ceremony gets Copy link as the one primary', async ({ page, context }) => {
 		await standInSecurySign(context, FAILS)
+		await page.addInitScript(browsers.notChrome)
 		await page.addInitScript(browsers.saysYes)
 		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
 		await atHandOff(page)
-		await expect(page.getByRole('link', { name: 'Open in Chrome' })).toHaveCount(0)
-		await expect(page.getByRole('button', { name: 'Copy link to paste in Chrome' })).toBeVisible()
-		await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+		await expect(actions(page)).toHaveText(['Copy link'])
+		await expect(page.locator('#gp-whatsapp-copy')).not.toHaveClass(/gp-whatsapp__button--quiet/)
+	})
+})
+
+test.describe('Copy link', () => {
+	test.use({ ...android, userAgent: WHATSAPP_ANDROID, permissions: ['clipboard-read', 'clipboard-write'] })
+
+	const copied = (page: Page) => page.evaluate(() => navigator.clipboard.readText())
+
+	test('copies the page\'s address', async ({ page }) => {
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await page.getByRole('button', { name: 'Copy link' }).click()
+		await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible()
+		expect(await copied(page)).toBe(page.url())
+	})
+
+	test('still copies in a web view that refuses the clipboard API', async ({ page }) => {
+		await page.addInitScript(() => {
+			navigator.clipboard.writeText = () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'))
+		})
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await page.getByRole('button', { name: 'Copy link' }).click()
+		await expect(page.getByRole('button', { name: 'Link copied' })).toBeVisible()
+		expect(await copied(page)).toBe(page.url())
+	})
+
+	test('shows the address when nothing can copy it', async ({ page }) => {
+		await page.addInitScript(() => {
+			navigator.clipboard.writeText = () => Promise.reject(new DOMException('Write permission denied', 'NotAllowedError'))
+			document.execCommand = () => false
+		})
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await page.locator('#gp-whatsapp-copy').click()
+		await expect(page.locator('#gp-whatsapp-copy span')).toHaveText(page.url())
 	})
 })
 
@@ -323,13 +409,23 @@ test.describe('the card\'s other screens', () => {
 		await noBrowser.goto(`/apps/libresign/p/whatsapp/${LOGIN}`)
 		await atHandOff(noBrowser)
 		await expect(noBrowser.getByRole('link', { name: 'Open in GoPaperless' })).toBeHidden()
-		await expect(noBrowser.getByRole('link', { name: 'Open in Chrome' })).toBeVisible()
+		await expect(actions(noBrowser)).toHaveText(['Open in Chrome', 'Copy link'])
 	})
 
 	test('a dead link stays a dead link', async ({ page }) => {
 		await page.addInitScript(browsers.missingApi)
 		await page.goto('/apps/libresign/p/whatsapp/not-a-code')
 		await expect(card(page)).toHaveAttribute('data-step', 'gone')
+	})
+})
+
+test.describe('a dead link in WhatsApp\'s browser', () => {
+	test.use({ ...android, userAgent: WHATSAPP_ANDROID })
+
+	test('stays a dead link', async ({ page }) => {
+		await page.goto('/apps/libresign/p/whatsapp/not-a-code')
+		await expect(card(page)).toHaveAttribute('data-step', 'gone')
+		await expect(actions(page)).toHaveCount(0)
 	})
 })
 
@@ -351,19 +447,11 @@ test.describe('the login page, on an Android phone reading as plain Chrome', () 
 	})
 
 	test('the receipt\'s link gets there by itself when signed out', async ({ page }) => {
+		await page.addInitScript(browsers.notChrome)
 		await page.addInitScript(browsers.saysNo)
 		await page.goto(TARGET)
 		await page.waitForURL(/\/p\/open-in-browser/)
 		await atHandOff(page)
-	})
-
-	test('Try here anyway reaches the login and doesn\'t bounce back', async ({ page }) => {
-		await page.addInitScript(browsers.saysNo)
-		await page.goto(`/login?redirect_url=${TARGET}`)
-		await page.waitForURL(/\/p\/open-in-browser/)
-		await page.getByRole('button', { name: 'Try here anyway' }).click()
-		await page.waitForURL(/\/login/)
-		await stayedOnLogin(page)
 	})
 
 	test('a browser that can stays on the login', async ({ page }) => {
