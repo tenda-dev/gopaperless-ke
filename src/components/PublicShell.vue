@@ -3,13 +3,11 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <!--
-  Shared public chrome for anonymous GoPaperless pages (the /p/upload landing and
-  the /p/workflow preparation flow). It provides the self-contained `.pu` token
-  context and reuses the landing's header (PublicUploadHeader → pu__bar) and
-  ecosystem footer (PublicUploadEcosystem → pu__eco). The presence of `.pu` is
-  what drops the Nextcloud public header/guest footer (see the
-  `#body-public:has(.pu)` rule in src/style/global.scss), so the app never shows
-  duplicate chrome.
+  Shared chrome for anonymous GoPaperless pages.
+
+  Provides the public upload header and ecosystem footer while using
+  the `.pu` marker to suppress Nextcloud's default public chrome,
+  preventing duplicate headers and footers.
 -->
 <template>
 	<div class="pu" :class="{ 'pu--fill': props.fill }">
@@ -17,7 +15,7 @@
 			<PublicUploadHeader :theme="theme" :show-theme-toggle="false" @sign-in="gateToLogin" />
 			<div class="pu__body"><slot /></div>
 		</div>
-		<PublicUploadEcosystem />
+		<PublicUploadEcosystem v-if="!props.hideFooter" />
 	</div>
 </template>
 
@@ -35,7 +33,11 @@ defineOptions({ name: 'PublicShell' })
 // scroll (e.g. the PublicWorkflowNext three-pane workspace, where the document
 // stage scrolls internally instead of scrolling the whole page). Default false
 // keeps the landing/current flows free to grow and scroll the page as before.
-const props = withDefaults(defineProps<{ fill?: boolean }>(), { fill: false })
+// `hideFooter` drops the shared ecosystem footer (PublicUploadEcosystem) for a
+// view that doesn't want it — PublicWorkflowCurrentShell in particular, where
+// it added a second, page-level scroll region. Opt-in, default false, so the
+// /p/upload landing and every other PublicShell consumer keep the footer.
+const props = withDefaults(defineProps<{ fill?: boolean, hideFooter?: boolean }>(), { fill: false, hideFooter: false })
 
 const theme = 'light' as const
 

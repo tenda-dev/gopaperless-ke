@@ -3,7 +3,7 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="pw-signers">
+	<div class="pw-signers" :class="{ 'pw-signers--row': layout === 'row' }">
 		<!-- Blank rows (e.g. the store's seeded editable row) are never rendered as
 		     chips; the shell shows the contextual empty-state guidance instead. The
 		     v-for index stays the signers-array index, so edit/remove still act on
@@ -12,10 +12,11 @@
 			<PwSignerRow v-if="signer.email.trim()"
 				:signer="signer"
 				:is-requester="isRequesterRow(signer)"
+				:layout="layout"
 				@edit="$emit('edit', index)"
 				@remove="$emit('remove', index)" />
 		</template>
-		<button type="button" class="pw-signers__add" @click="$emit('add')">
+		<button v-if="!hideAdd" type="button" class="pw-signers__add" @click="$emit('add')">
 			<NcIconSvgWrapper :path="mdiAccountPlusOutline" :size="16" />
 			{{ t('libresign', 'Add a signer') }}
 		</button>
@@ -28,7 +29,19 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import PwSignerRow from './PwSignerRow.vue'
 import type { SignerDraft } from '../../store/publicWorkflow'
 defineOptions({ name: 'PwSignerList' })
-const props = defineProps<{ signers: SignerDraft[], requesterEmail?: string | null }>()
+const props = withDefaults(defineProps<{
+	signers: SignerDraft[]
+	requesterEmail?: string | null
+	/** Forwarded to each PwSignerRow. 'auto' (default): unchanged desktop-chip /
+	 *  mobile-row behaviour. 'row': stacked row cards at every width. */
+	layout?: 'auto' | 'row'
+	/** When true, suppresses this component's own trailing "Add a signer"
+	 *  control. Opt-in only (default false) so PublicWorkflowShell and
+	 *  PublicWorkflowNextShell keep their existing add-button unchanged; the
+	 *  "current" shell sets this and renders its own header-row add button
+	 *  instead, matching WorkflowSigners.vue's layout. */
+	hideAdd?: boolean
+}>(), { layout: 'auto', hideAdd: false })
 
 /**
  * A row is the requester when a requester email is in effect (self-signing on)
@@ -76,8 +89,10 @@ defineEmits<{ add: [], edit: [index: number], remove: [index: number] }>()
 }
 
 // Mobile: full-width stacked rows, add control as a full-width rectangle.
+// Same treatment applies unconditionally for the 'row' layout (PwStageControl's
+// row-card signers), not just under the mobile breakpoint.
 @media (max-width: 767px) {
-	.pw-signers {
+	.pw-signers:not(.pw-signers--row) {
 		flex-direction: column;
 		align-items: stretch;
 		justify-content: flex-start;
@@ -89,6 +104,20 @@ defineEmits<{ add: [], edit: [index: number], remove: [index: number] }>()
 		min-height: 48px;
 		padding: 12px;
 		border-radius: var(--age-radius-sm, 8px);
+	}
+}
+.pw-signers--row {
+	flex-direction: column;
+	align-items: stretch;
+	justify-content: flex-start;
+	gap: 10px;
+
+	.pw-signers__add {
+		order: -1;
+		align-self: stretch;
+		min-height: 44px;
+		padding: 12px;
+		border-radius: var(--age-radius-sm, 12px);
 	}
 }
 </style>

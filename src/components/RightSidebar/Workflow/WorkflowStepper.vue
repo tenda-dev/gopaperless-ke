@@ -1,3 +1,7 @@
+<!--
+  - SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <template>
 	<div class="workflow-stepper">
 		<div
@@ -22,7 +26,13 @@
 				class="workflow-step"
 				:class="[
 					`workflow-step--${step.status}`,
-				]">
+					{ 'workflow-step--clickable': clickable && step.status !== 'locked' },
+				]"
+				:role="clickable && step.status !== 'locked' ? 'button' : undefined"
+				:tabindex="clickable && step.status !== 'locked' ? 0 : undefined"
+				@click="onStepClick(index)"
+				@keydown.enter="onStepClick(index)"
+				@keydown.space.prevent="onStepClick(index)">
 				<div class="workflow-step-circle">
 					<NcIconSvgWrapper
 						v-if="step.completed"
@@ -58,9 +68,22 @@ defineOptions({
 	name: 'WorkflowStepper',
 })
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	steps: WorkflowStep[]
-}>()
+	/**
+	 * Enables step navigation when supported by the consuming workflow.
+	 * Disabled by default to preserve existing authenticated behaviour.
+	 */
+	clickable?: boolean
+}>(), { clickable: false })
+
+const emit = defineEmits<{ select: [index: number] }>()
+
+function onStepClick(index: number): void {
+	if (!props.clickable) { return }
+	if (props.steps[index]?.status === 'locked') { return }
+	emit('select', index)
+}
 
 function isConnectorActive(index: number): boolean {
 	const currentStep = props.steps[index]
@@ -141,6 +164,20 @@ function isConnectorActive(index: number): boolean {
 	transition:
 		color 180ms ease,
 		opacity 180ms ease;
+}
+
+.workflow-step--clickable {
+	cursor: pointer;
+	border-radius: 8px;
+}
+
+.workflow-step--clickable:hover .workflow-step-circle {
+	transform: scale(1.06);
+}
+
+.workflow-step--clickable:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: 3px;
 }
 
 /* =========================================

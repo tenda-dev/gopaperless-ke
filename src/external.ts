@@ -7,6 +7,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { translate as t, translatePlural as n } from '@nextcloud/l10n'
 
+import './style/public-fonts.scss'
+
 import App from './ExternalApp.vue'
 import router from './router/router'
 
