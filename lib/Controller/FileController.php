@@ -11,6 +11,7 @@ namespace OCA\Libresign\Controller;
 use InvalidArgumentException;
 use OCA\Files_Sharing\SharedStorage;
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\File as LibresignFile;
 use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\FileStatus;
@@ -388,7 +389,7 @@ class FileController extends AEnvironmentAwareController {
 
 		try {
 			$libreSignFile = $this->fileMapper->getByNodeId($nodeId);
-			if ($libreSignFile->getUserId() !== $this->userSession->getUser()->getUID()) {
+			if (!$this->canSeeThumbnail($libreSignFile)) {
 				return new DataResponse([], Http::STATUS_FORBIDDEN);
 			}
 
@@ -446,7 +447,7 @@ class FileController extends AEnvironmentAwareController {
 
 		try {
 			$libreSignFile = $this->fileMapper->getById($fileId);
-			if ($libreSignFile->getUserId() !== $this->userSession->getUser()->getUID()) {
+			if (!$this->canSeeThumbnail($libreSignFile)) {
 				return new DataResponse([], Http::STATUS_FORBIDDEN);
 			}
 
@@ -517,6 +518,18 @@ class FileController extends AEnvironmentAwareController {
 	// 		return new DataResponse([], Http::STATUS_BAD_REQUEST);
 	// 	}
 	// }
+	private function canSeeThumbnail(LibresignFile $libreSignFile): bool {
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return false;
+		}
+		return $this->signRequestMapper->isUserAssociatedWithFile(
+			$libreSignFile->getId(),
+			$user->getUID(),
+			(string)$user->getEMailAddress(),
+		);
+	}
+
 	private function fetchPreview(
 		Node $node,
 		int $x,

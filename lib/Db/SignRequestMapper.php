@@ -560,8 +560,43 @@ class SignRequestMapper extends CachedQBMapper {
 		];
 	}
 
-	public function getFilesToSearchProvider(IUser $user, string $fileName, int $limit, int $offset): array {
-		$filter = [
+	/**
+	 * Whether the user may see the given file's thumbnail: the same association
+	 * policy as getFilesAssociatedFilesWithMe — owner, or signer matched by
+	 * account uid (non-draft file and sign request) or by email.
+	 */
+	public function isUserAssociatedWithFile(int $fileId, string $userId, string $email): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->count('*', 'count'))
+			->from('libresign_file', 'f')
+			->leftJoin('f', 'libresign_sign_request', 'sr', 'sr.file_id = f.id')
+			->leftJoin('f', 'libresign_identify_method', 'im', $qb->expr()->eq('sr.id', 'im.sign_request_id'))
+			->where($qb->expr()->eq('f.id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)));
+
+		$or = [
+			$qb->expr()->eq('f.user_id', $qb->createNamedParameter($userId)),
+			$qb->expr()->andX(
+				$qb->expr()->eq('im.identifier_key', $qb->createNamedParameter(IdentifyMethodService::IDENTIFY_ACCOUNT)),
+				$qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($userId)),
+				$qb->expr()->neq('f.status', $qb->createNamedParameter(FileStatus::DRAFT->value)),
+				$qb->expr()->neq('sr.status', $qb->createNamedParameter(SignRequestStatus::DRAFT->value)),
+			),
+		];
+		if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+			$or[] = $qb->expr()->andX(
+				$qb->expr()->eq('im.identifier_key', $qb->createNamedParameter(IdentifyMethodService::IDENTIFY_EMAIL)),
+				$qb->expr()->eq('im.identifier_value', $qb->createNamedParameter($email)),
+			);
+		}
+		$qb->andWhere($qb->expr()->orX(...$or));
+
+		$result = $qb->executeQuery();
+		$count = (int)$result->fetchOne();
+		$result->closeCursor();
+		return $count > 0;
+	}
+
+	public function getFilesToSearchProvider(IUser $user, string $fileName, int $limit, int $offset): array {		$filter = [
 			'page' => ($offset / $limit) + 1,
 			'length' => $limit,
 			'fileName' => $fileName,
