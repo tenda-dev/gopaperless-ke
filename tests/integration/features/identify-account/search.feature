@@ -180,3 +180,190 @@ Feature: search
     And the response should be a JSON array with the following mandatory values
       | key                   | value |
       | (jq).ocs.data\|length | 0     |
+
+  # ============================================================================
+  # Unified signer search policy (feature/unified-signer-search-policy).
+  # Email->account and UID->account are full-match-only and each path honours
+  # its own full-match sub-toggle; the hard group-only restriction always
+  # applies. Each scenario sets the full shareapi_* set explicitly so state
+  # never leaks between scenarios.
+  #
+  # NOTE: assertions target the ACCOUNT results specifically
+  # (select(.method == "account")), not ocs.data|length. For a syntactically
+  # valid email that belongs to an account, core MailPlugin still offers an
+  # external-email suggestion (method == "email") alongside the account row;
+  # that account-vs-email duplicate is the deferred Stage 3 concern and is out
+  # of scope here, so total length is not asserted. (Assumes the jq assertion
+  # supports map/select; adjust if the harness is more restrictive.)
+  # NOT executed in this change (no running instance available) — verify in CI.
+  # ============================================================================
+
+  Scenario: Exact email resolves to an existing account under full-match
+    Given as user "admin"
+    And user "policy-target" exists
+    And set the display name of user "policy-target" to "Policy Target"
+    And set the email of user "policy-target" to "policy-target@found.tld"
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-target@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                            | value         |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length   | 1             |
+      | (jq).ocs.data \| map(select(.method == "account")) \| .[0].identify | policy-target |
+      | (jq).ocs.data \| map(select(.method == "account")) \| .[0].isNoUser | false   |
+
+  Scenario: Partial email does not resolve as an account
+    Given as user "admin"
+    And user "policy-partial" exists
+    And set the email of user "policy-partial" to "policy-partial@found.tld"
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-partial@found"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |
+
+  Scenario: Email full-match disabled suppresses exact email-to-account
+    Given as user "admin"
+    And user "policy-nomail" exists
+    And set the email of user "policy-nomail" to "policy-nomail@found.tld"
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-nomail@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |
+
+  Scenario: Global full-match disabled prevents account even when enumeration is enabled
+    Given as user "admin"
+    And user "policy-nofull" exists
+    And set the email of user "policy-nofull" to "policy-nofull@found.tld"
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-nofull@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |
+
+  Scenario: Group-only sharing allows a candidate sharing a non-excluded group
+    Given as user "admin"
+    And run the command "group:add policy-customer-a" with result code 0
+    And user "policy-ingroup" exists
+    And set the email of user "policy-ingroup" to "policy-ingroup@found.tld"
+    And run the command "group:adduser policy-customer-a admin" with result code 0
+    And run the command "group:adduser policy-customer-a policy-ingroup" with result code 0
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members_exclude_group_list --value=[]" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-ingroup@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                                | value          |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length       | 1              |
+      | (jq).ocs.data \| map(select(.method == "account")) \| .[0].identify | policy-ingroup |
+
+  Scenario: Group-only sharing rejects a candidate with no shared group
+    Given as user "admin"
+    And run the command "group:add policy-customer-x" with result code 0
+    And user "policy-outgroup" exists
+    And set the email of user "policy-outgroup" to "policy-outgroup@found.tld"
+    And run the command "group:adduser policy-customer-x policy-outgroup" with result code 0
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members_exclude_group_list --value=[]" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-outgroup@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |
+
+  Scenario: Group-only sharing rejects when the only shared group is excluded
+    Given as user "admin"
+    And run the command "group:add policy-customer-excl" with result code 0
+    And user "policy-excl" exists
+    And set the email of user "policy-excl" to "policy-excl@found.tld"
+    And run the command "group:adduser policy-customer-excl admin" with result code 0
+    And run the command "group:adduser policy-customer-excl policy-excl" with result code 0
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=yes" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/core/shareapi_only_share_with_group_members_exclude_group_list"
+      | value | (string)["policy-customer-excl"] |
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=policy-excl@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |
+
+  # PREREQUISITE: these two scenarios need an account whose Nextcloud uid is an
+  # email-like string (the MIMI/OIDC provisioning case). Email-like uids do
+  # exist in this suite (e.g. signer1@domain.test created via the signing
+  # flow); if `user "..." exists` cannot create one directly, provision it via
+  # the same mechanism. The UID path is also fully covered by unit tests.
+  Scenario: Exact email-like UID resolves via the UID path regardless of email syntax
+    Given as user "admin"
+    And user "mimi-uid@found.tld" exists
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=mimi-uid@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                                | value              |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length       | 1                  |
+      | (jq).ocs.data \| map(select(.method == "account")) \| .[0].identify | mimi-uid@found.tld |
+
+  Scenario: UID full-match disabled suppresses exact email-like UID resolution
+    Given as user "admin"
+    And user "mimi-uid2@found.tld" exists
+    And run the command "config:app:set core shareapi_allow_share_dialog_user_enumeration --value=no" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_email --value=yes" with result code 0
+    And run the command "config:app:set core shareapi_restrict_user_enumeration_full_match_user_id --value=no" with result code 0
+    And run the command "config:app:set core shareapi_only_share_with_group_members --value=no" with result code 0
+    And sending "post" to ocs "/apps/provisioning_api/api/v1/config/apps/libresign/identify_methods"
+      | value | (string)[{"name":"email","enabled":true},{"name":"account","enabled":true}] |
+    When sending "get" to ocs "/apps/libresign/api/v1/identify-account/search?search=mimi-uid2@found.tld"
+    Then the response should have a status code 200
+    And the response should be a JSON array with the following mandatory values
+      | key                                                          | value |
+      | (jq).ocs.data \| map(select(.method == "account")) \| length | 0     |

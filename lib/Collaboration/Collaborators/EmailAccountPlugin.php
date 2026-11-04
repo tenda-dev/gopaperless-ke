@@ -75,13 +75,20 @@ class EmailAccountPlugin implements ISearchPlugin {
 			return false;
 		}
 
-		$shareeEnumeration = $this->appConfig->getValueString('core', 'shareapi_allow_share_dialog_user_enumeration', 'yes') === 'yes';
-		$shareeEnumerationFullMatch = $this->appConfig->getValueString('core', 'shareapi_restrict_user_enumeration_full_match', 'yes') === 'yes';
-		if (!$shareeEnumeration && !$shareeEnumerationFullMatch) {
+		// Email/UID -> account is a full-match capability in Nextcloud core
+		// (OC\Collaboration\Collaborators\UserPlugin, stable34): it is reached
+		// through the full-match block only, never through broad enumeration, so
+		// these lookups must not become an alternative route around full-match.
+		$fullMatch = $this->appConfig->getValueString('core', 'shareapi_restrict_user_enumeration_full_match', 'yes') === 'yes';
+		if (!$fullMatch) {
 			return false;
 		}
+		// Path-specific full-match controls, enforced independently per lookup.
+		$fullMatchEmail = $this->appConfig->getValueString('core', 'shareapi_restrict_user_enumeration_full_match_email', 'yes') === 'yes';
+		$fullMatchUserId = $this->appConfig->getValueString('core', 'shareapi_restrict_user_enumeration_full_match_user_id', 'yes') === 'yes';
 
-		$shareeEnumerationRestrictToGroup = $this->appConfig->getValueString('core', 'shareapi_restrict_user_enumeration_to_group', 'no') === 'yes';
+		// Hard group-only restriction (not an enumeration restriction): applies to
+		// every candidate, including exact full matches, and is never bypassed.
 		$shareWithGroupOnly = $this->appConfig->getValueString('core', 'shareapi_only_share_with_group_members', 'no') === 'yes';
 		$shareWithGroupOnlyExcludeGroupsList = json_decode(
 			$this->appConfig->getValueString('core', 'shareapi_only_share_with_group_members_exclude_group_list', '[]'),
@@ -91,37 +98,47 @@ class EmailAccountPlugin implements ISearchPlugin {
 		) ?? [];
 		$allowedGroups = array_diff($this->groupManager->getUserGroupIds($currentUser), $shareWithGroupOnlyExcludeGroupsList);
 
-		$users = $this->userManager->getByEmail($search);
-		// A MIMI account's uid is the address, but its email field stays empty
-		// when the login sent none, so getByEmail() misses it.
+		// Two independent exact lookups, kept separate so each full-match setting is
+		// enforced on its own path. getByEmail() is an exact primary-email match;
+		// get() is an exact UID match (covers MIMI accounts whose uid is the address
+		// while the email field is empty). Provenance is tracked so an account found
+		// by both paths is emitted once, and a path disabled by its setting never
+		// suppresses an account the other path legitimately permits.
+		$candidates = [];
+		foreach ($this->userManager->getByEmail($search) as $user) {
+			$uid = $user->getUID();
+			if (!isset($candidates[$uid])) {
+				$candidates[$uid] = ['user' => $user, 'email' => false, 'uid' => false];
+			}
+			$candidates[$uid]['email'] = true;
+		}
 		$byUid = $this->userManager->get(strtolower($search));
-		$found = array_map(fn ($user) => strtolower($user->getUID()), $users);
-		if ($byUid !== null && !in_array(strtolower($byUid->getUID()), $found, true)) {
-			$users[] = $byUid;
+		if ($byUid !== null) {
+			$uid = $byUid->getUID();
+			if (!isset($candidates[$uid])) {
+				$candidates[$uid] = ['user' => $byUid, 'email' => false, 'uid' => false];
+			}
+			$candidates[$uid]['uid'] = true;
 		}
 
 		$items = [];
-		foreach ($users as $user) {
+		foreach ($candidates as $candidate) {
+			$user = $candidate['user'];
 			if (!$user->isEnabled()) {
+				continue;
+			}
+
+			// Permitted when at least one lookup path that found this account is
+			// allowed by its own full-match setting.
+			$permitted = ($candidate['email'] && $fullMatchEmail)
+				|| ($candidate['uid'] && $fullMatchUserId);
+			if (!$permitted) {
 				continue;
 			}
 
 			$userId = $user->getUID();
 			$userGroups = $this->groupManager->getUserGroupIds($user);
 			$inAllowedGroup = array_intersect($allowedGroups, $userGroups) !== [];
-
-			if ($shareeEnumeration) {
-				$allowedByRestriction = true;
-				if ($shareeEnumerationRestrictToGroup && !$inAllowedGroup) {
-					$allowedByRestriction = false;
-				}
-				if (!$allowedByRestriction) {
-					continue;
-				}
-			} elseif (!$shareeEnumerationFullMatch) {
-				continue;
-			}
-
 			if ($shareWithGroupOnly && !$inAllowedGroup) {
 				continue;
 			}
