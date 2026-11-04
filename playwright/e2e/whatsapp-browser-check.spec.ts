@@ -361,6 +361,45 @@ test.describe('the card, on a computer', () => {
 	})
 })
 
+test.describe('the card\'s layout', () => {
+	test.use(android)
+
+	test('the hand-off is one short card, whichever check caught the browser', async ({ page, browser }) => {
+		await page.addInitScript(browsers.missingApi)
+		await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await atHandOff(page)
+		const byScript = await card(page).boundingBox()
+
+		const context = await browser.newContext({ ...android, userAgent: WHATSAPP_ANDROID })
+		const whatsApp = await context.newPage()
+		await whatsApp.goto(`/apps/libresign/p/whatsapp/${READY}`)
+		await atHandOff(whatsApp)
+		const byServer = await card(whatsApp).boundingBox()
+		await context.close()
+
+		expect(byScript!.height).toBe(byServer!.height)
+		expect(byServer!.height).toBeLessThan(600)
+	})
+
+	for (const [name, step, setUp] of [
+		['the hand-off', 'browser', browsers.missingApi],
+		['SecurySign\'s frame', 'frame', browsers.saysYes],
+	] as const) {
+		test(`${name} sits in the middle of the page, with the logo`, async ({ page, context }) => {
+			await standInSecurySign(context, HANGS)
+			await page.addInitScript(setUp)
+			await page.goto(`/apps/libresign/p/whatsapp/${READY}`)
+			await expect(card(page)).toHaveAttribute('data-step', step)
+			const [above, below] = await page.evaluate(() => {
+				const logoAndCard = document.querySelector('.wrapper')!.getBoundingClientRect()
+				return [logoAndCard.top, document.querySelector('footer')!.getBoundingClientRect().top - logoAndCard.bottom]
+			})
+			expect(above).toBeGreaterThan(0)
+			expect(Math.abs(above - below)).toBeLessThanOrEqual(1)
+		})
+	}
+})
+
 test.describe('Copy link', () => {
 	test.use({ ...android, userAgent: WHATSAPP_ANDROID, permissions: ['clipboard-read', 'clipboard-write'] })
 

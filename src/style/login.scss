@@ -269,8 +269,9 @@
 	margin-inline: auto;
 	text-align: center;
 
-	// As tall as the frame, so handing over to it and back doesn't jump.
-	&.gp-whatsapp--flow {
+	// As tall as the frame, so handing over to it and back doesn't jump. The hand-off
+	// never goes back to the frame, and is the same short card wherever it was caught.
+	&.gp-whatsapp--flow:not([data-step='browser']) {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -614,6 +615,12 @@
 // its own way on, or none.
 #body-login .gp-whatsapp ~ .gp-back {
 	display: none;
+}
+
+// Core puts the guest page at the top on phones and 10vh down elsewhere. Auto margins
+// centre the card, and drop to 0 when it's taller than the screen, so its top stays reachable.
+#body-login:has(.gp-whatsapp) .wrapper {
+	margin-block: auto;
 }
 
 // Both added by login.ts: the logo links home, and the card gets a way back.
