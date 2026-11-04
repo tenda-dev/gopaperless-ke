@@ -269,8 +269,9 @@
 	margin-inline: auto;
 	text-align: center;
 
-	// As tall as the frame, so handing over to it and back doesn't jump.
-	&.gp-whatsapp--flow {
+	// As tall as the frame, so handing over to it and back doesn't jump. The hand-off
+	// never goes back to the frame, and is the same short card wherever it was caught.
+	&.gp-whatsapp--flow:not([data-step='browser']) {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
@@ -535,23 +536,7 @@
 		}
 	}
 
-	.gp-whatsapp__link {
-		margin: 12px 0 0;
-		border: 0;
-		background: none;
-		color: var(--gp-link);
-		font: inherit;
-		font-size: 15px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	// The hand-off to another browser, and the way to it while signing.
-	.gp-whatsapp__browser,
-	.gp-whatsapp__escape {
-		display: none;
-	}
-
+	// The hand-off to Chrome: one primary, one secondary.
 	&[data-step='browser'] {
 		.gp-whatsapp__next {
 			display: none;
@@ -560,36 +545,15 @@
 		.gp-whatsapp__browser {
 			display: flex;
 			flex-direction: column;
-			align-items: center;
+			gap: 12px;
 			width: 100%;
-		}
-	}
-
-	&[data-step='preparing'],
-	&[data-step='opening'],
-	&[data-step='frame'],
-	&[data-step='cancelled'],
-	&[data-step='error'] {
-		.gp-whatsapp__escape {
-			display: block;
-			align-self: center;
-			margin: 12px auto;
-			position: relative;
-		}
-	}
-
-	.gp-whatsapp__details {
-		width: 100%;
-		margin-top: 16px;
-		font-size: 12px;
-		color: var(--gp-slate);
-
-		pre {
-			margin-top: 8px;
-			text-align: start;
-			white-space: pre-wrap;
+			margin-top: 20px;
+			// The address itself, if nothing could copy it.
 			overflow-wrap: anywhere;
-			font: inherit;
+
+			.gp-whatsapp__button {
+				margin-top: 0;
+			}
 		}
 	}
 
@@ -651,6 +615,12 @@
 // its own way on, or none.
 #body-login .gp-whatsapp ~ .gp-back {
 	display: none;
+}
+
+// Core puts the guest page at the top on phones and 10vh down elsewhere. Auto margins
+// centre the card, and drop to 0 when it's taller than the screen, so its top stays reachable.
+#body-login:has(.gp-whatsapp) .wrapper {
+	margin-block: auto;
 }
 
 // Both added by login.ts: the logo links home, and the card gets a way back.

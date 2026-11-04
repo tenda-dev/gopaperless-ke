@@ -12,7 +12,7 @@ import logoOnDark from '../img/gopaperless-logo.png'
 import logoOnLight from '../img/gopaperless-logo-ink.png'
 import spaceGrotesk from '../fonts/SpaceGrotesk-VariableFont_wght.ttf'
 
-import { askBrowser, isHandOffPath } from './utils/passkeyBrowser'
+import { canRunPasskey, isHandOffPath } from './utils/passkeyBrowser'
 import { isSigningPath } from './utils/signingPath'
 
 import './style/login.scss'
@@ -56,7 +56,7 @@ const landing = `${webroot}/apps/libresign/p/upload`
 // Nextcloud is left alone.
 const handOffTo = new URLSearchParams(window.location.search).get('redirect_url') ?? ''
 if (isHandOffPath(handOffTo)) {
-	void askBrowser().then(({ ok }) => {
+	void canRunPasskey().then((ok) => {
 		if (!ok) {
 			window.location.replace(`${webroot}/apps/libresign/p/open-in-browser?to=${encodeURIComponent(handOffTo)}`)
 		}

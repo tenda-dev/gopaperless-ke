@@ -9,23 +9,20 @@
 // follows); the signature it returns goes back to the server, which writes it.
 // The page shows where it is through data-step, which login.scss draws.
 //
-// Any browser that can't run the passkey prompt gets the hand-off to another one:
-// before the frame if any flag says so (utils/passkeyBrowser.ts), or when the frame
-// reports that the prompt failed.
+// Any browser that can't run the passkey prompt gets the hand-off to Chrome: from the
+// server if its user agent gives it away, before the frame if any other flag says so
+// (utils/passkeyBrowser.ts), or when the frame reports that the prompt failed.
 
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 
-import { askBrowser, type BrowserAnswer, tryHere } from './utils/passkeyBrowser'
+import { canRunPasskey, isChrome } from './utils/passkeyBrowser'
 
 type Approval = { token: string, documentHash: string, documentName: string, origin: string }
 type Step = 'preparing' | 'opening' | 'frame' | 'signing' | 'done' | 'cancelled' | 'error' | 'browser'
 
 const box = document.querySelector<HTMLElement>('.gp-whatsapp')
 const holder = document.getElementById('gp-whatsapp-frame')
-
-let answer: BrowserAnswer | undefined
-let closeFrame = (): void => {}
 
 const SCREENS: Partial<Record<Step, [string, string]>> = {
 	browser: [t('libresign', 'Open in Chrome'), t('libresign', 'This browser can\'t use your passkey. Open this page in Chrome to continue.')],
@@ -50,20 +47,9 @@ function show(step: Step, line?: string): void {
 	}
 }
 
-/** The way out. Technical details are what a tester's screenshot needs to show. */
-function offerBrowser(tryLabel: string, reason: string): void {
-	closeFrame()
+function offerBrowser(): void {
 	show('browser')
-	document.getElementById('gp-whatsapp-try')!.textContent = tryLabel
-	document.getElementById('gp-whatsapp-details')!.textContent = [
-		`Reason: ${reason}`,
-		`User agent: ${navigator.userAgent}`,
-		`User agent names an in-app browser: ${answer ? (answer.inAppUserAgent ? 'yes' : 'no') : 'not asked yet'}`,
-		`Brands: ${answer ? (answer.brands.join(', ') || 'none') : 'not asked yet'}`,
-		`PublicKeyCredential: ${answer ? (answer.credentialApi ? 'present' : 'missing') : 'not asked yet'}`,
-		`Touch screen: ${answer ? (answer.touchScreen ? 'yes' : 'no') : 'not asked yet'}`,
-		`Platform passkey check: ${answer?.platformCheck ?? 'not asked yet'}`,
-	].join('\n')
+	document.querySelector<HTMLElement>('.gp-whatsapp__browser')!.hidden = false
 }
 
 function failed(error: unknown): void {
@@ -82,10 +68,7 @@ async function sign(signature?: string): Promise<void> {
 	try {
 		const { data } = await axios.post(box!.dataset.signUrl!, signature ? { securysignSignature: signature } : {})
 		if (data.approval) {
-			// They may have left through "Not working?" while this was on its way.
-			if (box!.dataset.step !== 'browser') {
-				approve(data.approval as Approval)
-			}
+			approve(data.approval as Approval)
 		} else if (data.signed) {
 			// The chat with our number; without it, whatsapp:// opens the app where they left it.
 			if (data.chatUrl) {
@@ -116,7 +99,6 @@ function approve(approval: Approval): void {
 		clearTimeout(slow)
 		frame.remove()
 	}
-	closeFrame = close
 	// ponytail: a fixed wait; SecurySign's frame is one small page.
 	const slow = setTimeout(() => {
 		if (box!.dataset.step === 'opening') {
@@ -156,9 +138,14 @@ function approve(approval: Approval): void {
 			show('cancelled')
 		} else if (message.type === 'SSC_SIGN_ERROR') {
 			// A web view can say yes to every check and still fail here, so this is the
-			// final word. It carries only a message, so cancelling in Chrome lands here
-			// too, which costs one tap on Try again.
-			offerBrowser(t('libresign', 'Try again'), `frame error: ${String(message.error ?? '')}`)
+			// final word. In Chrome there's nowhere better to go: they cancelled, or this
+			// phone has no passkey, so they get another try.
+			close()
+			if (isChrome()) {
+				show('error')
+			} else {
+				offerBrowser()
+			}
 		}
 	}
 	window.addEventListener('message', onMessage)
@@ -174,13 +161,8 @@ function start(): void {
 // Asked before any of these goes on: 'preparing' signs, 'login' and 'no_credits' lead
 // to a sign-in, and 'checking' is /p/open-in-browser on its way to another page.
 async function begin(firstStep: string): Promise<void> {
-	answer = await askBrowser()
-	// They left through "Not working?" while the browser was answering.
-	if (box!.dataset.step !== firstStep) {
-		return
-	}
-	if (!answer.ok) {
-		offerBrowser(t('libresign', 'Try here anyway'), 'browser check')
+	if (!await canRunPasskey()) {
+		offerBrowser()
 	} else if (firstStep === 'preparing') {
 		start()
 	} else if (firstStep === 'checking') {
@@ -191,27 +173,27 @@ async function begin(firstStep: string): Promise<void> {
 const firstStep = box?.dataset.step ?? ''
 if (['preparing', 'login', 'no_credits', 'checking'].includes(firstStep)) {
 	document.getElementById('gp-whatsapp-retry')?.addEventListener('click', start)
-	document.getElementById('gp-whatsapp-escape')?.addEventListener('click', () => {
-		offerBrowser(t('libresign', 'Try again'), 'tapped "Not working?"')
-	})
-	document.getElementById('gp-whatsapp-try')?.addEventListener('click', () => {
-		tryHere()
-		if (firstStep === 'checking') {
-			window.location.replace(box!.dataset.target!)
-		} else {
-			window.location.reload()
-		}
-	})
 	void begin(firstStep)
 }
 
-// The hand-off to another browser: for when WhatsApp won't open the buttons' links.
-document.getElementById('gp-whatsapp-copy')?.addEventListener('click', async (event) => {
-	const button = event.currentTarget as HTMLButtonElement
+// Android web views can refuse navigator.clipboard, and this is the only way out of
+// one that won't follow the Chrome link.
+async function copy(text: string): Promise<boolean> {
 	try {
-		await navigator.clipboard.writeText(window.location.href)
-		button.textContent = t('libresign', 'Link copied. Paste it in Chrome.')
+		await navigator.clipboard.writeText(text)
+		return true
 	} catch {
-		button.textContent = window.location.href
+		const field = document.createElement('textarea')
+		field.value = text
+		document.body.append(field)
+		field.select()
+		const copied = document.execCommand('copy')
+		field.remove()
+		return copied
 	}
+}
+
+document.getElementById('gp-whatsapp-copy')?.addEventListener('click', async (event) => {
+	const label = (event.currentTarget as HTMLElement).querySelector('span')!
+	label.textContent = await copy(window.location.href) ? t('libresign', 'Link copied') : window.location.href
 })

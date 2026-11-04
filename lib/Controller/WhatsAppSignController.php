@@ -84,10 +84,15 @@ class WhatsAppSignController extends Controller {
 	public function page(string $code): TemplateResponse {
 		$found = $this->find($code);
 		$state = $found['state'];
-		// These three go on to a passkey or a sign-in, so whatsapp-sign.ts asks the
-		// browser first. The others need neither here, and "Sign another document" on
-		// 'signed' is caught at the login page.
+		// These three go on to a passkey or a sign-in, so the browser is asked first:
+		// here if its user agent gives it away, otherwise by whatsapp-sign.ts. The others
+		// need neither here, and "Sign another document" on 'signed' is caught at the
+		// login page.
 		$checked = in_array($state, ['ready', 'login', 'no_credits'], true);
+		$userAgent = $this->request->getHeader('User-Agent');
+		if ($checked && self::isInAppBrowser($userAgent)) {
+			$state = 'browser';
+		}
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		if ($checked) {
@@ -99,8 +104,8 @@ class WhatsAppSignController extends Controller {
 			'senderName' => $found['sender']?->getDisplayName() ?? '',
 			'signUrl' => $this->urls->linkToRoute('libresign.whatsAppSign.sign', ['code' => $code]),
 			'signLink' => $found['signRequest'] !== null ? $this->whatsApp->signLink($found['signRequest']) : '',
-			'browserLinks' => $checked
-				? self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
+			'chromeLink' => $checked
+				? self::chromeLink($userAgent, $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]))
 				: null,
 			// "Sign another document": the upload page, which asks them to sign in first.
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
@@ -131,12 +136,13 @@ class WhatsAppSignController extends Controller {
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
+		$userAgent = $this->request->getHeader('User-Agent');
 		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
-			'state' => 'checking',
+			'state' => self::isInAppBrowser($userAgent) ? 'browser' : 'checking',
 			'documentName' => '',
 			'signUrl' => '',
 			'target' => $to,
-			'browserLinks' => self::browserLinks($this->request->getHeader('User-Agent'), $this->urls->getAbsoluteURL($to)),
+			'chromeLink' => self::chromeLink($userAgent, $this->urls->getAbsoluteURL($to)),
 		], TemplateResponse::RENDER_AS_GUEST);
 		$response->cacheFor(0);
 		return $response;
@@ -152,30 +158,28 @@ class WhatsAppSignController extends Controller {
 	}
 
 	/**
-	 * The links a phone can use to leave this browser, or null where there are none
-	 * and Copy link is the way out. This only picks the kind of link. Whether they are
-	 * offered at all is decided in the browser, from several flags (passkeyBrowser.ts),
-	 * because a web view's user agent can read like anything, Chrome included.
+	 * A browser whose user agent says it can't run a passkey. Answered here so that the
+	 * page opens on the hand-off with no script involved: nothing is prepared, no frame
+	 * opens, and a phone holding on to an old script can't start signing. A user agent
+	 * that says nothing proves nothing, so passkeyBrowser.ts asks about the rest.
 	 *
-	 * "chrome" comes first because Google Password Manager lives there. "other" is
-	 * for phones without it: Safari on iPhone (iOS 17+ opens x-safari-https:// out of
-	 * the app's browser), the default browser or chooser on Android (the intent names
-	 * no app, so it can also stay put, which is why the page offers Copy link too).
-	 *
-	 * @return ?array{chrome: string, other: string}
+	 * ponytail: only the tokens real phones have sent. Add one when another turns up.
 	 */
-	public static function browserLinks(string $userAgent, string $pageUrl): ?array {
+	public static function isInAppBrowser(string $userAgent): bool {
+		return preg_match('#\[WAiOS/|WA4A/|; wv\)#', $userAgent) === 1;
+	}
+
+	/**
+	 * The link a phone can use to leave this browser for Chrome, where Google Password
+	 * Manager lives, or null where there's none and Copy link is the way out. This only
+	 * picks the kind of link.
+	 */
+	public static function chromeLink(string $userAgent, string $pageUrl): ?string {
 		$address = (string)preg_replace('#^https?://#', '', $pageUrl);
 		return match (true) {
-			str_contains($userAgent, 'Android') => [
-				'chrome' => 'intent://' . $address . '#Intent;scheme=https;package=com.android.chrome;end',
-				'other' => 'intent://' . $address . '#Intent;scheme=https;end',
-			],
+			str_contains($userAgent, 'Android') => 'intent://' . $address . '#Intent;scheme=https;package=com.android.chrome;end',
 			// "[WAiOS/" is for an iPad whose browser reads as a Mac.
-			preg_match('#iPhone|iPad|iPod|\[WAiOS/#', $userAgent) === 1 => [
-				'chrome' => 'googlechromes://' . $address,
-				'other' => 'x-safari-https://' . $address,
-			],
+			preg_match('#iPhone|iPad|iPod|\[WAiOS/#', $userAgent) === 1 => 'googlechromes://' . $address,
 			default => null,
 		};
 	}
