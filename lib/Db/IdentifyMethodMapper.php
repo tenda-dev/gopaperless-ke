@@ -112,57 +112,47 @@ class IdentifyMethodMapper extends QBMapper {
 	}
 
 	/**
+	 * Search the requester's own historical signers by identifier value or
+	 * display name.
+	 *
+	 * Requester scoping is enforced on the MAIN query (f.user_id = :userId).
+	 * The previous implementation scoped only inside an embedded sub-query joined
+	 * via createFunction; that scoping did not take effect at runtime (the outer
+	 * query carried no ownership filter), which leaked other requesters' signer
+	 * history across accounts. Rebuilt on a single query builder so there is no
+	 * cross-builder named-parameter collision and ownership is guaranteed.
+	 *
+	 * Results are de-duplicated per (identifier_key, identifier_value); the
+	 * display name is the requester's own label for that identity.
+	 *
 	 * @return array<string, string>[]
 	 */
 	public function searchByIdentifierValue(string $search, string $userId, string $method, int $limit = 20, int $offset = 0): array {
 		$qb = $this->db->getQueryBuilder();
+		$like = '%' . $this->db->escapeLikeParameter($search) . '%';
 
-		$latestQb = $this->db->getQueryBuilder();
-		$latestQb->select('im2.identifier_key')
-			->addSelect('im2.identifier_value')
-			->addSelect($latestQb->func()->max('sr2.created_at', 'created_at'))
-			->from('libresign_identify_method', 'im2')
-			->join('im2', 'libresign_sign_request', 'sr2',
-				$latestQb->expr()->eq('sr2.id', 'im2.sign_request_id')
-			)
-			->join('im2', 'libresign_file', 'f2',
-				$latestQb->expr()->eq('f2.id', 'sr2.file_id')
-			)
-			->where($latestQb->expr()->eq('f2.user_id', $latestQb->createNamedParameter($userId)));
-		if (!empty($method)) {
-			$latestQb->andWhere($latestQb->expr()->eq('im2.identifier_key', $latestQb->createNamedParameter($method)));
-		}
-		$latestQb->andWhere(
-			$latestQb->expr()->orX(
-				$latestQb->expr()->iLike(
-					'im2.identifier_value',
-					$latestQb->createNamedParameter('%' . $this->db->escapeLikeParameter($search) . '%')
-				),
-				$latestQb->expr()->iLike(
-					'sr2.display_name',
-					$latestQb->createNamedParameter('%' . $this->db->escapeLikeParameter($search) . '%')
-				)
-			)
-		)
-			->groupBy('im2.identifier_key')
-			->addGroupBy('im2.identifier_value');
-
-		foreach ($latestQb->getParameters() as $name => $value) {
-			$qb->setParameter($name, $value);
-		}
-
-		$qb->select('im.identifier_key', 'im.identifier_value', 'sr.display_name')
+		$qb->select('im.identifier_key', 'im.identifier_value')
+			->selectAlias($qb->func()->max('sr.display_name'), 'display_name')
 			->from('libresign_identify_method', 'im')
-			->join('im', $qb->createFunction('(' . $latestQb->getSQL() . ')'), 'latest',
-				$qb->expr()->andX(
-					$qb->expr()->eq('latest.identifier_key', 'im.identifier_key'),
-					$qb->expr()->eq('latest.identifier_value', 'im.identifier_value')
-				)
-			)
 			->join('im', 'libresign_sign_request', 'sr',
-				$qb->expr()->eq('sr.id', 'im.sign_request_id'),
+				$qb->expr()->eq('sr.id', 'im.sign_request_id')
 			)
-			->where($qb->expr()->neq('im.identifier_value', $qb->createNamedParameter('deleted_users')))
+			->join('sr', 'libresign_file', 'f',
+				$qb->expr()->eq('f.id', 'sr.file_id')
+			)
+			->where($qb->expr()->eq('f.user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->neq('im.identifier_value', $qb->createNamedParameter('deleted_users')))
+			->andWhere(
+				$qb->expr()->orX(
+					$qb->expr()->iLike('im.identifier_value', $qb->createNamedParameter($like)),
+					$qb->expr()->iLike('sr.display_name', $qb->createNamedParameter($like))
+				)
+			);
+		if (!empty($method)) {
+			$qb->andWhere($qb->expr()->eq('im.identifier_key', $qb->createNamedParameter($method)));
+		}
+		$qb->groupBy('im.identifier_key')
+			->addGroupBy('im.identifier_value')
 			->setMaxResults($limit)
 			->setFirstResult($offset);
 
@@ -171,6 +161,7 @@ class IdentifyMethodMapper extends QBMapper {
 		while ($row = $cursor->fetch()) {
 			$return[] = $row;
 		}
+		$cursor->closeCursor();
 		return $return;
 	}
 }
