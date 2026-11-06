@@ -403,9 +403,15 @@ final class TuandikianeServiceTest extends TestCase {
 			$published = $data;
 			return $file;
 		});
-		$this->whatsApp->expects($this->once())->method('sendTo')
-			->with($file, $this->callback(static fn (SignRequest $signRequest): bool => $signRequest->getId() === 102), $neo, 'tuandikiane:' . self::DRAFT . ':s2', '+254722000002')
-			->willReturn(['status' => 'sent', 'error' => null, 'availableAgainAt' => null]);
+		$this->users->method('get')->willReturnMap([['neo', $neo]]);
+		$this->whatsApp->method('subFor')->with($neo)->willReturn('sub-neo');
+		$cards = [];
+		$this->whatsApp->expects($this->exactly(2))->method('sendTo')
+			->willReturnCallback(static function (FileEntity $sent, SignRequest $signRequest, IUser $sender, string $sub, string $to) use (&$cards, $file, $neo): array {
+				self::assertSame([$file, $neo], [$sent, $sender]);
+				$cards[] = [$signRequest->getId(), $sub, $to];
+				return ['status' => 'sent', 'error' => null, 'availableAgainAt' => null];
+			});
 		$this->whatsApp->method('linkCode')->willReturnCallback(static fn (SignRequest $signRequest): string => $signRequest->getUuid() . '.mac');
 		$this->client->expects($this->once())->method('event')->with(self::DRAFT, 'sent');
 
@@ -428,7 +434,9 @@ final class TuandikianeServiceTest extends TestCase {
 		$this->assertSame(TuandikianeDraft::STATUS_SENT, $status);
 		$this->assertSame('neo', $slots[0]['uid']);
 		$this->assertNull($slots[1]['uid']);
-		$this->assertTrue(end($this->stored)[1][1]['card'], 'the card is remembered as sent');
+		// The sender gets their card too, under their own sub; the others under their slot's name.
+		$this->assertSame([[101, 'sub-neo', '+254711000001'], [102, 'tuandikiane:' . self::DRAFT . ':s2', '+254722000002']], $cards);
+		$this->assertSame([true, true], array_column(end($this->stored)[1], 'card'), 'the cards are remembered as sent');
 	}
 
 	public function testSendAfterSomeoneElseSentItLeavesNothingBehind(): void {
@@ -553,7 +561,9 @@ final class TuandikianeServiceTest extends TestCase {
 	public function testASignatureBeforeTheLastSendsTheNextSignersCard(): void {
 		$this->drafts->method('findByFileId')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo'));
 		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, 1, new \DateTime(self::NOW)), self::signRequest(102, 2)]);
-		$this->signRequests->method('getById')->willReturn(self::signRequest(102, 2));
+		$this->signRequests->method('getById')->willReturnCallback(
+			static fn (int $id): SignRequest => $id === 101 ? self::signRequest(101, 1, new \DateTime(self::NOW)) : self::signRequest(102, 2),
+		);
 		$neo = $this->user('neo');
 		$this->users->method('get')->willReturnMap([['neo', $neo]]);
 		$this->client->expects($this->once())->method('event')->with(self::DRAFT, 'signed', 's1');

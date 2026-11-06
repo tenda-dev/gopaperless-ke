@@ -45,9 +45,9 @@ use Sabre\DAV\UUIDUtil;
  * the service account holds it, in draft status, so no one is notified. The
  * sender opens the review link, signs in as usual and taps Send; a MIMI passkey
  * authorises that. The draft then moves to the sender, the sender's slot
- * becomes their account, and every other signer gets the WhatsApp card on the
- * number Tuandikiane gave. Those signers are bound the same way: the link that
- * reached their WhatsApp, a sign-in, a MIMI passkey.
+ * becomes their account, and every signer, the sender too, gets the WhatsApp
+ * card on the number Tuandikiane gave. The others are bound the same way: the
+ * link that reached their WhatsApp, a sign-in, a MIMI passkey.
  */
 class TuandikianeService {
 	/** The draft's folder: in the service account's LibreSign folder, then in the sender's. */
@@ -420,11 +420,12 @@ class TuandikianeService {
 	 * $sender the way a public workflow claim moves one (copied into their
 	 * LibreSign folder, the File row repointed); then, in one transaction, the
 	 * sender's slot becomes their account, the file goes to able-to-sign
-	 * without notifications, and the draft is marked sent. The other signers'
-	 * WhatsApp cards and Tuandikiane's "sent" follow.
+	 * without notifications, and the draft is marked sent. The WhatsApp cards
+	 * and Tuandikiane's "sent" follow.
 	 *
-	 * When the sender is not one of the signers, no slot is bound and every
-	 * signer gets a card.
+	 * Every signer gets a card, the sender too: one way in for everyone, and a
+	 * sender who closes the page can still sign. When the sender is not one of
+	 * the signers, no slot is bound.
 	 *
 	 * @return ?string the sender's own signing card, for "Sign now"; null when they don't sign
 	 * @throws LibresignException 410 when the draft can no longer be sent
@@ -616,15 +617,15 @@ class TuandikianeService {
 	}
 
 	/**
-	 * The WhatsApp card to each other signer whose turn it is and who has not
-	 * had one. On Send, and after each signature for the ordered flow. A card
-	 * that fails to go is tried again at the next of those.
+	 * The WhatsApp card to each signer whose turn it is and who has not had one,
+	 * the sender included. On Send, and after each signature for the ordered
+	 * flow. A card that fails to go is tried again at the next of those.
 	 */
 	public function sendCards(TuandikianeDraft $draft, FileEntity $file, IUser $sender): TuandikianeDraft {
 		$slots = $draft->getSlots() ?? [];
 		$changed = false;
 		foreach ($slots as $index => $slot) {
-			if ($slot['sender'] || $slot['card']) {
+			if ($slot['card']) {
 				continue;
 			}
 			try {

@@ -14,7 +14,8 @@ passkey authorises the send. Then GoPaperless:
    makes the sender the document's owner, the way a public upload claim does;
 2. binds the sender's signer slot to their account, if the sender signs at all;
 3. moves the document to able-to-sign without any email or notification;
-4. sends every other signer the WhatsApp signing card on the number Tuandikiane gave;
+4. sends every signer the WhatsApp signing card on the number Tuandikiane gave, the
+   sender too, so a sender who closes the page can still get back to sign;
 5. tells Tuandikiane `sent`, and later `signed` per signer and `completed`.
 
 A signer known only by phone opens the card, signs in, passes the MIMI passkey, and the
