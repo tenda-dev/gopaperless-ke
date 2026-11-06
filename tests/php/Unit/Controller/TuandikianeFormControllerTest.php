@@ -151,6 +151,17 @@ final class TuandikianeFormControllerTest extends TestCase {
 		$this->assertSame(['Pick a kind of agreement'], $params['formErrors']);
 	}
 
+	public function testADraftThisInstanceRefusedKeepsTheValuesAndSaysTryAgain(): void {
+		$this->client->method('submitForm')->willReturn(['status' => 502, 'body' => ['detail' => 'draft_failed']]);
+		$this->client->method('form')->willReturn(self::form());
+
+		$params = $this->controller()->submit(self::TOKEN, 'loan', ['lender_name' => 'Neo Kamau'])->getParams();
+
+		$this->assertSame('fill', $params['mode']);
+		$this->assertSame('Neo Kamau', $params['fields'][0]['value']);
+		$this->assertSame(['Something went wrong on our side. Please try again in a few minutes.'], $params['formErrors']);
+	}
+
 	public function testDetailsOnAUsedLinkSayItExpired(): void {
 		$this->client->method('submitForm')->willReturn(['status' => 410, 'body' => []]);
 		$this->client->expects($this->never())->method('form');

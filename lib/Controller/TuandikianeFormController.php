@@ -111,14 +111,16 @@ class TuandikianeFormController extends Controller {
 		if ($form instanceof TemplateResponse) {
 			return $form;
 		}
+		// 422: each error beside its field; one about the whole form comes as
+		// "template", which is no field, so it shows above them.
 		$errors = $answer['status'] === Http::STATUS_UNPROCESSABLE_ENTITY && is_array($answer['body']['errors'] ?? null)
 			? array_filter($answer['body']['errors'], 'is_string')
 			: [];
 		if ($answer['status'] !== Http::STATUS_UNPROCESSABLE_ENTITY) {
-			if ($answer['status'] === Http::STATUS_OK) {
-				$this->logger->error('Tuandikiane answered a details form with a review link that is not this instance\'s');
-			}
-			$errors[''] = $this->l10n->t('Your details weren\'t sent. Try again in a minute.');
+			// 502 draft_failed (this instance refused the draft), Tuandikiane down,
+			// or a review link that isn't ours. The typed values stay.
+			$this->logger->warning('A details form was not taken', ['status' => $answer['status'], 'detail' => $answer['body']['detail'] ?? null]);
+			$errors[''] = $this->l10n->t('Something went wrong on our side. Please try again in a few minutes.');
 		}
 		return $this->render($token, $form, $template, $typed, $errors);
 	}
