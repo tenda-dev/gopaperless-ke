@@ -259,6 +259,11 @@ class TuandikianeService {
 			if (!is_string($phone) || !preg_match('/^\+[1-9]\d{6,14}$/D', $phone)) {
 				throw $fail("$at.phone must be E.164, like +254712345678");
 			}
+			// Their signing link goes out on WhatsApp, which the payments service only
+			// sends to Kenyan mobile numbers. The sender may be anywhere.
+			if (($signer['is_sender'] ?? false) !== true && WhatsAppService::normalize($phone) === null) {
+				throw $fail("$at.phone must be a Kenyan mobile number, like +254712345678");
+			}
 			$email = $signer['email'] ?? null;
 			if ($email !== null) {
 				$email = is_string($email) ? strtolower(trim($email)) : '';

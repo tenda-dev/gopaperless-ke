@@ -222,20 +222,22 @@ final class TuandikianeServiceTest extends TestCase {
 		return $service;
 	}
 
-	public function testASenderWhoDoesNotSignAndUnnamedSignersAreAccepted(): void {
+	public function testUnnamedSignersAndASenderAbroadAreAccepted(): void {
 		$saved = null;
 		$elements = [];
 		$this->creating($saved, $elements);
 		$input = self::input();
 		$input['signers'][0] = ['key' => 's1', 'display_name' => '', 'phone' => '+254711000001', 'email' => null, 'is_sender' => false];
+		// A sender abroad is fine; the signers are Kenyan.
+		$input['signers'][] = ['key' => 's3', 'display_name' => 'Brian', 'phone' => '+447700900123', 'email' => null, 'is_sender' => true];
 		$input['signers'][1]['email'] = null;
 
 		$this->service()->createDraft($input);
 
-		$this->assertSame(['Signer 1', 'Ali Hassan'], array_column($saved['signers'], 'displayName'));
+		$this->assertSame(['Signer 1', 'Ali Hassan', 'Brian'], array_column($saved['signers'], 'displayName'));
 		[, $slots] = end($this->stored);
-		$this->assertSame([false, false], array_column($slots, 'sender'));
-		$this->assertSame([false, true], array_column($slots, 'named'));
+		$this->assertSame([false, false, true], array_column($slots, 'sender'));
+		$this->assertSame([false, true, true], array_column($slots, 'named'));
 	}
 
 	public function testADraftGetsASlotPerSignerAndEachBoxOnItsSignersSlot(): void {
@@ -314,6 +316,7 @@ final class TuandikianeServiceTest extends TestCase {
 			'an empty email' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '+254711000001', 'email' => '', 'is_sender' => true]]]],
 			'no display name at all' => [['signers' => [['key' => 's1', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true]]]],
 			'a local number' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '0711000001', 'email' => null, 'is_sender' => true]]]],
+			'a signer outside Kenya' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true], ['key' => 's2', 'display_name' => 'Ali', 'phone' => '+447700900123', 'email' => null, 'is_sender' => false]]]],
 			'a box for no one' => [['boxes' => [['signer' => 's9', 'page' => 1, 'left' => 0, 'top' => 0, 'width' => 10, 'height' => 10]]]],
 			'a box off the page' => [['boxes' => [['signer' => 's1', 'page' => 0, 'left' => 0, 'top' => 0, 'width' => 10, 'height' => 10]]]],
 			'a box in fractions' => [['boxes' => [['signer' => 's1', 'page' => 1, 'left' => 7.5, 'top' => 0, 'width' => 10, 'height' => 10]]]],
