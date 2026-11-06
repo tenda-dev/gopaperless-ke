@@ -27,12 +27,35 @@ the link reached their WhatsApp, they signed in, they passed the passkey.
 | Route | Who calls it |
 | --- | --- |
 | `POST /ocs/v2.php/apps/libresign/api/v1/tuandikiane/drafts` | Tuandikiane, header `X-Tuandikiane-Key` |
+| `GET` and `POST /apps/libresign/p/t/form/{token}` | the sender, from the details form link (public) |
 | `GET /apps/libresign/p/t/review/{code}` | the sender, from the review link |
 | `GET /apps/libresign/p/t/review/{code}/pdf` | the review page |
 | `POST /apps/libresign/p/t/review/{code}/options` | the review page, for the passkey challenge |
 | `POST /apps/libresign/api/v1/tuandikiane/review/{code}/send` | the review page, with the passkey answer |
 | `GET /apps/libresign/p/t/sign/{code}` | a signer with no account on the slot yet; the card sends them here |
 | `POST /apps/libresign/p/t/sign/{code}/options` and `/bind` | that page |
+
+## The details form
+
+When Tuandikiane finds no agreement in the chat, it sends a link to
+`/p/t/form/{token}`. The page reads the form from Tuandikiane
+(`GET /external/tuandikiane/forms/{token}`, with `whatsapp_api_url` and
+`whatsapp_api_key`): first the kinds of agreement as a list, then the fields of the one
+picked, filled in from `prefill`. **Continue** posts the answers back as typed. Then:
+
+- 200: the browser goes straight to the review link. Only this instance's
+  `/p/t/review/...` is followed; any other address shows the error below.
+- 422: each error shows beside its field, the values stay. An error about the whole form
+  (key `template`) shows above the fields.
+- 502 `draft_failed`, or Tuandikiane down: "Something went wrong on our side. Please try
+  again in a few minutes.", values kept.
+- 404 or 410: "This link has expired. Send your agreement on WhatsApp again."
+
+The page has no script. The POST carries Nextcloud's request token, so the CSRF check
+stays on, and it works in WhatsApp's own browser. The review link it leads to hands off to
+Chrome itself.
+
+## Review codes
 
 The review code is `<draft uuid>.<MAC>`, like the WhatsApp card's code. It works until
 the draft is sent or expires. After that the page says "This link has expired. Send your
@@ -104,7 +127,8 @@ curl -sS -X POST "https://staging.gopaperless.dev/ocs/v2.php/apps/libresign/api/
 draft, unless that one expired unsent: then it is deleted and made again.
 
 A body that breaks the contract answers 422 with a `message` naming the field, such as
-`signers[1].phone must be E.164, like +254712345678`.
+`signers[1].phone must be E.164, like +254712345678`. Every signer but the sender needs a
+Kenyan mobile number, because their link goes out on WhatsApp.
 
 ## What gets stored
 
@@ -134,9 +158,13 @@ occ trashbin:cleanup tuandikiane
 
 ## Known limits
 
-- The payments service only sends cards to Kenyan mobile numbers. A signer on another
-  country code gets no card (`bad_number` in the log), though the contract allows any
-  E.164 number.
+- The payments service only sends cards to Kenyan mobile numbers, so the drafts call
+  refuses any other number for a signer who isn't the sender. A sender abroad still gets
+  **Sign now** on the review page, but their own card fails (`bad_number` in the log).
+- With the `terms_of_service` app on, a user who hasn't accepted the terms can't read any
+  file, the draft's PDF included. The review page then shows **Open the agreement** in
+  place of the pages, and that link fails too until they accept. Users accept at first
+  sign-in, so it shows only for someone who never got past that dialog.
 - The payments service needs a `sub` with every card. A slot nobody holds yet has none,
   so GoPaperless sends `tuandikiane:<draft uuid>:<key>` in its place.
 - In the ordered signing flow, the next signer's card goes out after the signature
