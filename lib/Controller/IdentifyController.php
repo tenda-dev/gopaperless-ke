@@ -15,11 +15,13 @@ use OCA\Libresign\Collaboration\Collaborators\EmailAccountPlugin;
 use OCA\Libresign\Collaboration\Collaborators\ManualPhonePlugin;
 use OCA\Libresign\Collaboration\Collaborators\SignerPlugin;
 use OCA\Libresign\Middleware\Attribute\RequireManager;
+use OCA\Libresign\Service\Identify\RankingStrategy;
 use OCA\Libresign\Service\Identify\ResultEnricher;
 use OCA\Libresign\Service\Identify\ResultFilter;
 use OCA\Libresign\Service\Identify\ResultFormatter;
 use OCA\Libresign\Service\Identify\SearchNormalizer;
 use OCA\Libresign\Service\Identify\ShareTypeResolver;
+use OCA\Libresign\Service\Identify\SignerIdentityReconciler;
 use OCA\Libresign\Service\Identify\SignerSearchContext;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -28,6 +30,7 @@ use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Collaboration\Collaborators\ISearch;
 use OCP\IRequest;
+use Psr\Log\LoggerInterface;
 
 /**
  * @psalm-import-type LibresignIdentifyAccount from \OCA\Libresign\ResponseDefinitions
@@ -43,6 +46,9 @@ class IdentifyController extends AEnvironmentAwareController {
 		private ResultFilter $resultFilter,
 		private ResultFormatter $resultFormatter,
 		private ResultEnricher $resultEnricher,
+		private SignerIdentityReconciler $signerIdentityReconciler,
+		private RankingStrategy $rankingStrategy,
+		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -82,11 +88,31 @@ class IdentifyController extends AEnvironmentAwareController {
 		$this->registerPlugin();
 		[$result] = $this->collaboratorSearch->search($search, $shareTypes, false, $limit, $offset);
 
+		// Capture provenance from the raw result BEFORE unify() collapses colliding
+		// historical/external items for the same address. Used so a requester's
+		// historical signer is never lost during reconciliation.
+		$snapshot = $this->signerIdentityReconciler->buildSnapshot($result);
+
 		// Process results through filters and formatters
 		$result['exact'] = $this->resultFilter->unify($result['exact']);
 		$result = $this->resultFilter->unify($result);
 		$result = $this->resultFilter->excludeEmpty($result);
 		$result = $this->resultFilter->filterAccountMatches($result, $search);
+
+		// Reconcile email identities against existing accounts (upgrade / preserve /
+		// suppress), then apply a stable ranking. A catastrophic reconciler failure
+		// falls back to a snapshot-aware safe filter instead of emitting unverifiable
+		// external suggestions.
+		try {
+			$result = $this->signerIdentityReconciler->reconcile($result, $snapshot);
+			$result = $this->rankingStrategy->rankItems($result);
+		} catch (\Throwable $e) {
+			$this->logger->error('[Libresign] signer-search reconciliation failed; applied safe filter', [
+				'exception' => $e::class,
+				'message' => $e->getMessage(),
+			]);
+			$result = $this->signerIdentityReconciler->safeFilter($result, $snapshot);
+		}
 
 		$return = $this->resultFormatter->formatForNcSelect($result);
 		$return = $this->resultEnricher->addHerselfAccount($return, $search, $method);
