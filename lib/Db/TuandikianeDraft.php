@@ -17,8 +17,10 @@ use OCP\DB\Types;
  * sender reviews and sends it (TuandikianeService).
  *
  * Each slot is one signer, in signing order:
- * {key: "s1", phone: "+2547...", sender: bool, signRequestId: int,
- *  uid: ?string (the account that took the slot), card: bool (WhatsApp card sent)}.
+ * {key: "s1", phone: "+2547...", sender: bool (at most one; none when the sender
+ *  doesn't sign), named: bool (false: "Signer 1" until the slot is taken),
+ *  signRequestId: int, uid: ?string (the account that took the slot),
+ *  card: bool (WhatsApp card sent)}.
  *
  * @method void setDraftUuid(string $uuid)
  * @method string getDraftUuid()
