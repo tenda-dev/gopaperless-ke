@@ -611,6 +611,138 @@
 	}
 }
 
+// A Tuandikiane draft's review page and the page where a signer takes their slot
+// (templates/tuandikiane.php). The WhatsApp card's look and steps, plus the
+// agreement's pages with their boxes, the signers, and the button that starts the
+// MIMI passkey. tuandikiane.ts sets data-step.
+#body-login .guest-box.gp-tk {
+	.gp-tk__pages {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		width: 100%;
+		margin-top: 20px;
+	}
+
+	.gp-tk__page {
+		position: relative;
+		border: 1px solid var(--gp-line);
+		border-radius: 8px;
+		overflow: hidden;
+		background: #fff;
+
+		canvas {
+			display: block;
+			width: 100%;
+			height: auto;
+		}
+	}
+
+	.gp-tk__box {
+		position: absolute;
+		box-sizing: border-box;
+		display: flex;
+		align-items: flex-end;
+		justify-content: flex-start;
+		padding: 2px 4px;
+		border: 1.5px dashed var(--gp-wa-brand);
+		border-radius: 4px;
+		background: var(--gp-wa-brand-soft);
+		color: #0e1116;
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 12px;
+		overflow: hidden;
+		text-align: start;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+
+	.gp-tk__pdf {
+		color: var(--gp-link);
+		font-weight: 600;
+	}
+
+	.gp-tk__signers {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		width: 100%;
+		margin: 20px 0 0;
+		padding: 0;
+		list-style: none;
+		counter-reset: gp-tk-signer;
+		text-align: start;
+
+		li {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			min-width: 0;
+			font-size: 14px;
+			line-height: 20px;
+			color: var(--gp-ink);
+			counter-increment: gp-tk-signer;
+
+			&::before {
+				content: counter(gp-tk-signer);
+				display: flex;
+				flex-shrink: 0;
+				align-items: center;
+				justify-content: center;
+				width: 24px;
+				height: 24px;
+				border-radius: 50%;
+				background: var(--gp-wa-brand-soft);
+				font-size: 12px;
+				font-weight: 600;
+			}
+		}
+	}
+
+	.gp-tk__signer-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.gp-tk__signer-role {
+		flex-shrink: 0;
+		font-size: 12px;
+		color: var(--gp-slate);
+	}
+
+	// "Sign now" once sent; the start button only where there is something to start.
+	.gp-tk__next {
+		display: none;
+	}
+
+	&[data-step='done'] .gp-tk__next {
+		display: flex;
+	}
+
+	&[data-step='opening'],
+	&[data-step='signing'],
+	&[data-step='done'],
+	&[data-step='browser'] {
+		.gp-tk__start {
+			display: none;
+		}
+	}
+
+	&[data-step='done'],
+	&[data-step='browser'] {
+		.gp-tk__pages,
+		.gp-tk__signers {
+			display: none;
+		}
+	}
+
+	&[data-step='cancelled'] .gp-whatsapp__status {
+		color: var(--gp-ink);
+	}
+}
+
 // login.ts adds "Back to GoPaperless" under every guest card; this page has
 // its own way on, or none.
 #body-login .gp-whatsapp ~ .gp-back {

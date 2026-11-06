@@ -28,6 +28,7 @@ use OCA\Libresign\Service\SignerElementsService;
 use OCA\Libresign\Service\SignFileService;
 use OCA\Libresign\Service\Sponsorship\SigningCoverageService;
 use OCA\Libresign\Service\Sponsorship\SigningSettlementService;
+use OCA\Libresign\Service\TuandikianeService;
 use OCA\Libresign\Service\WhatsAppService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -37,6 +38,7 @@ use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IAppConfig;
 use OCP\IRequest;
@@ -69,6 +71,7 @@ class WhatsAppSignController extends Controller {
 		private RequestMetadataService $metadata,
 		private SigningCoverageService $coverage,
 		private SigningSettlementService $settlement,
+		private TuandikianeService $tuandikiane,
 		private IAppConfig $appConfig,
 		private IUserManager $users,
 		private IURLGenerator $urls,
@@ -81,8 +84,13 @@ class WhatsAppSignController extends Controller {
 	#[NoCSRFRequired]
 	#[AnonRateLimit(limit: 30, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/p/whatsapp/{code}')]
-	public function page(string $code): TemplateResponse {
+	public function page(string $code): TemplateResponse|RedirectResponse {
 		$found = $this->find($code);
+		// A Tuandikiane signer known only by phone: they sign in and take their
+		// slot with a MIMI passkey first, then come back to this card.
+		if ($found['state'] === 'gone' && $this->tuandikiane->unboundSlot($code) !== null) {
+			return new RedirectResponse($this->urls->linkToRoute('libresign.tuandikiane.sign', ['code' => $code]));
+		}
 		$state = $found['state'];
 		// These three go on to a passkey or a sign-in, so the browser is asked first:
 		// here if its user agent gives it away, otherwise by whatsapp-sign.ts. The others
