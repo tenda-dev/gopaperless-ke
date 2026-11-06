@@ -26,6 +26,7 @@ use OCA\Libresign\Listener\RevokeClickToSignCertificateListener;
 use OCA\Libresign\Listener\SecurySignCspListener;
 use OCA\Libresign\Listener\SignedCallbackListener;
 use OCA\Libresign\Listener\SmsNotifyListener;
+use OCA\Libresign\Listener\TuandikianeSignedListener;
 use OCA\Libresign\Listener\TwofactorGatewayListener;
 use OCA\Libresign\Listener\UserCreatedListener;
 use OCA\Libresign\Listener\UserDeletedListener;
@@ -154,6 +155,7 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(SignedEvent::class, TwofactorGatewayListener::class);
 		$context->registerEventListener(SignedEvent::class, WhatsAppReceiptListener::class);
 		$context->registerEventListener(SendSignNotificationEvent::class, WhatsAppRequestListener::class);
+		$context->registerEventListener(SignedEvent::class, TuandikianeSignedListener::class);
 
 		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
 		$context->registerEventListener(UserFirstTimeLoggedInEvent::class, UserFirstTimeLoggedInListener::class);
