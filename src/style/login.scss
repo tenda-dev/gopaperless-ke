@@ -741,6 +741,119 @@
 	&[data-step='cancelled'] .gp-whatsapp__status {
 		color: var(--gp-ink);
 	}
+
+	// The details form (templates/tuandikiane_form.php): the kinds of agreement as
+	// a list of links, then one kind's fields.
+	.gp-tk__choices {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		width: 100%;
+		margin: 20px 0 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.gp-tk__choice {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 14px 16px;
+		border: 1px solid var(--gp-line);
+		border-radius: 16px;
+		text-align: start;
+		text-decoration: none;
+		color: var(--gp-ink);
+		transition: border-color .15s, background-color .15s;
+
+		&:hover,
+		&:focus-visible {
+			border-color: var(--gp-wa-brand);
+			background: var(--gp-wa-brand-soft);
+		}
+	}
+
+	.gp-tk__choice-title {
+		font-size: 15px;
+		font-weight: 600;
+		line-height: 20px;
+	}
+
+	.gp-tk__choice-text {
+		font-size: 13px;
+		line-height: 18px;
+		color: var(--gp-slate);
+	}
+
+	.gp-tk__form {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+		width: 100%;
+		margin-top: 20px;
+		text-align: start;
+	}
+
+	.gp-tk__field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+
+		label {
+			font-size: 14px;
+			font-weight: 600;
+			line-height: 20px;
+			color: var(--gp-ink);
+		}
+
+		input,
+		textarea {
+			box-sizing: border-box;
+			width: 100%;
+			min-height: 48px;
+			margin: 0;
+			padding: 12px 14px;
+			border: 1px solid var(--gp-line);
+			border-radius: 12px;
+			background: var(--gp-card);
+			color: var(--gp-ink);
+			font: inherit;
+			font-size: 16px;
+			line-height: 22px;
+
+			&:focus-visible {
+				border-color: var(--gp-wa-brand);
+				outline: 2px solid var(--gp-wa-brand-soft);
+			}
+		}
+
+		textarea {
+			resize: vertical;
+		}
+	}
+
+	.gp-tk__field--error {
+		input,
+		textarea {
+			border-color: var(--gp-wa-danger);
+		}
+	}
+
+	.gp-tk__optional {
+		font-weight: 400;
+		color: var(--gp-slate);
+	}
+
+	.gp-tk__error {
+		margin: 0;
+		font-size: 13px;
+		line-height: 18px;
+		color: var(--gp-wa-danger);
+	}
+
+	.gp-tk__form .gp-whatsapp__button {
+		margin-top: 4px;
+	}
 }
 
 // login.ts adds "Back to GoPaperless" under every guest card; this page has
