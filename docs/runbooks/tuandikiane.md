@@ -1,3 +1,18 @@
+---
+title: "Tuandikiane: WhatsApp agreements signed with a MIMI passkey"
+type: runbook
+status: draft
+domain: product
+layer: runbooks
+owner: engineering
+date: 2026-11-06
+commit: "34cc475a7"
+---
+
+<!--
+ - SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 # Tuandikiane drafts
 
 Tuandikiane is the WhatsApp agreement intake in the payments service (`gopaperless`
@@ -158,6 +173,12 @@ occ trashbin:cleanup tuandikiane
 
 ## Known limits
 
+- **The review link is a bearer capability.** Whoever holds it and can sign in to any
+  GoPaperless account (plus the MIMI passkey at send time) becomes the sender: the
+  agreement is copied into *their* folder and their signer slot is bound to *their*
+  account. The link is never bound to the intended sender's phone or identity. Treat it
+  like a signed blank cheque — send it over WhatsApp only to the intended sender, and
+  the HMAC only protects against guessing, not against forwarding.
 - The payments service only sends cards to Kenyan mobile numbers, so the drafts call
   refuses any other number for a signer who isn't the sender. A sender abroad still gets
   **Sign now** on the review page, but their own card fails (`bad_number` in the log).

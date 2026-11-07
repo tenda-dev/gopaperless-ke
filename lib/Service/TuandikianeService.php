@@ -392,7 +392,7 @@ class TuandikianeService {
 			$names[$signRequest->getId()] = $signRequest->getDisplayName();
 		}
 		$pages = array_values(array_map(
-			static fn (array $page): array => ['w' => $page['w'], 'h' => $page['h']],
+			static fn (array $page): array => ['w' => (float)$page['w'], 'h' => (float)$page['h']],
 			$file->getMetadata()['d'] ?? [],
 		));
 		$boxes = [];
