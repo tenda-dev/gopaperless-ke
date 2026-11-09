@@ -182,12 +182,14 @@ class TuandikianeService {
 	private function fill(TuandikianeDraft $draft, array $data, IUser $moderator, array $accounts): void {
 		$this->validateHelper->validateBase64($data['base64']);
 		$signers = [];
-		foreach ($data['signers'] as $order => $signer) {
+		foreach ($data['signers'] as $signer) {
 			$user = $accounts[$signer['key']];
 			$signers[] = [
 				'identifyMethods' => [$this->identity($draft, $signer, $user)],
-				// A joiner's slot reads "Signer 2" until their account takes it.
-				'displayName' => $signer['name'] !== '' ? $signer['name'] : ($user?->getDisplayName() ?: 'Signer ' . ($order + 1)),
+				// What the moderator wrote, else the number. Never the account's
+				// name: the moderator must not learn who has MIMI, or whose an
+				// account is, before that person signs (signed() names them then).
+				'displayName' => $signer['name'] !== '' ? $signer['name'] : $signer['phone'],
 				// Everyone at once: a ready signer never waits for a joiner.
 				'signingOrder' => 1,
 				'notify' => 0,
@@ -452,7 +454,7 @@ class TuandikianeService {
 	 *
 	 * @return array{file: FileEntity, pages: list<array{w: float|int, h: float|int}>,
 	 *     boxes: list<array{page: int, left: int, top: int, width: int, height: int, signer: string}>,
-	 *     signers: list<array{name: string, sender: bool, ready: bool}>, moderator: IUser,
+	 *     signers: list<array{name: string, sender: bool}>, moderator: IUser,
 	 *     money: ?array{price: int, credits: int}}
 	 */
 	public function review(TuandikianeDraft $draft): array {
@@ -478,7 +480,8 @@ class TuandikianeService {
 			];
 		}
 		$signers = array_map(
-			static fn (array $slot): array => ['name' => $names[$slot['signRequestId']] ?? '', 'sender' => $slot['sender'], 'ready' => $slot['uid'] !== null],
+			// Nothing about who has MIMI: a joiner's slot looks like any other.
+			static fn (array $slot): array => ['name' => $names[$slot['signRequestId']] ?? '', 'sender' => $slot['sender']],
 			$draft->getSlots() ?? [],
 		);
 		$moderator = $this->moderator($draft);
@@ -551,12 +554,28 @@ class TuandikianeService {
 
 	/** The WhatsApp number a Tuandikiane signer writes from, for their M-Pesa prompt; '' for any other signer. */
 	public function phoneFor(SignRequest $signRequest): string {
+		return $this->slotFor($signRequest)['phone'] ?? '';
+	}
+
+	/**
+	 * The name a signer signs under. A Tuandikiane slot the moderator left
+	 * unnamed shows the number until its signer signs, so they sign under
+	 * their own account's name; anyone else under their sign request's.
+	 */
+	public function signerName(SignRequest $signRequest, IUser $signer): string {
+		$slot = $this->slotFor($signRequest);
+		return $slot !== null && !($slot['named'] ?? true)
+			? mb_substr($signer->getDisplayName(), 0, 64)
+			: $signRequest->getDisplayName();
+	}
+
+	private function slotFor(SignRequest $signRequest): ?array {
 		foreach ($this->drafts->findByFileId((int)$signRequest->getFileId())?->getSlots() ?? [] as $slot) {
 			if ($slot['signRequestId'] === $signRequest->getId()) {
-				return $slot['phone'];
+				return $slot;
 			}
 		}
-		return '';
+		return null;
 	}
 
 	/** The card a slot signs on. */
@@ -767,12 +786,6 @@ class TuandikianeService {
 		if (!$bound) {
 			throw new \RuntimeException('Signer slot ' . $slot['key'] . ' has no identity to bind');
 		}
-		if (!($slot['named'] ?? true)) {
-			// "Signer 2" becomes the name of the account that took the slot.
-			$signRequest = $this->signRequests->getById($slot['signRequestId']);
-			$signRequest->setDisplayName(mb_substr($user->getDisplayName(), 0, 64));
-			$this->signRequests->update($signRequest);
-		}
 		// The next save() must see the account identity, not a cached email one,
 		// or it deletes the sign request as a signer no longer on the list.
 		$this->identifyMethodService->clearCache();
@@ -793,14 +806,21 @@ class TuandikianeService {
 			}
 			$key = null;
 			$moderatorSigned = false;
+			$signer = null;
 			foreach ($draft->getSlots() ?? [] as $slot) {
 				if ($slot['signRequestId'] === $signRequest->getId()) {
 					$key = $slot['key'];
 					$moderatorSigned = $slot['sender'];
+					$signer = !($slot['named'] ?? true) && $slot['uid'] !== null ? $this->users->get($slot['uid']) : null;
 				}
 			}
 			if ($key === null) {
 				return;
+			}
+			if ($signer instanceof IUser) {
+				// Signed: the number they showed as becomes their name.
+				$signRequest->setDisplayName(mb_substr($signer->getDisplayName(), 0, 64));
+				$this->signRequests->update($signRequest);
 			}
 			if ($moderatorSigned && $draft->getStatus() === TuandikianeDraft::STATUS_SEALED) {
 				$draft->setStatus(TuandikianeDraft::STATUS_SENT);

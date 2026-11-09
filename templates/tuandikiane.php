@@ -87,10 +87,9 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 			</div>
 			<ul class="gp-tk__pills" aria-label="<?php p($l->t('Signers')); ?>">
 				<?php foreach ($signers as $signer): ?>
-					<li class="gp-tk__pill<?php if (!$signer['ready']): ?> gp-tk__pill--joins<?php endif; ?>">
+					<li class="gp-tk__pill">
 						<span class="gp-tk__pill-dot" aria-hidden="true"></span>
 						<?php p($signer['sender'] ? $l->t('You') : $signer['name']); ?>
-						<?php if (!$signer['ready']): ?><span class="gp-tk__pill-note"><?php p($l->t('joins MIMI')); ?></span><?php endif; ?>
 					</li>
 				<?php endforeach; ?>
 			</ul>

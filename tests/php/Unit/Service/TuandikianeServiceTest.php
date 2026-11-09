@@ -257,8 +257,8 @@ final class TuandikianeServiceTest extends TestCase {
 		$this->assertSame([['method' => 'account', 'value' => 'neo']], $saved['signers'][0]['identifyMethods']);
 		$this->assertSame([['method' => 'account', 'value' => 'ali']], $saved['signers'][1]['identifyMethods']);
 		$this->assertSame('tuandikiane-' . $result['draft_uuid'] . '-s3@placeholder.securesign.local', $saved['signers'][2]['identifyMethods'][0]['value']);
-		// An unnamed signer with an account shows their account's name; nobody waits for anyone.
-		$this->assertSame(['Neo Kamau', 'Ali', 'Wanjiru'], array_column($saved['signers'], 'displayName'));
+		// An unnamed signer shows as their number, never their account's name; nobody waits for anyone.
+		$this->assertSame(['Neo Kamau', '+254722000002', 'Wanjiru'], array_column($saved['signers'], 'displayName'));
 		$this->assertSame([1, 1, 1], array_column($saved['signers'], 'signingOrder'));
 		$this->assertSame([0, 0, 0], array_column($saved['signers'], 'notify'));
 
@@ -554,6 +554,45 @@ final class TuandikianeServiceTest extends TestCase {
 		$this->client->expects($this->never())->method('event');
 
 		$this->service()->signed(self::file(), self::signRequest(101));
+	}
+
+	public function testTheModeratorSeesWhatTheyWroteOrTheNumberAndNothingAboutMimi(): void {
+		$this->files->method('getById')->willReturn(self::file());
+		$unnamed = self::signRequest(102);
+		$unnamed->setDisplayName('+254722000002');
+		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101), $unnamed, self::signRequest(103)]);
+		$this->fileElements->method('getByFileId')->willReturn([]);
+
+		$review = $this->service()->review(self::draft());
+
+		// Ali has MIMI and Wanjiru doesn't: the moderator can't tell.
+		$this->assertSame([
+			['name' => 'Neo Kamau', 'sender' => true],
+			['name' => '+254722000002', 'sender' => false],
+			['name' => 'Wanjiru', 'sender' => false],
+		], $review['signers']);
+	}
+
+	public function testAnUnnamedSignerSignsUnderTheirOwnNameAndShowsItOnceSigned(): void {
+		$this->drafts->method('findByFileId')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT));
+		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101), self::signRequest(102), self::signRequest(103)]);
+		$unnamed = self::signRequest(102);
+		$unnamed->setDisplayName('+254722000002');
+		$service = $this->service();
+
+		$this->assertSame('Ali', $service->signerName($unnamed, $this->accounts['ali']));
+		$this->assertSame('Wanjiru', $service->signerName(self::signRequest(103), $this->user('wanjiru-account')), 'named by the moderator');
+
+		$renamed = [];
+		$this->signRequests->method('update')->willReturnCallback(static function (SignRequest $signRequest) use (&$renamed): SignRequest {
+			$renamed[] = [$signRequest->getId(), $signRequest->getDisplayName()];
+			return $signRequest;
+		});
+		$unnamed->setSigned(new \DateTime(self::NOW));
+		$service->signed(self::file(), $unnamed);
+		$service->signed(self::file(), self::signRequest(103, new \DateTime(self::NOW)));
+
+		$this->assertSame([[102, 'Ali']], $renamed, 'only the unnamed slot, only once signed');
 	}
 
 	public function testAFailureAfterASignatureNeverReachesTheSigner(): void {

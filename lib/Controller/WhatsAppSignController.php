@@ -228,7 +228,7 @@ class WhatsAppSignController extends Controller {
 					$signRequest,
 					$signer,
 					$this->identifyMethods->getUserIdentifier($signRequest->getId()),
-					$signRequest->getDisplayName(),
+					$this->tuandikiane->signerName($signRequest, $signer),
 					true,
 					null,
 					'clickToSign',
