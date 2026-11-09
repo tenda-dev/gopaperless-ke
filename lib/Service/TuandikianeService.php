@@ -20,14 +20,15 @@ use OCA\Libresign\Db\TuandikianeDraft;
 use OCA\Libresign\Db\TuandikianeDraftMapper;
 use OCA\Libresign\Enum\FileStatus;
 use OCA\Libresign\Enum\SignRequestStatus;
+use OCA\Libresign\Enum\SponsorshipType;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
+use OCA\Libresign\Service\Payment\LinkPaymentService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\Exception as DbException;
 use OCP\Files\File;
-use OCP\Files\Folder;
 use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IDBConnection;
@@ -39,20 +40,22 @@ use Sabre\DAV\UUIDUtil;
 
 /**
  * Tuandikiane, the WhatsApp agreement intake, on the GoPaperless side
- * (docs/runbooks/tuandikiane.md).
+ * (docs/runbooks/tuandikiane.md, and the contract in the payments repo's
+ * docs/tuandikiane-contract.md).
  *
- * Tuandikiane holds no user token. It creates a draft here with a server key;
- * the service account holds it, in draft status, so no one is notified. The
- * sender opens the review link, signs in as usual and taps Send; a MIMI passkey
- * authorises that. The draft then moves to the sender, the sender's slot
- * becomes their account, and every signer, the sender too, gets the WhatsApp
- * card on the number Tuandikiane gave. The others are bound the same way: the
- * link that reached their WhatsApp, a sign-in, a MIMI passkey.
+ * Tuandikiane holds no user token. It names everyone by MIMI account: the
+ * moderator, who writes the agreement on WhatsApp, and each signer it found an
+ * account for. GoPaperless makes the draft as the moderator's own, with those
+ * signers as accounts and everyone else as a joiner's slot. The moderator opens
+ * Seal & Deliver from WhatsApp, pays for the signers if their credits fall
+ * short, and seals with their MIMI passkey, or by signing when they sign too.
+ * Ready signers get their WhatsApp card at once; a joiner gets an invite to
+ * MIMI and their slot becomes their account when Tuandikiane hears they joined.
  */
 class TuandikianeService {
-	/** The draft's folder: in the service account's LibreSign folder, then in the sender's. */
+	/** The draft's folder in the moderator's LibreSign folder. */
 	public const FOLDER = 'tuandikiane-';
-	/** Signer slots are email signers until someone takes them. Most have no email. */
+	/** A joiner's slot is an email signer until their account takes it. Most have no email. */
 	private const PLACEHOLDER_DOMAIN = '@placeholder.securesign.local';
 	private const MAX_HOURS = 168;
 	private const DEFAULT_HOURS = 24;
@@ -74,6 +77,8 @@ class TuandikianeService {
 		private FolderService $folders,
 		private ValidateHelper $validateHelper,
 		private WhatsAppService $whatsApp,
+		private SecurySignService $signa,
+		private LinkPaymentService $payments,
 		private TuandikianeClient $client,
 		private IURLGenerator $urls,
 		private LoggerInterface $logger,
@@ -97,10 +102,10 @@ class TuandikianeService {
 
 	/**
 	 * POST /tuandikiane/drafts. The same reference again answers with the draft
-	 * it made, unless that one expired unsent: it is deleted and made again.
+	 * it made, unless that one expired unsealed: it is deleted and made again.
 	 *
 	 * @return array{draft_uuid: string, review_url: string, expires_at: string}
-	 * @throws LibresignException 422 for a body that breaks the contract, 503 when the service account is missing
+	 * @throws LibresignException 422 for a body that breaks the contract or a moderator GoPaperless can't use, 503 when MIMI doesn't answer
 	 */
 	public function createDraft(array $input): array {
 		$data = $this->parse($input);
@@ -108,11 +113,27 @@ class TuandikianeService {
 		if ($existing !== null && !$this->isExpiredDraft($existing)) {
 			return $this->describe($existing);
 		}
+
+		// Accounts first, so a MIMI outage leaves nothing half made.
+		$moderator = $this->account($data['moderator']);
+		if ($moderator === null) {
+			throw new LibresignException('moderator.sub has no MIMI account GoPaperless can use', Http::STATUS_UNPROCESSABLE_ENTITY);
+		}
+		$accounts = [];
+		$taken = [];
+		foreach ($data['signers'] as $signer) {
+			$user = $signer['sender'] ? $moderator : ($signer['sub'] !== null ? $this->account($signer['sub']) : null);
+			// Two numbers that paid MIMI from one account: the second is a joiner's slot.
+			$user = $user !== null && !isset($taken[$user->getUID()]) ? $user : null;
+			$accounts[$signer['key']] = $user;
+			if ($user !== null) {
+				$taken[$user->getUID()] = true;
+			}
+		}
+
 		if ($existing !== null) {
 			$this->deleteDraft($existing);
 		}
-		$service = $this->serviceUser();
-
 		$now = $this->time->getDateTime();
 		$draft = new TuandikianeDraft();
 		$draft->setDraftUuid(UUIDUtil::getUUID());
@@ -134,7 +155,7 @@ class TuandikianeService {
 			return $this->describe($raced);
 		}
 		try {
-			$this->fill($draft, $data, $service);
+			$this->fill($draft, $data, $moderator, $accounts);
 		} catch (\Throwable $e) {
 			$this->deleteDraft($draft);
 			throw $e;
@@ -142,26 +163,40 @@ class TuandikianeService {
 		return $this->describe($draft);
 	}
 
+	/** The GoPaperless account for a MIMI account, or null. MIMI not answering is a 503. */
+	private function account(string $sub): ?IUser {
+		try {
+			return $this->signa->accountFor($sub);
+		} catch (\RuntimeException $e) {
+			$this->logger->warning('MIMI could not name a Tuandikiane account', ['exception' => $e]);
+			throw new LibresignException('MIMI is not answering. Try again in a minute.', Http::STATUS_SERVICE_UNAVAILABLE);
+		}
+	}
+
 	/**
-	 * The file, one email signer per slot, then the boxes on each slot's sign request.
+	 * The file as the moderator's, a signer per slot (their account, or a
+	 * joiner's placeholder), then the boxes on each slot's sign request.
+	 *
+	 * @param array<string, ?IUser> $accounts by signer key
 	 */
-	private function fill(TuandikianeDraft $draft, array $data, IUser $service): void {
+	private function fill(TuandikianeDraft $draft, array $data, IUser $moderator, array $accounts): void {
 		$this->validateHelper->validateBase64($data['base64']);
 		$signers = [];
 		foreach ($data['signers'] as $order => $signer) {
+			$user = $accounts[$signer['key']];
 			$signers[] = [
-				'identifyMethods' => [['method' => 'email', 'value' => $this->slotEmail($draft, $signer)]],
-				// Unnamed, a slot reads "Signer 2" until someone takes it. Left empty,
-				// LibreSign would show its placeholder email instead.
-				'displayName' => $signer['name'] !== '' ? $signer['name'] : 'Signer ' . ($order + 1),
-				'signingOrder' => $order + 1,
+				'identifyMethods' => [$this->identity($draft, $signer, $user)],
+				// A joiner's slot reads "Signer 2" until their account takes it.
+				'displayName' => $signer['name'] !== '' ? $signer['name'] : ($user?->getDisplayName() ?: 'Signer ' . ($order + 1)),
+				// Everyone at once: a ready signer never waits for a joiner.
+				'signingOrder' => 1,
 				'notify' => 0,
 			];
 		}
-		$file = $this->asUser($service->getUID(), fn (): FileEntity => $this->requestSignature->save([
+		$file = $this->asUser($moderator->getUID(), fn (): FileEntity => $this->requestSignature->save([
 			'file' => ['base64' => $data['base64']],
 			'name' => $data['name'],
-			'userManager' => $service,
+			'userManager' => $moderator,
 			'status' => FileStatus::DRAFT->value,
 			'settings' => ['folderName' => self::FOLDER . $draft->getDraftUuid()],
 			'signers' => $signers,
@@ -173,7 +208,9 @@ class TuandikianeService {
 		$slots = [];
 		$slotIds = [];
 		foreach ($data['signers'] as $signer) {
-			$signRequest = $this->signRequests->getByIdentifierAndFileId('email', $this->slotEmail($draft, $signer), $file->getId());
+			$user = $accounts[$signer['key']];
+			$identity = $this->identity($draft, $signer, $user);
+			$signRequest = $this->signRequests->getByIdentifierAndFileId($identity['method'], $identity['value'], $file->getId());
 			if ($signRequest === null) {
 				throw new \RuntimeException('Signer slot ' . $signer['key'] . ' has no sign request');
 			}
@@ -184,7 +221,7 @@ class TuandikianeService {
 				'sender' => $signer['sender'],
 				'named' => $signer['name'] !== '',
 				'signRequestId' => $signRequest->getId(),
-				'uid' => null,
+				'uid' => $user?->getUID(),
 				'card' => false,
 			];
 		}
@@ -216,16 +253,24 @@ class TuandikianeService {
 		$this->drafts->update($draft);
 	}
 
+	/** @return array{method: string, value: string} */
+	private function identity(TuandikianeDraft $draft, array $signer, ?IUser $user): array {
+		return $user !== null
+			? ['method' => 'account', 'value' => $user->getUID()]
+			: ['method' => 'email', 'value' => $signer['email'] ?? 'tuandikiane-' . $draft->getDraftUuid() . '-' . $signer['key'] . self::PLACEHOLDER_DOMAIN];
+	}
+
 	/**
 	 * The body as the contract has it, or a 422 naming the first thing wrong.
 	 * Messages are for Tuandikiane's developers, so they are not translated.
 	 *
-	 * @return array{reference: string, name: string, base64: string, hours: int,
-	 *     signers: list<array{key: string, name: string, phone: string, email: ?string, sender: bool}>,
+	 * @return array{reference: string, name: string, base64: string, hours: int, moderator: string,
+	 *     signers: list<array{key: string, name: string, phone: string, email: ?string, sender: bool, sub: ?string}>,
 	 *     boxes: list<array{signer: string, page: int, left: int, top: int, width: int, height: int}>}
 	 */
 	private function parse(array $input): array {
 		$fail = static fn (string $message) => new LibresignException($message, Http::STATUS_UNPROCESSABLE_ENTITY);
+		$sub = static fn (mixed $value): ?string => is_string($value) && trim($value) !== '' && strlen($value) <= 255 ? trim($value) : null;
 
 		$reference = is_string($input['reference'] ?? null) ? trim($input['reference']) : '';
 		if ($reference === '' || strlen($reference) > 128) {
@@ -240,6 +285,10 @@ class TuandikianeService {
 		if (!is_string($base64) || $base64 === '') {
 			throw $fail('file.base64 is required');
 		}
+		$moderator = $sub($input['moderator']['sub'] ?? null);
+		if ($moderator === null) {
+			throw $fail('moderator.sub is required: the MIMI account that seals the agreement');
+		}
 
 		$signers = [];
 		$emails = [];
@@ -249,7 +298,7 @@ class TuandikianeService {
 			if (!preg_match('/^s[1-9]\d{0,2}$/D', $key) || isset($signers[$key])) {
 				throw $fail("$at.key must be s1, s2, ... and unique");
 			}
-			// "" is allowed: senders rarely name themselves.
+			// "" is allowed: moderators rarely name themselves.
 			$displayName = $signer['display_name'] ?? null;
 			if (!is_string($displayName)) {
 				throw $fail("$at.display_name must be a string, empty if unknown");
@@ -259,8 +308,8 @@ class TuandikianeService {
 			if (!is_string($phone) || !preg_match('/^\+[1-9]\d{6,14}$/D', $phone)) {
 				throw $fail("$at.phone must be E.164, like +254712345678");
 			}
-			// Their signing link goes out on WhatsApp, which the payments service only
-			// sends to Kenyan mobile numbers. The sender may be anywhere.
+			// Their card or invite goes out on WhatsApp, which the payments service
+			// only sends to Kenyan mobile numbers. The moderator may be anywhere.
 			if (($signer['is_sender'] ?? false) !== true && WhatsAppService::normalize($phone) === null) {
 				throw $fail("$at.phone must be a Kenyan mobile number, like +254712345678");
 			}
@@ -282,12 +331,13 @@ class TuandikianeService {
 				'phone' => $phone,
 				'email' => $email,
 				'sender' => ($signer['is_sender'] ?? false) === true,
+				'sub' => $sub($signer['sub'] ?? null),
 			];
 		}
 		if ($signers === []) {
 			throw $fail('signers is required');
 		}
-		// None when the sender only draws the agreement up between others.
+		// None when the moderator only draws the agreement up between others.
 		if (count(array_filter($signers, static fn (array $signer): bool => $signer['sender'])) > 1) {
 			throw $fail('at most one signer may have is_sender true');
 		}
@@ -323,14 +373,10 @@ class TuandikianeService {
 			'name' => $name,
 			'base64' => $base64,
 			'hours' => min($hours, self::MAX_HOURS),
+			'moderator' => $moderator,
 			'signers' => array_values($signers),
 			'boxes' => $boxes,
 		];
-	}
-
-	/** The signer's own email, or one made from the draft and the slot: never their number. */
-	private function slotEmail(TuandikianeDraft $draft, array $signer): string {
-		return $signer['email'] ?? 'tuandikiane-' . $draft->getDraftUuid() . '-' . $signer['key'] . self::PLACEHOLDER_DOMAIN;
 	}
 
 	/** @return array{draft_uuid: string, review_url: string, expires_at: string} */
@@ -343,31 +389,31 @@ class TuandikianeService {
 	}
 
 	/**
-	 * The code in the review link: the draft's uuid and a MAC over it, like the
-	 * WhatsApp card's code. Nothing is stored; whether it can still be used is
-	 * the draft's own state (draftForCode).
+	 * The code in the Seal & Deliver link: the draft's uuid and a MAC over it,
+	 * like the WhatsApp card's code. Nothing is stored; what it can still do is
+	 * the draft's own state.
 	 */
 	public function reviewCode(string $draftUuid): string {
-		return $draftUuid . '.' . $this->mac($draftUuid);
+		return $draftUuid . '.' . $this->mac('tuandikiane-review:' . $draftUuid);
 	}
 
-	private function mac(string $draftUuid): string {
-		$mac = hash_hmac('sha256', 'tuandikiane-review:' . $draftUuid, $this->config->getSystemValueString('secret'), true);
+	private function mac(string $message): string {
+		$mac = hash_hmac('sha256', $message, $this->config->getSystemValueString('secret'), true);
 		// 128 bits, URL-safe.
 		return rtrim(strtr(base64_encode(substr($mac, 0, 16)), '+/', '-_'), '=');
 	}
 
-	/** The draft a review code names while it can still be sent; null once it is sent or expired. */
+	/** The draft a Seal & Deliver code names, in any state; null for a bad code or an unknown draft. */
 	public function draftForCode(string $code): ?TuandikianeDraft {
 		[$uuid, $mac] = explode('.', $code, 2) + [1 => ''];
-		if ($uuid === '' || !hash_equals($this->mac($uuid), $mac)) {
+		if ($uuid === '' || !hash_equals($this->mac('tuandikiane-review:' . $uuid), $mac)) {
 			return null;
 		}
-		$draft = $this->drafts->findByDraftUuid($uuid);
-		return $draft !== null && $this->isOpen($draft) ? $draft : null;
+		return $this->drafts->findByDraftUuid($uuid);
 	}
 
-	private function isOpen(TuandikianeDraft $draft): bool {
+	/** Still waiting to be sealed, and not expired. */
+	public function isOpen(TuandikianeDraft $draft): bool {
 		return $draft->getStatus() === TuandikianeDraft::STATUS_DRAFT
 			&& $draft->getExpiresAt() > $this->time->getDateTime();
 	}
@@ -376,14 +422,38 @@ class TuandikianeService {
 		return $draft->getStatus() === TuandikianeDraft::STATUS_DRAFT && !$this->isOpen($draft);
 	}
 
+	public function moderator(TuandikianeDraft $draft): IUser {
+		$user = $this->users->get($this->files->getById($draft->getFileId())->getUserId());
+		if (!$user instanceof IUser) {
+			throw new LibresignException('The moderator\'s account is gone.', Http::STATUS_GONE);
+		}
+		return $user;
+	}
+
+	/** The moderator's MIMI account, which their passkey answers for. */
+	public function moderatorSub(TuandikianeDraft $draft): ?string {
+		return $this->whatsApp->subFor($this->moderator($draft));
+	}
+
+	/** The moderator's own slot, when they sign too. */
+	private function moderatorSlot(TuandikianeDraft $draft): ?array {
+		foreach ($draft->getSlots() ?? [] as $slot) {
+			if ($slot['sender']) {
+				return $slot;
+			}
+		}
+		return null;
+	}
+
 	/**
-	 * What the review page shows: the document's pages in points, each box with
-	 * its signer's name (top-left origin, as Tuandikiane sent them), and the
-	 * signers in signing order.
+	 * What the page shows: the document's pages in points, each box with its
+	 * signer's name (top-left origin, as Tuandikiane sent them), the signers in
+	 * order, and the money: what one signature costs and the moderator's credits.
 	 *
 	 * @return array{file: FileEntity, pages: list<array{w: float|int, h: float|int}>,
 	 *     boxes: list<array{page: int, left: int, top: int, width: int, height: int, signer: string}>,
-	 *     signers: list<array{name: string, sender: bool}>}
+	 *     signers: list<array{name: string, sender: bool, ready: bool}>, moderator: IUser,
+	 *     money: ?array{price: int, credits: int}}
 	 */
 	public function review(TuandikianeDraft $draft): array {
 		$file = $this->files->getById($draft->getFileId());
@@ -408,152 +478,272 @@ class TuandikianeService {
 			];
 		}
 		$signers = array_map(
-			static fn (array $slot): array => ['name' => $names[$slot['signRequestId']] ?? '', 'sender' => $slot['sender']],
+			static fn (array $slot): array => ['name' => $names[$slot['signRequestId']] ?? '', 'sender' => $slot['sender'], 'ready' => $slot['uid'] !== null],
 			$draft->getSlots() ?? [],
 		);
-		return ['file' => $file, 'pages' => $pages, 'boxes' => $boxes, 'signers' => $signers];
+		$moderator = $this->moderator($draft);
+		$money = $this->payments->on() ? ['price' => $this->payments->price(), 'credits' => $this->payments->credits($moderator)] : null;
+		return ['file' => $file, 'pages' => $pages, 'boxes' => $boxes, 'signers' => $signers, 'moderator' => $moderator, 'money' => $money];
 	}
 
-	/** The draft's PDF, from its holder's files. */
+	/** The draft's PDF, from the moderator's files. */
 	public function document(TuandikianeDraft $draft): File {
 		$file = $this->files->getById($draft->getFileId());
 		return $this->asUser($file->getUserId(), fn (): File => $this->folders->getFileByNodeId((int)$file->getNodeId()));
 	}
 
 	/**
-	 * Send, once the controller has checked the MIMI passkey. The file moves to
-	 * $sender the way a public workflow claim moves one (copied into their
-	 * LibreSign folder, the File row repointed); then, in one transaction, the
-	 * sender's slot becomes their account, the file goes to able-to-sign
-	 * without notifications, and the draft is marked sent. The WhatsApp cards
-	 * and Tuandikiane's "sent" follow.
-	 *
-	 * Every signer gets a card, the sender too: one way in for everyone, and a
-	 * sender who closes the page can still sign. When the sender is not one of
-	 * the signers, no slot is bound.
-	 *
-	 * @return ?string the sender's own signing card, for "Sign now"; null when they don't sign
-	 * @throws LibresignException 410 when the draft can no longer be sent
+	 * Signatures the moderator's credits must cover to seal: every signer's with
+	 * "Pay for signers" on, none with it off (each pays on their card, the
+	 * moderator too). Zero with credits off.
 	 */
-	public function send(TuandikianeDraft $draft, IUser $sender): ?string {
-		$file = $this->files->getById($draft->getFileId());
-		$holder = $file->getUserId();
-		$sourceId = (int)$file->getNodeId();
-		// File I/O stays out of the transaction. The folder is named after the
-		// draft, so a retry after a failure below finds this copy and reuses it.
-		[$copy, $created] = $this->copyTo($file, $sender, $draft);
+	public function creditsNeeded(TuandikianeDraft $draft, bool $payForSigners): int {
+		return $this->payments->on() && $payForSigners ? count($draft->getSlots() ?? []) : 0;
+	}
 
-		$gone = false;
+	/** How many signatures the moderator must buy before sealing. */
+	public function shortfall(TuandikianeDraft $draft, bool $payForSigners): int {
+		$needed = $this->creditsNeeded($draft, $payForSigners);
+		return $needed === 0 ? 0 : max(0, $needed - $this->payments->credits($this->moderator($draft)));
+	}
+
+	/**
+	 * Seal, once the controller has the moderator's MIMI passkey (or, when they
+	 * sign too, before their signature, which is then the seal). In one
+	 * transaction the file goes to able-to-sign with the moderator's credits
+	 * reserved for each signer when they pay, and the draft is marked sealed.
+	 * A moderator who doesn't sign delivers now; one who does, at their
+	 * signature (signed()).
+	 *
+	 * @return ?string the moderator's own signing card, when they sign
+	 * @throws LibresignException 410 when it can no longer be sealed, 402 when the credits fall short
+	 */
+	public function seal(TuandikianeDraft $draft, bool $payForSigners): ?string {
+		$file = $this->files->getById($draft->getFileId());
+		$moderator = $this->moderator($draft);
+		if ($this->shortfall($draft, $payForSigners) > 0) {
+			throw new LibresignException('Buy the signatures first.', Http::STATUS_PAYMENT_REQUIRED);
+		}
+		$signs = $this->moderatorSlot($draft) !== null;
+
 		$this->db->beginTransaction();
 		try {
 			$locked = $this->drafts->findByDraftUuidForUpdate($draft->getDraftUuid());
 			if ($locked === null || !$this->isOpen($locked)) {
-				$gone = true;
 				throw new LibresignException('This link has expired.', Http::STATUS_GONE);
 			}
-			$file->setUserId($sender->getUID());
-			$file->setNodeId($copy->getId());
-			$this->files->update($file);
-
-			$slots = $locked->getSlots() ?? [];
-			foreach ($slots as $index => $slot) {
-				if ($slot['sender']) {
-					$slots[$index] = $this->bind($slots, $index, $sender);
-				}
-			}
-			$this->publish($file, $sender);
-
-			$locked->setSlots($slots);
-			$locked->setStatus(TuandikianeDraft::STATUS_SENT);
+			$this->publish($file, $moderator, $payForSigners);
+			$locked->setStatus($signs ? TuandikianeDraft::STATUS_SEALED : TuandikianeDraft::STATUS_SENT);
 			$locked->setSentAt($this->time->getDateTime());
 			$locked = $this->drafts->update($locked);
 			$this->db->commit();
 		} catch (\Throwable $e) {
 			$this->db->rollBack();
-			// Someone else sent it, or it expired: this copy will never be used.
-			// After any other failure it stays for the retry to reuse.
-			if ($gone && $created) {
-				$this->deleteQuietly($copy);
-			}
 			throw $e;
 		}
 
-		$this->removeHolderCopy($holder, $sourceId, $draft);
-		$locked = $this->sendCards($locked, $file, $sender);
-		$this->client->event($locked->getDraftUuid(), 'sent');
+		if (!$signs) {
+			$this->deliver($locked, $file, $moderator);
+			return null;
+		}
+		return $this->moderatorCard($locked);
+	}
 
-		foreach ($locked->getSlots() ?? [] as $slot) {
-			if ($slot['sender']) {
-				return $this->cardUrl($this->signRequests->getById($slot['signRequestId']));
+	/** The WhatsApp number a Tuandikiane signer writes from, for their M-Pesa prompt; '' for any other signer. */
+	public function phoneFor(SignRequest $signRequest): string {
+		foreach ($this->drafts->findByFileId((int)$signRequest->getFileId())?->getSlots() ?? [] as $slot) {
+			if ($slot['signRequestId'] === $signRequest->getId()) {
+				return $slot['phone'];
 			}
 		}
-		return null;
+		return '';
+	}
+
+	/** The card a slot signs on. */
+	public function slotCard(array $slot): string {
+		return $this->cardUrl($this->signRequests->getById($slot['signRequestId']));
+	}
+
+	/** The moderator's own card, when they sign. */
+	public function moderatorCard(TuandikianeDraft $draft): ?string {
+		$slot = $this->moderatorSlot($draft);
+		return $slot === null ? null : $this->slotCard($slot);
 	}
 
 	/**
-	 * A slot the WhatsApp card code names that no account holds yet, on a sent
-	 * draft. The card page sends its signer to take it first.
-	 *
-	 * @return array{draft: TuandikianeDraft, slot: array, signRequest: SignRequest}|null
+	 * Able to sign, through the same save() as Send in the app, every signer as
+	 * they stand, notify off: the WhatsApp cards are the request. With "Pay for
+	 * signers" each is the moderator's sponsored signer, so their credits are
+	 * reserved now.
 	 */
-	public function unboundSlot(string $cardCode): ?array {
-		$signRequest = $this->whatsApp->signRequestForCode($cardCode);
-		if ($signRequest === null) {
+	private function publish(FileEntity $file, IUser $moderator, bool $payForSigners): void {
+		$signers = [];
+		foreach ($this->signRequests->getByFileId($file->getId()) as $signRequest) {
+			$methods = [];
+			foreach ($this->identifyMethods->getIdentifyMethodsFromSignRequestId($signRequest->getId()) as $method) {
+				$methods[] = ['method' => $method->getIdentifierKey(), 'value' => $method->getIdentifierValue()];
+			}
+			$signers[] = [
+				'identifyMethods' => $methods,
+				'displayName' => $signRequest->getDisplayName(),
+				'signingOrder' => $signRequest->getSigningOrder(),
+				'notify' => 0,
+			] + ($payForSigners ? ['sponsorship' => ['type' => SponsorshipType::REQUESTER->value]] : []);
+		}
+		$this->requestSignature->save([
+			'uuid' => $file->getUuid(),
+			'userManager' => $moderator,
+			'status' => FileStatus::ABLE_TO_SIGN->value,
+			'signers' => $signers,
+		]);
+	}
+
+	/**
+	 * Everyone hears: each ready signer's card, and Tuandikiane's "sent" with the
+	 * joiners' invites, which it sends from its own WhatsApp templates.
+	 */
+	private function deliver(TuandikianeDraft $draft, FileEntity $file, IUser $moderator): void {
+		$draft = $this->sendCards($draft, $file, $moderator);
+		$invites = [];
+		foreach ($draft->getSlots() ?? [] as $slot) {
+			if ($slot['uid'] === null) {
+				$invites[] = ['signer' => $slot['key'], 'phone' => $slot['phone'], 'url' => $this->joinUrl($draft, $slot['key'])];
+			}
+		}
+		$this->client->event($draft->getDraftUuid(), 'sent', null, ['invites' => $invites]);
+	}
+
+	/**
+	 * The WhatsApp card to each ready signer who can sign and has not had one.
+	 * At delivery, and when a joiner's account takes their slot. A card that
+	 * fails to go is tried again at the next of those.
+	 */
+	public function sendCards(TuandikianeDraft $draft, FileEntity $file, IUser $moderator): TuandikianeDraft {
+		$slots = $draft->getSlots() ?? [];
+		$changed = false;
+		foreach ($slots as $index => $slot) {
+			if ($slot['card'] || $slot['uid'] === null) {
+				continue;
+			}
+			$user = $this->users->get($slot['uid']);
+			$sub = $user instanceof IUser ? $this->whatsApp->subFor($user) : null;
+			try {
+				$signRequest = $this->signRequests->getById($slot['signRequestId']);
+			} catch (DoesNotExistException) {
+				continue;
+			}
+			if ($sub === null || $signRequest->getSigned() !== null || $signRequest->getStatusEnum() !== SignRequestStatus::ABLE_TO_SIGN) {
+				continue;
+			}
+			$result = $this->whatsApp->sendTo($file, $signRequest, $moderator, $sub, $slot['phone']);
+			// too_soon: one already went to this signer.
+			if (in_array($result['status'], ['sent', 'too_soon'], true)) {
+				$slots[$index]['card'] = true;
+				$changed = true;
+			} else {
+				$this->logger->info('Tuandikiane signing card not sent', ['slot' => $slot['key'], 'error' => $result['error'] ?? null]);
+			}
+		}
+		if (!$changed) {
+			return $draft;
+		}
+		$draft->setSlots($slots);
+		return $this->drafts->update($draft);
+	}
+
+	public function cardUrl(SignRequest $signRequest): string {
+		return $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $this->whatsApp->linkCode($signRequest)]);
+	}
+
+	/** The joiner's invite link: MIMI first, then their card. */
+	public function joinUrl(TuandikianeDraft $draft, string $key): string {
+		$payload = $draft->getDraftUuid() . '.' . $key;
+		return $this->urls->linkToRouteAbsolute('libresign.tuandikiane.join', ['code' => $payload . '.' . $this->mac('tuandikiane-join:' . $payload)]);
+	}
+
+	/**
+	 * The draft and slot an invite code names, on a sealed draft.
+	 *
+	 * @return array{draft: TuandikianeDraft, slot: array}|null
+	 */
+	public function slotForJoinCode(string $code): ?array {
+		$parts = explode('.', $code);
+		if (count($parts) !== 3 || !hash_equals($this->mac('tuandikiane-join:' . $parts[0] . '.' . $parts[1]), $parts[2])) {
 			return null;
 		}
-		$draft = $this->drafts->findByFileId((int)$signRequest->getFileId());
-		if ($draft === null || $draft->getStatus() !== TuandikianeDraft::STATUS_SENT) {
+		$draft = $this->drafts->findByDraftUuid($parts[0]);
+		if ($draft === null || $this->isOpen($draft) || $draft->getStatus() === TuandikianeDraft::STATUS_DRAFT) {
 			return null;
 		}
 		foreach ($draft->getSlots() ?? [] as $slot) {
-			if ($slot['signRequestId'] === $signRequest->getId()) {
-				return $slot['uid'] === null && $signRequest->getSigned() === null
-					? ['draft' => $draft, 'slot' => $slot, 'signRequest' => $signRequest]
-					: null;
+			if ($slot['key'] === $parts[1]) {
+				return ['draft' => $draft, 'slot' => $slot];
 			}
 		}
 		return null;
 	}
 
 	/**
-	 * The signer who opened the card, signed in and passed the MIMI passkey
-	 * takes the slot: its email identity becomes their account.
+	 * Tuandikiane heard that $phone now pays MIMI as $sub: every joiner's slot
+	 * on this draft with that number becomes that account, and, once the draft
+	 * is delivered, their card goes. A repeat changes nothing.
 	 *
-	 * @throws LibresignException 410 when the slot is gone or taken, 409 when they hold another slot here
+	 * @return list<string> the keys that account now holds
+	 * @throws LibresignException 404 unknown draft, 422 a number or account that can't sign, 503 MIMI not answering
 	 */
-	public function bindCard(string $cardCode, IUser $user): void {
-		$found = $this->unboundSlot($cardCode);
-		if ($found === null) {
-			throw new LibresignException('This signing link has already been used.', Http::STATUS_GONE);
+	public function join(string $draftUuid, string $phone, string $sub): array {
+		$draft = $this->drafts->findByDraftUuid($draftUuid);
+		if ($draft === null) {
+			throw new LibresignException('Unknown draft.', Http::STATUS_NOT_FOUND);
 		}
+		$number = WhatsAppService::normalize($phone);
+		$user = $number === null ? null : $this->account($sub);
+		if ($user === null) {
+			throw new LibresignException('phone must be a Kenyan mobile number and sub a MIMI account GoPaperless can use', Http::STATUS_UNPROCESSABLE_ENTITY);
+		}
+
+		$held = [];
+		$bound = false;
 		$this->db->beginTransaction();
 		try {
-			$locked = $this->drafts->findByDraftUuidForUpdate($found['draft']->getDraftUuid());
+			$locked = $this->drafts->findByDraftUuidForUpdate($draftUuid);
 			$slots = $locked?->getSlots() ?? [];
 			foreach ($slots as $index => $slot) {
-				if ($slot['signRequestId'] !== $found['signRequest']->getId()) {
+				if (WhatsAppService::normalize($slot['phone']) !== $number) {
 					continue;
 				}
-				if ($slot['uid'] !== null && $slot['uid'] !== $user->getUID()) {
-					throw new LibresignException('This signing link has already been used.', Http::STATUS_GONE);
+				if ($slot['uid'] === null) {
+					try {
+						$slots[$index] = $this->bind($slots, $index, $user);
+						$bound = true;
+					} catch (LibresignException $e) {
+						// They sign this agreement under another slot already.
+						$this->logger->info('A Tuandikiane joiner was not bound', ['slot' => $slot['key'], 'reason' => $e->getMessage()]);
+						continue;
+					}
 				}
-				$slots[$index] = $this->bind($slots, $index, $user);
-				$locked->setSlots($slots);
-				$this->drafts->update($locked);
-				$this->db->commit();
-				return;
+				if ($slots[$index]['uid'] === $user->getUID()) {
+					$held[] = $slot['key'];
+				}
 			}
-			throw new LibresignException('This signing link has already been used.', Http::STATUS_GONE);
+			$locked?->setSlots($slots);
+			$locked = $locked === null ? null : $this->drafts->update($locked);
+			$this->db->commit();
 		} catch (\Throwable $e) {
 			$this->db->rollBack();
 			throw $e;
 		}
+		if ($locked !== null && $bound && $locked->getStatus() !== TuandikianeDraft::STATUS_DRAFT) {
+			$this->sendCards($locked, $this->files->getById($locked->getFileId()), $this->moderator($locked));
+		}
+		return $held;
 	}
 
 	/**
 	 * The slot as $user's: its sign request's email identity becomes their
 	 * account in place, as RequesterReconciliationService::convertInPlace does,
-	 * so the sign request and its boxes stay. The caller holds the transaction.
+	 * so the sign request, its boxes and any sponsorship stay. The caller holds
+	 * the transaction.
 	 *
 	 * @param list<array> $slots
 	 * @return array the slot, bound
@@ -562,7 +752,7 @@ class TuandikianeService {
 		$slot = $slots[$index];
 		foreach ($slots as $other => $taken) {
 			if ($other !== $index && $taken['uid'] === $user->getUID()) {
-				throw new LibresignException('You already sign this agreement under another name.', Http::STATUS_CONFLICT);
+				throw new LibresignException('Already signs this agreement under another name.', Http::STATUS_CONFLICT);
 			}
 		}
 		$bound = false;
@@ -571,11 +761,6 @@ class TuandikianeService {
 				$method->setIdentifierKey('account');
 				$method->setIdentifierValue($user->getUID());
 				$this->identifyMethods->update($method);
-				$bound = true;
-			} elseif ($method->getIdentifierKey() === 'account') {
-				if ($method->getIdentifierValue() !== $user->getUID()) {
-					throw new LibresignException('This signing link has already been used.', Http::STATUS_GONE);
-				}
 				$bound = true;
 			}
 		}
@@ -596,86 +781,9 @@ class TuandikianeService {
 	}
 
 	/**
-	 * Able to sign, through the same save() as Send in the app, with every
-	 * signer as they stand and notify off: the WhatsApp cards are the request.
-	 */
-	private function publish(FileEntity $file, IUser $sender): void {
-		$signers = [];
-		foreach ($this->signRequests->getByFileId($file->getId()) as $signRequest) {
-			$methods = [];
-			foreach ($this->identifyMethods->getIdentifyMethodsFromSignRequestId($signRequest->getId()) as $method) {
-				$methods[] = ['method' => $method->getIdentifierKey(), 'value' => $method->getIdentifierValue()];
-			}
-			$signers[] = [
-				'identifyMethods' => $methods,
-				'displayName' => $signRequest->getDisplayName(),
-				'signingOrder' => $signRequest->getSigningOrder(),
-				'notify' => 0,
-			];
-		}
-		$this->requestSignature->save([
-			'uuid' => $file->getUuid(),
-			'userManager' => $sender,
-			'status' => FileStatus::ABLE_TO_SIGN->value,
-			'signers' => $signers,
-		]);
-	}
-
-	/**
-	 * The WhatsApp card to each signer whose turn it is and who has not had one,
-	 * the sender included. On Send, and after each signature for the ordered
-	 * flow. A card that fails to go is tried again at the next of those.
-	 */
-	public function sendCards(TuandikianeDraft $draft, FileEntity $file, IUser $sender): TuandikianeDraft {
-		$slots = $draft->getSlots() ?? [];
-		$changed = false;
-		foreach ($slots as $index => $slot) {
-			if ($slot['card']) {
-				continue;
-			}
-			try {
-				$signRequest = $this->signRequests->getById($slot['signRequestId']);
-			} catch (DoesNotExistException) {
-				continue;
-			}
-			if ($signRequest->getSigned() !== null || $signRequest->getStatusEnum() !== SignRequestStatus::ABLE_TO_SIGN) {
-				continue;
-			}
-			$result = $this->whatsApp->sendTo($file, $signRequest, $sender, $this->subFor($draft, $slot), $slot['phone']);
-			// too_soon: one already went to this signer.
-			if (in_array($result['status'], ['sent', 'too_soon'], true)) {
-				$slots[$index]['card'] = true;
-				$changed = true;
-			} else {
-				$this->logger->info('Tuandikiane signing card not sent', ['slot' => $slot['key'], 'error' => $result['error'] ?? null]);
-			}
-		}
-		if (!$changed) {
-			return $draft;
-		}
-		$draft->setSlots($slots);
-		return $this->drafts->update($draft);
-	}
-
-	/**
-	 * Who the payments service files the card under. A slot nobody holds yet has
-	 * no sub, so it is named by the draft and its key; the receipt later finds
-	 * the chat by the sign request either way.
-	 */
-	private function subFor(TuandikianeDraft $draft, array $slot): string {
-		$user = $slot['uid'] !== null ? $this->users->get($slot['uid']) : null;
-		$sub = $user instanceof IUser ? $this->whatsApp->subFor($user) : null;
-		return $sub ?? 'tuandikiane:' . $draft->getDraftUuid() . ':' . $slot['key'];
-	}
-
-	public function cardUrl(SignRequest $signRequest): string {
-		return $this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $this->whatsApp->linkCode($signRequest)]);
-	}
-
-	/**
 	 * A signature on any document: Tuandikiane hears "signed" for a slot of its
-	 * drafts, and "completed" once every slot has signed. Until then, the next
-	 * signers' cards go out (ordered flow). Never throws.
+	 * drafts, and "completed" with the signed PDF once every slot has signed.
+	 * The moderator's own signature on a sealed draft delivers it. Never throws.
 	 */
 	public function signed(FileEntity $file, SignRequest $signRequest): void {
 		try {
@@ -684,32 +792,45 @@ class TuandikianeService {
 				return;
 			}
 			$key = null;
+			$moderatorSigned = false;
 			foreach ($draft->getSlots() ?? [] as $slot) {
 				if ($slot['signRequestId'] === $signRequest->getId()) {
 					$key = $slot['key'];
+					$moderatorSigned = $slot['sender'];
 				}
 			}
 			if ($key === null) {
 				return;
 			}
+			if ($moderatorSigned && $draft->getStatus() === TuandikianeDraft::STATUS_SEALED) {
+				$draft->setStatus(TuandikianeDraft::STATUS_SENT);
+				$draft = $this->drafts->update($draft);
+				$this->deliver($draft, $file, $this->moderator($draft));
+			}
 			$this->client->event($draft->getDraftUuid(), 'signed', $key);
 			$all = $this->signRequests->getByFileId((int)$file->getId());
 			if ($all !== [] && array_filter($all, static fn (SignRequest $one): bool => $one->getSigned() === null) === []) {
-				$this->client->event($draft->getDraftUuid(), 'completed');
-				return;
-			}
-			$owner = $this->users->get($file->getUserId());
-			if ($owner instanceof IUser) {
-				$this->sendCards($draft, $file, $owner);
+				$this->client->event($draft->getDraftUuid(), 'completed', null, $this->signedDocument($file));
 			}
 		} catch (\Throwable $e) {
 			$this->logger->warning('Tuandikiane signature follow-up failed', ['exception' => $e]);
 		}
 	}
 
+	/** The signed PDF for Tuandikiane to send everyone, or nothing when it can't be read. */
+	private function signedDocument(FileEntity $file): array {
+		try {
+			$pdf = $this->asUser($file->getUserId(), fn (): File => $this->folders->getFileByNodeId((int)($file->getSignedNodeId() ?: $file->getNodeId())));
+			return ['document' => ['name' => $file->getName(), 'pdf_base64' => base64_encode($pdf->getContent())]];
+		} catch (\Throwable $e) {
+			$this->logger->warning('No signed PDF for Tuandikiane', ['exception' => $e]);
+			return [];
+		}
+	}
+
 	/**
-	 * A draft nobody sent, with its file: the expiry job's, and a failed
-	 * creation's. Never a sent one, which belongs to its sender now.
+	 * A draft nobody sealed, with its file: the expiry job's, and a failed
+	 * creation's. Never a sealed one, which is the moderator's document now.
 	 */
 	public function deleteDraft(TuandikianeDraft $draft): void {
 		if ($draft->getStatus() !== TuandikianeDraft::STATUS_DRAFT) {
@@ -726,35 +847,12 @@ class TuandikianeService {
 			} catch (DoesNotExistException) {
 			}
 		}
-		$this->removeHolderCopy($holder ?: $this->appConfig->getValueString(Application::APP_ID, 'tuandikiane_service_uid'), $nodeId, $draft);
+		$this->removeFolder($holder, $nodeId, $draft);
 		$this->drafts->delete($draft);
 	}
 
-	/**
-	 * @return array{0: File, 1: bool} the copy in the sender's folder, and whether this call made it
-	 */
-	private function copyTo(FileEntity $file, IUser $sender, TuandikianeDraft $draft): array {
-		$source = $this->asUser($file->getUserId(), fn (): File => $this->folders->getFileByNodeId((int)$file->getNodeId()));
-		return $this->asUser($sender->getUID(), function () use ($source, $draft): array {
-			$base = $this->folders->getFolder();
-			$name = self::FOLDER . $draft->getDraftUuid();
-			$folder = $base->nodeExists($name) ? $base->get($name) : $base->newFolder($name);
-			if (!$folder instanceof Folder) {
-				throw new \RuntimeException('The draft folder is not a folder');
-			}
-			if ($folder->nodeExists($source->getName())) {
-				$existing = $folder->get($source->getName());
-				if (!$existing instanceof File) {
-					throw new \RuntimeException('The draft folder holds something else under the document name');
-				}
-				return [$existing, false];
-			}
-			return [$folder->newFile($source->getName(), $source->getContent()), true];
-		});
-	}
-
-	/** The draft's folder in its holder's files, found by the node or else by its name. */
-	private function removeHolderCopy(string $holder, int $nodeId, TuandikianeDraft $draft): void {
+	/** The draft's folder in the moderator's files, found by the node or else by its name. */
+	private function removeFolder(string $holder, int $nodeId, TuandikianeDraft $draft): void {
 		if ($holder === '') {
 			return;
 		}
@@ -780,14 +878,6 @@ class TuandikianeService {
 		}
 	}
 
-	private function deleteQuietly(File $node): void {
-		try {
-			$node->delete();
-		} catch (\Throwable $e) {
-			$this->logger->warning('Could not remove an unused Tuandikiane copy', ['exception' => $e]);
-		}
-	}
-
 	/**
 	 * FolderService works on one user at a time and other code in the request
 	 * relies on it, so it goes back to whoever it had.
@@ -804,14 +894,5 @@ class TuandikianeService {
 		} finally {
 			$this->folders->setUserId($previous);
 		}
-	}
-
-	private function serviceUser(): IUser {
-		$uid = $this->appConfig->getValueString(Application::APP_ID, 'tuandikiane_service_uid');
-		$user = $uid === '' ? null : $this->users->get($uid);
-		if (!$user instanceof IUser) {
-			throw new LibresignException('Tuandikiane is not set up on this instance.', Http::STATUS_SERVICE_UNAVAILABLE);
-		}
-		return $user;
 	}
 }

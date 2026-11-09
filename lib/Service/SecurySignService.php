@@ -729,7 +729,8 @@ class SecurySignService {
 	 * then sends the user to $returnUrl if it is one of our addresses MIMI has.
 	 */
 	public function mimiEnrolmentUrl(string $sub, string $email, string $returnUrl): string {
-		return $this->mimiOrigin() . '/enrol?' . http_build_query(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl]);
+		// No sub: anyone MIMI signs in, for an invite to someone without an account here.
+		return $this->mimiOrigin() . '/enrol?' . http_build_query(array_filter(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl], static fn (string $v): bool => $v !== ''));
 	}
 
 	/**
@@ -800,10 +801,11 @@ class SecurySignService {
 	/**
 	 * WebAuthn options for the user's MIMI passkey, which our page hands to
 	 * MIMI's frame. Null when MIMI holds no passkey for them. Throws 503 when
-	 * MIMI cannot answer.
+	 * MIMI cannot answer. $subject names someone not signed in here, on a page
+	 * a link opened; by default it is the session's own account.
 	 */
-	public function passkeyOptions(): ?array {
-		$answer = $this->mimi('passkey/options', ['subject' => $this->identity()['sub']]);
+	public function passkeyOptions(?string $subject = null): ?array {
+		$answer = $this->mimi('passkey/options', ['subject' => $subject ?? $this->identity()['sub']]);
 		if ($answer['status'] === 404) {
 			return null;
 		}
@@ -815,7 +817,7 @@ class SecurySignService {
 	}
 
 	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
-	public function verifyPasskey(array $assertion): bool {
+	public function verifyPasskey(array $assertion, ?string $subject = null): bool {
 		$state = $this->session->get(self::PASSKEY_STATE_KEY);
 		$this->session->remove(self::PASSKEY_STATE_KEY);
 		if (!is_string($state)) {
@@ -826,8 +828,9 @@ class SecurySignService {
 			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey check.', 503);
 		}
 		$verified = $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true
-			&& ($answer['body']['subject'] ?? null) === $this->identity()['sub'];
-		if ($verified) {
+			&& ($answer['body']['subject'] ?? null) === ($subject ?? $this->identity()['sub']);
+		// Someone else's passkey on a link's page says nothing about this session.
+		if ($verified && $subject === null) {
 			$this->session->set(self::PASSKEY_KEY, time());
 		}
 		return $verified;

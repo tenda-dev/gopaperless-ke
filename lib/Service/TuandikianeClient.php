@@ -30,8 +30,8 @@ class TuandikianeClient {
 	/**
 	 * Tuandikiane is told, never waited on: a failure is logged and nothing else.
 	 */
-	public function event(string $draftUuid, string $event, ?string $signer = null): void {
-		$body = ['draft_uuid' => $draftUuid, 'event' => $event];
+	public function event(string $draftUuid, string $event, ?string $signer = null, array $extra = []): void {
+		$body = ['draft_uuid' => $draftUuid, 'event' => $event] + $extra;
 		if ($signer !== null) {
 			$body['signer'] = $signer;
 		}

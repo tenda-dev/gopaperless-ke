@@ -406,6 +406,61 @@
 		color: var(--gp-slate);
 	}
 
+	.gp-whatsapp__signature {
+		display: block;
+		max-width: 220px;
+		max-height: 80px;
+		margin-top: 14px;
+		padding: 8px 12px;
+		border: 1px dashed var(--gp-line);
+		border-radius: 12px;
+		background: #fff;
+	}
+
+	.gp-whatsapp__paid {
+		margin-top: 10px;
+		font-size: 13px;
+		color: var(--gp-slate);
+	}
+
+	// The number a mobile-money prompt goes to, on the card and on Seal & Deliver.
+	.gp-tk__phone {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		margin-top: 8px;
+		padding: 6px 6px 6px 12px;
+		box-sizing: border-box;
+		border-radius: 12px;
+		background: var(--gp-line);
+		font-size: 13px;
+		color: var(--gp-slate);
+		text-align: start;
+
+		&[hidden] {
+			display: none;
+		}
+
+		input {
+			flex: 1;
+			min-width: 0;
+			margin: 0;
+			border: 0;
+			background: transparent;
+			font-weight: 600;
+			color: var(--gp-ink);
+		}
+	}
+
+	.gp-whatsapp__pay {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		width: 100%;
+		margin-top: 16px;
+	}
+
 	.gp-whatsapp__status {
 		display: flex;
 		align-items: center;
@@ -663,77 +718,296 @@
 		font-weight: 600;
 	}
 
-	.gp-tk__signers {
-		display: flex;
-		flex-direction: column;
+	// Seal & Deliver (templates/tuandikiane.php), in the prototype's order: who
+	// seals, the document, the signers, the money, the button.
+	.gp-tk__who {
+		display: inline-flex;
+		align-items: center;
 		gap: 8px;
+		margin-top: 12px;
+		padding: 4px 12px 4px 4px;
+		border: 1px solid var(--gp-line);
+		border-radius: 999px;
+		font-size: 13px;
+		line-height: 18px;
+		color: var(--gp-ink);
+	}
+
+	.gp-tk__avatar {
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--gp-wa-brand-soft);
+		font-size: 12px;
+		font-weight: 600;
+	}
+
+	.gp-tk__document {
 		width: 100%;
-		margin: 20px 0 0;
-		padding: 0;
-		list-style: none;
-		counter-reset: gp-tk-signer;
-		text-align: start;
 
-		li {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			min-width: 0;
-			font-size: 14px;
-			line-height: 20px;
-			color: var(--gp-ink);
-			counter-increment: gp-tk-signer;
+		summary {
+			cursor: pointer;
+			list-style: none;
 
-			&::before {
-				content: counter(gp-tk-signer);
-				display: flex;
-				flex-shrink: 0;
-				align-items: center;
-				justify-content: center;
-				width: 24px;
-				height: 24px;
-				border-radius: 50%;
-				background: var(--gp-wa-brand-soft);
-				font-size: 12px;
-				font-weight: 600;
+			&::-webkit-details-marker {
+				display: none;
 			}
 		}
 	}
 
-	.gp-tk__signer-name {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.gp-tk__section {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		width: 100%;
+		margin-top: 18px;
 	}
 
-	.gp-tk__signer-role {
-		flex-shrink: 0;
+	.gp-tk__label {
+		padding: 0;
+		font-size: 11.5px;
+		font-weight: 600;
+		letter-spacing: .06em;
+		text-transform: uppercase;
+		color: var(--gp-slate);
+	}
+
+	.gp-tk__aside {
 		font-size: 12px;
 		color: var(--gp-slate);
 	}
 
-	// "Sign now" once sent; the start button only where there is something to start.
-	.gp-tk__next {
-		display: none;
+	.gp-tk__pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		width: 100%;
+		margin: 8px 0 0;
+		padding: 0;
+		list-style: none;
 	}
 
-	&[data-step='done'] .gp-tk__next {
+	.gp-tk__pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 12px 5px 9px;
+		border: 1px solid var(--gp-line);
+		border-radius: 999px;
+		font-size: 13px;
+		line-height: 18px;
+		color: var(--gp-ink);
+	}
+
+	.gp-tk__pill-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--gp-wa-brand);
+	}
+
+	.gp-tk__pill--joins .gp-tk__pill-dot {
+		background: #d89030;
+	}
+
+	.gp-tk__pill-note {
+		font-size: 11.5px;
+		color: var(--gp-slate);
+	}
+
+	.gp-tk__credits {
+		width: 100%;
+		margin-top: 16px;
+		border: 1px solid var(--gp-line);
+		border-radius: 16px;
+		text-align: start;
+	}
+
+	.gp-tk__toggle {
 		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 14px;
+		cursor: pointer;
+	}
+
+	.gp-tk__toggle-text {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.gp-tk__toggle-title {
+		font-size: 14px;
+		font-weight: 600;
+		line-height: 19px;
+		color: var(--gp-ink);
+	}
+
+	.gp-tk__toggle-line {
+		font-size: 12.5px;
+		line-height: 17px;
+		color: var(--gp-slate);
+	}
+
+	// A checkbox drawn as a switch: the platform keeps it keyboard- and screen-reader-ready.
+	.gp-tk__switch {
+		position: relative;
+		flex-shrink: 0;
+		width: 44px;
+		height: 26px;
+		margin: 0;
+		border-radius: 999px;
+		background: var(--gp-line);
+		cursor: pointer;
+		appearance: none;
+		transition: background-color .15s;
+
+		&::after {
+			content: '';
+			position: absolute;
+			top: 3px;
+			left: 3px;
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			background: #fff;
+			box-shadow: 0 1px 3px rgba(11, 17, 32, .3);
+			transition: left .15s;
+		}
+
+		&:checked {
+			background: var(--gp-wa-brand);
+
+			&::after {
+				left: 21px;
+			}
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--gp-wa-brand);
+			outline-offset: 2px;
+		}
+	}
+
+	.gp-tk__balance {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 14px;
+		border-top: 1px solid var(--gp-line);
+		font-size: 13px;
+		color: var(--gp-slate);
+
+		span:first-child {
+			flex: 1;
+		}
+	}
+
+	.gp-tk__badge {
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: var(--gp-wa-brand-soft);
+		font-size: 11.5px;
+		font-weight: 600;
+		color: #04783e;
+
+		&[data-short='1'] {
+			background: rgba(216, 144, 48, .14);
+			color: #8a5410;
+		}
+	}
+
+	.gp-tk__methods {
+		width: 100%;
+		margin: 14px 0 0;
+		padding: 0;
+		border: 0;
+		text-align: start;
+
+		&[hidden] {
+			display: none;
+		}
+	}
+
+	.gp-tk__method-row {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.gp-tk__method {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 48px;
+		border: 1px solid var(--gp-line);
+		border-radius: 14px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--gp-ink);
+		cursor: pointer;
+
+		input {
+			position: absolute;
+			opacity: 0;
+		}
+
+		&:has(input:checked) {
+			border-color: var(--gp-wa-brand);
+			box-shadow: 0 0 0 1px var(--gp-wa-brand);
+		}
+
+		&:has(input:focus-visible) {
+			outline: 2px solid var(--gp-wa-brand);
+			outline-offset: 2px;
+		}
+	}
+
+	.gp-tk__card-note {
+		margin-top: 8px;
+		font-size: 13px;
+		color: var(--gp-slate);
+	}
+
+	// While paying, the status line spins like SecurySign's does.
+	&[data-step='paying'] {
+		.gp-whatsapp__status {
+			color: var(--gp-ink);
+		}
+
+		.gp-whatsapp__spinner {
+			display: inline-block;
+			animation: gp-wa-spin 1s linear infinite;
+		}
+
+		.gp-tk__start {
+			opacity: .6;
+			pointer-events: none;
+		}
 	}
 
 	&[data-step='opening'],
 	&[data-step='signing'],
 	&[data-step='done'],
 	&[data-step='browser'] {
-		.gp-tk__start {
+		.gp-tk__start,
+		.gp-tk__credits,
+		.gp-tk__methods {
 			display: none;
 		}
 	}
 
 	&[data-step='done'],
 	&[data-step='browser'] {
-		.gp-tk__pages,
-		.gp-tk__signers {
+		.gp-tk__document,
+		.gp-tk__who {
 			display: none;
 		}
 	}

@@ -13,14 +13,13 @@ use OCA\Libresign\Controller\TuandikianeApiController;
 use OCA\Libresign\Controller\TuandikianeController;
 use OCA\Libresign\Db\TuandikianeDraft;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\Payment\LinkPaymentService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\TuandikianeService;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
-use OCP\IUserManager;
-use OCP\IUserSession;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -30,85 +29,106 @@ final class TuandikianeControllerTest extends TestCase {
 
 	private TuandikianeService&MockObject $tuandikiane;
 	private SecurySignService&MockObject $signa;
-	private IUserSession&MockObject $session;
+	private LinkPaymentService&MockObject $payments;
 	private IRequest&MockObject $request;
 
 	protected function setUp(): void {
 		$this->tuandikiane = $this->createMock(TuandikianeService::class);
 		$this->signa = $this->createMock(SecurySignService::class);
-		$this->session = $this->createMock(IUserSession::class);
+		$this->payments = $this->createMock(LinkPaymentService::class);
 		$this->request = $this->createMock(IRequest::class);
 	}
 
 	private function controller(): TuandikianeController {
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
-		return new TuandikianeController($this->request, $this->tuandikiane, $this->signa, $this->session,
-			$this->createMock(IUserManager::class), $this->createMock(IURLGenerator::class), $l10n, $this->createMock(LoggerInterface::class));
+		return new TuandikianeController($this->request, $this->tuandikiane, $this->signa, $this->payments,
+			$this->createMock(IURLGenerator::class), $l10n, $this->createMock(LoggerInterface::class));
 	}
 
-	private function signedInWithOpenDraft(): IUser {
-		$user = $this->createMock(IUser::class);
-		$user->method('getUID')->willReturn('neo');
-		$this->session->method('getUser')->willReturn($user);
-		$this->tuandikiane->method('draftForCode')->with('code')->willReturn(new TuandikianeDraft());
-		return $user;
+	/** An open draft moderated by sub-neo; $signs puts the moderator among the signers. */
+	private function openDraft(bool $signs = false): TuandikianeDraft {
+		$draft = new TuandikianeDraft();
+		$draft->setSlots([['key' => 's1', 'phone' => '+254711000001', 'sender' => $signs, 'signRequestId' => 101, 'uid' => 'neo', 'card' => false]]);
+		$this->tuandikiane->method('draftForCode')->with('code')->willReturn($draft);
+		$this->tuandikiane->method('isOpen')->willReturn(true);
+		$this->tuandikiane->method('moderatorSub')->willReturn('sub-neo');
+		return $draft;
 	}
 
-	public function testSendNeedsTheMimiPasskeyOfThisAccount(): void {
-		$this->signedInWithOpenDraft();
-		$this->signa->method('verifyPasskey')->with(self::PASSKEY)->willReturn(false);
-		$this->tuandikiane->expects($this->never())->method('send');
+	public function testSealNeedsTheModeratorsMimiPasskeyWithNoLogin(): void {
+		$this->openDraft();
+		$this->signa->method('verifyPasskey')->with(self::PASSKEY, 'sub-neo')->willReturn(false);
+		$this->tuandikiane->expects($this->never())->method('seal');
 
-		$response = $this->controller()->send('code', self::PASSKEY);
+		$response = $this->controller()->seal('code', true, self::PASSKEY);
 
 		$this->assertSame(403, $response->getStatus());
 		$this->assertSame('rejected', $response->getData()['error']);
 	}
 
-	public function testSendWithThePasskeySendsAndOffersTheSendersCard(): void {
-		$user = $this->signedInWithOpenDraft();
-		$this->signa->method('verifyPasskey')->with(self::PASSKEY)->willReturn(true);
-		$this->tuandikiane->expects($this->once())->method('send')->with($this->isInstanceOf(TuandikianeDraft::class), $user)
-			->willReturn('https://gp.test/apps/libresign/p/whatsapp/sr.mac');
+	public function testSealWithThePasskeySealsWithTheChoiceGiven(): void {
+		$draft = $this->openDraft();
+		$this->signa->method('verifyPasskey')->with(self::PASSKEY, 'sub-neo')->willReturn(true);
+		$this->tuandikiane->expects($this->once())->method('seal')->with($draft, false)->willReturn(null);
 
-		$response = $this->controller()->send('code', self::PASSKEY);
+		$response = $this->controller()->seal('code', false, self::PASSKEY);
 
 		$this->assertSame(200, $response->getStatus());
-		$this->assertSame(['signUrl' => 'https://gp.test/apps/libresign/p/whatsapp/sr.mac'], $response->getData());
+		$this->assertSame(['signUrl' => null], $response->getData());
 	}
 
-	public function testSendWhileMimiIsDownSendsNothing(): void {
-		$this->signedInWithOpenDraft();
+	public function testAModeratorWhoSignsGoesToTheirCardWithoutAMimiPasskey(): void {
+		$this->openDraft(signs: true);
+		$this->signa->expects($this->never())->method('verifyPasskey');
+		$this->tuandikiane->method('seal')->willReturn('https://gp.test/apps/libresign/p/whatsapp/sr.mac');
+
+		$this->assertSame(['signUrl' => 'https://gp.test/apps/libresign/p/whatsapp/sr.mac'], $this->controller()->seal('code')->getData());
+	}
+
+	public function testSealWhileMimiIsDownSealsNothing(): void {
+		$this->openDraft();
 		$this->signa->method('verifyPasskey')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));
-		$this->tuandikiane->expects($this->never())->method('send');
+		$this->tuandikiane->expects($this->never())->method('seal');
 
-		$this->assertSame(503, $this->controller()->send('code', self::PASSKEY)->getStatus());
+		$this->assertSame(503, $this->controller()->seal('code', true, self::PASSKEY)->getStatus());
 	}
 
-	public function testSendOnAnExpiredOrUsedCodeAsksForNoPasskey(): void {
-		$this->session->method('getUser')->willReturn($this->createMock(IUser::class));
+	public function testSealOnAnExpiredOrUsedCodeAsksForNoPasskey(): void {
 		$this->tuandikiane->method('draftForCode')->willReturn(null);
 		$this->signa->expects($this->never())->method('verifyPasskey');
 
-		$this->assertSame(410, $this->controller()->send('code', self::PASSKEY)->getStatus());
+		$this->assertSame(410, $this->controller()->seal('code', true, self::PASSKEY)->getStatus());
 	}
 
-	public function testSendThatLostARaceSaysSo(): void {
-		$this->signedInWithOpenDraft();
-		$this->signa->method('verifyPasskey')->willReturn(true);
-		$this->tuandikiane->method('send')->willThrowException(new LibresignException('This link has expired.', 410));
+	public function testSealShortOfCreditsSaysHowManyToBuy(): void {
+		$this->openDraft(signs: true);
+		$this->tuandikiane->method('seal')->willThrowException(new LibresignException('Buy the signatures first.', 402));
+		$this->tuandikiane->method('shortfall')->willReturn(2);
 
-		$this->assertSame(410, $this->controller()->send('code', self::PASSKEY)->getStatus());
+		$response = $this->controller()->seal('code');
+
+		$this->assertSame(402, $response->getStatus());
+		$this->assertSame(['error' => 'payment_required', 'short' => 2], $response->getData());
 	}
 
-	public function testTakingASlotNeedsThePasskeyToo(): void {
-		$this->session->method('getUser')->willReturn($this->createMock(IUser::class));
-		$this->tuandikiane->method('unboundSlot')->willReturn(['draft' => new TuandikianeDraft(), 'slot' => [], 'signRequest' => null]);
-		$this->signa->method('verifyPasskey')->willReturn(false);
-		$this->tuandikiane->expects($this->never())->method('bindCard');
+	public function testPayBuysOnlyTheShortfallAsTheModeratorOnTheirNumber(): void {
+		$this->openDraft(signs: true);
+		$neo = $this->createMock(IUser::class);
+		$this->tuandikiane->method('moderator')->willReturn($neo);
+		$this->tuandikiane->method('shortfall')->willReturn(2);
+		$this->payments->expects($this->once())->method('start')->with($neo, 2, 'mobile', '+254711000001')
+			->willReturn(['reference' => 'REF1', 'flow' => 'async', 'redirectUrl' => null]);
 
-		$this->assertSame(403, $this->controller()->bind('card-code', self::PASSKEY)->getStatus());
+		$this->assertSame('REF1', $this->controller()->pay('code')->getData()['reference']);
+	}
+
+	public function testPayWithEnoughCreditsStartsNothing(): void {
+		$this->openDraft();
+		$this->tuandikiane->method('shortfall')->willReturn(0);
+		$this->payments->expects($this->never())->method('start');
+
+		$this->assertSame(['status' => 'SUCCESS'], $this->controller()->pay('code')->getData());
 	}
 
 	private function api(string $key): TuandikianeApiController {

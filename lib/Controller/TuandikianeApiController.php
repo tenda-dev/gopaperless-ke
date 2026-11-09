@@ -38,7 +38,7 @@ class TuandikianeApiController extends OCSController {
 	}
 
 	/**
-	 * Create a draft held by the service account, and get its review link.
+	 * Create a draft as the moderator's own, and get its Seal & Deliver link.
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
@@ -63,6 +63,35 @@ class TuandikianeApiController extends OCSController {
 		} catch (\Throwable $e) {
 			$this->logger->error('A Tuandikiane draft could not be created', ['exception' => $e]);
 			return new DataResponse(['message' => 'The draft could not be created.'], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * A joiner now has a MIMI account: every slot on the draft with their
+	 * number becomes it, and their card goes once the draft is delivered.
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'tuandikiane_drafts')]
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/tuandikiane/drafts/{draftUuid}/join', requirements: ['apiVersion' => '(v1)'])]
+	public function join(string $draftUuid, string $phone = '', string $sub = ''): DataResponse {
+		try {
+			$this->tuandikiane->checkKey($this->request->getHeader('X-Tuandikiane-Key'));
+		} catch (LibresignException $e) {
+			$response = new DataResponse(['message' => $e->getMessage()], $e->getCode());
+			if ($e->getCode() === Http::STATUS_UNAUTHORIZED) {
+				$response->throttle(['action' => 'tuandikiane_drafts']);
+			}
+			return $response;
+		}
+		try {
+			return new DataResponse(['joined' => $this->tuandikiane->join($draftUuid, $phone, $sub)]);
+		} catch (LibresignException $e) {
+			return new DataResponse(['message' => $e->getMessage()], in_array($e->getCode(), [Http::STATUS_NOT_FOUND, Http::STATUS_SERVICE_UNAVAILABLE], true) ? $e->getCode() : Http::STATUS_UNPROCESSABLE_ENTITY);
+		} catch (\Throwable $e) {
+			$this->logger->error('A Tuandikiane joiner could not be added', ['exception' => $e]);
+			return new DataResponse(['message' => 'The joiner could not be added.'], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 }

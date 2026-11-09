@@ -22,6 +22,7 @@ use OCA\Libresign\Exception\SecurySignApprovalRequired;
 use OCA\Libresign\Exception\SecurySignUnavailable;
 use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Payment\LinkPaymentService;
 use OCA\Libresign\Service\RequestMetadataService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SignerElementsService;
@@ -37,6 +38,7 @@ use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
+use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -72,6 +74,7 @@ class WhatsAppSignController extends Controller {
 		private SigningCoverageService $coverage,
 		private SigningSettlementService $settlement,
 		private TuandikianeService $tuandikiane,
+		private LinkPaymentService $payments,
 		private IAppConfig $appConfig,
 		private IUserManager $users,
 		private IURLGenerator $urls,
@@ -86,11 +89,6 @@ class WhatsAppSignController extends Controller {
 	#[FrontpageRoute(verb: 'GET', url: '/p/whatsapp/{code}')]
 	public function page(string $code): TemplateResponse|RedirectResponse {
 		$found = $this->find($code);
-		// A Tuandikiane signer known only by phone: they sign in and take their
-		// slot with a MIMI passkey first, then come back to this card.
-		if ($found['state'] === 'gone' && $this->tuandikiane->unboundSlot($code) !== null) {
-			return new RedirectResponse($this->urls->linkToRoute('libresign.tuandikiane.sign', ['code' => $code]));
-		}
 		$state = $found['state'];
 		// These three go on to a passkey or a sign-in, so the browser is asked first:
 		// here if its user agent gives it away, otherwise by whatsapp-sign.ts. The others
@@ -119,6 +117,12 @@ class WhatsAppSignController extends Controller {
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
 			// Asked only where the page shows "Back to WhatsApp" straight away.
 			'chatUrl' => $state === 'signed' ? $this->whatsApp->chatUrl() : '',
+			'paidBy' => $found['sponsor']?->getDisplayName() ?? '',
+			'signatureUrl' => $state === 'ready' && ($found['elements'] ?? []) !== [] ? $this->urls->linkToRoute('libresign.whatsAppSign.signature', ['code' => $code]) : '',
+			// Bought here, so they sign without going anywhere else.
+			'price' => $state === 'no_credits' ? $this->payments->price() : 0,
+			'phone' => $found['signRequest'] !== null ? $this->tuandikiane->phoneFor($found['signRequest']) : '',
+			'payUrl' => $this->urls->linkToRoute('libresign.whatsAppSign.pay', ['code' => $code]),
 		], TemplateResponse::RENDER_AS_GUEST);
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain($this->signa->signingOrigin());
@@ -270,7 +274,7 @@ class WhatsAppSignController extends Controller {
 	 * @return array{state: string, file: ?FileEntity, signRequest: ?SignRequest, signer: ?IUser, sender: ?IUser, elements: ?list<array{documentElementId: int, profileNodeId: int}>}
 	 */
 	private function find(string $code): array {
-		$found = ['state' => 'gone', 'file' => null, 'signRequest' => null, 'signer' => null, 'sender' => null, 'elements' => null];
+		$found = ['state' => 'gone', 'file' => null, 'signRequest' => null, 'signer' => null, 'sender' => null, 'elements' => null, 'sponsor' => null];
 		$signRequest = WhatsAppService::on($this->appConfig) ? $this->whatsApp->signRequestForCode($code) : null;
 		if ($signRequest === null) {
 			return $found;
@@ -284,22 +288,33 @@ class WhatsAppSignController extends Controller {
 		if (!$signer instanceof IUser || $file->getNodeType() === 'envelope') {
 			return $found;
 		}
+		$elements = $this->scribbles($signRequest, $signer);
+		$open = $signRequest->getSigned() === null && $signRequest->getStatusEnum() === SignRequestStatus::ABLE_TO_SIGN;
+		// Someone who never signed in here: MIMI holds their certificate and signature.
+		if ($open && ($this->signa->rememberedCertificate($signer->getUID()) === '' || $elements === null) && $this->fromMimi($signer)) {
+			$elements = $this->scribbles($signRequest, $signer);
+		}
+		$coverage = $open && $this->sponsorship() ? $this->coverage->resolveSigningCoverage(
+			signRequestId: $signRequest->getId(),
+			signerUserId: $signer->getUID(),
+			productCode: ProductCode::SIGN_DOCUMENT->value,
+		) : null;
 		$found = [
 			'file' => $file,
 			'signRequest' => $signRequest,
 			'signer' => $signer,
 			'sender' => $this->users->get($file->getUserId()),
-			'elements' => $this->scribbles($signRequest, $signer),
+			'elements' => $elements,
+			// "Paid for by", when someone else's credits cover this signature.
+			'sponsor' => $coverage !== null && $coverage->sponsored && $coverage->sponsorUserId !== $signer->getUID()
+				? $this->users->get((string)$coverage->sponsorUserId)
+				: null,
 		] + $found;
 		$found['state'] = match (true) {
 			$signRequest->getSigned() !== null => 'signed',
-			$signRequest->getStatusEnum() !== SignRequestStatus::ABLE_TO_SIGN => 'not_ready',
-			$this->signa->rememberedCertificate($signer->getUID()) === '', $found['elements'] === null => 'login',
-			$this->sponsorship() && !$this->coverage->resolveSigningCoverage(
-				signRequestId: $signRequest->getId(),
-				signerUserId: $signer->getUID(),
-				productCode: ProductCode::SIGN_DOCUMENT->value,
-			)->allowed => 'no_credits',
+			!$open => 'not_ready',
+			$this->signa->rememberedCertificate($signer->getUID()) === '', $elements === null => 'login',
+			$coverage !== null && !$coverage->allowed => 'no_credits',
 			default => 'ready',
 		};
 		return $found;
@@ -326,6 +341,78 @@ class WhatsAppSignController extends Controller {
 			$elements[] = ['documentElementId' => $box->getId(), 'profileNodeId' => $scribble->getNodeId()];
 		}
 		return $elements;
+	}
+
+	/** True when MIMI gave this account what signing here needs. Never throws. */
+	private function fromMimi(IUser $signer): bool {
+		$sub = $this->whatsApp->subFor($signer);
+		try {
+			return $sub !== null && $this->signa->accountFor($sub) !== null;
+		} catch (\Throwable $e) {
+			$this->logger->info('MIMI could not fill in a WhatsApp signer', ['exception' => $e]);
+			return false;
+		}
+	}
+
+	/** The signature the card is about to place, shown above SecurySign's frame. */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 30, period: 60)]
+	#[FrontpageRoute(verb: 'GET', url: '/p/whatsapp/{code}/signature')]
+	public function signature(string $code): DataDisplayResponse|DataResponse {
+		$found = $this->find($code);
+		$element = $found['state'] === 'ready' ? ($found['elements'][0] ?? null) : null;
+		if ($element === null) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		$this->folders->setUserId($found['signer']->getUID());
+		try {
+			$png = $this->folders->getFileByNodeId($element['profileNodeId'])->getContent();
+		} catch (\Throwable) {
+			return new DataResponse([], Http::STATUS_NOT_FOUND);
+		}
+		$response = new DataDisplayResponse($png, Http::STATUS_OK, ['Content-Type' => 'image/png']);
+		$response->cacheFor(0);
+		return $response;
+	}
+
+	/**
+	 * One signature, bought by the signer on the card. M-Pesa prompts the
+	 * number they give; a card goes through DPO and comes back here.
+	 */
+	#[PublicPage]
+	#[AnonRateLimit(limit: 6, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/whatsapp/{code}/pay')]
+	public function pay(string $code, string $method = 'mobile', string $phone = ''): DataResponse {
+		$found = $this->find($code);
+		if ($found['state'] !== 'no_credits') {
+			return new DataResponse(['status' => $found['state'] === 'ready' ? 'SUCCESS' : 'FAILED']);
+		}
+		try {
+			return new DataResponse($this->payments->start(
+				$found['signer'], 1, $method, $phone,
+				$this->urls->linkToRouteAbsolute('libresign.whatsAppSign.page', ['code' => $code]),
+			));
+		} catch (\Throwable $e) {
+			$this->logger->warning('A WhatsApp signing payment did not start', ['exception' => $e]);
+			return new DataResponse(['error' => 'failed'], Http::STATUS_BAD_GATEWAY);
+		}
+	}
+
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 60, period: 60)]
+	#[FrontpageRoute(verb: 'GET', url: '/p/whatsapp/{code}/pay/{reference}')]
+	public function payStatus(string $code, string $reference): DataResponse {
+		$found = $this->find($code);
+		if (!$found['signer'] instanceof IUser) {
+			return new DataResponse(['error' => 'gone'], Http::STATUS_GONE);
+		}
+		try {
+			return new DataResponse(['status' => $this->payments->status($found['signer'], $reference)]);
+		} catch (\Throwable) {
+			return new DataResponse(['error' => 'unknown'], Http::STATUS_NOT_FOUND);
+		}
 	}
 
 	/** Credits apply only with sponsorship on, as on the signing page. */

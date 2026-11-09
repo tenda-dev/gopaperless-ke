@@ -10,14 +10,15 @@ declare(strict_types=1);
 namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
+use OCA\Libresign\Db\TuandikianeDraft;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Service\Payment\LinkPaymentService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\TuandikianeService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\AnonRateLimit;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\Attribute\UseSession;
@@ -29,24 +30,21 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IURLGenerator;
-use OCP\IUser;
-use OCP\IUserManager;
-use OCP\IUserSession;
 use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 /**
- * The sender's review page for a Tuandikiane draft, and the page that lets a
- * signer known only by phone take their signer slot. Both need a GoPaperless
- * session, from the normal login, and a MIMI passkey on the action itself.
+ * Seal & Deliver, the moderator's page for a Tuandikiane draft, and the
+ * invite a joiner gets. No GoPaperless login on either: the link names the
+ * draft, and the moderator's MIMI passkey (or their own signature, when they
+ * sign) is what seals it.
  */
 class TuandikianeController extends Controller {
 	public function __construct(
 		IRequest $request,
 		private TuandikianeService $tuandikiane,
 		private SecurySignService $signa,
-		private IUserSession $userSession,
-		private IUserManager $users,
+		private LinkPaymentService $payments,
 		private IURLGenerator $urls,
 		private IL10N $l10n,
 		private LoggerInterface $logger,
@@ -59,40 +57,51 @@ class TuandikianeController extends Controller {
 	#[UseSession]
 	#[AnonRateLimit(limit: 30, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/p/t/review/{code}')]
-	public function review(string $code): TemplateResponse {
+	public function review(string $code): TemplateResponse|RedirectResponse {
 		$draft = $this->tuandikiane->draftForCode($code);
-		if ($draft === null) {
+		if ($draft === null || ($draft->getStatus() === TuandikianeDraft::STATUS_DRAFT && !$this->tuandikiane->isOpen($draft))) {
 			return $this->page('expired', []);
 		}
-		$gate = $this->gate($this->urls->linkToRoute('libresign.tuandikiane.review', ['code' => $code]));
-		if ($gate !== null) {
-			return $gate;
-		}
-		// As the app's own pages do: the session's first readiness answer
-		// remembers the sender's certificate, so "Sign now" can open ready.
-		try {
-			$this->signa->isReady();
-		} catch (\Throwable) {
+		$here = $this->urls->linkToRouteAbsolute('libresign.tuandikiane.review', ['code' => $code]);
+		$handOff = $this->handOff($here);
+		if ($handOff !== null) {
+			return $handOff;
 		}
 		$review = $this->tuandikiane->review($draft);
-		return $this->page('review', [
+		$base = [
 			'documentName' => $review['file']->getName(),
+			'signers' => $review['signers'],
+			'email' => (string)$review['moderator']->getEMailAddress(),
+		];
+		$card = $draft->getStatus() === TuandikianeDraft::STATUS_SEALED ? $this->tuandikiane->moderatorCard($draft) : null;
+		if ($card !== null) {
+			// Sealed by a moderator who signs, who hasn't yet: their signature is the seal.
+			return new RedirectResponse($card);
+		}
+		if ($draft->getStatus() !== TuandikianeDraft::STATUS_DRAFT) {
+			return $this->page('done', $base);
+		}
+		return $this->page('review', $base + [
 			'pages' => $review['pages'],
 			'boxes' => $review['boxes'],
-			'signers' => $review['signers'],
+			'money' => $review['money'],
+			'phone' => $this->moderatorPhone($draft),
+			'signs' => array_filter($review['signers'], static fn (array $s): bool => $s['sender']) !== [],
 			'pdfUrl' => $this->urls->linkToRoute('libresign.tuandikiane.pdf', ['code' => $code]),
 			'optionsUrl' => $this->urls->linkToRoute('libresign.tuandikiane.reviewOptions', ['code' => $code]),
-			'actionUrl' => $this->urls->linkToRoute('libresign.tuandikiane.send', ['code' => $code]),
-			'here' => $this->urls->linkToRouteAbsolute('libresign.tuandikiane.review', ['code' => $code]),
+			'actionUrl' => $this->urls->linkToRoute('libresign.tuandikiane.seal', ['code' => $code]),
+			'payUrl' => $this->urls->linkToRoute('libresign.tuandikiane.pay', ['code' => $code]),
+			'here' => $here,
 		]);
 	}
 
-	#[NoAdminRequired]
+	#[PublicPage]
 	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 30, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/p/t/review/{code}/pdf')]
 	public function pdf(string $code): FileDisplayResponse|DataResponse {
 		$draft = $this->tuandikiane->draftForCode($code);
-		if ($draft === null) {
+		if ($draft === null || !$this->tuandikiane->isOpen($draft)) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
 		try {
@@ -105,140 +114,157 @@ class TuandikianeController extends Controller {
 		return $response;
 	}
 
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'POST', url: '/p/t/review/{code}/options')]
-	public function reviewOptions(string $code): DataResponse {
-		if ($this->tuandikiane->draftForCode($code) === null) {
-			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
-		}
-		return $this->options('libresign.tuandikiane.review', $code);
-	}
-
 	/**
-	 * Send, with the MIMI passkey's answer. Responds with the sender's own
-	 * signing card, for "Sign now", or null when the sender doesn't sign.
-	 */
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'POST', url: '/api/v1/tuandikiane/review/{code}/send')]
-	public function send(string $code, array $response = []): DataResponse {
-		$user = $this->userSession->getUser();
-		$draft = $this->tuandikiane->draftForCode($code);
-		if (!$user instanceof IUser || $draft === null) {
-			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
-		}
-		$denied = $this->passkey($response);
-		if ($denied !== null) {
-			return $denied;
-		}
-		try {
-			return new DataResponse(['signUrl' => $this->tuandikiane->send($draft, $user)]);
-		} catch (LibresignException $e) {
-			return new DataResponse(['error' => 'failed', 'message' => $e->getMessage()], $e->getCode() === Http::STATUS_GONE ? Http::STATUS_GONE : Http::STATUS_CONFLICT);
-		} catch (\Throwable $e) {
-			$this->logger->error('A Tuandikiane draft could not be sent', ['exception' => $e]);
-			return new DataResponse(['error' => 'failed'], Http::STATUS_INTERNAL_SERVER_ERROR);
-		}
-	}
-
-	/**
-	 * Where the WhatsApp card sends a signer whose slot no account holds yet
-	 * (WhatsAppSignController::page). Anyone else goes back to the card.
+	 * WebAuthn options for the moderator's MIMI passkey. With none yet, MIMI
+	 * sets one up and sends them back to this page. An outage lets nobody
+	 * through: nothing is sealed without the passkey.
 	 */
 	#[PublicPage]
-	#[NoCSRFRequired]
 	#[UseSession]
-	#[AnonRateLimit(limit: 30, period: 60)]
-	#[FrontpageRoute(verb: 'GET', url: '/p/t/sign/{code}')]
-	public function sign(string $code): TemplateResponse|RedirectResponse {
-		$found = $this->tuandikiane->unboundSlot($code);
-		if ($found === null) {
-			return new RedirectResponse($this->urls->linkToRoute('libresign.whatsAppSign.page', ['code' => $code]));
-		}
-		$gate = $this->gate($this->urls->linkToRoute('libresign.tuandikiane.sign', ['code' => $code]));
-		if ($gate !== null) {
-			return $gate;
-		}
-		$review = $this->tuandikiane->review($found['draft']);
-		$owner = $this->users->get($review['file']->getUserId());
-		return $this->page('bind', [
-			'documentName' => $review['file']->getName(),
-			'senderName' => $owner?->getDisplayName() ?? '',
-			'optionsUrl' => $this->urls->linkToRoute('libresign.tuandikiane.signOptions', ['code' => $code]),
-			'actionUrl' => $this->urls->linkToRoute('libresign.tuandikiane.bind', ['code' => $code]),
-			'here' => $this->urls->linkToRouteAbsolute('libresign.tuandikiane.sign', ['code' => $code]),
-		]);
-	}
-
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'POST', url: '/p/t/sign/{code}/options')]
-	public function signOptions(string $code): DataResponse {
-		if ($this->tuandikiane->unboundSlot($code) === null) {
+	#[AnonRateLimit(limit: 20, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/t/review/{code}/options')]
+	public function reviewOptions(string $code): DataResponse {
+		$draft = $this->tuandikiane->draftForCode($code);
+		if ($draft === null || !$this->tuandikiane->isOpen($draft)) {
 			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
 		}
-		return $this->options('libresign.tuandikiane.sign', $code);
-	}
-
-	/** Take the slot, with the MIMI passkey's answer, then on to the normal card. */
-	#[NoAdminRequired]
-	#[UseSession]
-	#[FrontpageRoute(verb: 'POST', url: '/p/t/sign/{code}/bind')]
-	public function bind(string $code, array $response = []): DataResponse {
-		$user = $this->userSession->getUser();
-		if (!$user instanceof IUser || $this->tuandikiane->unboundSlot($code) === null) {
-			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
-		}
-		$denied = $this->passkey($response);
-		if ($denied !== null) {
-			return $denied;
-		}
 		try {
-			$this->tuandikiane->bindCard($code, $user);
-		} catch (LibresignException $e) {
-			return new DataResponse(['error' => 'failed', 'message' => $e->getMessage()], $e->getCode() === Http::STATUS_GONE ? Http::STATUS_GONE : Http::STATUS_CONFLICT);
-		} catch (\Throwable $e) {
-			$this->logger->error('A Tuandikiane signer slot could not be bound', ['exception' => $e]);
-			return new DataResponse(['error' => 'failed'], Http::STATUS_INTERNAL_SERVER_ERROR);
-		}
-		return new DataResponse(['redirect' => $this->urls->linkToRoute('libresign.whatsAppSign.page', ['code' => $code])]);
-	}
-
-	/**
-	 * WebAuthn options for the user's MIMI passkey, through the same server
-	 * call as the check after sign-in. With no MIMI passkey yet, MIMI sets one
-	 * up and sends them back to this page. Unlike that check, an outage does
-	 * not let anyone through: nothing is sent without the passkey.
-	 */
-	private function options(string $route, string $code): DataResponse {
-		try {
-			$options = $this->signa->passkeyOptions();
+			$sub = $this->tuandikiane->moderatorSub($draft) ?? throw new \RuntimeException('The moderator has no MIMI account.');
+			$options = $this->signa->passkeyOptions($sub);
 			if ($options === null) {
 				return new DataResponse(['redirect' => $this->signa->mimiEnrolmentUrl(
-					$this->signa->identity()['sub'],
-					(string)$this->userSession->getUser()?->getEMailAddress(),
-					$this->urls->linkToRouteAbsolute($route, ['code' => $code]),
+					$sub,
+					(string)$this->tuandikiane->moderator($draft)->getEMailAddress(),
+					$this->urls->linkToRouteAbsolute('libresign.tuandikiane.review', ['code' => $code]),
 				)]);
 			}
 			return new DataResponse(['options' => $options]);
 		} catch (\Throwable $e) {
-			if (in_array($e->getCode(), [Http::STATUS_UNAUTHORIZED, Http::STATUS_FORBIDDEN], true)) {
-				// Not a SecurySign session, or its token ran out: sign in again, then back here.
-				$this->userSession->logout();
-				return new DataResponse(['redirect' => $this->urls->linkToRoute('core.login.showLoginForm', [
-					'redirect_url' => $this->urls->linkToRoute($route, ['code' => $code]),
-				])]);
-			}
 			$this->logger->warning('MIMI passkey options unavailable for Tuandikiane', ['exception' => $e]);
 			return new DataResponse(['error' => 'unavailable'], Http::STATUS_SERVICE_UNAVAILABLE);
 		}
 	}
 
-	/** Null when MIMI accepts the answer as this user's passkey, else the response to give. */
-	private function passkey(array $response): ?DataResponse {
+	/**
+	 * Seal & Deliver. A moderator who signs needs no passkey here: delivery
+	 * waits for their signature on the card this answers with. Anyone else's
+	 * seal is their MIMI passkey's answer.
+	 */
+	#[PublicPage]
+	#[UseSession]
+	#[AnonRateLimit(limit: 20, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/t/review/{code}/seal')]
+	public function seal(string $code, bool $payForSigners = true, array $response = []): DataResponse {
+		$draft = $this->tuandikiane->draftForCode($code);
+		if ($draft === null || !$this->tuandikiane->isOpen($draft)) {
+			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
+		}
+		$signs = array_filter($draft->getSlots() ?? [], static fn (array $slot): bool => $slot['sender']) !== [];
+		if (!$signs) {
+			$denied = $this->passkey($draft, $response);
+			if ($denied !== null) {
+				return $denied;
+			}
+		}
 		try {
-			if ($this->signa->verifyPasskey($response)) {
+			return new DataResponse(['signUrl' => $this->tuandikiane->seal($draft, $payForSigners)]);
+		} catch (LibresignException $e) {
+			return match ($e->getCode()) {
+				Http::STATUS_PAYMENT_REQUIRED => new DataResponse(['error' => 'payment_required', 'short' => $this->tuandikiane->shortfall($draft, $payForSigners)], Http::STATUS_PAYMENT_REQUIRED),
+				Http::STATUS_GONE => new DataResponse(['error' => 'expired'], Http::STATUS_GONE),
+				default => new DataResponse(['error' => 'failed', 'message' => $e->getMessage()], Http::STATUS_CONFLICT),
+			};
+		} catch (\Throwable $e) {
+			$this->logger->error('A Tuandikiane draft could not be sealed', ['exception' => $e]);
+			return new DataResponse(['error' => 'failed'], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Buy what the moderator's credits fall short of, as the moderator. M-Pesa
+	 * prompts their own number unless they give another.
+	 */
+	#[PublicPage]
+	#[AnonRateLimit(limit: 6, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/t/review/{code}/pay')]
+	public function pay(string $code, bool $payForSigners = true, string $method = 'mobile', string $phone = ''): DataResponse {
+		$draft = $this->tuandikiane->draftForCode($code);
+		if ($draft === null || !$this->tuandikiane->isOpen($draft)) {
+			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
+		}
+		$short = $this->tuandikiane->shortfall($draft, $payForSigners);
+		if ($short === 0) {
+			return new DataResponse(['status' => 'SUCCESS']);
+		}
+		try {
+			return new DataResponse($this->payments->start(
+				$this->tuandikiane->moderator($draft),
+				$short,
+				$method,
+				$phone !== '' ? $phone : $this->moderatorPhone($draft),
+				$this->urls->linkToRouteAbsolute('libresign.tuandikiane.review', ['code' => $code]),
+			));
+		} catch (\Throwable $e) {
+			$this->logger->warning('A Tuandikiane payment did not start', ['exception' => $e]);
+			return new DataResponse(['error' => 'failed'], Http::STATUS_BAD_GATEWAY);
+		}
+	}
+
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 60, period: 60)]
+	#[FrontpageRoute(verb: 'GET', url: '/p/t/review/{code}/pay/{reference}')]
+	public function payStatus(string $code, string $reference): DataResponse {
+		$draft = $this->tuandikiane->draftForCode($code);
+		if ($draft === null) {
+			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
+		}
+		try {
+			return new DataResponse(['status' => $this->payments->status($this->tuandikiane->moderator($draft), $reference)]);
+		} catch (\Throwable) {
+			return new DataResponse(['error' => 'unknown'], Http::STATUS_NOT_FOUND);
+		}
+	}
+
+	/**
+	 * A joiner's invite. Their slot is theirs once Tuandikiane hears MIMI took
+	 * their payment; until then MIMI is the way in, and coming back from it they
+	 * wait here until the slot is theirs, then go on to their card.
+	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[AnonRateLimit(limit: 30, period: 60)]
+	#[FrontpageRoute(verb: 'GET', url: '/p/t/join/{code}')]
+	public function join(string $code, string $back = ''): TemplateResponse|RedirectResponse {
+		$found = $this->tuandikiane->slotForJoinCode($code);
+		if ($found === null) {
+			return $this->page('expired', []);
+		}
+		if ($found['slot']['uid'] !== null) {
+			return new RedirectResponse($this->tuandikiane->slotCard($found['slot']));
+		}
+		$here = $this->urls->linkToRouteAbsolute('libresign.tuandikiane.join', ['code' => $code]);
+		if ($back === '') {
+			return new RedirectResponse($this->signa->mimiEnrolmentUrl('', '', $here . '?back=1'));
+		}
+		return $this->page('waiting', ['refreshUrl' => $here . '?back=1']);
+	}
+
+	/** The number the moderator's prompt goes to: the one they wrote from. */
+	private function moderatorPhone(TuandikianeDraft $draft): string {
+		foreach ($draft->getSlots() ?? [] as $slot) {
+			if ($slot['sender']) {
+				return $slot['phone'];
+			}
+		}
+		return '';
+	}
+
+	/** Null when MIMI accepts the answer as the moderator's passkey, else the response to give. */
+	private function passkey(TuandikianeDraft $draft, array $response): ?DataResponse {
+		try {
+			$sub = $this->tuandikiane->moderatorSub($draft);
+			if ($sub !== null && $this->signa->verifyPasskey($response, $sub)) {
 				return null;
 			}
 		} catch (\Throwable $e) {
@@ -247,31 +273,28 @@ class TuandikianeController extends Controller {
 		}
 		return new DataResponse([
 			'error' => 'rejected',
-			'message' => $this->l10n->t('That passkey could not be confirmed. Use the MIMI passkey for this account and try again.'),
+			'message' => $this->l10n->t('That passkey could not be confirmed. Use your MIMI passkey and try again.'),
 		], Http::STATUS_FORBIDDEN);
 	}
 
 	/**
-	 * Before either page: WhatsApp's own browser can't run a passkey, so it gets
-	 * the WhatsApp card's hand-off to Chrome; anyone signed out goes to the
-	 * normal login and back, after the same browser check /p/open-in-browser
-	 * makes. Null when the page can show.
+	 * WhatsApp's own browser can't run a passkey, so it gets the WhatsApp card's
+	 * hand-off to Chrome. Null when the page can show.
 	 */
-	private function gate(string $path): ?TemplateResponse {
+	private function handOff(string $here): ?TemplateResponse {
 		$userAgent = $this->request->getHeader('User-Agent');
-		$inApp = WhatsAppSignController::isInAppBrowser($userAgent);
-		if (!$inApp && $this->userSession->isLoggedIn()) {
+		if (!WhatsAppSignController::isInAppBrowser($userAgent)) {
 			return null;
 		}
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-whatsapp-sign');
 		$response = new TemplateResponse(Application::APP_ID, 'whatsapp_sign', [
-			'state' => $inApp ? 'browser' : 'checking',
+			'state' => 'browser',
 			'documentName' => '',
 			'signUrl' => '',
-			'target' => $inApp ? '' : $this->urls->linkToRoute('core.login.showLoginForm', ['redirect_url' => $path]),
-			'chromeLink' => WhatsAppSignController::chromeLink($userAgent, $this->urls->getAbsoluteURL($path)),
+			'target' => '',
+			'chromeLink' => WhatsAppSignController::chromeLink($userAgent, $here),
 		], TemplateResponse::RENDER_AS_GUEST);
 		$response->cacheFor(0);
 		return $response;
@@ -281,7 +304,7 @@ class TuandikianeController extends Controller {
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		$policy = new ContentSecurityPolicy();
-		if ($mode !== 'expired') {
+		if ($mode === 'review') {
 			Util::addScript(Application::APP_ID, 'libresign-tuandikiane');
 			try {
 				$frame = $this->signa->passkeyFrame($this->l10n->getLanguageCode());
@@ -292,8 +315,7 @@ class TuandikianeController extends Controller {
 				$frame = ['origin' => '', 'url' => ''];
 			}
 			$params['frameUrl'] = $frame['url'];
-			$userAgent = $this->request->getHeader('User-Agent');
-			$params['chromeLink'] = WhatsAppSignController::chromeLink($userAgent, $params['here']);
+			$params['chromeLink'] = WhatsAppSignController::chromeLink($this->request->getHeader('User-Agent'), $params['here']);
 			// pdf.js renders the pages in a worker served from this instance.
 			$policy->addAllowedWorkerSrcDomain("'self'");
 		}

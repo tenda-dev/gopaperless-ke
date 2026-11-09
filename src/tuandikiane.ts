@@ -3,19 +3,22 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-// A Tuandikiane draft's review page, and the page where a signer known only by
-// phone takes their slot (templates/tuandikiane.php). The review page draws the
-// agreement with its boxes. Either way the action runs behind a MIMI passkey:
-// MIMI's own page in a frame runs the prompt, our server fetches the challenge
-// and has MIMI verify the answer, the same messages as passkey.ts.
+// Seal & Deliver (templates/tuandikiane.php), the moderator's page for a
+// Tuandikiane draft. It draws the agreement with its boxes, works out what the
+// moderator's credits cover, takes a payment only when they fall short, then
+// seals: behind their MIMI passkey (MIMI's own page in a frame runs the prompt,
+// our server fetches the challenge and has MIMI verify the answer, the same
+// messages as passkey.ts), or, when they sign too, on to their signing card,
+// where their signature is the seal.
 
 import axios from '@nextcloud/axios'
-import { t } from '@nextcloud/l10n'
+import { n, t } from '@nextcloud/l10n'
 import * as pdfjsLib from 'pdfjs-dist'
 
 import { canRunPasskey } from './utils/passkeyBrowser'
+import { payAndWait } from './utils/linkPayment'
 
-type Step = 'review' | 'bind' | 'opening' | 'frame' | 'signing' | 'done' | 'cancelled' | 'error' | 'browser'
+type Step = 'review' | 'paying' | 'opening' | 'frame' | 'signing' | 'done' | 'cancelled' | 'error' | 'browser'
 type Box = { page: number, left: number, top: number, width: number, height: number, signer: string }
 type Size = { w: number, h: number }
 
@@ -24,38 +27,74 @@ const holder = document.getElementById('gp-tk-frame')
 const mode = box?.dataset.mode ?? ''
 const frameUrl = box?.dataset.frameUrl ?? ''
 const mimi = frameUrl ? new URL(frameUrl).origin : ''
+const signs = box?.dataset.signs === '1'
+const signers = Number(box?.dataset.signers ?? 0)
+const price = box?.dataset.price === undefined ? null : Number(box.dataset.price)
+const credits = Number(box?.dataset.credits ?? 0)
+const payFor = document.getElementById('gp-tk-pay-for') as HTMLInputElement | null
 let frame: HTMLIFrameElement | null = null
 let slow: ReturnType<typeof setTimeout> | undefined
 
-const SCREENS: Record<string, Partial<Record<Step, [string, string]>>> = {
-	review: {
-		review: [t('libresign', 'Review your agreement'), t('libresign', 'Check the details. When you tap Send, MIMI asks for your passkey, then everyone gets their signing link on WhatsApp.')],
-		opening: [t('libresign', 'Review your agreement'), t('libresign', 'Opening MIMI…')],
-		signing: [t('libresign', 'Sending'), t('libresign', 'Sending your agreement…')],
-		done: [t('libresign', 'Sent'), t('libresign', 'Everyone gets their signing link on WhatsApp.')],
-		cancelled: [t('libresign', 'Not sent'), t('libresign', 'Nothing was sent.')],
-		error: [t('libresign', 'Couldn\'t send'), t('libresign', 'Your agreement was not sent. Try again.')],
-	},
-	bind: {
-		bind: [t('libresign', 'Confirm it\'s you'), t('libresign', 'Use your MIMI passkey to link this signature to your account. Then you can sign.')],
-		opening: [t('libresign', 'Confirm it\'s you'), t('libresign', 'Opening MIMI…')],
-		signing: [t('libresign', 'Confirming'), t('libresign', 'Linking this signature to your account…')],
-		cancelled: [t('libresign', 'Not confirmed'), t('libresign', 'Nothing changed.')],
-		error: [t('libresign', 'Couldn\'t confirm'), t('libresign', 'Nothing changed. Try again.')],
-	},
+const SCREENS: Partial<Record<Step, [string, string]>> = {
+	opening: [t('libresign', 'Seal & Deliver'), t('libresign', 'Opening MIMI…')],
+	signing: [t('libresign', 'Sealing'), t('libresign', 'Sealing your agreement…')],
+	done: [t('libresign', 'Sealed & delivered'), t('libresign', 'Everyone who signs has their link on WhatsApp.')],
+	cancelled: [t('libresign', 'Not sealed'), t('libresign', 'Nothing was sent.')],
+	error: [t('libresign', 'Couldn\'t seal'), t('libresign', 'Your agreement was not sent. Try again.')],
+	browser: [t('libresign', 'Open in Chrome'), t('libresign', 'This browser can\'t use your passkey. Open this page in Chrome to continue.')],
 }
-const BROWSER: [string, string] = [t('libresign', 'Open in Chrome'), t('libresign', 'This browser can\'t use your passkey. Open this page in Chrome to continue.')]
+
+/** What sealing costs now: the signatures the credits don't cover, in shillings. */
+function due(): { needed: number, short: number, amount: number } {
+	const needed = price !== null && payFor?.checked ? signers : 0
+	const short = Math.max(0, needed - credits)
+	return { needed, short, amount: short * (price ?? 0) }
+}
+
+function method(): 'mobile' | 'card' {
+	const picked = document.querySelector<HTMLInputElement>('input[name="gp-tk-method"]:checked')?.value
+	return picked === 'card' ? 'card' : 'mobile'
+}
+
+/** The money card, the picker and the button, from the switch and the credits. */
+function render(): void {
+	if (price === null) {
+		return
+	}
+	const { needed, short, amount } = due()
+	document.getElementById('gp-tk-pay-line')!.textContent = payFor?.checked
+		? n('libresign', '%n signature · KES {price} each', '%n signatures · KES {price} each', signers, { price })
+		: t('libresign', 'Each signer pays KES {price} when they sign', { price })
+	document.getElementById('gp-tk-balance')!.textContent = needed > 0
+		? n('libresign', 'Your credits: %n left', 'Your credits: %n left', credits) + ' · ' + (short > 0 ? t('libresign', 'needs {needed}', { needed }) : t('libresign', 'this uses {needed}', { needed }))
+		: n('libresign', 'Your credits: %n left', 'Your credits: %n left', credits)
+	const badge = document.getElementById('gp-tk-badge')!
+	badge.textContent = short > 0 ? t('libresign', '{short} short', { short }) : (needed > 0 ? t('libresign', 'Covered') : t('libresign', 'Nothing due'))
+	badge.dataset.short = short > 0 ? '1' : ''
+	document.getElementById('gp-tk-methods')!.hidden = short === 0
+	document.getElementById('gp-tk-amount')!.textContent = t('libresign', 'Pay KES {amount} with', { amount })
+	const card = method() === 'card'
+	document.getElementById('gp-tk-phone-row')!.hidden = card
+	document.getElementById('gp-tk-card-note')!.hidden = !card
+	if (box?.dataset.step === 'review' || box?.dataset.step === 'cancelled' || box?.dataset.step === 'error') {
+		document.getElementById('gp-tk-start')!.textContent = short > 0 ? t('libresign', 'Pay KES {amount} & seal', { amount }) : t('libresign', 'Seal')
+		document.getElementById('gp-tk-line')!.textContent = short > 0
+			? (card ? t('libresign', 'Card, then one touch of your passkey') : t('libresign', 'M-Pesa prompt, then one touch of your passkey'))
+			: (signs ? t('libresign', 'Then your signature delivers it') : t('libresign', 'One touch of your passkey seals and delivers it'))
+	}
+}
 
 function show(step: Step, line?: string): void {
 	box!.dataset.step = step
-	const screen = step === 'browser' ? BROWSER : SCREENS[mode]?.[step]
+	const screen = SCREENS[step]
 	if (screen) {
 		document.getElementById('gp-tk-title')!.textContent = screen[0]
-		document.getElementById('gp-tk-line')!.textContent = line || screen[1]
 	}
-	const start = document.getElementById('gp-tk-start')
-	if (start && (step === 'cancelled' || step === 'error')) {
-		start.textContent = t('libresign', 'Try again')
+	if (line || screen) {
+		document.getElementById('gp-tk-line')!.textContent = line || screen![1]
+	}
+	if (step === 'cancelled' || step === 'error') {
+		document.getElementById('gp-tk-start')!.textContent = t('libresign', 'Try again')
 	}
 }
 
@@ -78,8 +117,8 @@ function status(error: unknown): number | undefined {
 function failed(error: unknown): void {
 	close()
 	const response = (error as { response?: { status: number, data?: { message?: string } } }).response
-	if (response?.status === 410) {
-		// Sent, expired or taken meanwhile: the page says which.
+	if (response?.status === 410 || response?.status === 402) {
+		// Sealed, expired, or the credits changed meanwhile: the page says which.
 		window.location.reload()
 	} else if (response?.status === 503) {
 		show('error', t('libresign', 'MIMI isn\'t answering. Try again in a minute.'))
@@ -88,7 +127,35 @@ function failed(error: unknown): void {
 	}
 }
 
+/** The button: pay what's short, then seal. */
 async function start(): Promise<void> {
+	const { short, amount } = due()
+	if (short > 0) {
+		const phone = (document.getElementById('gp-tk-phone') as HTMLInputElement | null)?.value ?? ''
+		show('paying', method() === 'card' ? t('libresign', 'Finish on DPO\'s card page') : t('libresign', 'Enter your PIN on your phone to pay KES {amount}', { amount }))
+		const paid = await payAndWait(box!.dataset.payUrl!, { payForSigners: !!payFor?.checked, method: method(), phone })
+		if (paid !== 'SUCCESS') {
+			show('error', paid === 'CANCELLED'
+				? t('libresign', 'The payment was cancelled, so nothing was paid. Try again, or pick another way.')
+				: t('libresign', 'The payment didn\'t go through, so nothing was paid. Try again, or pick another way.'))
+			return
+		}
+	}
+	await seal()
+}
+
+async function seal(): Promise<void> {
+	if (signs) {
+		// Their signature is the seal: on to their card, which asks for it at once.
+		show('signing')
+		try {
+			const { data } = await axios.post(box!.dataset.actionUrl!, { payForSigners: !!payFor?.checked })
+			window.location.assign(data.signUrl)
+		} catch (error) {
+			failed(error)
+		}
+		return
+	}
 	if (!frameUrl) {
 		show('error', t('libresign', 'MIMI isn\'t answering. Try again in a minute.'))
 		return
@@ -114,12 +181,12 @@ async function start(): Promise<void> {
 	}, 20000)
 }
 
-/** The challenge for this user's MIMI passkey, handed to MIMI's frame. */
+/** The challenge for the moderator's MIMI passkey, handed to MIMI's frame. */
 async function ask(retry?: 'rejected'): Promise<void> {
 	try {
 		const { data } = await axios.post(box!.dataset.optionsUrl!)
 		if (data.redirect) {
-			// No MIMI passkey yet, or signed out: MIMI or the login page, then back here.
+			// No MIMI passkey yet: MIMI sets one up, then back here.
 			window.location.assign(data.redirect)
 			return
 		}
@@ -133,19 +200,8 @@ async function ask(retry?: 'rejected'): Promise<void> {
 async function submit(response: unknown): Promise<void> {
 	show('signing')
 	try {
-		const { data } = await axios.post(box!.dataset.actionUrl!, { response })
+		await axios.post(box!.dataset.actionUrl!, { response, payForSigners: !!payFor?.checked })
 		close()
-		if (data.redirect) {
-			window.location.assign(data.redirect)
-			return
-		}
-		const next = document.getElementById('gp-tk-next')
-		if (data.signUrl) {
-			next?.setAttribute('href', data.signUrl)
-		} else {
-			// The sender drew it up for others and signs nothing.
-			next?.remove()
-		}
 		show('done')
 	} catch (error) {
 		if (status(error) === 403) {
@@ -179,7 +235,7 @@ window.addEventListener('message', (event) => {
 /**
  * Each page on a canvas the width of the card, each box over it in the page's own
  * proportions, labelled with its signer. The positions are PDF points from the
- * top-left, as Tuandikiane sent them.
+ * top-left, as Tuandikiane sent them. Drawn the first time the file card opens.
  */
 async function drawPages(): Promise<void> {
 	const pages = document.getElementById('gp-tk-pages')
@@ -237,14 +293,23 @@ async function copy(text: string): Promise<boolean> {
 	}
 }
 
-if (box && mode !== 'expired') {
+if (box && mode === 'review') {
+	render()
+	payFor?.addEventListener('change', render)
+	document.querySelectorAll('input[name="gp-tk-method"]').forEach((radio) => radio.addEventListener('change', render))
 	document.getElementById('gp-tk-start')?.addEventListener('click', () => void start())
 	document.getElementById('gp-tk-copy')?.addEventListener('click', async (event) => {
 		const label = (event.currentTarget as HTMLElement).querySelector('span')!
 		label.textContent = await copy(window.location.href) ? t('libresign', 'Link copied') : window.location.href
 	})
-	drawPages().catch((error) => {
-		// The link to the PDF stays in place of the pages.
-		console.error('Could not draw the agreement', error)
+	const document_ = document.querySelector<HTMLDetailsElement>('.gp-tk__document')
+	document_?.addEventListener('toggle', () => {
+		if (document_.open && !document_.dataset.drawn) {
+			document_.dataset.drawn = '1'
+			drawPages().catch((error) => {
+				// The link to the PDF stays in place of the pages.
+				console.error('Could not draw the agreement', error)
+			})
+		}
 	})
 }

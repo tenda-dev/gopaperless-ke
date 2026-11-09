@@ -41,6 +41,8 @@ use OCP\DB\Types;
  */
 class TuandikianeDraft extends Entity {
 	public const STATUS_DRAFT = 'draft';
+	/** Able to sign, waiting for the moderator's own signature before anyone else hears. */
+	public const STATUS_SEALED = 'sealed';
 	public const STATUS_SENT = 'sent';
 
 	protected string $draftUuid = '';

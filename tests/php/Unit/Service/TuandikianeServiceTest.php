@@ -25,7 +25,9 @@ use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\FileElementService;
 use OCA\Libresign\Service\FolderService;
 use OCA\Libresign\Service\IdentifyMethodService;
+use OCA\Libresign\Service\Payment\LinkPaymentService;
 use OCA\Libresign\Service\RequestSignatureService;
+use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\TuandikianeClient;
 use OCA\Libresign\Service\TuandikianeService;
 use OCA\Libresign\Service\WhatsAppService;
@@ -43,14 +45,16 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Seal & Deliver on the GoPaperless side: the draft is the moderator's own,
+ * signers are MIMI accounts or joiners' slots, sealing spends the moderator's
+ * credits on the signers, and a joiner's account takes their slot later.
+ */
 final class TuandikianeServiceTest extends TestCase {
 	private const DRAFT = '7d1f2c3a-4b5e-4f60-8a9b-0c1d2e3f4a5b';
 	private const NOW = '2026-11-06T10:00:00+00:00';
 
-	private array $settings = [
-		'tuandikiane_api_key' => 'key-123',
-		'tuandikiane_service_uid' => 'tuandikiane',
-	];
+	private array $settings = ['tuandikiane_api_key' => 'key-123'];
 	private IDBConnection&MockObject $db;
 	private IUserManager&MockObject $users;
 	private TuandikianeDraftMapper&MockObject $drafts;
@@ -64,14 +68,19 @@ final class TuandikianeServiceTest extends TestCase {
 	private FolderService&MockObject $folders;
 	private ValidateHelper&MockObject $validateHelper;
 	private WhatsAppService&MockObject $whatsApp;
+	private SecurySignService&MockObject $signa;
+	private LinkPaymentService&MockObject $payments;
 	private TuandikianeClient&MockObject $client;
 	private IURLGenerator&MockObject $urls;
-	/** @var list<array{string, ?array}> */
+	/** @var array<string, IUser> uid => account, also what MIMI's subs name ("sub-<uid>") */
+	private array $accounts = [];
+	/** @var list<array{string, ?array}> every draft write, as [status, slots] */
 	private array $stored = [];
 
 	protected function setUp(): void {
 		$this->db = $this->createMock(IDBConnection::class);
 		$this->users = $this->createMock(IUserManager::class);
+		$this->users->method('get')->willReturnCallback(fn (string $uid): ?IUser => $this->accounts[$uid] ?? null);
 		$this->drafts = $this->createMock(TuandikianeDraftMapper::class);
 		$this->requestSignature = $this->createMock(RequestSignatureService::class);
 		$this->fileElementService = $this->createMock(FileElementService::class);
@@ -83,17 +92,24 @@ final class TuandikianeServiceTest extends TestCase {
 		$this->folders = $this->createMock(FolderService::class);
 		$this->validateHelper = $this->createMock(ValidateHelper::class);
 		$this->whatsApp = $this->createMock(WhatsAppService::class);
+		$this->whatsApp->method('subFor')->willReturnCallback(static fn (IUser $user): string => 'sub-' . $user->getUID());
+		$this->whatsApp->method('linkCode')->willReturnCallback(static fn (SignRequest $signRequest): string => $signRequest->getUuid() . '.mac');
+		$this->signa = $this->createMock(SecurySignService::class);
+		$this->signa->method('accountFor')->willReturnCallback(fn (string $sub): ?IUser => $this->accounts[substr($sub, 4)] ?? null);
+		$this->payments = $this->createMock(LinkPaymentService::class);
 		$this->client = $this->createMock(TuandikianeClient::class);
 		$this->urls = $this->createMock(IURLGenerator::class);
 		$this->urls->method('linkToRouteAbsolute')->willReturnCallback(
 			static fn (string $route, array $params): string => 'https://gp.test/' . $route . '/' . $params['code'],
 		);
-		// Every draft write, as [status, slots].
 		$this->drafts->method('update')->willReturnCallback(function (TuandikianeDraft $draft): TuandikianeDraft {
 			$this->stored[] = [$draft->getStatus(), $draft->getSlots()];
 			return $draft;
 		});
 		$this->identifyMethods->method('update')->willReturnArgument(0);
+		foreach (['neo', 'ali'] as $uid) {
+			$this->accounts[$uid] = $this->user($uid);
+		}
 	}
 
 	private function service(): TuandikianeService {
@@ -108,7 +124,7 @@ final class TuandikianeServiceTest extends TestCase {
 		return new TuandikianeService($appConfig, $config, $this->db, $this->users, $time, $this->drafts,
 			$this->requestSignature, $this->fileElementService, $this->fileElements, $this->files, $this->signRequests,
 			$this->identifyMethods, $this->identifyMethodService, $this->folders, $this->validateHelper, $this->whatsApp,
-			$this->client, $this->urls, $this->createMock(LoggerInterface::class));
+			$this->signa, $this->payments, $this->client, $this->urls, $this->createMock(LoggerInterface::class));
 	}
 
 	private function user(string $uid): IUser&MockObject {
@@ -118,23 +134,26 @@ final class TuandikianeServiceTest extends TestCase {
 		return $user;
 	}
 
+	/** Neo moderates and signs; Ali has MIMI; Wanjiru doesn't yet. */
 	private static function input(array $override = []): array {
 		return $override + [
 			'reference' => 'DOC-9EB7DE75CCD8',
 			'name' => 'Loan agreement between Neo and Ali',
 			'file' => ['base64' => 'JVBERi0xLjQK'],
+			'moderator' => ['sub' => 'sub-neo', 'phone' => '+254711000001'],
 			'signers' => [
-				['key' => 's1', 'display_name' => 'Neo Kamau', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true],
-				['key' => 's2', 'display_name' => 'Ali Hassan', 'phone' => '+254722000002', 'email' => 'Ali@Example.com', 'is_sender' => false],
+				['key' => 's1', 'display_name' => 'Neo Kamau', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true, 'sub' => 'sub-neo'],
+				['key' => 's2', 'display_name' => '', 'phone' => '+254722000002', 'email' => null, 'is_sender' => false, 'sub' => 'sub-ali'],
+				['key' => 's3', 'display_name' => 'Wanjiru', 'phone' => '+254733000003', 'email' => null, 'is_sender' => false, 'sub' => null],
 			],
 			'boxes' => [
 				['signer' => 's1', 'page' => 1, 'left' => 72, 'top' => 640, 'width' => 180, 'height' => 48],
-				['signer' => 's2', 'page' => 2, 'left' => 320, 'top' => 640, 'width' => 180, 'height' => 48],
+				['signer' => 's3', 'page' => 2, 'left' => 320, 'top' => 640, 'width' => 180, 'height' => 48],
 			],
 		];
 	}
 
-	private static function file(string $owner = 'tuandikiane'): FileEntity {
+	private static function file(string $owner = 'neo'): FileEntity {
 		$file = new FileEntity();
 		$file->setId(42);
 		$file->setUuid('f1e2d3c4-0000-4000-8000-000000000042');
@@ -145,13 +164,13 @@ final class TuandikianeServiceTest extends TestCase {
 		return $file;
 	}
 
-	private static function signRequest(int $id, int $order, ?\DateTime $signed = null, SignRequestStatus $status = SignRequestStatus::ABLE_TO_SIGN): SignRequest {
+	private static function signRequest(int $id, ?\DateTime $signed = null, SignRequestStatus $status = SignRequestStatus::ABLE_TO_SIGN): SignRequest {
 		$signRequest = new SignRequest();
 		$signRequest->setId($id);
 		$signRequest->setUuid(sprintf('00000000-0000-4000-8000-%012d', $id));
 		$signRequest->setFileId(42);
-		$signRequest->setDisplayName($order === 1 ? 'Neo Kamau' : 'Ali Hassan');
-		$signRequest->setSigningOrder($order);
+		$signRequest->setDisplayName(['101' => 'Neo Kamau', '102' => 'Ali', '103' => 'Wanjiru'][(string)$id] ?? 'Signer');
+		$signRequest->setSigningOrder(1);
 		$signRequest->setStatus($status->value);
 		if ($signed !== null) {
 			$signRequest->setSigned($signed);
@@ -167,7 +186,7 @@ final class TuandikianeServiceTest extends TestCase {
 		return $method;
 	}
 
-	private static function draft(string $status = TuandikianeDraft::STATUS_DRAFT, string $expires = '2026-11-07T10:00:00+00:00', ?string $s1 = null, ?string $s2 = null): TuandikianeDraft {
+	private static function draft(string $status = TuandikianeDraft::STATUS_DRAFT, string $expires = '2026-11-07T10:00:00+00:00', bool $moderatorSigns = true, ?string $s3 = null): TuandikianeDraft {
 		$draft = new TuandikianeDraft();
 		$draft->setId(5);
 		$draft->setDraftUuid(self::DRAFT);
@@ -176,8 +195,9 @@ final class TuandikianeServiceTest extends TestCase {
 		$draft->setStatus($status);
 		$draft->setExpiresAt(new \DateTime($expires));
 		$draft->setSlots([
-			['key' => 's1', 'phone' => '+254711000001', 'sender' => true, 'signRequestId' => 101, 'uid' => $s1, 'card' => false],
-			['key' => 's2', 'phone' => '+254722000002', 'sender' => false, 'signRequestId' => 102, 'uid' => $s2, 'card' => false],
+			['key' => 's1', 'phone' => '+254711000001', 'sender' => $moderatorSigns, 'named' => true, 'signRequestId' => 101, 'uid' => 'neo', 'card' => false],
+			['key' => 's2', 'phone' => '+254722000002', 'sender' => false, 'named' => false, 'signRequestId' => 102, 'uid' => 'ali', 'card' => false],
+			['key' => 's3', 'phone' => '+254733000003', 'sender' => false, 'named' => true, 'signRequestId' => 103, 'uid' => $s3, 'card' => false],
 		]);
 		return $draft;
 	}
@@ -203,9 +223,7 @@ final class TuandikianeServiceTest extends TestCase {
 	}
 
 	/** Arranges a draft's creation. $saved gets what save() was given, $elements the boxes saved. */
-	private function creating(?array &$saved, array &$elements): IUser {
-		$service = $this->user('tuandikiane');
-		$this->users->method('get')->willReturnMap([['tuandikiane', $service]]);
+	private function creating(?array &$saved, array &$elements): void {
 		$this->drafts->method('findByReference')->willReturn(null);
 		$this->drafts->method('insert')->willReturnArgument(0);
 		$this->requestSignature->method('save')->willReturnCallback(static function (array $data) use (&$saved): FileEntity {
@@ -213,76 +231,73 @@ final class TuandikianeServiceTest extends TestCase {
 			return self::file();
 		});
 		$this->signRequests->method('getByIdentifierAndFileId')->willReturnCallback(
-			static fn (string $key, string $value): SignRequest => self::signRequest(str_contains($value, '-s1@') ? 101 : 102, str_contains($value, '-s1@') ? 1 : 2),
+			static fn (string $key, string $value): SignRequest => self::signRequest(match (true) {
+				$value === 'neo' => 101,
+				$value === 'ali' => 102,
+				default => 103,
+			}),
 		);
 		$this->fileElementService->method('saveVisibleElement')->willReturnCallback(static function (array $element) use (&$elements) {
 			$elements[] = $element;
 			return new \OCA\Libresign\Db\FileElement();
 		});
-		return $service;
 	}
 
-	public function testUnnamedSignersAndASenderAbroadAreAccepted(): void {
+	public function testTheDraftIsTheModeratorsOwnWithAccountsForSignersWhoHaveMimi(): void {
+		$saved = null;
+		$elements = [];
+		$this->creating($saved, $elements);
+
+		$result = $this->service()->createDraft(self::input());
+
+		$this->assertMatchesRegularExpression('#^https://gp\.test/libresign\.tuandikiane\.review/' . $result['draft_uuid'] . '\.[A-Za-z0-9_-]{22}$#', $result['review_url']);
+		$this->assertSame(FileStatus::DRAFT->value, $saved['status']);
+		$this->assertSame($this->accounts['neo'], $saved['userManager']);
+		$this->assertSame('tuandikiane-' . $result['draft_uuid'], $saved['settings']['folderName']);
+		$this->assertSame([['method' => 'account', 'value' => 'neo']], $saved['signers'][0]['identifyMethods']);
+		$this->assertSame([['method' => 'account', 'value' => 'ali']], $saved['signers'][1]['identifyMethods']);
+		$this->assertSame('tuandikiane-' . $result['draft_uuid'] . '-s3@placeholder.securesign.local', $saved['signers'][2]['identifyMethods'][0]['value']);
+		// An unnamed signer with an account shows their account's name; nobody waits for anyone.
+		$this->assertSame(['Neo Kamau', 'Ali', 'Wanjiru'], array_column($saved['signers'], 'displayName'));
+		$this->assertSame([1, 1, 1], array_column($saved['signers'], 'signingOrder'));
+		$this->assertSame([0, 0, 0], array_column($saved['signers'], 'notify'));
+
+		[, $slots] = end($this->stored);
+		$this->assertSame(['neo', 'ali', null], array_column($slots, 'uid'));
+		$this->assertSame([101, 103], array_column($elements, 'signRequestId'));
+	}
+
+	public function testTwoNumbersOnOneAccountLeaveTheSecondAJoinersSlot(): void {
 		$saved = null;
 		$elements = [];
 		$this->creating($saved, $elements);
 		$input = self::input();
-		$input['signers'][0] = ['key' => 's1', 'display_name' => '', 'phone' => '+254711000001', 'email' => null, 'is_sender' => false];
-		// A sender abroad is fine; the signers are Kenyan.
-		$input['signers'][] = ['key' => 's3', 'display_name' => 'Brian', 'phone' => '+447700900123', 'email' => null, 'is_sender' => true];
-		$input['signers'][1]['email'] = null;
+		$input['signers'][2]['sub'] = 'sub-ali';
 
 		$this->service()->createDraft($input);
 
-		$this->assertSame(['Signer 1', 'Ali Hassan', 'Brian'], array_column($saved['signers'], 'displayName'));
-		[, $slots] = end($this->stored);
-		$this->assertSame([false, false, true], array_column($slots, 'sender'));
-		$this->assertSame([false, true, true], array_column($slots, 'named'));
+		$this->assertSame('email', $saved['signers'][2]['identifyMethods'][0]['method']);
 	}
 
-	public function testADraftGetsASlotPerSignerAndEachBoxOnItsSignersSlot(): void {
-		$service = $this->user('tuandikiane');
-		$this->users->method('get')->willReturnMap([['tuandikiane', $service]]);
+	public function testAModeratorMimiDoesNotKnowIsRefusedAndAnOutageMakesNothing(): void {
 		$this->drafts->method('findByReference')->willReturn(null);
-		$this->drafts->expects($this->once())->method('insert')->willReturnCallback(static function (TuandikianeDraft $draft): TuandikianeDraft {
-			$draft->setId(5);
-			return $draft;
-		});
-		$saved = null;
-		$this->requestSignature->expects($this->once())->method('save')->willReturnCallback(static function (array $data) use (&$saved): FileEntity {
-			$saved = $data;
-			return self::file();
-		});
-		$this->signRequests->method('getByIdentifierAndFileId')->willReturnCallback(
-			static fn (string $key, string $value, int $fileId): ?SignRequest => match (true) {
-				$key === 'email' && $fileId === 42 && str_ends_with($value, '-s1@placeholder.securesign.local') => self::signRequest(101, 1),
-				$key === 'email' && $fileId === 42 && $value === 'ali@example.com' => self::signRequest(102, 2),
-				default => null,
-			},
-		);
-		$elements = [];
-		$this->fileElementService->method('saveVisibleElement')->willReturnCallback(static function (array $element) use (&$elements) {
-			$elements[] = $element;
-			return new \OCA\Libresign\Db\FileElement();
-		});
+		$this->drafts->expects($this->never())->method('insert');
+		try {
+			$this->service()->createDraft(self::input(['moderator' => ['sub' => 'sub-nobody']]));
+			$this->fail('Accepted');
+		} catch (LibresignException $e) {
+			$this->assertSame(422, $e->getCode());
+		}
 
-		$result = $this->service()->createDraft(self::input());
-
-		$this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $result['draft_uuid']);
-		$this->assertMatchesRegularExpression('#^https://gp\.test/libresign\.tuandikiane\.review/' . $result['draft_uuid'] . '\.[A-Za-z0-9_-]{22}$#', $result['review_url']);
-		$this->assertSame('2026-11-07T10:00:00+00:00', $result['expires_at']);
-
-		$this->assertSame(FileStatus::DRAFT->value, $saved['status']);
-		$this->assertSame($service, $saved['userManager']);
-		$this->assertSame('tuandikiane-' . $result['draft_uuid'], $saved['settings']['folderName']);
-		$this->assertSame('tuandikiane-' . $result['draft_uuid'] . '-s1@placeholder.securesign.local', $saved['signers'][0]['identifyMethods'][0]['value']);
-		$this->assertSame([['method' => 'email', 'value' => 'ali@example.com']], $saved['signers'][1]['identifyMethods']);
-		$this->assertSame([0, 0], array_column($saved['signers'], 'notify'));
-		$this->assertSame([1, 2], array_column($saved['signers'], 'signingOrder'));
-
-		$this->assertSame([101, 102], array_column($elements, 'signRequestId'));
-		$this->assertSame(['page' => 2, 'left' => 320, 'top' => 640, 'width' => 180, 'height' => 48], $elements[1]['coordinates']);
-		$this->assertSame([42, 42], array_column($elements, 'fileId'));
+		$down = $this->createMock(SecurySignService::class);
+		$down->method('accountFor')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));
+		$this->signa = $down;
+		try {
+			$this->service()->createDraft(self::input());
+			$this->fail('Accepted');
+		} catch (LibresignException $e) {
+			$this->assertSame(503, $e->getCode());
+		}
 	}
 
 	public function testTheSameReferenceGetsTheSameDraftBack(): void {
@@ -293,15 +308,13 @@ final class TuandikianeServiceTest extends TestCase {
 		$result = $this->service()->createDraft(self::input());
 
 		$this->assertSame(self::DRAFT, $result['draft_uuid']);
-		$this->assertSame('https://gp.test/libresign.tuandikiane.review/' . $this->service()->reviewCode(self::DRAFT), $result['review_url']);
 	}
 
-	public function testTheSameReferenceAfterItsDraftExpiredUnsentMakesANewOne(): void {
+	public function testTheSameReferenceAfterItsDraftExpiredUnsealedMakesANewOne(): void {
 		$this->drafts->method('findByReference')->willReturn(self::draft(expires: '2026-11-06T09:00:00+00:00'));
 		$this->files->method('getById')->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException('gone'));
 		$this->drafts->expects($this->once())->method('delete');
 		$this->drafts->expects($this->once())->method('insert')->willThrowException(new \RuntimeException('stop here'));
-		$this->users->method('get')->willReturn($this->user('tuandikiane'));
 
 		$this->expectExceptionMessage('stop here');
 		$this->service()->createDraft(self::input());
@@ -312,13 +325,13 @@ final class TuandikianeServiceTest extends TestCase {
 		$two[1]['is_sender'] = true;
 		return [
 			'no reference' => [['reference' => ' ']],
+			'no moderator' => [['moderator' => ['phone' => '+254711000001']]],
 			'two senders' => [['signers' => $two]],
 			'an empty email' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '+254711000001', 'email' => '', 'is_sender' => true]]]],
 			'no display name at all' => [['signers' => [['key' => 's1', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true]]]],
 			'a local number' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '0711000001', 'email' => null, 'is_sender' => true]]]],
 			'a signer outside Kenya' => [['signers' => [['key' => 's1', 'display_name' => 'Neo', 'phone' => '+254711000001', 'email' => null, 'is_sender' => true], ['key' => 's2', 'display_name' => 'Ali', 'phone' => '+447700900123', 'email' => null, 'is_sender' => false]]]],
 			'a box for no one' => [['boxes' => [['signer' => 's9', 'page' => 1, 'left' => 0, 'top' => 0, 'width' => 10, 'height' => 10]]]],
-			'a box off the page' => [['boxes' => [['signer' => 's1', 'page' => 0, 'left' => 0, 'top' => 0, 'width' => 10, 'height' => 10]]]],
 			'a box in fractions' => [['boxes' => [['signer' => 's1', 'page' => 1, 'left' => 7.5, 'top' => 0, 'width' => 10, 'height' => 10]]]],
 		];
 	}
@@ -334,17 +347,6 @@ final class TuandikianeServiceTest extends TestCase {
 		}
 	}
 
-	public function testTheReviewCodeNamesItsDraftOnlyWhileItCanBeSent(): void {
-		$service = $this->service();
-		$code = $service->reviewCode(self::DRAFT);
-		$drafts = [self::draft(), self::draft(expires: '2026-11-06T09:59:59+00:00'), self::draft(TuandikianeDraft::STATUS_SENT)];
-		$this->drafts->method('findByDraftUuid')->willReturnOnConsecutiveCalls(...$drafts);
-
-		$this->assertSame(self::DRAFT, $service->draftForCode($code)?->getDraftUuid());
-		$this->assertNull($service->draftForCode($code), 'expired');
-		$this->assertNull($service->draftForCode($code), 'sent');
-	}
-
 	public function testAForgedReviewCodeIsNotLookedUp(): void {
 		$this->drafts->expects($this->never())->method('findByDraftUuid');
 		$service = $this->service();
@@ -355,248 +357,224 @@ final class TuandikianeServiceTest extends TestCase {
 		$this->assertNull($service->draftForCode('8d1f2c3a-4b5e-4f60-8a9b-0c1d2e3f4a5b' . substr($code, 36)));
 	}
 
-	/**
-	 * The folder calls of a send: the draft's file in the service account's
-	 * folder, and an empty folder for it in the sender's.
-	 *
-	 * @return array{copy: File&MockObject, holderFolder: Folder&MockObject}
-	 */
-	private function folders(): array {
-		$holderFolder = $this->createMock(Folder::class);
-		$holderFolder->method('getName')->willReturn('tuandikiane-' . self::DRAFT);
-		$source = $this->createMock(File::class);
-		$source->method('getName')->willReturn('Loan agreement between Neo and Ali.pdf');
-		$source->method('getContent')->willReturn('%PDF-1.4');
-		$source->method('getParent')->willReturn($holderFolder);
-		$this->folders->method('getFileByNodeId')->willReturnMap([[900, $source]]);
-		$copy = $this->createMock(File::class);
-		$copy->method('getId')->willReturn(950);
-		$draftFolder = $this->createMock(Folder::class);
-		$draftFolder->method('nodeExists')->willReturn(false);
-		$draftFolder->method('newFile')->with('Loan agreement between Neo and Ali.pdf', '%PDF-1.4')->willReturn($copy);
-		$base = $this->createMock(Folder::class);
-		$base->method('nodeExists')->willReturn(false);
-		$base->method('newFolder')->with('tuandikiane-' . self::DRAFT)->willReturn($draftFolder);
-		$this->folders->method('getFolder')->willReturn($base);
-		return ['copy' => $copy, 'holderFolder' => $holderFolder];
-	}
-
-	public function testSendMovesTheFileBindsTheSenderPublishesAndSendsTheOtherCards(): void {
-		$neo = $this->user('neo');
+	/** A seal's surroundings: the file, its three sign requests and their identities. */
+	private function sealing(TuandikianeDraft $locked, ?array &$published): void {
 		$file = self::file();
 		$this->files->method('getById')->willReturn($file);
-		$folders = $this->folders();
-		$folders['holderFolder']->expects($this->once())->method('delete');
-		$this->drafts->method('findByDraftUuidForUpdate')->willReturn(self::draft());
-		$this->db->expects($this->once())->method('beginTransaction');
-		$this->db->expects($this->once())->method('commit');
-		$this->db->expects($this->never())->method('rollBack');
-		$this->files->expects($this->once())->method('update')->willReturnCallback(function (FileEntity $updated): FileEntity {
-			$this->assertSame('neo', $updated->getUserId());
-			$this->assertSame(950, $updated->getNodeId());
-			return $updated;
-		});
-		$methods = [101 => [self::method(101, 'email', 'tuandikiane-' . self::DRAFT . '-s1@placeholder.securesign.local')], 102 => [self::method(102, 'email', 'ali@example.com')]];
-		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->willReturnCallback(static fn (int $id): array => $methods[$id]);
-		$this->identifyMethodService->expects($this->once())->method('clearCache');
-		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, 1), self::signRequest(102, 2)]);
-		$this->signRequests->method('getById')->willReturnCallback(static fn (int $id): SignRequest => self::signRequest($id, $id - 100));
-		$published = null;
-		$this->requestSignature->expects($this->once())->method('save')->willReturnCallback(static function (array $data) use (&$published, $file): FileEntity {
+		$this->drafts->method('findByDraftUuidForUpdate')->willReturn($locked);
+		$methods = [101 => 'neo', 102 => 'ali', 103 => 'tuandikiane-' . self::DRAFT . '-s3@placeholder.securesign.local'];
+		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->willReturnCallback(
+			static fn (int $id): array => [self::method($id, $id === 103 ? 'email' : 'account', $methods[$id])],
+		);
+		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101), self::signRequest(102), self::signRequest(103)]);
+		$this->signRequests->method('getById')->willReturnCallback(static fn (int $id): SignRequest => self::signRequest($id));
+		$this->requestSignature->method('save')->willReturnCallback(static function (array $data) use (&$published, $file): FileEntity {
 			$published = $data;
 			return $file;
 		});
-		$this->users->method('get')->willReturnMap([['neo', $neo]]);
-		$this->whatsApp->method('subFor')->with($neo)->willReturn('sub-neo');
-		$cards = [];
-		$this->whatsApp->expects($this->exactly(2))->method('sendTo')
-			->willReturnCallback(static function (FileEntity $sent, SignRequest $signRequest, IUser $sender, string $sub, string $to) use (&$cards, $file, $neo): array {
-				self::assertSame([$file, $neo], [$sent, $sender]);
-				$cards[] = [$signRequest->getId(), $sub, $to];
-				return ['status' => 'sent', 'error' => null, 'availableAgainAt' => null];
-			});
-		$this->whatsApp->method('linkCode')->willReturnCallback(static fn (SignRequest $signRequest): string => $signRequest->getUuid() . '.mac');
-		$this->client->expects($this->once())->method('event')->with(self::DRAFT, 'sent');
-
-		$url = $this->service()->send(self::draft(), $neo);
-
-		$this->assertSame('https://gp.test/libresign.whatsAppSign.page/00000000-0000-4000-8000-000000000101.mac', $url);
-		$this->assertSame('account', $methods[101][0]->getIdentifierKey());
-		$this->assertSame('neo', $methods[101][0]->getIdentifierValue());
-		$this->assertSame('email', $methods[102][0]->getIdentifierKey(), 'only the sender is bound on Send');
-
-		$this->assertSame(FileStatus::ABLE_TO_SIGN->value, $published['status']);
-		$this->assertSame($file->getUuid(), $published['uuid']);
-		$this->assertSame($neo, $published['userManager']);
-		$this->assertSame([
-			['identifyMethods' => [['method' => 'account', 'value' => 'neo']], 'displayName' => 'Neo Kamau', 'signingOrder' => 1, 'notify' => 0],
-			['identifyMethods' => [['method' => 'email', 'value' => 'ali@example.com']], 'displayName' => 'Ali Hassan', 'signingOrder' => 2, 'notify' => 0],
-		], $published['signers']);
-
-		[$status, $slots] = $this->stored[0];
-		$this->assertSame(TuandikianeDraft::STATUS_SENT, $status);
-		$this->assertSame('neo', $slots[0]['uid']);
-		$this->assertNull($slots[1]['uid']);
-		// The sender gets their card too, under their own sub; the others under their slot's name.
-		$this->assertSame([[101, 'sub-neo', '+254711000001'], [102, 'tuandikiane:' . self::DRAFT . ':s2', '+254722000002']], $cards);
-		$this->assertSame([true, true], array_column(end($this->stored)[1], 'card'), 'the cards are remembered as sent');
+		$this->payments->method('on')->willReturn(true);
+		$this->payments->method('credits')->willReturn(3);
 	}
 
-	public function testSendAfterSomeoneElseSentItLeavesNothingBehind(): void {
-		$this->files->method('getById')->willReturn(self::file());
-		$folders = $this->folders();
-		$folders['copy']->expects($this->once())->method('delete');
-		$this->drafts->method('findByDraftUuidForUpdate')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'zawadi'));
-		$this->db->expects($this->once())->method('rollBack');
-		$this->db->expects($this->never())->method('commit');
-		$this->files->expects($this->never())->method('update');
-		$this->requestSignature->expects($this->never())->method('save');
+	public function testAModeratorWhoDoesNotSignDeliversToReadySignersAndInvitesTheRest(): void {
+		$published = null;
+		$this->sealing(self::draft(moderatorSigns: false), $published);
+		$cards = [];
+		$this->whatsApp->method('sendTo')->willReturnCallback(static function (FileEntity $file, SignRequest $signRequest, IUser $sender, string $sub, string $to) use (&$cards): array {
+			$cards[] = [$signRequest->getId(), $sub, $to, $sender->getUID()];
+			return ['status' => 'sent', 'error' => null, 'availableAgainAt' => null];
+		});
+		$events = [];
+		$this->client->method('event')->willReturnCallback(static function (string $draft, string $event, ?string $signer = null, array $extra = []) use (&$events): void {
+			$events[] = [$event, $extra];
+		});
+		$this->db->expects($this->once())->method('commit');
+
+		$this->assertNull($this->service()->seal(self::draft(moderatorSigns: false), true));
+
+		$this->assertSame(FileStatus::ABLE_TO_SIGN->value, $published['status']);
+		$this->assertSame($this->accounts['neo'], $published['userManager']);
+		$this->assertSame([['type' => 'requester'], ['type' => 'requester'], ['type' => 'requester']], array_column($published['signers'], 'sponsorship'));
+		$this->assertSame(TuandikianeDraft::STATUS_SENT, $this->stored[0][0]);
+		$this->assertSame([[101, 'sub-neo', '+254711000001', 'neo'], [102, 'sub-ali', '+254722000002', 'neo']], $cards);
+		$this->assertCount(1, $events);
+		[$event, $extra] = $events[0];
+		$this->assertSame('sent', $event);
+		$this->assertSame('s3', $extra['invites'][0]['signer']);
+		$this->assertSame('+254733000003', $extra['invites'][0]['phone']);
+		$this->assertMatchesRegularExpression('#^https://gp\.test/libresign\.tuandikiane\.join/' . self::DRAFT . '\.s3\.[A-Za-z0-9_-]{22}$#', $extra['invites'][0]['url']);
+	}
+
+	public function testAModeratorWhoSignsSealsBySigningAndNobodyHearsUntilThen(): void {
+		$published = null;
+		$this->sealing(self::draft(), $published);
+		$this->whatsApp->expects($this->never())->method('sendTo');
 		$this->client->expects($this->never())->method('event');
 
+		$url = $this->service()->seal(self::draft(), false);
+
+		$this->assertSame('https://gp.test/libresign.whatsAppSign.page/00000000-0000-4000-8000-000000000101.mac', $url);
+		$this->assertSame(TuandikianeDraft::STATUS_SEALED, $this->stored[0][0]);
+		$this->assertSame([], array_filter(array_column($published['signers'], 'sponsorship')), 'each pays their own');
+	}
+
+	public function testCreditsThatFallShortStopTheSeal(): void {
+		$published = null;
+		$this->sealing(self::draft(), $published);
+		$short = $this->createMock(LinkPaymentService::class);
+		$short->method('on')->willReturn(true);
+		$short->method('credits')->willReturn(1);
+		$this->payments = $short;
+		$this->requestSignature->expects($this->never())->method('save');
+
+		$this->assertSame(2, $this->service()->shortfall(self::draft(), true));
+		$this->assertSame(0, $this->service()->shortfall(self::draft(), false));
 		try {
-			$this->service()->send(self::draft(), $this->user('neo'));
-			$this->fail('Sent twice');
+			$this->service()->seal(self::draft(), true);
+			$this->fail('Sealed without the credits');
+		} catch (LibresignException $e) {
+			$this->assertSame(402, $e->getCode());
+		}
+	}
+
+	public function testSealingTwiceIsGone(): void {
+		$published = null;
+		$this->sealing(self::draft(TuandikianeDraft::STATUS_SENT), $published);
+		$this->db->expects($this->once())->method('rollBack');
+		$this->requestSignature->expects($this->never())->method('save');
+
+		try {
+			$this->service()->seal(self::draft(), true);
+			$this->fail('Sealed twice');
 		} catch (LibresignException $e) {
 			$this->assertSame(410, $e->getCode());
 		}
 	}
 
-	private function sentDraftForCard(?string $s2 = null): void {
-		$this->whatsApp->method('signRequestForCode')->willReturnMap([['card-code', self::signRequest(102, 2)]]);
-		$this->drafts->method('findByFileId')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo', s2: $s2));
-		$this->drafts->method('findByDraftUuidForUpdate')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo', s2: $s2));
-	}
-
-	public function testTheCardOfAnUntakenSlotTakesItForTheSignerWhoProvedItIsThem(): void {
-		$this->sentDraftForCard();
-		$method = self::method(102, 'email', 'ali@example.com');
-		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->with(102)->willReturn([$method]);
-		$this->db->expects($this->once())->method('commit');
-
-		$this->assertNotNull($this->service()->unboundSlot('card-code'));
-		$this->service()->bindCard('card-code', $this->user('ali'));
-
-		$this->assertSame(['account', 'ali'], [$method->getIdentifierKey(), $method->getIdentifierValue()]);
-		$this->assertSame('ali', end($this->stored)[1][1]['uid']);
-	}
-
-	public function testAnUnnamedSlotTakesTheNameOfTheAccountThatTookIt(): void {
-		$this->whatsApp->method('signRequestForCode')->willReturn(self::signRequest(102, 2));
-		$draft = self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo');
-		$slots = $draft->getSlots();
-		$slots[1]['named'] = false;
-		$draft->setSlots($slots);
-		$this->drafts->method('findByFileId')->willReturn($draft);
+	public function testAJoinerWhoPaidMimiTakesTheirSlotAndGetsTheirCard(): void {
+		$this->accounts['wanjiru'] = $this->user('wanjiru');
+		$draft = self::draft(TuandikianeDraft::STATUS_SENT);
+		$this->drafts->method('findByDraftUuid')->willReturn($draft);
 		$this->drafts->method('findByDraftUuidForUpdate')->willReturn($draft);
-		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->willReturn([self::method(102, 'email', 'tuandikiane-x-s2@placeholder.securesign.local')]);
-		$slot = self::signRequest(102, 2);
-		$slot->setDisplayName('Signer 2');
-		$this->signRequests->method('getById')->with(102)->willReturn($slot);
-		$this->signRequests->expects($this->once())->method('update')->willReturnArgument(0);
-
-		$this->service()->bindCard('card-code', $this->user('wanjiru'));
-
-		$this->assertSame('Wanjiru', $slot->getDisplayName());
-	}
-
-	public function testSendWhenTheSenderDoesNotSignBindsNoOneAndCardsEveryone(): void {
-		$file = self::file();
-		$this->files->method('getById')->willReturn($file);
-		$this->folders();
-		$draft = self::draft();
-		$slots = $draft->getSlots();
-		$slots[0]['sender'] = false;
-		$draft->setSlots($slots);
-		$this->drafts->method('findByDraftUuidForUpdate')->willReturn($draft);
-		$this->files->method('update')->willReturnArgument(0);
-		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->willReturnCallback(
-			static fn (int $id): array => [self::method($id, 'email', "slot-$id@example.com")],
-		);
-		$this->identifyMethods->expects($this->never())->method('update');
-		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, 1), self::signRequest(102, 2)]);
-		$this->signRequests->method('getById')->willReturnCallback(static fn (int $id): SignRequest => self::signRequest($id, $id - 100));
-		$this->requestSignature->method('save')->willReturn($file);
+		$this->files->method('getById')->willReturn(self::file());
+		$method = self::method(103, 'email', 'tuandikiane-x-s3@placeholder.securesign.local');
+		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->with(103)->willReturn([$method]);
+		$this->signRequests->method('getById')->willReturnCallback(static fn (int $id): SignRequest => self::signRequest($id));
 		$cards = [];
-		$this->whatsApp->method('sendTo')->willReturnCallback(static function ($file, SignRequest $signRequest, IUser $sender, string $sub, string $to) use (&$cards): array {
-			$cards[] = $to;
+		$this->whatsApp->method('sendTo')->willReturnCallback(static function ($file, SignRequest $signRequest) use (&$cards): array {
+			$cards[] = $signRequest->getId();
 			return ['status' => 'sent', 'error' => null, 'availableAgainAt' => null];
 		});
-		$this->client->expects($this->once())->method('event')->with(self::DRAFT, 'sent');
 
-		$this->assertNull($this->service()->send(self::draft(), $this->user('brian')));
-		$this->assertSame(['+254711000001', '+254722000002'], $cards);
-		$this->assertSame([null, null], array_column(end($this->stored)[1], 'uid'));
+		$this->assertSame(['s3'], $this->service()->join(self::DRAFT, '0733 000 003', 'sub-wanjiru'));
+
+		$this->assertSame(['account', 'wanjiru'], [$method->getIdentifierKey(), $method->getIdentifierValue()]);
+		$this->assertContains(103, $cards);
 	}
 
-	public function testOneAccountCannotTakeTwoSlotsOfAnAgreement(): void {
-		$this->sentDraftForCard();
+	public function testAJoinRepeatedOrForAnotherNumberChangesNothing(): void {
+		$this->accounts['wanjiru'] = $this->user('wanjiru');
+		$draft = self::draft(TuandikianeDraft::STATUS_SENT, s3: 'wanjiru');
+		$this->drafts->method('findByDraftUuid')->willReturn($draft);
+		$this->drafts->method('findByDraftUuidForUpdate')->willReturn($draft);
 		$this->identifyMethods->expects($this->never())->method('update');
-		$this->db->expects($this->once())->method('rollBack');
 
-		try {
-			$this->service()->bindCard('card-code', $this->user('neo'));
-			$this->fail('Bound the sender to a second slot');
-		} catch (LibresignException $e) {
-			$this->assertSame(409, $e->getCode());
+		$this->assertSame(['s3'], $this->service()->join(self::DRAFT, '+254733000003', 'sub-wanjiru'));
+		$this->assertSame([], $this->service()->join(self::DRAFT, '+254799000009', 'sub-wanjiru'));
+	}
+
+	public function testAJoinForAnUnknownDraftOrAccountIsRefused(): void {
+		$this->drafts->method('findByDraftUuid')->willReturnOnConsecutiveCalls(null, self::draft());
+		foreach ([404 => 'sub-wanjiru', 422 => 'sub-nobody'] as $status => $sub) {
+			try {
+				$this->service()->join(self::DRAFT, '+254733000003', $sub);
+				$this->fail('Joined');
+			} catch (LibresignException $e) {
+				$this->assertSame($status, $e->getCode());
+			}
 		}
 	}
 
-	public function testATakenSlotSendsItsCardToTheNormalCard(): void {
-		$this->sentDraftForCard('ali');
+	public function testTheInviteCodeNamesItsSlotOnceSealed(): void {
+		$service = $this->service();
+		$url = $service->joinUrl(self::draft(), 's3');
+		$code = substr($url, strrpos($url, '/') + 1);
+		$this->drafts->method('findByDraftUuid')->willReturnOnConsecutiveCalls(self::draft(TuandikianeDraft::STATUS_SENT), self::draft());
 
-		$this->assertNull($this->service()->unboundSlot('card-code'));
+		$this->assertSame('s3', $service->slotForJoinCode($code)['slot']['key']);
+		$this->assertNull($service->slotForJoinCode($code), 'not sealed yet');
+		$this->assertNull($service->slotForJoinCode(self::DRAFT . '.s2.' . substr($code, -22)), 'another slot');
 	}
 
-	public function testEachSignatureIsReportedAndTheLastCompletesTheDraft(): void {
-		$this->drafts->method('findByFileId')->with(42)->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo', s2: 'ali'));
-		$signed = new \DateTime(self::NOW);
-		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, 1, $signed), self::signRequest(102, 2, $signed)]);
+	public function testTheModeratorsSignatureDeliversASealedDraft(): void {
+		$this->drafts->method('findByFileId')->willReturn(self::draft(TuandikianeDraft::STATUS_SEALED));
+		$this->files->method('getById')->willReturn(self::file());
+		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, new \DateTime(self::NOW)), self::signRequest(102), self::signRequest(103)]);
+		$this->signRequests->method('getById')->willReturnCallback(
+			static fn (int $id): SignRequest => self::signRequest($id, $id === 101 ? new \DateTime(self::NOW) : null),
+		);
+		$cards = [];
+		$this->whatsApp->method('sendTo')->willReturnCallback(static function ($file, SignRequest $signRequest) use (&$cards): array {
+			$cards[] = $signRequest->getId();
+			return ['status' => 'sent', 'error' => null, 'availableAgainAt' => null];
+		});
 		$events = [];
 		$this->client->method('event')->willReturnCallback(static function (string $draft, string $event, ?string $signer = null) use (&$events): void {
-			$events[] = [$draft, $event, $signer];
+			$events[] = [$event, $signer];
 		});
 
-		$this->service()->signed(self::file('neo'), self::signRequest(102, 2, $signed));
+		$this->service()->signed(self::file(), self::signRequest(101, new \DateTime(self::NOW)));
 
-		$this->assertSame([[self::DRAFT, 'signed', 's2'], [self::DRAFT, 'completed', null]], $events);
+		$this->assertSame(TuandikianeDraft::STATUS_SENT, $this->stored[0][0]);
+		$this->assertSame([102], $cards, 'the moderator signed already, the joiner has no account');
+		$this->assertSame([['sent', null], ['signed', 's1']], $events);
 	}
 
-	public function testASignatureBeforeTheLastSendsTheNextSignersCard(): void {
-		$this->drafts->method('findByFileId')->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo'));
-		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, 1, new \DateTime(self::NOW)), self::signRequest(102, 2)]);
-		$this->signRequests->method('getById')->willReturnCallback(
-			static fn (int $id): SignRequest => $id === 101 ? self::signRequest(101, 1, new \DateTime(self::NOW)) : self::signRequest(102, 2),
-		);
-		$neo = $this->user('neo');
-		$this->users->method('get')->willReturnMap([['neo', $neo]]);
-		$this->client->expects($this->once())->method('event')->with(self::DRAFT, 'signed', 's1');
-		$this->whatsApp->expects($this->once())->method('sendTo')->willReturn(['status' => 'sent', 'error' => null, 'availableAgainAt' => null]);
+	public function testEachSignatureIsReportedAndTheLastCompletesWithTheSignedPdf(): void {
+		$this->drafts->method('findByFileId')->with(42)->willReturn(self::draft(TuandikianeDraft::STATUS_SENT, s3: 'wanjiru'));
+		$signed = new \DateTime(self::NOW);
+		$this->signRequests->method('getByFileId')->willReturn([self::signRequest(101, $signed), self::signRequest(102, $signed), self::signRequest(103, $signed)]);
+		$pdf = $this->createMock(File::class);
+		$pdf->method('getContent')->willReturn('%PDF-signed');
+		$this->folders->method('getFileByNodeId')->willReturn($pdf);
+		$events = [];
+		$this->client->method('event')->willReturnCallback(static function (string $draft, string $event, ?string $signer = null, array $extra = []) use (&$events): void {
+			$events[] = [$event, $signer, $extra];
+		});
 
-		$this->service()->signed(self::file('neo'), self::signRequest(101, 1, new \DateTime(self::NOW)));
+		$this->service()->signed(self::file(), self::signRequest(103, $signed));
+
+		$this->assertSame(['signed', 's3', []], $events[0]);
+		$this->assertSame('completed', $events[1][0]);
+		$this->assertSame(['name' => 'Loan agreement between Neo and Ali', 'pdf_base64' => base64_encode('%PDF-signed')], $events[1][2]['document']);
 	}
 
 	public function testASignatureOnAnyOtherDocumentIsLeftAlone(): void {
 		$this->drafts->method('findByFileId')->willReturn(null);
 		$this->client->expects($this->never())->method('event');
 
-		$this->service()->signed(self::file('neo'), self::signRequest(101, 1));
+		$this->service()->signed(self::file(), self::signRequest(101));
 	}
 
 	public function testAFailureAfterASignatureNeverReachesTheSigner(): void {
 		$this->drafts->method('findByFileId')->willThrowException(new \RuntimeException('database down'));
 
-		$this->service()->signed(self::file('neo'), self::signRequest(101, 1));
+		$this->service()->signed(self::file(), self::signRequest(101));
 		$this->addToAssertionCount(1);
 	}
 
-	public function testAnExpiredDraftIsDeletedWithItsFileButASentOneNever(): void {
+	public function testAnExpiredDraftIsDeletedWithItsFolderButASealedOneNever(): void {
 		$this->files->method('getById')->willReturn(self::file());
-		$folders = $this->folders();
-		$folders['holderFolder']->expects($this->once())->method('delete');
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getName')->willReturn('tuandikiane-' . self::DRAFT);
+		$folder->expects($this->once())->method('delete');
+		$source = $this->createMock(File::class);
+		$source->method('getParent')->willReturn($folder);
+		$this->folders->method('getFileByNodeId')->willReturnMap([[900, $source]]);
 		$this->requestSignature->expects($this->once())->method('deleteRequestSignature')->with(['file' => ['fileId' => 42]]);
 		$this->drafts->expects($this->once())->method('delete');
 
 		$this->service()->deleteDraft(self::draft(expires: '2026-11-06T09:00:00+00:00'));
-		$this->service()->deleteDraft(self::draft(TuandikianeDraft::STATUS_SENT, s1: 'neo'));
+		$this->service()->deleteDraft(self::draft(TuandikianeDraft::STATUS_SENT));
 	}
 }
