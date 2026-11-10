@@ -6,6 +6,8 @@
 type SignerLike = {
 	me?: boolean
 	sign_request_uuid?: string | null
+	sign_uuid?: string | null
+	signUuid?: string | null
 }
 
 type DocumentSettingsLike = {
@@ -36,8 +38,16 @@ export function getCurrentSignerSignRequestUuid(
 	fallbackUuid: string | null = null,
 ): string | null {
 	const signer = getCurrentSigner(document)
-	if (isNonEmptyString(signer?.sign_request_uuid)) {
-		return signer.sign_request_uuid
+	// Resolution order mirrors the other signer-uuid consumers (SignTab, Sign,
+	// Validation): the backend serializer emits `sign_uuid`; legacy/other
+	// payloads used `sign_request_uuid`/`signUuid`. Read all three, in order.
+	const signerUuid = [
+		signer?.sign_request_uuid,
+		signer?.sign_uuid,
+		signer?.signUuid,
+	].find((value): value is string => isNonEmptyString(value))
+	if (signerUuid) {
+		return signerUuid
 	}
 
 	return isNonEmptyString(fallbackUuid) ? fallbackUuid : null

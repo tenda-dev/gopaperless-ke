@@ -10,6 +10,11 @@ import { createL10nMock } from '../../../testHelpers/l10n.js'
 import WorkflowRequestSignatureTab from '../../../../components/RightSidebar/Workflow/WorkflowRequestSignatureTab.vue'
 
 const loadStateMock = vi.fn()
+const controllerSpies = vi.hoisted(() => ({
+	deleteSigner: vi.fn(),
+	sendNotify: vi.fn(),
+	sendWhatsApp: vi.fn(),
+}))
 
 vi.mock('@nextcloud/initial-state', () => ({
 	loadState: (...args: unknown[]) => loadStateMock(...args),
@@ -34,7 +39,7 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 	return {
 		useWorkflowController: () => ({
 			state: {
-				signers: ref([]),
+				signers: ref([{ localKey: 'signer:1', signRequestId: 1 }]),
 				file: ref({}),
 				snapshot: ref({}),
 				steps: ref([]),
@@ -47,6 +52,9 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 				showSigningProgress: ref(false),
 			},
 			hasLoading: ref(false),
+			pendingSignerActions: ref({ 'signer:1': 'notify' }),
+			isRequestBusy: ref(true),
+			isDeleteBlocked: ref(false),
 			isLoadingFileDetail: ref(false),
 			signerToEdit: ref(null),
 			modalSrc: ref(null),
@@ -81,7 +89,9 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 			validationFile: vi.fn(),
 			openFile: vi.fn(),
 			openManageFiles: vi.fn(),
-			sendNotify: vi.fn(),
+			sendNotify: controllerSpies.sendNotify,
+			sendWhatsApp: controllerSpies.sendWhatsApp,
+			deleteSigner: controllerSpies.deleteSigner,
 			requestSignatureForSigner: vi.fn(),
 			confirmRequestSigner: vi.fn(),
 			closeModal: vi.fn(),
@@ -165,5 +175,40 @@ describe('WorkflowRequestSignatureTab.vue visible elements feature flag', () => 
 
 		expect(wrapper.findComponent({ name: 'VisibleElementsNext' }).exists()).toBe(true)
 		expect(wrapper.findComponent({ name: 'VisibleElements' }).exists()).toBe(false)
+	})
+})
+
+describe('WorkflowRequestSignatureTab.vue signer action wiring (WS4)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
+	})
+
+	it('passes controller-owned pending state down to WorkflowSigners', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		const signers = wrapper.findComponent({ name: 'WorkflowSigners' })
+		expect(signers.props('pendingActions')).toEqual({ 'signer:1': 'notify' })
+		// Delete gating comes from isDeleteBlocked, not isRequestBusy (which drives request-level buttons).
+		expect(signers.props('requestBusy')).toBe(false)
+	})
+
+	it('routes delete, reminder and WhatsApp events to the controller handlers', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		const signers = wrapper.findComponent({ name: 'WorkflowSigners' })
+		const signer = { localKey: 'signer:1' }
+		signers.vm.$emit('delete-signer', signer)
+		signers.vm.$emit('send-reminder', signer)
+		signers.vm.$emit('send-whatsapp', signer)
+		expect(controllerSpies.deleteSigner).toHaveBeenCalledWith(signer)
+		expect(controllerSpies.sendNotify).toHaveBeenCalledWith(signer)
+		expect(controllerSpies.sendWhatsApp).toHaveBeenCalledWith(signer)
+	})
+
+	it('binds request-level loading to isRequestBusy', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('loading')).toBe(true)
 	})
 })

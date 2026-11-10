@@ -192,6 +192,9 @@ const _filesStore = defineStore('files', () => {
 	const selectedFileId = ref(/** @type {number} */(0))
 	const identifyingSigner = ref(false)
 	const loading = ref(false)
+	// Per-document detail-retrieval state. Independent from the global `loading` flag (list/pagination only).
+	const detailLoading = ref(/** @type {Record<number, boolean>} */({}))
+	const inFlightDetails = /** @type {Map<number | string, Promise<PublicFileState | null>>} */(new Map())
 	const canRequestSign = ref(loadState('libresign', 'can_request_sign', false))
 	const ordered = ref(/** @type {number[]} */([]))
 	const paginationNextUrl = ref('')
@@ -363,26 +366,16 @@ const _filesStore = defineStore('files', () => {
 
 		const key = file.id ?? null
 
-		console.group(`[filesStore.addFile] file ${key}`)
-
-		console.log('Incoming file:', file)
-
 		if (shouldDiscardDraftForServerState(file)) {
-			console.log('Discarding existing draft due to server state')
 			clearRequestDraft(key)
 		}
 
 		const existingFile = apiFiles.value[key] || files.value[key]
 
-		console.log('Existing file:', existingFile)
-		console.log('Existing file detailsLoaded:', existingFile?.detailsLoaded)
-
 		const resolvedDetailsLoaded = detailsLoaded
 			?? file.detailsLoaded
 			?? existingFile?.detailsLoaded
 			?? false
-
-		console.log('Resolved detailsLoaded:', resolvedDetailsLoaded)
 
 		const fileData = existingFile?.detailsLoaded && !resolvedDetailsLoaded
 			? {
@@ -400,18 +393,11 @@ const _filesStore = defineStore('files', () => {
 				detailsLoaded: resolvedDetailsLoaded,
 			}
 
-		console.log('Merged fileData:', fileData)
-		console.log('Merged signers:', fileData.signers)
-		console.log('Merged signersCount:', fileData.signersCount)
-		console.log('Merged detailsLoaded:', fileData.detailsLoaded)
-
 		addLocalKeysToFileTree(fileData)
 
 		if (Array.isArray(fileData.signers)) {
 			fileData.signersCount = fileData.signers.length
 		}
-
-		console.log('File signersCount after update:', fileData.signersCount)
 
 		if (existingFile?.settings) {
 			fileData.settings = {
@@ -425,34 +411,16 @@ const _filesStore = defineStore('files', () => {
 		 * hydrate existing drafts with fresh backend detail
 		 */
 		if (requestDrafts.value[key]) {
-			console.log('Draft exists BEFORE hydration:', requestDrafts.value[key])
-
 			requestDrafts.value[key] = {
 				...requestDrafts.value[key],
 				...cloneEditableFile(fileData),
 				detailsLoaded: true,
 			}
-
-			console.log('Draft AFTER hydration:', requestDrafts.value[key])
-		} else {
-			console.log('No existing draft found')
 		}
 
 		apiFiles.value[key] = fileData
 
-		console.log('apiFiles entry AFTER write:', apiFiles.value[key])
-
 		syncPublicFile(key)
-
-		console.log('files entry AFTER sync:', files.value[key])
-		console.log(
-			'Final rendered signers:',
-			files.value[key]?.signers,
-		)
-		console.log(
-			'Final rendered signersCount:',
-			files.value[key]?.signersCount,
-		)
 
 		if (!ordered.value.includes(key)) {
 			if (position === 'start') {
@@ -461,8 +429,6 @@ const _filesStore = defineStore('files', () => {
 				ordered.value.push(key)
 			}
 		}
-
-		console.groupEnd()
 	}
 
 	/** @param {number | null | undefined} [fileId] */
@@ -613,24 +579,60 @@ const _filesStore = defineStore('files', () => {
 			return null
 		}
 
+		// Numeric id when known; uuid-only calls for files not yet in the store key on the uuid.
+		const requestKey = targetId ? Number(targetId) : `uuid:${targetUuid}`
+		const pending = inFlightDetails.get(requestKey)
+		if (pending) {
+			return pending
+		}
+
 		const url = targetUuid
 			? generateOcsUrl('/apps/libresign/api/v1/file/validate/uuid/{uuid}', { uuid: targetUuid })
 			: generateOcsUrl('/apps/libresign/api/v1/file/validate/file_id/{fileId}', { fileId: targetId })
 
-		const response = await axios.get(url, {
-			params: {
-				showVisibleElements: true,
-				showMessages: false,
-				showValidateFile: false,
-			},
-		})
-		const fileData = response.data?.ocs?.data
-		if (!fileData) {
-			return null
+		const hasNumericKey = typeof requestKey === 'number'
+		if (hasNumericKey) {
+			detailLoading.value[requestKey] = true
 		}
 
-		await store.addFile(fileData, { detailsLoaded: true })
-		return files.value[fileData.id] || null
+		const request = (async () => {
+			const response = await axios.get(url, {
+				params: {
+					showVisibleElements: true,
+					showMessages: false,
+					showValidateFile: false,
+				},
+			})
+			const fileData = response.data?.ocs?.data
+			if (!fileData) {
+				return null
+			}
+
+			await store.addFile(fileData, { detailsLoaded: true })
+			return files.value[fileData.id] || null
+		})()
+		// Register first, then clean up: even a synchronous failure above only settles
+		// `request`, so cleanup always runs after registration. Cleanup is attached before
+		// any caller awaits, so loading state is already cleared when callers resume.
+		inFlightDetails.set(requestKey, request)
+		const cleanup = () => {
+			if (inFlightDetails.get(requestKey) === request) {
+				inFlightDetails.delete(requestKey)
+			}
+			if (hasNumericKey) {
+				detailLoading.value[requestKey] = false
+			}
+		}
+		request.then(cleanup, cleanup)
+		return request
+	}
+
+	/**
+	 * @param {number | string} id
+	 * @returns {boolean}
+	 */
+	function isLoadingDetail(id) {
+		return !!detailLoading.value[Number(id)]
 	}
 
 	async function addFilesToEnvelope(envelopeUuid, formData, options = {}) {
@@ -1057,8 +1059,6 @@ const _filesStore = defineStore('files', () => {
 
 	/** @param {EditableSignerDraft} signer */
 	async function deleteSigner(signer) {
-		console.log('deleteSigner called with signer:', signer)
-
 		const selectedFile = ensureRequestDraft() || getFile()
 
 		if (!isNaN(signer.signRequestId)) {
@@ -1103,11 +1103,6 @@ const _filesStore = defineStore('files', () => {
 			signers: filtered,
 			signersCount: filtered.length,
 		}
-
-		console.log(
-			`Signer deleted: ${signer.localKey}. Remaining signers:`,
-			filtered,
-		)
 	}
 
 	async function deleteFile(file, deleteFile) {
@@ -1474,6 +1469,8 @@ const _filesStore = defineStore('files', () => {
 		getEditableFile,
 		flushSelectedFile,
 		fetchFileDetail,
+		detailLoading,
+		isLoadingDetail,
 		addFilesToEnvelope,
 		removeFilesFromEnvelope,
 		enableIdentifySigner,

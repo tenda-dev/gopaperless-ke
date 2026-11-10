@@ -50,6 +50,7 @@ function createDeps() {
 		},
 		actions: {
 			openFile: vi.fn(),
+			openRow: vi.fn(),
 			downloadRow: vi.fn(),
 			openDetails: vi.fn(),
 			signRow: vi.fn(),
@@ -115,6 +116,18 @@ describe('useFilesNextMenu', () => {
 		expect(menu.open).toBe(false)
 		expect(menu.row).toBeNull()
 		expect(deps.actions.openDetails).toHaveBeenCalledTimes(1)
+	})
+
+	it('menu Open runs openFile (viewer-only), not openRow; Manage stays openDetails', async () => {
+		const deps = createDeps()
+		const { menuItems, openMenuAt, runAction } = useFilesNextMenu({ filesStore: deps.filesStore, actions: deps.actions })
+
+		openMenuAt(makeRow(), 0, 0)
+		await runAction(menuItems.value.find((item) => item.id === 'open')!)
+
+		expect(deps.actions.openFile).toHaveBeenCalledTimes(1)
+		expect(deps.actions.openRow).not.toHaveBeenCalled()
+		expect(deps.actions.openDetails).not.toHaveBeenCalled()
 	})
 
 	it('closeMenu clears the open row', () => {
