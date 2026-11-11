@@ -19,6 +19,9 @@
 				</template>
 				<template #action>
 					<div v-if="errors.length" class="error-messages">
+						<p v-if="maskedEmail" class="masked-email">
+							{{ t('libresign', 'Sent to {email}', { email: maskedEmail }) }}
+						</p>
 						<NcNoteCard v-for="(error, index) in errors"
 							:key="index"
 							type="error">
@@ -35,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { getRequestToken } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import { computed } from 'vue'
 
@@ -50,12 +54,13 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import { generateUrl } from '@nextcloud/router'
 
 import logoLibreSignAsset from '../../img/tenda-icon.png'
+import { signUuidFromPath } from '../helpers/signRouteUuid'
 
 defineOptions({
 	name: 'DefaultPageError',
 })
 
-type ErrorRow = { message: string, switchAccount?: boolean }
+type ErrorRow = { message: string, switchAccount?: boolean, switchAccountPath?: string, maskedEmail?: string }
 
 const logoLibreSign = logoLibreSignAsset
 
@@ -72,13 +77,35 @@ const errors = computed<ErrorRow[]>(() => {
 })
 
 const canSwitchAccount = computed(() => errors.value.some(error => error.switchAccount))
+const maskedEmail = computed(() => errors.value.find(error => error.maskedEmail)?.maskedEmail ?? '')
+const switchAccountPath = computed(() => errors.value.find(error => error.switchAccountPath)?.switchAccountPath ?? '')
 
 /**
- * Signed in as someone the document was not sent to. user_oidc's logout ends
- * the SecurySign session too, so Google offers its account picker next; the
- * cookie tells the login page (src/login.ts) to come straight back here.
+ * Starts the appropriate account-recovery path.
+ *
+ * Server-handled recovery posts to switchAccountPath and uses gp_recover
+ * to return through authentication. Legacy CLIENT_SLS recovery retains
+ * libresign_resume and the existing single-logout flow.
  */
 function switchAccount() {
+	// The server ends this session and sends the browser to the right login,
+	// so this is a top-level form POST the browser follows, not an XHR.
+	const uuid = signUuidFromPath(window.location.pathname)
+	if (switchAccountPath.value && uuid) {
+		const form = document.createElement('form')
+		form.method = 'post'
+		form.action = switchAccountPath.value
+		for (const [name, value] of [['requesttoken', getRequestToken() ?? ''], ['uuid', uuid]]) {
+			const input = document.createElement('input')
+			input.type = 'hidden'
+			input.name = name
+			input.value = value
+			form.appendChild(input)
+		}
+		document.body.appendChild(form)
+		form.submit()
+		return
+	}
 	document.cookie = `libresign_resume=${encodeURIComponent(window.location.pathname)}; path=/; max-age=600; SameSite=Lax`
 	window.location.assign(generateUrl('/apps/user_oidc/sls'))
 }
@@ -89,6 +116,9 @@ const title = computed(() => {
 	const overrideTitle = loadState<string>('libresign', 'title', '')
 	if (overrideTitle) {
 		return overrideTitle
+	}
+	if (maskedEmail.value) {
+		return t('libresign', 'You\'re signed in to a different account')
 	}
 	return errors.value.length
 		? t('libresign', 'An error occurred')
@@ -143,6 +173,13 @@ const description = computed(() => (errors.value.length
 			flex-direction: column;
 			gap: 12px;
 			width: 100%;
+		}
+
+		.masked-email {
+			margin: 0;
+			text-align: center;
+			color: var(--color-text-maxcontrast);
+			font-family: 'IBM Plex Mono', monospace;
 		}
 
 		@media (max-width: 768px) {

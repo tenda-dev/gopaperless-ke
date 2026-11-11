@@ -11,7 +11,10 @@ namespace OCA\Libresign\Service\IdentifyMethod;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Helper\EmailMasker;
 use OCA\Libresign\Helper\JSActions;
+use OCA\Libresign\Service\AccountRecovery\AccountRecoveryPlanner;
+use OCA\Libresign\Service\AccountRecovery\RecoveryProviderVerifier;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
 use OCA\Libresign\Service\MailService;
 use OCA\Libresign\Service\SecurySignService;
@@ -144,18 +147,53 @@ class Account extends AbstractIdentifyMethod {
 	}
 
 	private function authenticatedUserIsTheSigner(IUser $signer): void {
-		if ($this->userSession->getUser() !== $signer) {
+		// Distinct IUser instances can represent the same account, so compare
+		// stable UIDs rather than object identity.
+		if ($this->userSession->getUser()?->getUID() !== $signer->getUID()) {
 			// With WhatsApp signing requests on: never name the intended account,
 			// whoever is signed in is not them. switchAccount lets the page offer a
 			// way out to the right account.
 			$error = WhatsAppService::on($this->identifyService->getAppConfig())
 				? ['message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'), 'switchAccount' => true]
-				: ['message' => $this->identifyService->getL10n()->t('Invalid user')];
+				: $this->differentAccountError($signer);
 			throw new LibresignException(json_encode([
 				'action' => JSActions::ACTION_DO_NOTHING,
 				'errors' => [$error],
 			]));
 		}
+	}
+
+	/**
+	 * Builds the account-mismatch response for non-WhatsApp signing requests.
+	 *
+	 * Includes a masked address when it can be safely displayed and exposes
+	 * a server-side recovery endpoint only when the selected plan supports it.
+	 *
+	 * @return array{message: string, switchAccount: true, switchAccountPath?: string, maskedEmail?: string}
+	 */
+	private function differentAccountError(IUser $signer): array {
+		$error = [
+			'message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'),
+			'switchAccount' => true,
+		];
+
+		// The mismatch payload and switch endpoint must plan from the same
+		// verified provider; a configured but unavailable ID is not usable.
+		$plan = AccountRecoveryPlanner::plan(
+			$this->userSession->getUser(),
+			$signer,
+			\OCP\Server::get(RecoveryProviderVerifier::class)->verifiedId(),
+		);
+		if ($plan->isServerHandled()) {
+			$error['switchAccountPath'] = $this->urlGenerator->linkToRoute('libresign.accountRecovery.switchAccount');
+		}
+
+		$maskedEmail = EmailMasker::mask($signer->getEMailAddress());
+		if ($maskedEmail !== null) {
+			$error['maskedEmail'] = $maskedEmail;
+		}
+
+		return $error;
 	}
 
 	private function throwIfNotAuthenticated(IUser $signer): void {

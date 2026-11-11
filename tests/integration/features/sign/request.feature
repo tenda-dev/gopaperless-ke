@@ -62,7 +62,7 @@ Feature: request-signature
     And the response should be a JSON array with the following mandatory values
       | key    | value            |
       | action | 2000             |
-      | errors | [{"message":"Invalid user"}] |
+      | errors | [{"message":"This document was sent to a different account.","switchAccount":true,"switchAccountPath":"/index.php/apps/libresign/account/switch","maskedEmail":"si•••••@d•••••.test"}] |
 
   Scenario: Request to sign with two accounts with same email
     Given as user "admin"
@@ -99,7 +99,7 @@ Feature: request-signature
     And the response should be a JSON array with the following mandatory values
       | key    | value            |
       | action | 2000             |
-      | errors | [{"message":"Invalid user"}] |
+      | errors | [{"message":"This document was sent to a different account.","switchAccount":true,"switchAccountPath":"/index.php/apps/libresign/account/switch","maskedEmail":"co•••••@d•••••.test"}] |
 
   Scenario: Request to sign with error when the user is not authenticated
     Given as user "admin"
