@@ -759,6 +759,57 @@ class TuandikianeService {
 	}
 
 	/**
+	 * Someone opened a joiner's invite and answered with the passkey of MIMI
+	 * account $sub: the slot becomes that account, whatever number it paid MIMI
+	 * with, or none. The invite went only to the slot's WhatsApp and the
+	 * passkey proves the account, so nothing here trusts a typed number.
+	 *
+	 * @return string their card
+	 * @throws LibresignException 410 no such invite, 409 the slot is another account's or this one signs under another slot, 422 an account that can't sign, 503 MIMI not answering
+	 */
+	public function claim(string $code, string $sub): string {
+		$found = $this->slotForJoinCode($code);
+		if ($found === null) {
+			throw new LibresignException('This link has expired.', Http::STATUS_GONE);
+		}
+		$user = $this->account($sub);
+		if ($user === null) {
+			throw new LibresignException('That MIMI account can\'t sign yet. Finish setting it up on MIMI, then open your link again.', Http::STATUS_UNPROCESSABLE_ENTITY);
+		}
+		$slot = null;
+		$this->db->beginTransaction();
+		try {
+			$locked = $this->drafts->findByDraftUuidForUpdate($found['draft']->getDraftUuid());
+			$slots = $locked?->getSlots() ?? [];
+			foreach ($slots as $index => $one) {
+				if ($one['key'] !== $found['slot']['key']) {
+					continue;
+				}
+				if ($one['uid'] === null) {
+					$slots[$index] = $this->bind($slots, $index, $user);
+				}
+				$slot = $slots[$index];
+			}
+			if ($locked === null || $slot === null || $slot['uid'] !== $user->getUID()) {
+				throw new LibresignException('Someone else already signs from this link.', Http::STATUS_CONFLICT);
+			}
+			$locked->setSlots($slots);
+			$locked = $this->drafts->update($locked);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+		try {
+			// Their way back in later; they go to the card now either way.
+			$this->sendCards($locked, $this->files->getById($locked->getFileId()), $this->moderator($locked));
+		} catch (\Throwable $e) {
+			$this->logger->warning('A Tuandikiane joiner\'s card was not sent', ['exception' => $e]);
+		}
+		return $this->slotCard($slot);
+	}
+
+	/**
 	 * The slot as $user's: its sign request's email identity becomes their
 	 * account in place, as RequesterReconciliationService::convertInPlace does,
 	 * so the sign request, its boxes and any sponsorship stay. The caller holds

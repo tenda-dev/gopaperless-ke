@@ -802,10 +802,13 @@ class SecurySignService {
 	 * WebAuthn options for the user's MIMI passkey, which our page hands to
 	 * MIMI's frame. Null when MIMI holds no passkey for them. Throws 503 when
 	 * MIMI cannot answer. $subject names someone not signed in here, on a page
-	 * a link opened; by default it is the session's own account.
+	 * a link opened; by default it is the session's own account. With
+	 * $anyAccount the options name nobody: the phone offers the MIMI passkeys it
+	 * holds and passkeyAccount() says whose answered.
 	 */
-	public function passkeyOptions(?string $subject = null): ?array {
-		$answer = $this->mimi('passkey/options', ['subject' => $subject ?? $this->identity()['sub']]);
+	public function passkeyOptions(?string $subject = null, bool $anyAccount = false): ?array {
+		// An object, never a list: MIMI reads "no subject" only from {}.
+		$answer = $this->mimi('passkey/options', $anyAccount ? ['any' => true] : ['subject' => $subject ?? $this->identity()['sub']]);
 		if ($answer['status'] === 404) {
 			return null;
 		}
@@ -816,19 +819,29 @@ class SecurySignService {
 		return $answer['body']['options'];
 	}
 
-	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
-	public function verifyPasskey(array $assertion, ?string $subject = null): bool {
+	/**
+	 * The MIMI account whose passkey answered the options this session last
+	 * asked for, or null when MIMI refuses the answer. The caller decides
+	 * whether that account is the one it wanted. Throws 503 when MIMI can't answer.
+	 */
+	public function passkeyAccount(array $assertion): ?string {
 		$state = $this->session->get(self::PASSKEY_STATE_KEY);
 		$this->session->remove(self::PASSKEY_STATE_KEY);
 		if (!is_string($state)) {
-			return false;
+			return null;
 		}
 		$answer = $this->mimi('passkey/verify', ['state' => $state, 'response' => $assertion]);
 		if ($answer['status'] >= 500) {
 			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey check.', 503);
 		}
-		$verified = $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true
-			&& ($answer['body']['subject'] ?? null) === ($subject ?? $this->identity()['sub']);
+		$subject = $answer['body']['subject'] ?? null;
+		return $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true && is_string($subject) && $subject !== '' ? $subject : null;
+	}
+
+	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
+	public function verifyPasskey(array $assertion, ?string $subject = null): bool {
+		$account = $this->passkeyAccount($assertion);
+		$verified = $account !== null && $account === ($subject ?? $this->identity()['sub']);
 		// Someone else's passkey on a link's page says nothing about this session.
 		if ($verified && $subject === null) {
 			$this->session->set(self::PASSKEY_KEY, time());

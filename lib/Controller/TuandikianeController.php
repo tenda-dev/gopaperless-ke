@@ -227,12 +227,13 @@ class TuandikianeController extends Controller {
 	}
 
 	/**
-	 * A joiner's invite. Their slot is theirs once Tuandikiane hears MIMI took
-	 * their payment; until then MIMI is the way in, and coming back from it they
-	 * wait here until the slot is theirs, then go on to their card.
+	 * A joiner's invite. MIMI is the way in, new to it or not. Coming back,
+	 * one touch of their MIMI passkey makes the slot theirs (whatever number
+	 * that account paid with) and they go on to their card.
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
+	#[UseSession]
 	#[AnonRateLimit(limit: 30, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/p/t/join/{code}')]
 	public function join(string $code, string $back = ''): TemplateResponse|RedirectResponse {
@@ -247,7 +248,51 @@ class TuandikianeController extends Controller {
 		if ($back === '') {
 			return new RedirectResponse($this->signa->mimiEnrolmentUrl('', '', $here . '?back=1'));
 		}
-		return $this->page('waiting', ['refreshUrl' => $here . '?back=1']);
+		return $this->handOff($here . '?back=1') ?? $this->page('join', [
+			'optionsUrl' => $this->urls->linkToRoute('libresign.tuandikiane.joinOptions', ['code' => $code]),
+			'actionUrl' => $this->urls->linkToRoute('libresign.tuandikiane.claim', ['code' => $code]),
+			'here' => $here . '?back=1',
+		]);
+	}
+
+	/** WebAuthn options that name no account: the phone offers the MIMI passkeys it holds. */
+	#[PublicPage]
+	#[UseSession]
+	#[AnonRateLimit(limit: 20, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/t/join/{code}/options')]
+	public function joinOptions(string $code): DataResponse {
+		if ($this->tuandikiane->slotForJoinCode($code) === null) {
+			return new DataResponse(['error' => 'expired'], Http::STATUS_GONE);
+		}
+		try {
+			return new DataResponse(['options' => $this->signa->passkeyOptions(null, true)]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('MIMI passkey options unavailable for a Tuandikiane invite', ['exception' => $e]);
+			return new DataResponse(['error' => 'unavailable'], Http::STATUS_SERVICE_UNAVAILABLE);
+		}
+	}
+
+	/** The passkey's account takes the invite's slot, and the answer is their card. */
+	#[PublicPage]
+	#[UseSession]
+	#[AnonRateLimit(limit: 20, period: 60)]
+	#[FrontpageRoute(verb: 'POST', url: '/p/t/join/{code}/claim')]
+	public function claim(string $code, array $response = []): DataResponse {
+		try {
+			$sub = $this->signa->passkeyAccount($response);
+			if ($sub === null) {
+				return new DataResponse([
+					'error' => 'rejected',
+					'message' => $this->l10n->t('That passkey could not be confirmed. Use your MIMI passkey and try again.'),
+				], Http::STATUS_FORBIDDEN);
+			}
+			return new DataResponse(['signUrl' => $this->tuandikiane->claim($code, $sub)]);
+		} catch (LibresignException $e) {
+			return new DataResponse(['error' => 'failed', 'message' => $e->getMessage()], $e->getCode() ?: Http::STATUS_CONFLICT);
+		} catch (\Throwable $e) {
+			$this->logger->warning('A Tuandikiane invite could not be claimed', ['exception' => $e]);
+			return new DataResponse(['error' => 'unavailable'], Http::STATUS_SERVICE_UNAVAILABLE);
+		}
 	}
 
 	/** The number the moderator's prompt goes to: the one they wrote from. */
@@ -304,7 +349,7 @@ class TuandikianeController extends Controller {
 		Util::addStyle(Application::APP_ID, 'libresign-login');
 		Util::addScript(Application::APP_ID, 'libresign-login');
 		$policy = new ContentSecurityPolicy();
-		if ($mode === 'review') {
+		if ($mode === 'review' || $mode === 'join') {
 			Util::addScript(Application::APP_ID, 'libresign-tuandikiane');
 			try {
 				$frame = $this->signa->passkeyFrame($this->l10n->getLanguageCode());

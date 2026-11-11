@@ -86,6 +86,36 @@ final class TuandikianeControllerTest extends TestCase {
 		$this->assertSame(['signUrl' => 'https://gp.test/apps/libresign/p/whatsapp/sr.mac'], $this->controller()->seal('code')->getData());
 	}
 
+	public function testAnInviteAsksForAPasskeyThatNamesNoAccount(): void {
+		$this->tuandikiane->method('slotForJoinCode')->with('invite')->willReturn(['draft' => new TuandikianeDraft(), 'slot' => []]);
+		$this->signa->expects($this->once())->method('passkeyOptions')->with(null, true)->willReturn(['challenge' => 'c']);
+
+		$this->assertSame(['options' => ['challenge' => 'c']], $this->controller()->joinOptions('invite')->getData());
+	}
+
+	public function testTheAccountWhosePasskeyAnsweredTakesTheInvite(): void {
+		$this->signa->method('passkeyAccount')->with(self::PASSKEY)->willReturn('sub-wanjiru');
+		$this->tuandikiane->expects($this->once())->method('claim')->with('invite', 'sub-wanjiru')->willReturn('https://gp.test/card');
+
+		$this->assertSame(['signUrl' => 'https://gp.test/card'], $this->controller()->claim('invite', self::PASSKEY)->getData());
+	}
+
+	public function testAnInviteIsNotClaimedWithoutAPasskeyMimiAccepts(): void {
+		$this->signa->method('passkeyAccount')->willReturn(null);
+		$this->tuandikiane->expects($this->never())->method('claim');
+
+		$this->assertSame(403, $this->controller()->claim('invite', self::PASSKEY)->getStatus());
+	}
+
+	public function testAClaimSaysWhyItWasRefused(): void {
+		$this->signa->method('passkeyAccount')->willReturn('sub-wanjiru');
+		$this->tuandikiane->method('claim')->willThrowException(new LibresignException('Someone else already signs from this link.', 409));
+
+		$response = $this->controller()->claim('invite', self::PASSKEY);
+		$this->assertSame(409, $response->getStatus());
+		$this->assertSame('Someone else already signs from this link.', $response->getData()['message']);
+	}
+
 	public function testSealWhileMimiIsDownSealsNothing(): void {
 		$this->openDraft();
 		$this->signa->method('verifyPasskey')->willThrowException(new \RuntimeException('MIMI is unreachable.', 503));

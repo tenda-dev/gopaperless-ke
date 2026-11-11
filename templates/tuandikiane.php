@@ -9,7 +9,8 @@ declare(strict_types=1);
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 // Seal & Deliver, the moderator's page for a Tuandikiane draft; its done
-// screen; a joiner waiting for MIMI to confirm their payment; or the expired
+// screen; a joiner back from MIMI, whose passkey takes their slot; or the
+// expired
 // link. Laid out like the WhatsApp card (whatsapp_sign.php), whose styles it
 // shares; tuandikiane.ts moves it through data-step, takes the payment and
 // runs the MIMI passkey frame.
@@ -20,25 +21,26 @@ $screens = [
 		? $l->t('Seal it, then your signature delivers it to everyone who signs.')
 		: $l->t('Your passkey seals it and delivers it to everyone who signs.')],
 	'done' => [$l->t('Sealed & delivered'), $l->t('Everyone who signs has their link on WhatsApp.')],
-	'waiting' => [$l->t('Almost there'), $l->t('Your signing link opens here as soon as MIMI confirms your payment.')],
+	'join' => [$l->t('Almost there'), $l->t('One touch of your MIMI passkey opens your agreement.')],
 	'expired' => [$l->t('This link has expired.'), $l->t('Send your agreement on WhatsApp again.')],
 ];
 [$title, $line] = $screens[$mode] ?? $screens['expired'];
 $money = $_['money'] ?? null;
 $signers = $_['signers'] ?? [];
+// The two screens that run the MIMI passkey frame.
+$passkey = $mode === 'review' || $mode === 'join';
 $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M8.53 7.33C8.37 7.33 8.1 7.39 7.87 7.64C7.65 7.89 7 8.5 7 9.71C7 10.93 7.89 12.1 8 12.27C8.14 12.44 9.76 14.94 12.25 16C12.84 16.27 13.3 16.42 13.66 16.53C14.25 16.72 14.79 16.69 15.22 16.63C15.7 16.56 16.68 16.03 16.89 15.45C17.1 14.87 17.1 14.38 17.04 14.27C16.97 14.17 16.81 14.11 16.56 14C16.31 13.86 15.09 13.26 14.87 13.18C14.64 13.1 14.5 13.06 14.31 13.3C14.15 13.55 13.67 14.11 13.53 14.27C13.38 14.44 13.24 14.46 13 14.34C12.74 14.21 11.94 13.95 11 13.11C10.26 12.45 9.77 11.64 9.62 11.39C9.5 11.15 9.61 11 9.73 10.89C9.84 10.78 10 10.6 10.1 10.45C10.23 10.31 10.27 10.2 10.35 10.04C10.43 9.87 10.39 9.73 10.33 9.61C10.27 9.5 9.77 8.26 9.56 7.77C9.36 7.29 9.16 7.35 9 7.34C8.86 7.34 8.7 7.33 8.53 7.33Z"/></svg>';
 ?>
-<?php if ($mode === 'waiting'): ?>
-	<meta http-equiv="refresh" content="5;url=<?php p($_['refreshUrl']); ?>">
-<?php endif; ?>
 <div class="guest-box login-box gp-whatsapp gp-tk"
 	data-mode="<?php p($mode); ?>"
-	data-step="<?php p(['review' => 'review', 'done' => 'done', 'waiting' => 'checking'][$mode] ?? 'gone'); ?>"
-	<?php if ($mode === 'review'): ?>
+	data-step="<?php p(['review' => 'review', 'join' => 'review', 'done' => 'done'][$mode] ?? 'gone'); ?>"
+	<?php if ($passkey): ?>
 	data-options-url="<?php p($_['optionsUrl']); ?>"
 	data-action-url="<?php p($_['actionUrl']); ?>"
-	data-pay-url="<?php p($_['payUrl']); ?>"
 	data-frame-url="<?php p($_['frameUrl']); ?>"
+	<?php endif; ?>
+	<?php if ($mode === 'review'): ?>
+	data-pay-url="<?php p($_['payUrl']); ?>"
 	data-pdf-url="<?php p($_['pdfUrl']); ?>"
 	data-pages="<?php p(json_encode($_['pages'])); ?>"
 	data-boxes="<?php p(json_encode($_['boxes'])); ?>"
@@ -128,8 +130,8 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 			<span class="gp-whatsapp__wa"><?php print_unescaped($whatsappIcon); ?></span>
 			<span id="gp-tk-line"><?php p($line); ?></span>
 		</p>
-		<?php if ($mode === 'review'): ?>
-			<button class="gp-whatsapp__button gp-tk__start" type="button" id="gp-tk-start"><?php p($l->t('Seal')); ?></button>
+		<?php if ($passkey): ?>
+			<button class="gp-whatsapp__button gp-tk__start" type="button" id="gp-tk-start"><?php p($mode === 'join' ? $l->t('Sign with MIMI.ke') : $l->t('Seal')); ?></button>
 			<?php /* The hand-off to Chrome, as on the WhatsApp card, for a browser that turns out not to run a passkey. */ ?>
 			<div class="gp-whatsapp__browser" hidden>
 				<?php if ($_['chromeLink'] !== null): ?>
@@ -147,7 +149,7 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 			</div>
 		<?php endif; ?>
 	</div>
-	<?php if ($mode === 'review'): ?>
+	<?php if ($passkey): ?>
 		<div class="gp-whatsapp__frame" id="gp-tk-frame"></div>
 	<?php endif; ?>
 </div>

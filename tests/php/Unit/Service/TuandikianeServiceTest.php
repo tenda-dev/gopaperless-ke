@@ -495,6 +495,59 @@ final class TuandikianeServiceTest extends TestCase {
 		}
 	}
 
+	/** The code of s3's invite on a sent draft, which every lookup then finds. */
+	private function invite(TuandikianeDraft $draft): string {
+		$url = $this->service()->joinUrl($draft, 's3');
+		$this->drafts->method('findByDraftUuid')->willReturn($draft);
+		$this->drafts->method('findByDraftUuidForUpdate')->willReturn($draft);
+		$this->files->method('getById')->willReturn(self::file());
+		$this->signRequests->method('getById')->willReturnCallback(static fn (int $id): SignRequest => self::signRequest($id));
+		return substr($url, strrpos($url, '/') + 1);
+	}
+
+	public function testAPasskeyOnTheInviteTakesTheSlotWhateverNumberTheAccountPaidWith(): void {
+		// No number anywhere: the invite names the slot, the passkey the account.
+		$this->accounts['wanjiru'] = $this->user('wanjiru');
+		$code = $this->invite(self::draft(TuandikianeDraft::STATUS_SENT));
+		$method = self::method(103, 'email', 'tuandikiane-x-s3@placeholder.securesign.local');
+		$this->identifyMethods->method('getIdentifyMethodsFromSignRequestId')->with(103)->willReturn([$method]);
+		$this->whatsApp->method('sendTo')->willReturn(['status' => 'sent', 'error' => null, 'availableAgainAt' => null]);
+
+		$card = $this->service()->claim($code, 'sub-wanjiru');
+
+		$this->assertSame(['account', 'wanjiru'], [$method->getIdentifierKey(), $method->getIdentifierValue()]);
+		$this->assertStringStartsWith('https://gp.test/libresign.whatsAppSign.page/', $card);
+	}
+
+	public function testAnInviteSomeoneElseHoldsOrASecondSlotForOneAccountIsRefused(): void {
+		$this->accounts['wanjiru'] = $this->user('wanjiru');
+		$this->accounts['ali'] = $this->user('ali');
+		$this->identifyMethods->expects($this->never())->method('update');
+		$taken = $this->invite(self::draft(TuandikianeDraft::STATUS_SENT, s3: 'kamau'));
+		foreach ([[$taken, 'sub-wanjiru', 409], ['not.a.code', 'sub-wanjiru', 410], [$taken, 'sub-nobody', 422]] as [$code, $sub, $status]) {
+			try {
+				$this->service()->claim($code, $sub);
+				$this->fail('Claimed');
+			} catch (LibresignException $e) {
+				$this->assertSame($status, $e->getCode());
+			}
+		}
+	}
+
+	public function testAnAccountAlreadySigningUnderAnotherSlotCannotTakeTheInvite(): void {
+		$this->accounts['ali'] = $this->user('ali');
+		$code = $this->invite(self::draft(TuandikianeDraft::STATUS_SENT));
+		$this->identifyMethods->expects($this->never())->method('update');
+		$this->db->expects($this->once())->method('rollBack');
+
+		try {
+			$this->service()->claim($code, 'sub-ali');
+			$this->fail('Claimed');
+		} catch (LibresignException $e) {
+			$this->assertSame(409, $e->getCode());
+		}
+	}
+
 	public function testTheInviteCodeNamesItsSlotOnceSealed(): void {
 		$service = $this->service();
 		$url = $service->joinUrl(self::draft(), 's3');

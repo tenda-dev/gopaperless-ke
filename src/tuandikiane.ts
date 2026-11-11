@@ -10,6 +10,10 @@
 // our server fetches the challenge and has MIMI verify the answer, the same
 // messages as passkey.ts), or, when they sign too, on to their signing card,
 // where their signature is the seal.
+//
+// The same page is a joiner's invite once they are back from MIMI (mode
+// "join"): the same frame asks for a MIMI passkey without naming an account,
+// the account that answers takes their slot, and they go on to their card.
 
 import axios from '@nextcloud/axios'
 import { n, t } from '@nextcloud/l10n'
@@ -35,7 +39,13 @@ const payFor = document.getElementById('gp-tk-pay-for') as HTMLInputElement | nu
 let frame: HTMLIFrameElement | null = null
 let slow: ReturnType<typeof setTimeout> | undefined
 
-const SCREENS: Partial<Record<Step, [string, string]>> = {
+const SCREENS: Partial<Record<Step, [string, string]>> = mode === 'join' ? {
+	opening: [t('libresign', 'Almost there'), t('libresign', 'Opening MIMI…')],
+	signing: [t('libresign', 'Almost there'), t('libresign', 'Opening your agreement…')],
+	cancelled: [t('libresign', 'Almost there'), t('libresign', 'One touch of your MIMI passkey opens your agreement.')],
+	error: [t('libresign', 'Couldn\'t open your agreement'), t('libresign', 'Try again.')],
+	browser: [t('libresign', 'Open in Chrome'), t('libresign', 'This browser can\'t use your passkey. Open this page in Chrome to continue.')],
+} : {
 	opening: [t('libresign', 'Seal & Deliver'), t('libresign', 'Opening MIMI…')],
 	signing: [t('libresign', 'Sealing'), t('libresign', 'Sealing your agreement…')],
 	done: [t('libresign', 'Sealed & delivered'), t('libresign', 'Everyone who signs has their link on WhatsApp.')],
@@ -200,7 +210,11 @@ async function ask(retry?: 'rejected'): Promise<void> {
 async function submit(response: unknown): Promise<void> {
 	show('signing')
 	try {
-		await axios.post(box!.dataset.actionUrl!, { response, payForSigners: !!payFor?.checked })
+		const { data } = await axios.post(box!.dataset.actionUrl!, { response, payForSigners: !!payFor?.checked })
+		if (mode === 'join') {
+			window.location.assign(data.signUrl)
+			return
+		}
 		close()
 		show('done')
 	} catch (error) {
@@ -293,7 +307,7 @@ async function copy(text: string): Promise<boolean> {
 	}
 }
 
-if (box && mode === 'review') {
+if (box && (mode === 'review' || mode === 'join')) {
 	render()
 	payFor?.addEventListener('change', render)
 	document.querySelectorAll('input[name="gp-tk-method"]').forEach((radio) => radio.addEventListener('change', render))

@@ -38,8 +38,10 @@ The moderator gets **Seal & Deliver** on WhatsApp and opens it:
 4. With Pay for signers on, the moderator's credits are reserved for every signer
    (requester sponsorship), so the signers' cards say "Paid for by".
 5. A signer without MIMI (a **joiner**) gets an invite from Tuandikiane. It leads
-   through MIMI, where they pay, and back. When Tuandikiane hears their payment landed, it
-   calls `join` and their slot becomes their account. Then their card goes.
+   through MIMI, where they set up or simply sign in, and back. One touch of their MIMI
+   passkey on the invite page makes the slot theirs and opens their card. If Tuandikiane
+   hears first that their MIMI payment landed from the slot's number, it calls `join`
+   and the same thing happens without the touch.
 
 Ready signers never wait for joiners: everyone has signing order 1.
 
@@ -56,6 +58,7 @@ Ready signers never wait for joiners: everyone has signing order 1.
 | `POST /apps/libresign/p/t/review/{code}/pay`, `GET .../pay/{reference}` | that page, when the credits fall short |
 | `POST /apps/libresign/p/t/review/{code}/seal` | that page, with the passkey answer |
 | `GET /apps/libresign/p/t/join/{code}` | a joiner, from Tuandikiane's invite |
+| `POST /apps/libresign/p/t/join/{code}/options`, `POST .../claim` | the invite page, for the passkey that takes the slot |
 | `POST /apps/libresign/p/whatsapp/{code}/pay`, `GET .../pay/{reference}` | the signing card, for a signer with no credit |
 | `GET /apps/libresign/p/whatsapp/{code}/signature` | the signing card's preview of the signature it places |
 
@@ -85,7 +88,9 @@ sealing it opens Seal & Deliver; after, the done screen (or, while a moderator w
 hasn't, their card). An unsealed draft past its expiry shows "This link has expired."
 
 An invite code is `<draft uuid>.<key>.<MAC>`. It works once the draft is sealed: to MIMI
-first, then, coming back, a page that waits until the slot is theirs and opens their card.
+first, then, coming back, a page with one button, "Sign with MIMI.ke". The passkey
+prompt names no account, so the phone offers the MIMI accounts it holds, and the one
+that answers takes the slot. A slot belongs to the first account that claims it.
 
 ## Before you start
 
@@ -174,8 +179,11 @@ Sealed drafts are the moderator's documents and stay.
   WhatsApp. Without the moderator's MIMI passkey it can't seal, but it can start an
   M-Pesa prompt to the moderator's number (rate limited to six a minute) and, for a
   moderator who signs, seal without delivering: nobody hears until their signature.
-- A joiner is matched by the number MIMI charged. One who pays MIMI from another number,
-  or already had MIMI under another number, waits on the invite page and is never added.
+- **An invite is a bearer capability too**, sent only to the joiner's WhatsApp. Whoever
+  opens it first with a MIMI passkey takes the slot, so a forwarded invite gives the
+  slot away. The number the account paid MIMI with plays no part.
+- The invite's passkey step needs a MIMI that accepts `passkey/options` with no
+  `subject` (MIMI #5). Against an older MIMI the page says MIMI isn't answering.
 - MIMI keeps a certificate copy from the day it shipped (2026-11-09) and on each visit.
   Someone whose certificate MIMI hasn't copied yet gets "Sign in to GoPaperless once" on
   the card until they open MIMI or sign in here.
