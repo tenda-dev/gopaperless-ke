@@ -13,6 +13,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\JSActions;
+use OCA\Libresign\Helper\RecoveryCookie;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Middleware\Attribute\PrivateValidation;
 use OCA\Libresign\Middleware\Attribute\RequireSetupOk;
@@ -25,6 +26,7 @@ use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
+use OCA\Libresign\Service\AccountRecovery\PendingRecovery;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
@@ -163,6 +165,14 @@ class PageController extends AEnvironmentPageAwareController {
 		// Visibility only (nav/route); the operations endpoints enforce access server-side.
 		$this->initialState->provideInitialState('operations_dashboard_enabled', $this->operationsAccessService->canAccess($this->userSession->getUser()));
 
+		// Only the pending-recovery state reaches the frontend; the signing UUID
+		// and account identity remain server-side.
+		$recovery = (new PendingRecovery($this->request, \OCP\Server::get(RecoveryCookie::class)))
+			->evaluate($this->userSession->getUser());
+		if ($recovery['pending']) {
+			$this->initialState->provideInitialState('recovery_pending', true);
+		}
+
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
 
@@ -180,25 +190,23 @@ class PageController extends AEnvironmentPageAwareController {
 		$policy->addAllowedWorkerSrcDomain("'self'");
 		$response->setContentSecurityPolicy($policy);
 
+		if ($recovery['clear']) {
+			$response->invalidateCookie(RecoveryCookie::NAME);
+		}
+
 		return $response;
 	}
 
 	/**
-	 * Public upload landing page (anonymous entry point)
+	 * Public upload landing page for anonymous visitors.
 	 *
-	 * Renders the upload view for a visitor with no Nextcloud session, as a
-	 * marketing on-ramp: the dropzone and value prop show immediately, and
-	 * auth is gated at the first action.
-	 *
-	 * Reachable directly as the shareable public URL, and as the redirect
-	 * target for anonymous visitors hitting the app root (see index()).
-	 *
-	 * A logged-in visitor are sent straight to the authenticated upload/request view instead.
+	 * Authenticated visitors are redirected to the regular request-signature
+	 * view. When the landing page is disabled, visitors are sent to login.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
 	 * 200: OK
-	 * 303: Logged-in visitor redirected to the authenticated request view
+	 * 303: Visitor redirected to the appropriate authenticated or login route
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
@@ -218,18 +226,14 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Canonical public, anonymous document-preparation workflow page (/p/workflow).
+	 * Canonical public document-preparation workflow.
 	 *
-	 * A dedicated Vue route served anonymously via the main SPA shell, like
-	 * /p/upload. The SPA router now mounts the redesigned three-pane shell
-	 * (PublicWorkflowNextShell) for this path. Inert unless public_workflow_enabled
-	 * is on; an anonymous visitor hitting it while disabled is bounced to the app
-	 * root. /p/upload is unchanged.
+	 * Available only when public_workflow_enabled is enabled.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
 	 * 200: OK
-	 * 303: Workflow disabled \u2014 bounced to the app root
+	 * 303: Workflow disabled — redirected to the app root
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
@@ -239,17 +243,14 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Legacy single-column public workflow page (/p/workflow-legacy).
+	 * Legacy single-column public workflow route.
 	 *
-	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
-	 * SAME public_workflow_enabled flag; the SPA router mounts the legacy
-	 * PublicWorkflowShell for this path. Kept available so the previous layout
-	 * stays reachable after the redesign became canonical.
+	 * Retained for access to the previous workflow layout.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
 	 * 200: OK
-	 * 303: Workflow disabled — bounced to the app root
+	 * 303: Workflow disabled — redirected to the app root
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
@@ -259,17 +260,14 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Compatibility alias for the former A/B path (/p/workflow-next).
+	 * Compatibility alias for the former A/B workflow path.
 	 *
-	 * Serves the SAME anonymous SPA shell as /p/workflow and is gated by the
-	 * SAME public_workflow_enabled flag, so it exposes nothing extra in
-	 * production. The SPA router redirects this path to the canonical
-	 * /p/workflow, so old staging links and bookmarks keep working.
+	 * Redirects to the canonical /p/workflow route through the frontend router.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 *
 	 * 200: OK
-	 * 303: Workflow disabled — bounced to the app root
+	 * 303: Workflow disabled — redirected to the app root
 	 */
 	#[PublicPage]
 	#[NoCSRFRequired]
@@ -279,10 +277,10 @@ class PageController extends AEnvironmentPageAwareController {
 	}
 
 	/**
-	 * Shared renderer for the public-workflow SPA page. /p/workflow,
-	 * /p/workflow-legacy and /p/workflow-next all delegate here so the flag gate,
-	 * anonymous public config, OIDC login state, assets and CSP stay identical
-	 * across the canonical, legacy and alias paths.
+	 * Shared renderer for the public document-preparation workflow.
+	 *
+	 * Keeps feature-flag enforcement and public page initialization consistent
+	 * across the canonical, legacy and compatibility routes.
 	 *
 	 * @return TemplateResponse<Http::STATUS_OK, array{}>|RedirectResponse<Http::STATUS_SEE_OTHER, array{}>
 	 */
@@ -291,16 +289,11 @@ class PageController extends AEnvironmentPageAwareController {
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
 		}
 
-		// Public app config (sponsorship_enabled, product pricing, …) — the SAME
-		// anonymous config the /p/upload landing exposes (getConfig(null)); no
-		// user-specific or privileged data. The public workflow's signer dialog and
-		// shell read sponsorship_enabled from here via loadState('libresign','config').
+		// Expose only the configuration needed by the anonymous workflow.
 		$this->initialState->provideInitialState('config', $this->accountService->getConfig($this->userSession->getUser()));
 
-		// Powers the shared public header's "Sign in" gate (PublicShell →
-		// PublicUploadHeader), identical to the /p/upload landing. Empty when no
-		// User OIDC provider is configured, in which case the client falls back to
-		// the default Nextcloud login.
+		// An empty login URL lets the frontend fall back to Nextcloud's default
+		// login when no public-upload OIDC provider is available.
 		$this->initialState->provideInitialState('public_upload_oidc_login_url', $this->getPublicUploadOidcLoginUrl());
 
 		Util::addScript(Application::APP_ID, 'libresign-main');

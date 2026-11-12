@@ -710,7 +710,7 @@ class AccountService {
 	public const SIGNER_GROUP_ERROR = 'error';
 
 	/** Overridable per instance via the `default_signer_group` app setting. */
-	private const DEFAULT_SIGNER_GROUP = 'signers';
+	private const DEFAULT_SIGNER_GROUP = 'Signatories';
 
 	/**
 	 * Ensure the account belongs to the configured group allowed to request signing.

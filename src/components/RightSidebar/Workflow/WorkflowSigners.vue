@@ -9,6 +9,7 @@
 			</div>
 
 			<NcButton v-if="canAddSigner" variant="primary" size="small" class="workflow-add-signer-button"
+				:disabled="deletePending"
 				@click="$emit('add-signer')">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiPlus" :size="18" />
@@ -38,6 +39,7 @@
 		<!-- ========================================= -->
 		<draggable v-if="isOrderedNumeric && canReorder" v-model="sortableSigners" item-key="localKey" tag="div"
 			handle=".workflow-signer-drag-handle" class="workflow-signer-list" chosenClass="workflow-signer-dragging"
+			:disabled="dragLocked"
 			dragClass="workflow-signer-drag-ghost" animation="220" @end="onDragEnd">
 			<template #item="{ element: signer, index }">
 				<WorkflowSigner
@@ -56,6 +58,9 @@
 					:file-id="Number(file?.id ?? 0)"
 					:file-is-draft="file?.status === 0"
 					:methods="controller.methods.value"
+					:pending-action="pendingActions[signer.localKey as string] ?? null"
+					:delete-blocked="requestBusy"
+					:delete-pending="deletePending"
 					@edit="$emit('edit-signer', signer)"
 					@delete="$emit('delete-signer', signer)"
 					@request-signature="$emit('request-signature', signer)"
@@ -85,6 +90,9 @@
 					:file-id="Number(file?.id ?? 0)"
 					:file-is-draft="file?.status === 0"
 				:methods="controller.methods.value"
+				:pending-action="pendingActions[signer.localKey as string] ?? null"
+				:delete-blocked="requestBusy"
+				:delete-pending="deletePending"
 				@edit="$emit('edit-signer', signer)"
 				@delete="$emit('delete-signer', signer)"
 				@request-signature="$emit('request-signature', signer)"
@@ -159,6 +167,21 @@ const props = defineProps({
 		type: String,
 		default: '',
 	},
+	/** Pending row actions keyed by signer.localKey (owned by the tab's controller). */
+	pendingActions: {
+		type: Object as PropType<Record<string, 'notify' | 'whatsapp' | 'delete'>>,
+		default: () => ({}),
+	},
+	/** A request-level mutation or delete is in flight. */
+	requestBusy: {
+		type: Boolean,
+		default: false,
+	},
+	/** A request-level mutation (e.g. submitting the request) is in flight. Locks drag only. */
+	requestLoading: {
+		type: Boolean,
+		default: false,
+	},
 })
 
 const emit = defineEmits<{
@@ -193,6 +216,12 @@ const sortableSigners = computed({
 	},
 })
 
+/** A signer delete is in flight: drag reorder, Add and Edit entry points are locked. */
+const deletePending = computed(() => Object.values(props.pendingActions).includes('delete'))
+
+/** Reordering is locked during a delete or a request-level mutation (not during autosave). */
+const dragLocked = computed(() => deletePending.value || props.requestLoading)
+
 const isOrderedNumeric = computed(() => {
 	const flow = normalizeSignatureFlow(
 		file.value?.signatureFlow,
@@ -224,6 +253,9 @@ function onDragEnd(evt: {
 	oldIndex: number
 	newIndex: number
 }) {
+	if (dragLocked.value) {
+		return
+	}
 	const {
 		oldIndex,
 		newIndex,

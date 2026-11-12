@@ -104,8 +104,8 @@ final class SignersLoaderTest extends TestCase {
 		$this->getService()->loadLibreSignSigners($file, $fileData, $options);
 
 		$this->assertCount(1, $fileData->signers);
-		$this->assertSame('sign-request-uuid', $fileData->signers[0]->sign_request_uuid);
-		$this->assertObjectNotHasProperty('sign_uuid', $fileData->signers[0]);
+		$this->assertSame('sign-request-uuid', $fileData->signers[0]->sign_uuid);
+		$this->assertObjectNotHasProperty('sign_request_uuid', $fileData->signers[0]);
 		$this->assertTrue($fileData->settings['canSign']);
 		$this->assertArrayNotHasKey('signerFileUuid', $fileData->settings);
 	}

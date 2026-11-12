@@ -46,7 +46,7 @@ Feature: page/sign_identify_account
     And the response should be a JSON array with the following mandatory values
       | key      | value             |
       | action | 2000 |
-      | errors | [{"message":"Invalid user"}] |
+      | errors | [{"message":"This document was sent to a different account.","switchAccount":true,"switchAccountPath":"/index.php/apps/libresign/account/switch","maskedEmail":"si•••••@d•••••.test"}] |
     # unauthenticated user
     When as user ""
     And sending "get" to "/apps/libresign/p/sign/<SIGN_UUID>"

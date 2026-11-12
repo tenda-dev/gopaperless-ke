@@ -60,9 +60,12 @@
 		    :can-manage-signers="canManageSigners"
 		    :signers="state.signers.value"
 			:event="state.isOriginalFileDeleted.value ? '' : 'libresign:edit-signer'"
+			:pending-actions="pendingSignerActions"
+			:request-busy="isDeleteBlocked"
+			:request-loading="hasLoading"
 			@add-signer="addSigner"
 			@edit-signer="editSigner"
-			@delete-signer="filesStore.deleteSigner"
+			@delete-signer="deleteSigner"
 			@request-signature="requestSignatureForSigner"
 			@send-reminder="sendNotify"
 			@send-whatsapp="sendWhatsApp"
@@ -74,7 +77,7 @@
 		<WorkflowSignatureSetup
 		    v-if="canManageSigners"
 			:file="state.file.value"
-			:is-loading="hasLoading"
+			:is-loading="isRequestBusy"
 			@edit-positions="save" />
 
 		<!-- ========================================= -->
@@ -103,7 +106,7 @@
 		<!-- ========================================= -->
 		<WorkflowActions
 			:workflow="state.snapshot.value"
-			:loading="hasLoading"
+			:loading="isRequestBusy"
 			@add-signer="addSigner"
 			@setup-positions="save"
 			@request-signatures="request"
@@ -171,10 +174,10 @@
 
 				<NcButton
 					variant="primary"
-					:disabled="hasLoading"
+					:disabled="isRequestBusy"
 					@click="confirmRequest">
 					<template #icon>
-						<NcLoadingIcon v-if="hasLoading" :size="20" />
+						<NcLoadingIcon v-if="isRequestBusy" :size="20" />
 						<NcIconSvgWrapper v-else :path="mdiSend" :size="20" />
 					</template>
 					{{ t('libresign', 'Send') }}
@@ -197,10 +200,10 @@
 
 				<NcButton
 					variant="primary"
-					:disabled="hasLoading"
+					:disabled="isRequestBusy"
 					@click="confirmRequestSigner">
 					<template #icon>
-						<NcLoadingIcon v-if="hasLoading" :size="20" />
+						<NcLoadingIcon v-if="isRequestBusy" :size="20" />
 						<NcIconSvgWrapper v-else :path="mdiSend" :size="20" />
 					</template>
 					{{ t('libresign', 'Send') }}
@@ -291,6 +294,9 @@ const {
 
 	// local UI refs
 	hasLoading,
+	pendingSignerActions,
+	isRequestBusy,
+	isDeleteBlocked,
 	isLoadingFileDetail,
 	signerToEdit,
 	modalSrc,
@@ -331,6 +337,7 @@ const {
 	openManageFiles,
 	sendNotify,
 	sendWhatsApp,
+	deleteSigner,
 	requestSignatureForSigner,
 	confirmRequestSigner,
 	closeModal,

@@ -117,20 +117,25 @@
 		<div
 		    v-if="canEdit || canShare"
 			class="workflow-signer-actions"
+			:class="{ 'workflow-signer-actions--pending': pendingAction }"
 			@click.stop>
+			<NcLoadingIcon v-if="pendingAction"
+				:size="16"
+				:name="pendingLabel"
+				class="workflow-signer-pending" />
 			<NcActions
 				:open="isActionsOpen"
 				@update:open="isActionsOpen = $event"
 				@close="isActionsOpen = false"
 				@closed="isActionsOpen = false">
 				<NcActionCaption name="Signer Actions" />
-				<NcActionButton @click="$emit('customize-message', signer)" v-if="canCustomizeMessage" :close-after-click="true">
+				<NcActionButton @click="$emit('customize-message', signer)" v-if="canCustomizeMessage" :disabled="deletePending" :close-after-click="true">
 							<template #icon>
 								<NcIconSvgWrapper :path="mdiMessageTextOutline" :size="15" />
 							</template>
 							{{ t('libresign', 'Customise message') }}
 				</NcActionButton>
-				<NcActionButton @click="$emit('edit', signer)" v-if="canEdit" :close-after-click="true">
+				<NcActionButton @click="$emit('edit', signer)" v-if="canEdit" :disabled="deletePending" :close-after-click="true">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiPencilOutline"
@@ -146,7 +151,7 @@
 					</template>
 					Request Signature
 				</NcActionButton>
-				<NcActionButton @click="$emit('send-reminder', signer)" v-if="canSendReminder" :close-after-click="true">
+				<NcActionButton @click="$emit('send-reminder', signer)" v-if="canSendReminder" :disabled="Boolean(pendingAction)" :close-after-click="true">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiBellOutline"
@@ -155,7 +160,7 @@
 					Send Reminder
 				</NcActionButton>
 				<NcActionButton v-if="showWhatsApp"
-					:disabled="!whatsAppReady"
+					:disabled="!whatsAppReady || Boolean(pendingAction) || deletePending"
 					:close-after-click="true"
 					@click="$emit('send-whatsapp', signer)">
 					<template #icon>
@@ -175,7 +180,7 @@
 					</template>
 					{{ t('libresign', 'Show QR') }}
 				</NcActionButton>
-				<NcActionButton @click="$emit('delete', signer)" v-if="canDelete" :close-after-click="true" variant="danger">
+				<NcActionButton @click="$emit('delete', signer)" v-if="canDelete" :disabled="Boolean(pendingAction) || deleteBlocked" :close-after-click="true" variant="danger">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiTrashCanOutline"
@@ -215,6 +220,7 @@ import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionCaption from '@nextcloud/vue/components/NcActionCaption'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper
 	from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -274,7 +280,16 @@ const props = withDefaults(defineProps<{
 
 	requireRequestPermission?: boolean
 	methods?: IdentifyMethodSetting[]
+	/** In-flight row action for this signer, owned by the tab's controller. */
+	pendingAction?: 'notify' | 'whatsapp' | 'delete' | null
+	/** Another delete or a request-level mutation is in flight. */
+	deleteBlocked?: boolean
+	/** Any signer delete is in flight: locks Edit, Customise and WhatsApp. */
+	deletePending?: boolean
 }>(), {
+	deletePending: false,
+	pendingAction: null,
+	deleteBlocked: false,
 	event: '',
 	isOrderedNumeric: false,
 	showDragHandle: false,
@@ -483,6 +498,14 @@ onBeforeUnmount(() => {
 	clearTimeout(recheck)
 })
 
+const pendingLabel = computed(() => {
+	switch (props.pendingAction) {
+	case 'notify': return t('libresign', 'Sending reminder…')
+	case 'whatsapp': return t('libresign', 'Sending on WhatsApp…')
+	case 'delete': return t('libresign', 'Deleting…')
+	default: return ''
+	}
+})
 const showWhatsApp = computed(() => Boolean(recipient.value && !['disabled', 'envelope', 'signed'].includes(recipient.value.reason ?? '')))
 const availableAgainAt = computed(() => {
 	const at = recipient.value?.availableAgainAt ?? lastSend.value?.availableAgainAt
@@ -938,6 +961,7 @@ function handlePrimaryAction() {
 		transform 180ms ease;
 }
 
+.workflow-signer-actions--pending,
 .workflow-signer:hover .workflow-signer-actions {
 	opacity: 1;
 	transform: translateX(0);
