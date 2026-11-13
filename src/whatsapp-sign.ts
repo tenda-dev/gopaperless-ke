@@ -16,7 +16,6 @@
 import axios from '@nextcloud/axios'
 import { t } from '@nextcloud/l10n'
 
-import { payAndWait } from './utils/linkPayment'
 import { canRunPasskey, isChrome } from './utils/passkeyBrowser'
 
 type Approval = { token: string, documentHash: string, documentName: string, origin: string }
@@ -170,30 +169,6 @@ async function begin(firstStep: string): Promise<void> {
 		window.location.replace(box!.dataset.target!)
 	}
 }
-
-/** One signature bought on the card, then the page again: it opens ready and signs. */
-async function pay(method: 'mobile' | 'card'): Promise<void> {
-	const block = document.querySelector<HTMLElement>('.gp-whatsapp__pay')!
-	const phone = (document.getElementById('gp-whatsapp-phone') as HTMLInputElement).value
-	block.querySelectorAll('button').forEach((button) => { button.disabled = true })
-	box!.dataset.step = 'paying'
-	document.getElementById('gp-whatsapp-line')!.textContent = method === 'card'
-		? t('libresign', 'Finish on DPO\'s card page')
-		: t('libresign', 'Enter your PIN on your phone to pay')
-	const paid = await payAndWait(block.dataset.payUrl!, { method, phone })
-	if (paid === 'SUCCESS') {
-		window.location.reload()
-		return
-	}
-	box!.dataset.step = 'error'
-	document.getElementById('gp-whatsapp-line')!.textContent = paid === 'CANCELLED'
-		? t('libresign', 'The payment was cancelled, so nothing was paid. Try again.')
-		: t('libresign', 'The payment didn\'t go through, so nothing was paid. Try again.')
-	block.querySelectorAll('button').forEach((button) => { button.disabled = false })
-}
-
-document.getElementById('gp-whatsapp-pay')?.addEventListener('click', () => void pay('mobile'))
-document.getElementById('gp-whatsapp-pay-card')?.addEventListener('click', () => void pay('card'))
 
 const firstStep = box?.dataset.step ?? ''
 if (['preparing', 'login', 'no_credits', 'checking'].includes(firstStep)) {

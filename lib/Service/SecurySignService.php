@@ -10,17 +10,13 @@ declare(strict_types=1);
 namespace OCA\Libresign\Service;
 
 use OCA\Libresign\AppInfo\Application;
-use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\IAppConfig;
 use OCP\IConfig;
 use OCP\IServerContainer;
 use OCP\ISession;
-use OCP\IUser;
-use OCP\IUserManager;
 use OCP\IUserSession;
-use OCP\User\Events\UserCreatedEvent;
 use Psr\Log\LoggerInterface;
 
 class SecurySignService {
@@ -492,8 +488,8 @@ class SecurySignService {
 	 * @param array{certificateId: string, imagePngBase64: string, imageSha256?: string, card: int} $readiness
 	 * @param bool $replace true for a signature just drawn: it replaces the current one even when that one is up to date
 	 */
-	public function syncVisibleSignature(array $readiness, bool $replace = false, ?IUser $user = null): void {
-		$user ??= $this->users->getUser();
+	public function syncVisibleSignature(array $readiness, bool $replace = false): void {
+		$user = $this->users->getUser();
 		if ($user === null) {
 			return;
 		}
@@ -729,8 +725,7 @@ class SecurySignService {
 	 * then sends the user to $returnUrl if it is one of our addresses MIMI has.
 	 */
 	public function mimiEnrolmentUrl(string $sub, string $email, string $returnUrl): string {
-		// No sub: anyone MIMI signs in, for an invite to someone without an account here.
-		return $this->mimiOrigin() . '/enrol?' . http_build_query(array_filter(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl], static fn (string $v): bool => $v !== ''));
+		return $this->mimiOrigin() . '/enrol?' . http_build_query(['sub' => $sub, 'email' => $email, 'returnTo' => $returnUrl]);
 	}
 
 	/**
@@ -801,14 +796,10 @@ class SecurySignService {
 	/**
 	 * WebAuthn options for the user's MIMI passkey, which our page hands to
 	 * MIMI's frame. Null when MIMI holds no passkey for them. Throws 503 when
-	 * MIMI cannot answer. $subject names someone not signed in here, on a page
-	 * a link opened; by default it is the session's own account. With
-	 * $anyAccount the options name nobody: the phone offers the MIMI passkeys it
-	 * holds and passkeyAccount() says whose answered.
+	 * MIMI cannot answer.
 	 */
-	public function passkeyOptions(?string $subject = null, bool $anyAccount = false): ?array {
-		// An object, never a list: MIMI reads "no subject" only from {}.
-		$answer = $this->mimi('passkey/options', $anyAccount ? ['any' => true] : ['subject' => $subject ?? $this->identity()['sub']]);
+	public function passkeyOptions(): ?array {
+		$answer = $this->mimi('options', ['subject' => $this->identity()['sub']]);
 		if ($answer['status'] === 404) {
 			return null;
 		}
@@ -819,31 +810,20 @@ class SecurySignService {
 		return $answer['body']['options'];
 	}
 
-	/**
-	 * The MIMI account whose passkey answered the options this session last
-	 * asked for, or null when MIMI refuses the answer. The caller decides
-	 * whether that account is the one it wanted. Throws 503 when MIMI can't answer.
-	 */
-	public function passkeyAccount(array $assertion): ?string {
+	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
+	public function verifyPasskey(array $assertion): bool {
 		$state = $this->session->get(self::PASSKEY_STATE_KEY);
 		$this->session->remove(self::PASSKEY_STATE_KEY);
 		if (!is_string($state)) {
-			return null;
+			return false;
 		}
-		$answer = $this->mimi('passkey/verify', ['state' => $state, 'response' => $assertion]);
+		$answer = $this->mimi('verify', ['state' => $state, 'response' => $assertion]);
 		if ($answer['status'] >= 500) {
 			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the passkey check.', 503);
 		}
-		$subject = $answer['body']['subject'] ?? null;
-		return $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true && is_string($subject) && $subject !== '' ? $subject : null;
-	}
-
-	/** True, and the check recorded as done, when MIMI accepts the assertion as this user's passkey. */
-	public function verifyPasskey(array $assertion, ?string $subject = null): bool {
-		$account = $this->passkeyAccount($assertion);
-		$verified = $account !== null && $account === ($subject ?? $this->identity()['sub']);
-		// Someone else's passkey on a link's page says nothing about this session.
-		if ($verified && $subject === null) {
+		$verified = $answer['status'] === 200 && ($answer['body']['verified'] ?? false) === true
+			&& ($answer['body']['subject'] ?? null) === $this->identity()['sub'];
+		if ($verified) {
 			$this->session->set(self::PASSKEY_KEY, time());
 		}
 		return $verified;
@@ -855,95 +835,14 @@ class SecurySignService {
 		$this->session->set(self::PASSKEY_KEY, 'skipped');
 	}
 
-	/**
-	 * The GoPaperless account for a MIMI account, so its holder can sign from a
-	 * WhatsApp link without ever signing in here. Found by the sub a login left,
-	 * else by the address (a login would sign into that account too), else made
-	 * the way user_oidc makes one at a first login. It then carries what MIMI
-	 * holds: the certificate copy the card needs and the drawn signature that
-	 * goes in the boxes. Signing still asks for the person's own passkey.
-	 * Null when MIMI doesn't know the account or holds no address for it.
-	 * Throws 503 when MIMI can't answer.
-	 */
-	public function accountFor(string $sub): ?IUser {
-		$answer = $this->mimi('person', ['subject' => $sub]);
-		if ($answer['status'] === 404) {
-			return null;
-		}
-		if ($answer['status'] !== 200 || ($answer['body']['subject'] ?? null) !== $sub) {
-			throw new \RuntimeException('MIMI answered HTTP ' . $answer['status'] . ' to the person request.', 503);
-		}
-		$person = $answer['body'];
-		$userManager = $this->container->get(IUserManager::class);
-		$user = null;
-		foreach ($this->systemConfig->getUsersForUserValue(Application::APP_ID, 'securysign_sub', $sub) as $uid) {
-			$user ??= $userManager->get($uid);
-		}
-		if ($user === null) {
-			// user_oidc maps the uid from preferred_username, which is this address.
-			$email = trim((string)($person['email'] ?? ''));
-			if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || $this->providerId() <= 0) {
-				return null;
-			}
-			$user = $userManager->get($email) ?? $this->createAccount($email, trim((string)($person['name'] ?? '')));
-			$this->systemConfig->setUserValue($user->getUID(), Application::APP_ID, 'securysign_sub', $sub);
-		}
-
-		// A login remembers SecurySign's certificate and MIMI keeps its own copy;
-		// either can be the newer, so the later-issued one wins.
-		$certificate = is_array($person['certificate'] ?? null) ? $person['certificate'] : [];
-		$pem = is_string($certificate['pem'] ?? null) ? $certificate['pem'] : '';
-		if (self::issuedAt($pem) > self::issuedAt($this->rememberedCertificate($user->getUID()))) {
-			$this->systemConfig->setUserValue($user->getUID(), Application::APP_ID, self::REMEMBERED_CERTIFICATE, $pem);
-		}
-		// Only a first signature: one drawn here since is on SecurySign and newer than MIMI's.
-		$signature = is_string($person['signature'] ?? null) ? $person['signature'] : '';
-		$png = base64_decode((string)preg_replace('~^data:[^,]*,~', '', $signature), true);
-		if (self::issuedAt($pem) > 0 && is_string($png) && str_starts_with($png, "\x89PNG\r\n\x1a\n")
-			&& $this->container->get(\OCA\Libresign\Db\UserElementMapper::class)->findMany(['user_id' => $user->getUID(), 'type' => 'signature']) === []) {
-			$this->syncVisibleSignature([
-				'certificateId' => (string)($certificate['certificateId'] ?? ''),
-				'imagePngBase64' => base64_encode($png),
-				'imageSha256' => hash('sha256', $png),
-				'card' => self::CARD_VERSION,
-			], false, $user);
-		}
-		return $user;
-	}
-
-	/** When a PEM certificate became valid, 0 when it isn't one. */
-	private static function issuedAt(string $pem): int {
-		$parsed = str_contains($pem, 'BEGIN CERTIFICATE') ? openssl_x509_parse($pem) : false;
-		return is_array($parsed) ? (int)($parsed['validFrom_time_t'] ?? 0) : 0;
-	}
-
-	/** What user_oidc's own provisioning route does (OcsApiController::createUser). */
-	private function createAccount(string $uid, string $displayName): IUser {
-		$mapper = $this->container->get('OCA\\UserOIDC\\Db\\UserMapper');
-		$backendUser = $mapper->getOrCreate($this->providerId(), $uid);
-		if ($displayName !== '' && $displayName !== $backendUser->getDisplayName()) {
-			$backendUser->setDisplayName($displayName);
-			$mapper->update($backendUser);
-		}
-		$user = $this->container->get(IUserManager::class)->get($backendUser->getUserId());
-		if (!$user instanceof IUser) {
-			throw new \RuntimeException('user_oidc did not create the account.', 503);
-		}
-		$user->setSystemEMailAddress($uid);
-		// As a first login does: the fork's listener adds them to the signers' group.
-		$this->container->get(IEventDispatcher::class)->dispatchTyped(new UserCreatedEvent($user, ''));
-		$this->logger->info('Made a GoPaperless account for a MIMI account', ['uid' => $user->getUID()]);
-		return $user;
-	}
-
 	private function mimiClientId(): string {
 		return $this->config->getValueString(Application::APP_ID, 'mimi_client_id', 'gopaperless');
 	}
 
 	/** @return array{status: int, body: array} */
-	private function mimi(string $path, array $payload): array {
+	private function mimi(string $action, array $payload): array {
 		try {
-			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/' . $path, [
+			$response = $this->http->newClient()->post($this->mimiOrigin() . '/api/partner/passkey/' . $action, [
 				'json' => $payload,
 				'auth' => [
 					$this->mimiClientId(),
