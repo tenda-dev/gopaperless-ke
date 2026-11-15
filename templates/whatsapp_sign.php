@@ -13,7 +13,7 @@ $state = $_['state'];
 // whatsapp-sign.ts moves the screen through its steps and hands over to the frame.
 $screens = [
 	'ready' => [$l->t('Preparing to sign'), $l->t('Placing your signature on the page…')],
-	'browser' => [$l->t('Open in Chrome'), $l->t('This browser can\'t use your passkey. Open this page in Chrome to continue.')],
+	'browser' => [$l->t('Continue on another browser'), $l->t('This browser can\'t use your passkey. Open this page in another browser to continue.')],
 	'checking' => [$l->t('One moment'), $l->t('Checking this browser…')],
 	'signed' => [$l->t('Already signed'), $l->t('You\'ve already signed this document.')],
 	'not_ready' => [$l->t('Not ready to sign'), $l->t('It isn\'t your turn to sign yet. You\'ll get a WhatsApp message when it is.')],
@@ -46,6 +46,12 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 				</span>
 			</div>
 		<?php endif; ?>
+		<?php if (!empty($_['signature'])): ?>
+			<figure class="gp-whatsapp__signature">
+				<img src="<?php p($_['signature']); ?>" alt="<?php p($l->t('Your signature')); ?>">
+				<figcaption><?php p($l->t('Your signature')); ?></figcaption>
+			</figure>
+		<?php endif; ?>
 		<p class="gp-whatsapp__status" role="status" aria-live="polite">
 			<svg class="gp-whatsapp__spinner" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
 			<svg class="gp-whatsapp__alert" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
@@ -61,7 +67,7 @@ $whatsappIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentCo
 			<?php /* The hand-off to Chrome. The server opens on it, or whatsapp-sign.ts moves here. Hidden with the attribute because a phone can hold on to a stylesheet that doesn't know this block. */ ?>
 			<div class="gp-whatsapp__browser"<?php if ($state !== 'browser'): ?> hidden<?php endif; ?>>
 				<?php if ($_['chromeLink'] !== null): ?>
-					<a class="gp-whatsapp__button" href="<?php p($_['chromeLink']); ?>"><?php p($l->t('Open in Chrome')); ?></a>
+					<a class="gp-whatsapp__button" href="<?php p($_['chromeLink']); ?>"><?php p($l->t('Continue on another browser')); ?></a>
 				<?php endif; ?>
 				<button class="gp-whatsapp__button<?php if ($_['chromeLink'] !== null): ?> gp-whatsapp__button--quiet<?php endif; ?>" type="button" id="gp-whatsapp-copy">
 					<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>

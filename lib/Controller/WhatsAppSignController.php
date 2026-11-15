@@ -119,6 +119,9 @@ class WhatsAppSignController extends Controller {
 			'requestUrl' => $this->urls->linkToRoute('libresign.page.indexFPath', ['path' => 'request']),
 			// Asked only where the page shows "Back to WhatsApp" straight away.
 			'chatUrl' => $state === 'signed' ? $this->whatsApp->chatUrl() : '',
+			'signature' => in_array($state, ['ready', 'signed'], true) && $found['signer'] instanceof IUser
+				? $this->signatureImage($found['signer'])
+				: null,
 		], TemplateResponse::RENDER_AS_GUEST);
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain($this->signa->signingOrigin());
@@ -326,6 +329,27 @@ class WhatsAppSignController extends Controller {
 			$elements[] = ['documentElementId' => $box->getId(), 'profileNodeId' => $scribble->getNodeId()];
 		}
 		return $elements;
+	}
+
+	/**
+	 * The signer's drawn signature as a data URL, so the card shows what goes
+	 * on the page (the product owner, 2026-11-16: "have the signature
+	 * displayed?"), or null when they haven't drawn one. Read from their own
+	 * folder, as signing does: this page has no session.
+	 */
+	private function signatureImage(IUser $signer): ?string {
+		try {
+			$scribble = $this->userElements->findOne(['user_id' => $signer->getUID(), 'type' => 'signature']);
+			$this->folders->setUserId($signer->getUID());
+			$file = $this->folders->getFileByNodeId($scribble->getNodeId());
+			$mime = $file->getMimeType();
+			if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+				return null;
+			}
+			return 'data:' . $mime . ';base64,' . base64_encode($file->getContent());
+		} catch (\Throwable) {
+			return null;
+		}
 	}
 
 	/** Credits apply only with sponsorship on, as on the signing page. */

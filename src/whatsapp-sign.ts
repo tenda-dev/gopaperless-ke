@@ -25,7 +25,7 @@ const box = document.querySelector<HTMLElement>('.gp-whatsapp')
 const holder = document.getElementById('gp-whatsapp-frame')
 
 const SCREENS: Partial<Record<Step, [string, string]>> = {
-	browser: [t('libresign', 'Open in Chrome'), t('libresign', 'This browser can\'t use your passkey. Open this page in Chrome to continue.')],
+	browser: [t('libresign', 'Continue on another browser'), t('libresign', 'This browser can\'t use your passkey. Open this page in another browser to continue.')],
 	preparing: [t('libresign', 'Preparing to sign'), t('libresign', 'Placing your signature on the page…')],
 	opening: [t('libresign', 'Preparing to sign'), t('libresign', 'Opening SecurySign…')],
 	signing: [t('libresign', 'Signing'), t('libresign', 'Applying your signature…')],

@@ -406,6 +406,39 @@
 		color: var(--gp-slate);
 	}
 
+	// The signer's drawn signature, the one their boxes get. White in both
+	// themes, like the signature pad, because the ink is dark.
+	.gp-whatsapp__signature {
+		box-sizing: border-box;
+		width: 100%;
+		margin: 12px 0 0;
+		padding: 10px 12px 8px;
+		border: 1px solid var(--gp-line);
+		border-radius: 16px;
+		background: #fff;
+
+		img {
+			display: block;
+			width: 100%;
+			height: 88px;
+			object-fit: contain;
+		}
+
+		figcaption {
+			margin-top: 6px;
+			font-size: 12px;
+			font-weight: 600;
+			letter-spacing: .08em;
+			text-transform: uppercase;
+			color: var(--gp-slate);
+		}
+	}
+
+	// The hand-off card stays short.
+	&[data-step='browser'] .gp-whatsapp__signature {
+		display: none;
+	}
+
 	.gp-whatsapp__status {
 		display: flex;
 		align-items: center;
