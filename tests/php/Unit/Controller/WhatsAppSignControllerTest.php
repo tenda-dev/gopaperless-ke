@@ -58,4 +58,11 @@ final class WhatsAppSignControllerTest extends TestCase {
 	public function testHandsOffOnlyOurOwnPlainPaths(string $path, bool $expected): void {
 		$this->assertSame($expected, WhatsAppSignController::isHandOffPath($path));
 	}
+
+	public function testTheCardShowsOnlyARasterSignature(): void {
+		$this->assertSame('data:image/png;base64,' . base64_encode('ink'), WhatsAppSignController::signatureDataUrl('image/png', 'ink'));
+		$this->assertNull(WhatsAppSignController::signatureDataUrl('image/svg+xml', '<svg/>'));
+		$this->assertNull(WhatsAppSignController::signatureDataUrl('text/html', '<p>'));
+		$this->assertNull(WhatsAppSignController::signatureDataUrl('image/png', ''));
+	}
 }

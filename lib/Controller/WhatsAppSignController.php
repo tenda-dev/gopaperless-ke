@@ -342,14 +342,17 @@ class WhatsAppSignController extends Controller {
 			$scribble = $this->userElements->findOne(['user_id' => $signer->getUID(), 'type' => 'signature']);
 			$this->folders->setUserId($signer->getUID());
 			$file = $this->folders->getFileByNodeId($scribble->getNodeId());
-			$mime = $file->getMimeType();
-			if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
-				return null;
-			}
-			return 'data:' . $mime . ';base64,' . base64_encode($file->getContent());
+			return self::signatureDataUrl($file->getMimeType(), $file->getContent());
 		} catch (\Throwable) {
 			return null;
 		}
+	}
+
+	/** An image the card can show inline: raster types only, never an empty file. */
+	public static function signatureDataUrl(string $mime, string $bytes): ?string {
+		return $bytes !== '' && in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)
+			? 'data:' . $mime . ';base64,' . base64_encode($bytes)
+			: null;
 	}
 
 	/** Credits apply only with sponsorship on, as on the signing page. */
