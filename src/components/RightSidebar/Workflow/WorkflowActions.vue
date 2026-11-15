@@ -6,32 +6,38 @@
 			'workflow-primary-action--blocked': isBlocked,
 		}">
 		<!-- ========================================= -->
-		<!-- ICON -->
+		<!-- ICON + CONTENT (swapped as one block on stage change) -->
 		<!-- ========================================= -->
-		<div class="workflow-primary-action-icon">
-			<NcIconSvgWrapper
-				:path="primaryActionIcon"
-				:size="24" />
-		</div>
-
-		<!-- ========================================= -->
-		<!-- CONTENT -->
-		<!-- ========================================= -->
-		<div class="workflow-primary-action-content">
-			<div class="workflow-primary-action-title">
-				{{ primaryTitle }}
-			</div>
-
-			<div class="workflow-primary-action-description">
-				{{ primaryDescription }}
-			</div>
-
+		<Transition
+			:name="swapName"
+			:css="motionEnabled"
+			@after-enter="onSwapEntered">
 			<div
-				v-if="helperText"
-				class="workflow-primary-action-helper">
-				{{ helperText }}
+				:key="primaryAction"
+				class="workflow-primary-action-body">
+				<div class="workflow-primary-action-icon">
+					<NcIconSvgWrapper
+						:path="primaryActionIcon"
+						:size="24" />
+				</div>
+
+				<div class="workflow-primary-action-content">
+					<div class="workflow-primary-action-title">
+						{{ primaryTitle }}
+					</div>
+
+					<div class="workflow-primary-action-description">
+						{{ primaryDescription }}
+					</div>
+
+					<div
+						v-if="helperText"
+						class="workflow-primary-action-helper">
+						{{ helperText }}
+					</div>
+				</div>
 			</div>
-		</div>
+		</Transition>
 
 		<!-- ========================================= -->
 		<!-- ACTIONS -->
@@ -56,7 +62,15 @@
 						:size="20" />
 				</template>
 
-				{{ primaryActionLabel }}
+				<Transition
+					name="gp-swap"
+					:css="motionEnabled">
+					<span
+						:key="primaryActionLabel"
+						class="workflow-primary-action-label">
+						{{ primaryActionLabel }}
+					</span>
+				</Transition>
 			</NcButton>
 
 			<NcButton
@@ -89,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { t } from '@nextcloud/l10n'
 
@@ -112,15 +126,22 @@ import type {
 	WorkflowState,
 	WorkflowPrimaryAction,
 } from '../../../composables/useWorkflowState'
+import { useMotionGuard } from '../../../composables/useMotionGuard'
+import type { MotionKey } from '../../../composables/useMotionGuard'
 
 defineOptions({
 	name: 'WorkflowActions',
 })
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
 	workflow: WorkflowState
 	loading?: boolean
-}>()
+   /**
+	* Enables stage-change motion when a key is provided. Changing the key
+	* suppresses transitions for that render to prevent motion between documents.
+	*/
+	motionKey?: MotionKey
+}>(), { motionKey: undefined })
 
 const emit = defineEmits<{
 	(e: 'add-signer'): void
@@ -180,6 +201,36 @@ const primaryAction = computed<WorkflowPrimaryAction>(() => {
 	}
 	return derived
 })
+
+const { motionEnabled } = useMotionGuard(() => props.motionKey)
+
+/**
+ * Arms a one-shot completion transition when the same document moves to
+ * `completed` while the sidebar is open. The completed block uses
+ * `gp-complete` instead of the standard `gp-swap` fade.
+ *
+ * The watcher is not immediate, so mounting an already-completed document
+ * does not trigger it. Changes involving a different document or without
+ * motion opted in are also ignored. The transition is token-driven and
+ * respects reduced-motion preferences.
+ */
+const completionPending = ref(false)
+const swapName = computed(() => completionPending.value ? 'gp-complete' : 'gp-swap')
+
+watch(
+	[() => props.motionKey, primaryAction],
+	([key, action], [previousKey, previousAction]) => {
+		completionPending.value = key !== undefined
+			&& key !== null
+			&& key === previousKey
+			&& action === 'completed'
+			&& previousAction !== 'completed'
+	},
+)
+
+function onSwapEntered(): void {
+	completionPending.value = false
+}
 
 /**
  * True when the current user is themselves one of the signers.
@@ -477,16 +528,8 @@ function handleSecondaryAction() {
 	overflow: hidden;
 
 	transition:
-		border-color 220ms ease,
-		box-shadow 220ms ease,
-		transform 220ms ease;
-}
-
-.workflow-primary-action:hover {
-	transform: translateY(-1px);
-
-	box-shadow:
-		0 18px 42px rgba(0, 0, 0, 0.06);
+		border-color var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-primary-action--ready {
@@ -499,6 +542,45 @@ function handleSecondaryAction() {
 
 .workflow-primary-action--blocked {
 	opacity: 0.96;
+}
+
+/* =========================================
+ * STAGE SWAP (opacity/transform only)
+ * ========================================= */
+
+/* Reproduces the card's own flex gap for the swapped icon + content. */
+.workflow-primary-action-body {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+/*
+ * Use enter-only transitions so rapid document switches cannot cancel a
+ * leave and prevent the incoming content from mounting.
+ */
+.gp-swap-enter-active {
+	transition: opacity var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-swap-enter-from {
+	opacity: 0;
+}
+
+.gp-swap-leave-active,
+.gp-complete-leave-active {
+	display: none;
+}
+
+.gp-complete-enter-active {
+	transition:
+		opacity var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		transform var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-complete-enter-from {
+	opacity: 0;
+	transform: scale(0.92);
 }
 
 /* =========================================
@@ -572,12 +654,17 @@ function handleSecondaryAction() {
 
 .workflow-primary-action-button {
 	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease;
+		transform var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		box-shadow var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-primary-action-button:hover:not(:disabled) {
 	transform: translateY(-1px);
+}
+
+/* Tactile press for the one legally relevant button. Must follow :hover. */
+.workflow-primary-action-button:active:not(:disabled) {
+	transform: scale(0.98);
 }
 
 .workflow-primary-action-button--glow {

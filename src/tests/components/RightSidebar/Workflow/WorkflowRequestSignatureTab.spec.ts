@@ -42,12 +42,15 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 	controllerSpies.refs.file = ref({})
 	controllerSpies.refs.isCurrentFileDetailed = ref(true)
 	controllerSpies.refs.detailLoading = ref(false)
+	controllerSpies.refs.hasSignaturePositions = ref(false)
+	controllerSpies.refs.canManageSigners = ref(false)
 	return {
 		useWorkflowController: () => ({
 			state: {
 				signers: ref([{ localKey: 'signer:1', signRequestId: 1 }]),
 				file: controllerSpies.refs.file,
 				isCurrentFileDetailed: controllerSpies.refs.isCurrentFileDetailed,
+				hasSignaturePositions: controllerSpies.refs.hasSignaturePositions,
 				snapshot: ref({}),
 				steps: ref([]),
 				canValidate: ref(false),
@@ -82,7 +85,7 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 			enabledMethods: ref([]),
 			isSignerMethodDisabled: ref(false),
 			signingOrderDiagramSigners: ref([]),
-			canManageSigners: ref(false),
+			canManageSigners: controllerSpies.refs.canManageSigners,
 			addSigner: vi.fn(),
 			editSigner: vi.fn(),
 			customizeMessage: vi.fn(),
@@ -220,6 +223,21 @@ describe('WorkflowRequestSignatureTab.vue signer action wiring (WS4)', () => {
 		await flushPromises()
 		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('loading')).toBe(true)
 	})
+
+	it('opts the stepper and primary action in to motion, keyed on the current document id (Phase 2)', async () => {
+		controllerSpies.refs.file.value = { id: 7 }
+		const wrapper = createWrapper()
+		await flushPromises()
+
+		expect(wrapper.findComponent({ name: 'WorkflowStepper' }).props('motionKey')).toBe(7)
+		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('motionKey')).toBe(7)
+
+		controllerSpies.refs.file.value = { id: 8 }
+		await flushPromises()
+
+		expect(wrapper.findComponent({ name: 'WorkflowStepper' }).props('motionKey')).toBe(8)
+		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('motionKey')).toBe(8)
+	})
 })
 
 describe('WorkflowRequestSignatureTab.vue document-detail presentation (S4)', () => {
@@ -231,6 +249,8 @@ describe('WorkflowRequestSignatureTab.vue document-detail presentation (S4)', ()
 		refs.file.value = { id: 7 }
 		refs.isCurrentFileDetailed.value = false
 		refs.detailLoading.value = false
+		refs.hasSignaturePositions.value = false
+		refs.canManageSigners.value = false
 	})
 
 	function sections(wrapper: ReturnType<typeof createWrapper>) {
@@ -251,17 +271,18 @@ describe('WorkflowRequestSignatureTab.vue document-detail presentation (S4)', ()
 		expect(sections(wrapper)).toEqual({ loading: true, error: false, signers: false, actions: false, stepper: false, header: false })
 	})
 
-	it('hides the file actions while loading, keeps them for the error and loaded states', async () => {
+	it('hides the file actions while loading AND when detail failed; shows them once loaded', async () => {
 		refs.detailLoading.value = true
 		const wrapper = createWrapper()
 		await flushPromises()
-		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(false)
+		const fileActions = () => wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()
+		expect(fileActions()).toBe(false)
 		refs.detailLoading.value = false
 		await flushPromises()
-		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(true)
+		expect(fileActions()).toBe(false)
 		refs.isCurrentFileDetailed.value = true
 		await flushPromises()
-		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(true)
+		expect(fileActions()).toBe(true)
 	})
 
 	it('shows an error with Retry when details are required, not loaded and not loading', async () => {
@@ -318,5 +339,93 @@ describe('WorkflowRequestSignatureTab.vue document-detail presentation (S4)', ()
 		await flushPromises()
 		expect(sections(wrapper)).toEqual({ loading: false, error: false, signers: true, actions: true, stepper: true, header: false })
 		expect(controllerSpies.ensureCurrentFileDetail).not.toHaveBeenCalled()
+	})
+})
+
+describe('WorkflowRequestSignatureTab.vue detail body and motion hooks (Phase 1)', () => {
+	const refs = controllerSpies.refs
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
+		refs.file.value = { id: 7 }
+		refs.isCurrentFileDetailed.value = true
+		refs.detailLoading.value = false
+		refs.hasSignaturePositions.value = false
+		refs.canManageSigners.value = false
+	})
+
+	const body = (wrapper: ReturnType<typeof createWrapper>) => wrapper.find('.workflow-detail-body')
+
+	it('renders the detail-dependent cluster inside one wrapper, in the original order', async () => {
+		refs.canManageSigners.value = true
+		refs.hasSignaturePositions.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		const html = body(wrapper).html()
+		expect(body(wrapper).exists()).toBe(true)
+		const order = ['workflow-stepper-stub', 'workflow-signers-stub', 'workflow-signature-setup-stub', 'workflow-file-actions-stub', 'workflow-actions-stub']
+		const positions = order.map((tag) => html.indexOf(tag))
+		expect(positions.every((p) => p >= 0)).toBe(true)
+		expect([...positions].sort((a, b) => a - b)).toEqual(positions)
+	})
+
+	it('keeps VisibleElements outside the wrapper', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(wrapper.find('.visible-elements-legacy-stub').exists()).toBe(true)
+		expect(body(wrapper).find('.visible-elements-legacy-stub').exists()).toBe(false)
+	})
+
+	it('shows loader, error and body mutually exclusively', async () => {
+		const wrapper = createWrapper()
+		const state = () => ({
+			loading: wrapper.find('.workflow-detail-loading').exists(),
+			error: wrapper.find('.workflow-detail-error').exists(),
+			body: body(wrapper).exists(),
+		})
+		await flushPromises()
+		expect(state()).toEqual({ loading: false, error: false, body: true })
+		refs.isCurrentFileDetailed.value = false
+		refs.detailLoading.value = true
+		await flushPromises()
+		expect(state()).toEqual({ loading: true, error: false, body: false })
+		refs.detailLoading.value = false
+		await flushPromises()
+		expect(state()).toEqual({ loading: false, error: true, body: false })
+		refs.isCurrentFileDetailed.value = true
+		await flushPromises()
+		expect(state()).toEqual({ loading: false, error: false, body: true })
+	})
+
+	it('reflects the existing loading state in aria-busy on the tab root', async () => {
+		refs.isCurrentFileDetailed.value = false
+		refs.detailLoading.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(wrapper.find('.workflow-request-signature-tab').attributes('aria-busy')).toBe('true')
+		refs.detailLoading.value = false
+		refs.isCurrentFileDetailed.value = true
+		await flushPromises()
+		expect(wrapper.find('.workflow-request-signature-tab').attributes('aria-busy')).toBe('false')
+	})
+
+	it('shows the signature-fields card only when the user can manage signers and positions exist', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		const card = () => wrapper.findComponent({ name: 'WorkflowSignatureSetup' }).exists()
+		expect(card()).toBe(false)
+		refs.canManageSigners.value = true
+		await flushPromises()
+		expect(card()).toBe(false)
+		refs.hasSignaturePositions.value = true
+		await flushPromises()
+		expect(card()).toBe(true)
+	})
+
+	it('keeps the WorkflowActions loading prop wired to isRequestBusy', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('loading')).toBe(true)
 	})
 })

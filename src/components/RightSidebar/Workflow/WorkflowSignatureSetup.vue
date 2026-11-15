@@ -161,17 +161,6 @@ const summaryLine = computed(() => {
 	background: linear-gradient(160deg,
 			rgba(34, 197, 94, 0.07),
 			rgba(34, 197, 94, 0.03));
-
-	transition:
-		border-color 180ms ease,
-		box-shadow 180ms ease,
-		transform 180ms ease;
-
-	&:hover {
-		border-color: rgba(34, 197, 94, 0.22);
-		box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
-		transform: translateY(-1px);
-	}
 }
 
 /* ── body ──────────────────────────────────────────────────────────────────── */
@@ -245,8 +234,8 @@ const summaryLine = computed(() => {
 	border: 1px solid var(--color-border) !important;
 
 	transition:
-		border-color 180ms ease,
-		transform 180ms ease;
+		border-color var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 
 	&:hover:not(:disabled) {
 		border-color: rgba(34, 197, 94, 0.22) !important;

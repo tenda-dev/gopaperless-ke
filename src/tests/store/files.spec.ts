@@ -882,6 +882,50 @@ describe('files store - critical business rules', () => {
 	})
 
 	describe('RULE: signer operations maintain consistency', () => {
+		it('sequential signer deletes do not resurrect an already deleted signer (stale request draft)', async () => {
+			const store = useFilesStore()
+			store.selectedFileId = 144
+			store.files[144] = {
+				id: 144,
+				signatureFlow: 'none',
+				signers: [255, 256, 311, 312].map((id) => ({ localKey: `signer:${id}`, signRequestId: id })),
+			}
+			axiosMock.delete.mockResolvedValue({})
+
+			const ids = () => (store.files[144].signers as Array<{ signRequestId: number }>).map((s) => s.signRequestId)
+			const byId = (id: number) => (store.files[144].signers as Array<{ signRequestId: number }>).find((s) => s.signRequestId === id)
+
+			await store.deleteSigner(byId(312)!)
+			expect(ids()).toEqual([255, 256, 311])
+			await store.deleteSigner(byId(311)!)
+
+			expect(ids()).toEqual([255, 256])
+			expect(store.files[144].signersCount).toBe(2)
+			expect(store.getEditableFile(144).signers).toHaveLength(2)
+			expect(axiosMock.delete).toHaveBeenCalledTimes(2)
+		})
+
+		it('a delete in flight is written to the file it was issued for, even if the selection moves', async () => {
+			const store = useFilesStore()
+			store.selectedFileId = 144
+			store.files[144] = {
+				id: 144,
+				signatureFlow: 'none',
+				signers: [{ localKey: 'signer:1', signRequestId: 1 }, { localKey: 'signer:2', signRequestId: 2 }],
+			}
+			store.files[200] = { id: 200, signatureFlow: 'none', signers: [{ localKey: 'signer:9', signRequestId: 9 }] }
+			let release!: () => void
+			axiosMock.delete.mockImplementation(() => new Promise((resolve) => { release = () => resolve({}) }))
+
+			const pending = store.deleteSigner({ localKey: 'signer:2', signRequestId: 2 })
+			store.selectedFileId = 200
+			release()
+			await pending
+
+			expect((store.files[144].signers as unknown[]).length).toBe(1)
+			expect((store.files[200].signers as Array<{ signRequestId: number }>).map((s) => s.signRequestId)).toEqual([9])
+		})
+
 		it('deleting signer updates signing order for remaining signers', async () => {
 			const store = useFilesStore()
 			store.selectedFileId = 1

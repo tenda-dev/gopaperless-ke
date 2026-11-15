@@ -1060,6 +1060,9 @@ const _filesStore = defineStore('files', () => {
 	/** @param {EditableSignerDraft} signer */
 	async function deleteSigner(signer) {
 		const selectedFile = ensureRequestDraft() || getFile()
+		// Preserve the target file across the request so a document switch cannot
+		// cause the deletion result to update a different file.
+		const fileId = selectedFile.id ?? selectedFileId.value
 
 		if (!isNaN(signer.signRequestId)) {
 			await axios.delete(
@@ -1067,7 +1070,7 @@ const _filesStore = defineStore('files', () => {
 					'/apps/libresign/api/{apiVersion}/sign/file_id/{fileId}/{signRequestId}',
 					{
 						apiVersion: 'v1',
-						fileId: selectedFile.id,
+						fileId,
 						signRequestId: signer.signRequestId,
 					},
 				),
@@ -1098,11 +1101,18 @@ const _filesStore = defineStore('files', () => {
 			})
 		}
 
-		files.value[selectedFileId.value] = {
+		const updated = {
 			...selectedFile,
 			signers: filtered,
 			signersCount: filtered.length,
 		}
+		// ensureRequestDraft() returns the draft when one exists, so the draft
+		// must be updated too; otherwise the next delete starts from the stale
+		// draft and resurrects the signer that was just removed.
+		if (requestDrafts.value[fileId]) {
+			requestDrafts.value[fileId] = updated
+		}
+		files.value[fileId] = updated
 	}
 
 	async function deleteFile(file, deleteFile) {

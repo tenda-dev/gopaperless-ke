@@ -73,7 +73,14 @@
 		<!-- ========================================= -->
 		<!-- STATIC -->
 		<!-- ========================================= -->
-		<TransitionGroup v-else name="workflow-signer-transition" tag="div" class="workflow-signer-list">
+		<TransitionGroup
+			v-else
+			name="workflow-signer-transition"
+			tag="div"
+			class="workflow-signer-list workflow-signer-list--animated"
+			:css="listMotion"
+			@before-leave="pinLeavingRow"
+			@leave-cancelled="unpinRow">
 			<WorkflowSigner
 			    v-for="(signer, index) in signers"
 				:key="signer.localKey"
@@ -105,6 +112,9 @@
 
 <script setup lang="ts">
 import { computed, type PropType } from 'vue'
+
+import { useMotionGuard } from '../../../composables/useMotionGuard'
+import type { MotionKey } from '../../../composables/useMotionGuard'
 
 import draggable from 'vuedraggable'
 
@@ -182,7 +192,44 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+   /**
+	* Suppresses list transitions when switching documents. Without a key,
+	* the list retains its existing transition behaviour.
+	*/
+	motionKey: {
+		type: [String, Number] as PropType<MotionKey>,
+		default: undefined,
+	},
 })
+
+const { optedIn, motionEnabled } = useMotionGuard(() => props.motionKey)
+const listMotion = computed(() => !optedIn.value || motionEnabled.value)
+
+/**
+ * Capture the row's geometry before it leaves the layout so it can fade
+ * in place while its siblings move up. Measuring before absolute positioning
+ * preserves its current layout position, including during an existing move.
+ */
+function pinLeavingRow(el: Element): void {
+	if (!listMotion.value || !(el instanceof HTMLElement)) {
+		return
+	}
+	el.style.top = `${el.offsetTop}px`
+	el.style.left = `${el.offsetLeft}px`
+	el.style.width = `${el.offsetWidth}px`
+	el.style.height = `${el.offsetHeight}px`
+}
+
+/** Clear the pinned geometry if Vue cancels the leave and reuses the row. */
+function unpinRow(el: Element): void {
+	if (!(el instanceof HTMLElement)) {
+		return
+	}
+	el.style.top = ''
+	el.style.left = ''
+	el.style.width = ''
+	el.style.height = ''
+}
 
 const emit = defineEmits<{
 	(e: 'add-signer'): void
@@ -419,9 +466,9 @@ function canCustomizeMessage(signer: EditableSignerDraft) {
 		rgba(120, 120, 120, 0.04);
 
 	transition:
-		background 180ms ease,
-		border-color 180ms ease,
-		box-shadow 180ms ease;
+		background var(--gp-motion-base, 180ms) ease,
+		border-color var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-sign-order--active {
@@ -447,29 +494,52 @@ function canCustomizeMessage(signer: EditableSignerDraft) {
  * TRANSITIONS
  * ========================================= */
 
-.workflow-signer-transition-enter-active,
-.workflow-signer-transition-leave-active {
-	transition:
-		all 220ms cubic-bezier(0.2, 0, 0, 1);
+/*
+ * Row enter / leave / move (opacity + transform only).
+ * The `--animated` prefix raises specificity above WorkflowSigner's own row
+ * `transition` list, so these win regardless of stylesheet order. It exists
+ * only on the static (TransitionGroup) list, never on the draggable one.
+ */
+.workflow-signer-list--animated {
+	position: relative;
 }
 
-.workflow-signer-transition-enter-from {
+.workflow-signer-list--animated .workflow-signer-transition-enter-active {
+	transition:
+		opacity var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		transform var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+}
+
+/* top/left/width/height are set inline in pinLeavingRow before this applies. */
+.workflow-signer-list--animated .workflow-signer-transition-leave-active {
+	position: absolute;
+	box-sizing: border-box;
+	margin: 0;
+
+	pointer-events: none;
+
+	transition:
+		opacity var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		transform var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.workflow-signer-list--animated .workflow-signer-transition-enter-from {
 	opacity: 0;
 
 	transform:
 		translateY(10px) scale(0.985);
 }
 
-.workflow-signer-transition-leave-to {
+.workflow-signer-list--animated .workflow-signer-transition-leave-to {
 	opacity: 0;
 
 	transform:
 		scale(0.98);
 }
 
-.workflow-signer-transition-move {
+.workflow-signer-list--animated .workflow-signer-transition-move {
 	transition:
-		transform 220ms cubic-bezier(0.2, 0, 0, 1);
+		transform var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
 }
 
 /* =========================================

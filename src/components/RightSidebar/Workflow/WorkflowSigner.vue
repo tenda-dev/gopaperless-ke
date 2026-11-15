@@ -663,11 +663,11 @@ function handlePrimaryAction() {
 		);
 
 	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease,
-		border-color 180ms ease,
-		background 180ms ease,
-		opacity 180ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease,
+		border-color var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease,
+		opacity var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer--interactive {
@@ -675,8 +675,6 @@ function handlePrimaryAction() {
 }
 
 .workflow-signer--interactive:hover {
-	transform: translateY(-2px);
-
 	border-color:
 		rgba(0, 201, 105, 0.16);
 
@@ -714,8 +712,8 @@ function handlePrimaryAction() {
 	cursor: grab;
 
 	transition:
-		opacity 160ms ease,
-		transform 160ms ease;
+		opacity var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer:hover .workflow-signer-drag-handle {
@@ -755,9 +753,9 @@ function handlePrimaryAction() {
 	flex-shrink: 0;
 
 	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease,
-		background 180ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer-order--active {
@@ -869,6 +867,12 @@ function handlePrimaryAction() {
 	font-weight: 700;
 
 	flex-shrink: 0;
+
+	/* Colour only, no transform. Rows are keyed per signer request, so a
+	   document switch remounts them and never animates this. */
+	transition:
+		background-color var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		color var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .workflow-signer-status-dot {
@@ -957,8 +961,8 @@ function handlePrimaryAction() {
 	transform: translateX(8px);
 
 	transition:
-		opacity 180ms ease,
-		transform 180ms ease;
+		opacity var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer-actions--pending,
@@ -983,10 +987,10 @@ function handlePrimaryAction() {
 	cursor: pointer;
 
 	transition:
-		transform 160ms ease,
-		background 160ms ease,
-		border-color 160ms ease,
-		box-shadow 160ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease,
+		border-color var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer-action:hover {
