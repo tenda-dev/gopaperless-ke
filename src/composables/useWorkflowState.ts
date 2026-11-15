@@ -563,21 +563,26 @@ export function useWorkflowState(): WorkflowStateRefs {
 		const hasFields = hasSignaturePositions.value
 		const isRequested = showSigningProgress.value
 		const isCompleted = file.value?.status === FILE_STATUS.SIGNED
+		// Once signatures were requested (or the document is signed) the earlier
+		// steps are necessarily behind us, whatever the loaded fields say.
+		const pastPositions = isRequested || isCompleted
+		const signersDone = hasSigners.value || pastPositions
+		const fieldsDone = hasFields || pastPositions
 
 		return [
 			{
 				id: 'signers',
 				label: 'Add signers',
-				status: hasSigners.value ? 'complete' : 'current',
-				active: !hasSigners.value,
-				completed: hasSigners.value,
+				status: signersDone ? 'complete' : 'current',
+				active: !signersDone,
+				completed: signersDone,
 			},
 			{
 				id: 'positions',
 				label: 'Setup positions',
-				status: hasFields ? 'complete' : hasSigners.value ? 'current' : 'locked',
-				active: hasSigners.value && !hasFields,
-				completed: hasFields,
+				status: fieldsDone ? 'complete' : hasSigners.value ? 'current' : 'locked',
+				active: hasSigners.value && !fieldsDone,
+				completed: fieldsDone,
 			},
 			{
 				id: 'request',

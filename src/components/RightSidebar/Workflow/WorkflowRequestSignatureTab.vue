@@ -4,7 +4,7 @@
 		<!-- HEADER -->
 		<!-- ========================================= -->
 		<WorkflowHeaderCard
-		    v-if="!state.signers.value?.length"
+		    v-if="isDetailReady && !state.signers.value?.length"
 			:file="state.file.value"
 			:state="state.snapshot.value"
 			:can-validate="state.canValidate.value"
@@ -16,16 +16,31 @@
 		<!-- STEPPER -->
 		<!-- ========================================= -->
 		<WorkflowStepper
+			v-if="isDetailReady"
 			:steps="state.steps.value" />
 
 		<!-- ========================================= -->
 		<!-- LOADING DETAIL -->
 		<!-- ========================================= -->
-		<NcNoteCard
-			v-if="state.shouldLoadDetail.value && isLoadingFileDetail"
-			type="info">
-			{{ t('libresign', 'Loading signer details...') }}
-		</NcNoteCard>
+		<div
+			v-if="isDetailLoading"
+			class="workflow-detail-loading"
+			role="status"
+			aria-live="polite">
+			<NcLoadingIcon :size="20" />
+			<span>{{ t('libresign', 'Loading document details...') }}</span>
+		</div>
+
+		<div
+			v-else-if="hasDetailFailed"
+			class="workflow-detail-error">
+			<NcNoteCard type="error">
+				{{ t('libresign', 'Document details could not be loaded.') }}
+			</NcNoteCard>
+			<NcButton variant="secondary" @click="retryDetail">
+				{{ t('libresign', 'Retry') }}
+			</NcButton>
+		</div>
 
 		<!-- ========================================= -->
 		<!-- WARNINGS -->
@@ -56,7 +71,7 @@
 		<!-- SIGNERS -->
 		<!-- ========================================= -->
 		<WorkflowSigners
-		    v-if="state.signers.value.length > 0"
+		    v-if="isDetailReady && state.signers.value.length > 0"
 		    :can-manage-signers="canManageSigners"
 		    :signers="state.signers.value"
 			:event="state.isOriginalFileDeleted.value ? '' : 'libresign:edit-signer'"
@@ -75,7 +90,7 @@
 
 
 		<WorkflowSignatureSetup
-		    v-if="canManageSigners"
+		    v-if="isDetailReady && canManageSigners"
 			:file="state.file.value"
 			:is-loading="isRequestBusy"
 			@edit-positions="save" />
@@ -94,6 +109,7 @@
 		<!-- FILE ACTIONS -->
 		<!-- ========================================= -->
 		<WorkflowFileActions
+			v-if="!isDetailLoading"
 			:file="state.file.value"
 			:is-envelope="state.isEnvelope.value"
 			:can-validate="state.canValidate.value"
@@ -105,6 +121,7 @@
 		<!-- PRIMARY ACTION -->
 		<!-- ========================================= -->
 		<WorkflowActions
+			v-if="isDetailReady"
 			:workflow="state.snapshot.value"
 			:loading="isRequestBusy"
 			@add-signer="addSigner"
@@ -297,7 +314,6 @@ const {
 	pendingSignerActions,
 	isRequestBusy,
 	isDeleteBlocked,
-	isLoadingFileDetail,
 	signerToEdit,
 	modalSrc,
 	methods,
@@ -341,6 +357,7 @@ const {
 	requestSignatureForSigner,
 	confirmRequestSigner,
 	closeModal,
+	ensureCurrentFileDetail,
 
 	// helpers
 	debouncedSave,
@@ -365,6 +382,41 @@ const visibleElementsNextEnabled = (
 const VisibleElements = visibleElementsNextEnabled
 	? defineAsyncComponent(() => import('../../Request/VisibleElementsNext/VisibleElementsNext.vue'))
 	: defineAsyncComponent(() => import('../../Request/VisibleElements.vue'))
+
+/* Document-detail presentation
+ *
+ * Presentation reflects store state only; fetching, deduplication and caching
+ * remain owned by the files store.
+ *
+ * Every persisted document without loaded details requires detail data.
+ * Do not use state.shouldLoadDetail here: list payloads contain `signers: []`,
+ * which the store normalises into a zero signers count. This makes the
+ * workflow appear to have no signers until the detail request resolves,
+ * causing shouldLoadDetail to remain false during the initial load.
+ * */
+const currentFileId = computed(() => state.file.value?.id)
+
+const isDetailRequired = computed(() =>
+	typeof currentFileId.value === 'number'
+	&& currentFileId.value > 0
+	&& !state.isCurrentFileDetailed.value,
+)
+
+const isDetailLoading = computed(() =>
+	isDetailRequired.value
+	&& filesStore.isLoadingDetail(currentFileId.value as number),
+)
+
+const hasDetailFailed = computed(() =>
+	isDetailRequired.value && !isDetailLoading.value,
+)
+
+const isDetailReady = computed(() => !isDetailRequired.value)
+
+/** Same forced path the controller already uses; the store dedups against an in-flight request. */
+function retryDetail(): void {
+	void ensureCurrentFileDetail(true)
+}
 
 /* ── Derived template helpers ─────────────────────────────────────────────── */
 
@@ -407,6 +459,24 @@ const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 	.workflow-request-signature-tab {
 		padding-bottom: 100px;
 	}
+}
+
+.workflow-detail-loading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	border: 1px solid var(--color-border);
+	border-radius: 14px;
+	font-size: 13px;
+	color: var(--color-text-maxcontrast);
+}
+
+.workflow-detail-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
 }
 
 .workflow-warning-stack {

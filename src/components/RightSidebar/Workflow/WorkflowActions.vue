@@ -387,6 +387,8 @@ const helperText = computed(() => {
 	if (
 		props.workflow.hasSigners
 		&& !props.workflow.hasVisibleElements
+		&& primaryAction.value !== 'completed'
+		&& primaryAction.value !== 'view-progress'
 	) {
 		return t(
 			'libresign',

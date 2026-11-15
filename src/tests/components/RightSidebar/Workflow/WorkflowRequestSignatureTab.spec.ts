@@ -14,6 +14,9 @@ const controllerSpies = vi.hoisted(() => ({
 	deleteSigner: vi.fn(),
 	sendNotify: vi.fn(),
 	sendWhatsApp: vi.fn(),
+	ensureCurrentFileDetail: vi.fn(),
+	// Reactive handles created inside the controller mock factory (needs `vue`).
+	refs: {} as Record<string, { value: any }>,
 }))
 
 vi.mock('@nextcloud/initial-state', () => ({
@@ -36,11 +39,15 @@ vi.mock('../../../../components/Request/VisibleElementsNext/VisibleElementsNext.
 
 vi.mock('../../../../composables/useWorkflowController.js', async () => {
 	const { ref } = await import('vue')
+	controllerSpies.refs.file = ref({})
+	controllerSpies.refs.isCurrentFileDetailed = ref(true)
+	controllerSpies.refs.detailLoading = ref(false)
 	return {
 		useWorkflowController: () => ({
 			state: {
 				signers: ref([{ localKey: 'signer:1', signRequestId: 1 }]),
-				file: ref({}),
+				file: controllerSpies.refs.file,
+				isCurrentFileDetailed: controllerSpies.refs.isCurrentFileDetailed,
 				snapshot: ref({}),
 				steps: ref([]),
 				canValidate: ref(false),
@@ -95,6 +102,7 @@ vi.mock('../../../../composables/useWorkflowController.js', async () => {
 			requestSignatureForSigner: vi.fn(),
 			confirmRequestSigner: vi.fn(),
 			closeModal: vi.fn(),
+			ensureCurrentFileDetail: controllerSpies.ensureCurrentFileDetail,
 			debouncedSave: vi.fn(),
 		}),
 	}
@@ -105,6 +113,7 @@ vi.mock('../../../../store/files.js', () => ({
 		identifyingSigner: null,
 		deleteSigner: vi.fn(),
 		disableIdentifySigner: vi.fn(),
+		isLoadingDetail: () => controllerSpies.refs.detailLoading.value,
 	}),
 }))
 
@@ -210,5 +219,104 @@ describe('WorkflowRequestSignatureTab.vue signer action wiring (WS4)', () => {
 		const wrapper = createWrapper()
 		await flushPromises()
 		expect(wrapper.findComponent({ name: 'WorkflowActions' }).props('loading')).toBe(true)
+	})
+})
+
+describe('WorkflowRequestSignatureTab.vue document-detail presentation (S4)', () => {
+	const refs = controllerSpies.refs
+
+	beforeEach(() => {
+		vi.clearAllMocks()
+		loadStateMock.mockImplementation((_app: string, _key: string, fallback: unknown) => fallback)
+		refs.file.value = { id: 7 }
+		refs.isCurrentFileDetailed.value = false
+		refs.detailLoading.value = false
+	})
+
+	function sections(wrapper: ReturnType<typeof createWrapper>) {
+		return {
+			loading: wrapper.find('.workflow-detail-loading').exists(),
+			error: wrapper.find('.workflow-detail-error').exists(),
+			signers: wrapper.findComponent({ name: 'WorkflowSigners' }).exists(),
+			actions: wrapper.findComponent({ name: 'WorkflowActions' }).exists(),
+			stepper: wrapper.findComponent({ name: 'WorkflowStepper' }).exists(),
+			header: wrapper.findComponent({ name: 'WorkflowHeaderCard' }).exists(),
+		}
+	}
+
+	it('shows a loading state, not the workflow body, while the current document is loading', async () => {
+		refs.detailLoading.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toEqual({ loading: true, error: false, signers: false, actions: false, stepper: false, header: false })
+	})
+
+	it('hides the file actions while loading, keeps them for the error and loaded states', async () => {
+		refs.detailLoading.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(false)
+		refs.detailLoading.value = false
+		await flushPromises()
+		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(true)
+		refs.isCurrentFileDetailed.value = true
+		await flushPromises()
+		expect(wrapper.findComponent({ name: 'WorkflowFileActions' }).exists()).toBe(true)
+	})
+
+	it('shows an error with Retry when details are required, not loaded and not loading', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toEqual({ loading: false, error: true, signers: false, actions: false, stepper: false, header: false })
+	})
+
+	it('retries through ensureCurrentFileDetail(true) only', async () => {
+		const wrapper = createWrapper()
+		await flushPromises()
+		await wrapper.find('.workflow-detail-error').findComponent({ name: 'NcButton' }).trigger('click')
+		expect(controllerSpies.ensureCurrentFileDetail).toHaveBeenCalledTimes(1)
+		expect(controllerSpies.ensureCurrentFileDetail).toHaveBeenCalledWith(true)
+	})
+
+	it('renders the workflow body for an already detailed document with no loading or error UI', async () => {
+		refs.isCurrentFileDetailed.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toEqual({ loading: false, error: false, signers: true, actions: true, stepper: true, header: false })
+		expect(controllerSpies.ensureCurrentFileDetail).not.toHaveBeenCalled()
+	})
+
+	it('gates on "not yet detailed", not on the signer count (list summaries report 0 signers until detail arrives)', async () => {
+		// The mocked state exposes no signers-based flag at all: only detail state decides.
+		refs.detailLoading.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toMatchObject({ loading: true, stepper: false, actions: false })
+	})
+
+	it('does not gate a non-persisted file (negative id)', async () => {
+		refs.file.value = { id: -3 }
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toMatchObject({ loading: false, error: false, stepper: true, actions: true })
+	})
+
+	it('does not show an error when the file has no numeric id (nothing can be fetched)', async () => {
+		refs.file.value = {}
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper)).toMatchObject({ loading: false, error: false, actions: true })
+	})
+
+	it('moves loading -> loaded without a Retry flash, and never fetches by itself', async () => {
+		refs.detailLoading.value = true
+		const wrapper = createWrapper()
+		await flushPromises()
+		expect(sections(wrapper).error).toBe(false)
+		refs.detailLoading.value = false
+		refs.isCurrentFileDetailed.value = true
+		await flushPromises()
+		expect(sections(wrapper)).toEqual({ loading: false, error: false, signers: true, actions: true, stepper: true, header: false })
+		expect(controllerSpies.ensureCurrentFileDetail).not.toHaveBeenCalled()
 	})
 })

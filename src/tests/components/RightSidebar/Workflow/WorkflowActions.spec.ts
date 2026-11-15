@@ -176,6 +176,24 @@ describe('WorkflowActions.vue', () => {
 		})
 	})
 
+	describe('signature-positions helper text', () => {
+		const missingFields = { hasSigners: true, hasVisibleElements: false, isReady: false }
+
+		it('is shown while positions are still to be set up', () => {
+			const wrapper = mountComponent({
+				workflow: createWorkflowState({ ...missingFields, primaryAction: 'setup-positions' }),
+			})
+			expect(wrapper.text()).toContain('Visible signature positions must be configured.')
+		})
+
+		it.each(['completed', 'view-progress'] as WorkflowPrimaryAction[])('is not shown once the workflow is past positions (%s)', (primaryAction) => {
+			const wrapper = mountComponent({
+				workflow: createWorkflowState({ ...missingFields, primaryAction }),
+			})
+			expect(wrapper.text()).not.toContain('Visible signature positions must be configured.')
+		})
+	})
+
 	describe('blocked state', () => {
 		it('adds the blocked class when the workflow is not ready and primary action is not request-signatures', () => {
 			const wrapper = mountComponent({
