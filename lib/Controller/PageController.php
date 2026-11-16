@@ -167,8 +167,10 @@ class PageController extends AEnvironmentPageAwareController {
 
 		// Only the pending-recovery state reaches the frontend; the signing UUID
 		// and account identity remain server-side.
-		$recovery = (new PendingRecovery($this->request, \OCP\Server::get(RecoveryCookie::class)))
-			->evaluate($this->userSession->getUser());
+		$recovery = $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true)
+			? (new PendingRecovery($this->request, \OCP\Server::get(RecoveryCookie::class)))
+				->evaluate($this->userSession->getUser())
+			: ['pending' => false, 'clear' => true];
 		if ($recovery['pending']) {
 			$this->initialState->provideInitialState('recovery_pending', true);
 		}

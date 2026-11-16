@@ -173,6 +173,11 @@ const description = computed(() => (errors.value.length
 			flex-direction: column;
 			gap: 12px;
 			width: 100%;
+
+			// Centre the Switch account action while the error cards stay full-width.
+			:deep(.button-vue) {
+				align-self: center;
+			}
 		}
 
 		.masked-email {

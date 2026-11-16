@@ -153,9 +153,15 @@ class Account extends AbstractIdentifyMethod {
 			// With WhatsApp signing requests on: never name the intended account,
 			// whoever is signed in is not them. switchAccount lets the page offer a
 			// way out to the right account.
-			$error = WhatsAppService::on($this->identifyService->getAppConfig())
-				? ['message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'), 'switchAccount' => true]
-				: $this->differentAccountError($signer);
+			$appConfig = $this->identifyService->getAppConfig();
+			if (WhatsAppService::on($appConfig)) {
+				$error = ['message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'), 'switchAccount' => true];
+			} elseif ($appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true)) {
+				$error = $this->differentAccountError($signer);
+			} else {
+				// Preserve the original mismatch behaviour when account recovery is disabled.
+				$error = ['message' => $this->identifyService->getL10n()->t('Invalid user')];
+			}
 			throw new LibresignException(json_encode([
 				'action' => JSActions::ACTION_DO_NOTHING,
 				'errors' => [$error],

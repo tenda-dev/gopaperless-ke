@@ -77,6 +77,7 @@ class AccountRecoveryController extends Controller {
 		if (!$isUuid
 			|| !$current instanceof IUser
 			|| WhatsAppService::on($this->appConfig)
+			|| !$this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true)
 		) {
 			return $plain;
 		}
@@ -141,6 +142,15 @@ class AccountRecoveryController extends Controller {
 	#[UseSession]
 	#[FrontpageRoute(verb: 'GET', url: '/account/recover/complete')]
 	public function recoverComplete(): RedirectResponse {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true)) {
+			// Feature disabled after a cookie was issued: clear it and return to
+			// the app without completing recovery.
+			$response = new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.index'));
+			$response->invalidateCookie(RecoveryCookie::NAME);
+
+			return $response;
+		}
+
 		$rawCookie = $this->request->getCookie(RecoveryCookie::NAME);
 
 		// Verify the navigation token before reading its destination or account binding.
