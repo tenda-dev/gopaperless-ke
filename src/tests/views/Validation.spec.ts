@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest'
 import { interpolateL10n } from '../testHelpers/l10n.js'
-import { shallowMount } from '@vue/test-utils'
+import { flushPromises, shallowMount } from '@vue/test-utils'
 import axios from '@nextcloud/axios'
 import { getCapabilities } from '@nextcloud/capabilities'
 import JSConfetti from 'js-confetti'
@@ -713,15 +713,17 @@ describe('Validation.vue - Business Logic', () => {
 			...patch,
 		})
 
-		it('fires confetti when document is signed and isAfterSigned returns true', () => {
+		it('fires confetti when document is signed and isAfterSigned returns true', async () => {
 			history.pushState({ isAfterSigned: true }, '')
 			wrapper.vm.handleValidationSuccess(createLoadedValidationDocument({ status: SIGNED_STATUS }))
+			await flushPromises()
 			expect(mockAddConfetti).toHaveBeenCalledOnce()
 		})
 
 		it('fires confetti when document is signed and shouldFireAsyncConfetti is true', async () => {
 			await setVmState({ shouldFireAsyncConfetti: true })
 			wrapper.vm.handleValidationSuccess(createLoadedValidationDocument({ status: SIGNED_STATUS }))
+			await flushPromises()
 			expect(mockAddConfetti).toHaveBeenCalledOnce()
 		})
 
@@ -736,6 +738,7 @@ describe('Validation.vue - Business Logic', () => {
 					createChildFile({ id: 202, uuid: 'child-2', nodeId: 202, status: SIGNED_STATUS, statusText: 'Signed', file: '/apps/libresign/p/pdf/child-2', name: 'child-2.pdf' }),
 				],
 			}))
+			await flushPromises()
 			expect(mockAddConfetti).toHaveBeenCalledOnce()
 		})
 
@@ -746,10 +749,11 @@ describe('Validation.vue - Business Logic', () => {
 				status: 0,
 				signers: [createSignerDetail({ me: true, status: 2 })],
 			}))
+			await flushPromises()
 			expect(mockAddConfetti).toHaveBeenCalledOnce()
 		})
 
-		it('does not fire confetti when document is not signed even if isAfterSigned is true', () => {
+		it('does not fire confetti when document is not signed even if isAfterSigned is true', async () => {
 			const lw = shallowMount(Validation, {
 				mocks: {
 					$route: { params: { isAfterSigned: true }, query: {} },
@@ -757,12 +761,14 @@ describe('Validation.vue - Business Logic', () => {
 				},
 			}) as unknown as ValidationWrapper
 			lw.vm.handleValidationSuccess(createLoadedValidationDocument({ status: 1 }))
+			await flushPromises()
 			expect(mockAddConfetti).not.toHaveBeenCalled()
 			lw.unmount()
 		})
 
-		it('does not fire confetti when document is signed but neither isAfterSigned nor shouldFireAsyncConfetti is true', () => {
+		it('does not fire confetti when document is signed but neither isAfterSigned nor shouldFireAsyncConfetti is true', async () => {
 			wrapper.vm.handleValidationSuccess(createLoadedValidationDocument({ status: SIGNED_STATUS }))
+			await flushPromises()
 			expect(mockAddConfetti).not.toHaveBeenCalled()
 		})
 
@@ -782,6 +788,7 @@ describe('Validation.vue - Business Logic', () => {
 		it('does not fire confetti when isActiveView is false', async () => {
 			await setVmState({ shouldFireAsyncConfetti: true, isActiveView: false })
 			wrapper.vm.handleValidationSuccess(createLoadedValidationDocument({ status: SIGNED_STATUS }))
+			await flushPromises()
 			expect(mockAddConfetti).not.toHaveBeenCalled()
 		})
 
@@ -795,7 +802,24 @@ describe('Validation.vue - Business Logic', () => {
 			} as ReturnType<typeof getCapabilities>)
 			history.pushState({ isAfterSigned: true }, '')
 			wrapper.vm.handleValidationSuccess(createLoadedValidationDocument({ status: SIGNED_STATUS }))
+			await flushPromises()
 			expect(mockAddConfetti).not.toHaveBeenCalled()
+		})
+
+		it('never breaks validation when the confetti module/instance fails (simulated load failure)', async () => {
+			// Simulate the lazily-loaded confetti failing (construction throws, same
+			// catch path as a rejected dynamic import). Validation must be unaffected.
+			vi.mocked(JSConfetti).mockImplementationOnce(() => {
+				throw new Error('simulated js-confetti load failure')
+			})
+			history.pushState({ isAfterSigned: true }, '')
+			expect(() => wrapper.vm.handleValidationSuccess(
+				createLoadedValidationDocument({ status: SIGNED_STATUS }),
+			)).not.toThrow()
+			await flushPromises()
+			// No celebration fired, but validation state was still committed normally.
+			expect(mockAddConfetti).not.toHaveBeenCalled()
+			expect(wrapper.vm.shouldFireAsyncConfetti).toBe(false)
 		})
 
 		it('syncs a tracked signed document into files store', async () => {
@@ -930,27 +954,30 @@ describe('Validation.vue - Business Logic', () => {
 		})
 
 		describe('RULE: when a file is returned directly by SigningProgress', () => {
-			it('fires confetti when the file has signed status', () => {
+			it('fires confetti when the file has signed status', async () => {
 				history.pushState({ isAfterSigned: true }, '')
 				const signedFile = createLoadedValidationDocument({ status: SIGNED_STATUS })
 				wrapper.vm.handleSigningComplete(signedFile)
+				await flushPromises()
 				expect(mockAddConfetti).toHaveBeenCalledOnce()
 			})
 
-			it('fires confetti when the current signer is marked as signed', () => {
+			it('fires confetti when the current signer is marked as signed', async () => {
 				const fileWithSignedSigner = createLoadedValidationDocument({
 					status: 1,
 					signers: [createSignerDetail({ me: true, status: SIGNER_SIGNED_STATUS, signed: '2025-01-01T00:00:00Z' })],
 				})
 				wrapper.vm.handleSigningComplete(fileWithSignedSigner)
+				await flushPromises()
 				expect(mockAddConfetti).toHaveBeenCalledOnce()
 			})
 
-			it('does not fire confetti when the file is not yet signed and no signer is marked as signed', () => {
+			it('does not fire confetti when the file is not yet signed and no signer is marked as signed', async () => {
 				// This is a realistic scenario: SigningProgress emits 'completed'
 				// with a file object whose status is still pending/partial
 				const unsignedFile = createLoadedValidationDocument({ status: 1, signers: [createSignerDetail({ me: true, status: 0 })] })
 				wrapper.vm.handleSigningComplete(unsignedFile)
+				await flushPromises()
 				expect(mockAddConfetti).not.toHaveBeenCalled()
 			})
 		})
@@ -966,6 +993,7 @@ describe('Validation.vue - Business Logic', () => {
 				// Wait for the async polling loop to run
 				await new Promise(resolve => setTimeout(resolve, 0))
 
+				await flushPromises()
 				expect(mockAddConfetti).toHaveBeenCalledOnce()
 			})
 
@@ -986,6 +1014,7 @@ describe('Validation.vue - Business Logic', () => {
 				wrapper.vm.handleSigningComplete(null)
 				await new Promise(resolve => setTimeout(resolve, 0))
 
+				await flushPromises()
 				expect(mockAddConfetti).toHaveBeenCalledOnce()
 			})
 		})

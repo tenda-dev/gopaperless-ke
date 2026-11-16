@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import Draw from '../../../components/Draw/Draw.vue'
 import { useSignatureElementsStore } from '../../../store/signatureElements.js'
@@ -36,6 +36,7 @@ vi.mock('../../../components/Draw/Editor.vue', () => ({
 }))
 
 vi.mock('../../../components/Draw/TextInput.vue', () => ({
+	__esModule: true,
 	default: {
 		name: 'TextInput',
 		template: '<div></div>',
@@ -44,6 +45,7 @@ vi.mock('../../../components/Draw/TextInput.vue', () => ({
 }))
 
 vi.mock('../../../components/Draw/FileUpload.vue', () => ({
+	__esModule: true,
 	default: {
 		name: 'FileUpload',
 		template: '<div></div>',

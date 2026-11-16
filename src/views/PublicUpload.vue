@@ -6,7 +6,7 @@
 <template>
 	<div class="pu" :class="{ 'pu--dark': theme === 'dark', 'pu--fit': !document }">
 		<div class="pu__fold">
-			<PublicUploadHeader :theme="theme" @sign-in="gateToLogin" @toggle-theme="toggleTheme" />
+			<PublicUploadHeader :theme="theme" :show-theme-toggle="false" @sign-in="gateToLogin" />
 			<PublicUploadHero v-if="!document"
 				:workflow-enabled="workflowEnabled"
 				:preparing="preparing"
@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
@@ -51,40 +51,13 @@ const props = defineProps<{
 
 type Theme = 'light' | 'dark'
 
-const THEME_KEY = 'gopaperless-landing-theme'
-
 const router = useRouter()
 
-/**
- * The landing follows the visitor's system colour scheme until they pick one
- * with the header toggle. That choice is remembered in this browser.
- */
-const darkScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
-const systemDark = ref(Boolean(darkScheme?.matches))
-const chosenTheme = ref<Theme | null>(readThemeChoice())
-const theme = computed<Theme>(() => chosenTheme.value ?? (systemDark.value ? 'dark' : 'light'))
-
-function readThemeChoice(): Theme | null {
-	try {
-		const saved = localStorage.getItem(THEME_KEY)
-		return saved === 'light' || saved === 'dark' ? saved : null
-	} catch {
-		return null
-	}
-}
-
-function toggleTheme(): void {
-	chosenTheme.value = theme.value === 'dark' ? 'light' : 'dark'
-	try {
-		localStorage.setItem(THEME_KEY, chosenTheme.value)
-	} catch {
-		// Private windows can refuse storage, so the choice lasts for this visit only.
-	}
-}
-
-function onSchemeChange(event: MediaQueryListEvent): void {
-	systemDark.value = event.matches
-}
+// Dark mode is deferred: the landing is pinned light and the header toggle is
+// hidden (see the template) until the dark palette is reconciled. The `.pu--dark`
+// styles below stay for that pass; restore the stored-choice + system-scheme
+// resolver here to re-enable switching. Mirrors PublicShell, also light-pinned.
+const theme: Theme = 'light'
 
 /**
  * PHP only runs on the full-page load, so a logged-in user who reaches this
@@ -95,9 +68,6 @@ onMounted(() => {
 		router.replace({ name: 'requestFiles' })
 	}
 })
-
-onMounted(() => darkScheme?.addEventListener?.('change', onSchemeChange))
-onBeforeUnmount(() => darkScheme?.removeEventListener?.('change', onSchemeChange))
 
 /**
  * Server-built login destination for the configured User OIDC provider.

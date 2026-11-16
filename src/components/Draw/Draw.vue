@@ -46,14 +46,24 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 
 import Editor from './Editor.vue'
-import FileUpload from './FileUpload.vue'
-import TextInput from './TextInput.vue'
+
+// Use the shared async loader to provide GpLoader during chunk resolution
+// and a recoverable error state, using the common retry policy.
+import { asyncLoader } from '../../utils/asyncLoader'
 
 import { useSignatureElementsStore } from '../../store/signatureElements.js'
 
 defineOptions({
 	name: 'Draw',
 })
+
+// Load non-default tabs on demand to keep their dependencies out of the
+// initial Draw chunk. The Type tab requires Dancing Script; Upload requires
+// vue-advanced-cropper. Signature state remains in the store across tab
+// switches.
+// asyncLoader provides the shared loading UI and retry behaviour.
+const TextInput = asyncLoader(() => import('./TextInput.vue'))
+const FileUpload = asyncLoader(() => import('./FileUpload.vue'))
 
 type AvailableTab = {
 	id: string

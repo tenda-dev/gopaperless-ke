@@ -397,7 +397,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import PwAddSignerDialog from './PwAddSignerDialog.vue'
 import PwContextualHint from './PwContextualHint.vue'
 import PwDocumentCard from './PwDocumentCard.vue'
-import PwDocumentPreview from './PwDocumentPreview.vue'
+import { asyncRetry } from '../../utils/asyncRetry'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
@@ -406,6 +406,8 @@ import { usePublicWorkflow, type SignerDraft } from '../../store/publicWorkflow'
 import { buildSignerPayload, isPlausibleEmail, withRequesterSigner } from './signerPayload'
 
 defineOptions({ name: 'PublicWorkflowShell' })
+
+const PwDocumentPreview = asyncRetry(() => import('./PwDocumentPreview.vue'))
 
 // Capability gate mirrors IdentifySigner.vue; the flag is provided to the
 // public page via PageController::publicWorkflow() -> AccountService::getConfig().

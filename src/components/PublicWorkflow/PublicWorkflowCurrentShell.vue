@@ -447,7 +447,8 @@ import PwActionCard from './PwActionCard.vue'
 import PwAddSignerDialog from './PwAddSignerDialog.vue'
 import PwContextualHint from './PwContextualHint.vue'
 import PwDocumentCard from './PwDocumentCard.vue'
-import PwDocumentInlinePreview from './PwDocumentInlinePreview.vue'
+import { asyncRetry } from '../../utils/asyncRetry'
+import { loadFieldEditor } from './pwPreload'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
@@ -457,6 +458,11 @@ import { buildSignerPayload, isPlausibleEmail } from './signerPayload'
 import { MAX_FILE_SIZE_MB, validatePublicUploadFile } from './uploadValidation'
 
 defineOptions({ name: 'PublicWorkflowCurrentShell' })
+
+// Keep the PDF.js preview outside the shell's critical chunk, but load it
+// as soon as the shell mounts. The shell remains mounted via v-show, so the
+// preview is ready when Prepare is shown rather than waiting for a Preview click.
+const PwDocumentInlinePreview = asyncRetry(() => import('./PwDocumentInlinePreview.vue'))
 
 const sponsorshipEnabled = (
 	loadState('libresign', 'config', {}) as { sponsorship_enabled?: boolean }
@@ -656,6 +662,9 @@ watch(signers, (list) => {
 
 // --- navigation ---
 function goToView(view: View): void {
+	// Warm the field-placement editor (pdf-elements) on intent, before the
+	// editor opens, so entering Fields has no avoidable extra wait.
+	if (view === 'fields') { void loadFieldEditor() }
 	activeView.value = view
 }
 function stepReachable(i: number): boolean {

@@ -123,7 +123,8 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcModal from '@nextcloud/vue/components/NcModal'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 
-import PdfEditor from '../Request/VisibleElementsNext/PdfEditorNext.vue'
+import { asyncRetry } from '../../utils/asyncRetry'
+import { loadFieldEditor } from './pwPreload'
 import VeButton from '../Request/VisibleElementsNext/VeButton.vue'
 import VeCompletenessPill from '../Request/VisibleElementsNext/VeCompletenessPill.vue'
 import VePageRail from '../Request/VisibleElementsNext/VePageRail.vue'
@@ -134,6 +135,12 @@ import VeSignerSheet from '../Request/VisibleElementsNext/VeSignerSheet.vue'
 import { usePublicVisibleElements } from './composables/usePublicVisibleElements'
 
 defineOptions({ name: 'PublicVisibleElements' })
+
+// Keep the PDF field editor out of the initial chunk; load it only when
+// the editor opens (gated by pdfEditorFiles). Public workflow shells preload
+// it on "Continue to fields" intent, so opening the editor doesn't incur
+// another download wait.
+const PdfEditor = asyncRetry(loadFieldEditor)
 
 const {
 	pdfEditor,
