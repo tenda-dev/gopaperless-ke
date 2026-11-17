@@ -111,17 +111,26 @@ defineExpose({
 }
 
 @media (max-width: 512px) {
+	/*
+	 * Keep the sidebar bounded below the app header so the stepper remains
+	 * visible and NcAppSidebarTab can scroll its content internally.
+	 *
+	 * Content-driven sizing previously allowed the absolutely positioned
+	 * sidebar to grow upward from the bottom. Long documents could push its
+	 * top off-screen and eliminate the internal overflow needed for scrolling.
+	 *
+	 * Retain top: 0 and height: 100% so the sidebar uses #content's available
+	 * height, which is already offset below the app header. Do not use 100dvh:
+	 * that would size it against the viewport rather than the content area.
+	 */
 	.app-sidebar {
-		height: unset;
-		top: unset;
-		right: unset;
-		left: unset;
-		bottom: 0;
+		top: 0;
+		bottom: auto;
+		width: 100vw;
+		height: 100%;
 		:deep(.app-sidebar-tabs__content) {
 			min-height: unset;
 		}
-		transform: translateY(-1%) !important;
-		transition: transform 0.5s ease-in !important;
 	}
 }
 </style>
