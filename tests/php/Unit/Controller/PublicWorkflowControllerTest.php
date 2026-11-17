@@ -10,6 +10,7 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 
 use OCA\Libresign\Controller\PublicWorkflowController;
 use OCA\Libresign\Db\PublicWorkflow;
+use OCA\Libresign\Exception\EmailVerificationException;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\FileService;
@@ -35,6 +36,7 @@ final class PublicWorkflowControllerTest extends TestCase {
 	private FileService&MockObject $fileService;
 	private RequestSignatureService&MockObject $requestSignatureService;
 	private ValidateHelper&MockObject $validateHelper;
+	private IUserSession&MockObject $userSession;
 	private PublicWorkflowController $controller;
 
 	public function setUp(): void {
@@ -47,6 +49,7 @@ final class PublicWorkflowControllerTest extends TestCase {
 		$this->fileService = $this->createMock(FileService::class);
 		$this->requestSignatureService = $this->createMock(RequestSignatureService::class);
 		$this->validateHelper = $this->createMock(ValidateHelper::class);
+		$this->userSession = $this->createMock(IUserSession::class);
 		$this->controller = new PublicWorkflowController(
 			$this->request,
 			$this->l10n,
@@ -56,7 +59,7 @@ final class PublicWorkflowControllerTest extends TestCase {
 			$this->fileService,
 			$this->requestSignatureService,
 			$this->validateHelper,
-			$this->createMock(IUserSession::class),
+			$this->userSession,
 			$this->createMock(IURLGenerator::class),
 			$this->createMock(RequesterReconciliationService::class),
 			$this->createMock(\OCA\Libresign\Service\AccountService::class),
@@ -184,6 +187,119 @@ final class PublicWorkflowControllerTest extends TestCase {
 		$this->assertFalse($data['hasDocument']);
 		$this->assertNull($data['document']);
 	}
+	// --- claimStatus() / claim() API privacy + email verification ---
+
+	public function testClaimStatusNeverIncludesFullOrAccountEmail(): void {
+		$this->enable(true);
+		$user = $this->createMock(IUser::class);
+		$user->method('getEMailAddress')->willReturn('alice@example.com');
+		$this->userSession->method('getUser')->willReturn($user);
+		$workflow = new PublicWorkflow();
+		$this->workflowService->method('resolveForClaim')->willReturn($workflow);
+		// The account-email auto-compare is gone: describeClaim() is called with
+		// null, never the account's own address.
+		$this->workflowService->expects($this->once())->method('describeClaim')
+			->with($workflow, $user, null)
+			->willReturn([
+				'requesterEmail' => 'bruno@gopaperless.co.ke',
+				'emailMatches' => true,
+				'alreadyClaimedByMe' => false,
+				'claimable' => true,
+			]);
+
+		$response = $this->controller->claimStatus();
+		$data = $response->getData();
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$this->assertArrayNotHasKey('requesterEmail', $data);
+		$this->assertArrayNotHasKey('accountEmail', $data);
+		$this->assertArrayNotHasKey('emailMatches', $data);
+		$this->assertArrayNotHasKey('status', $data);
+		$this->assertTrue($data['emailVerificationRequired']);
+		$this->assertSame('br•••••@g•••••.co.ke', $data['requesterEmailMasked']);
+	}
+
+	public function testClaimStatusReportsNoVerificationForLegacyNullEmail(): void {
+		$this->enable(true);
+		$user = $this->createMock(IUser::class);
+		$this->userSession->method('getUser')->willReturn($user);
+		$workflow = new PublicWorkflow();
+		$this->workflowService->method('resolveForClaim')->willReturn($workflow);
+		$this->workflowService->method('describeClaim')->willReturn([
+			'requesterEmail' => null,
+			'emailMatches' => false,
+			'alreadyClaimedByMe' => false,
+			'claimable' => true,
+		]);
+
+		$data = $this->controller->claimStatus()->getData();
+
+		$this->assertFalse($data['emailVerificationRequired']);
+		$this->assertNull($data['requesterEmailMasked']);
+	}
+
+	public function testClaimPassesSubmittedEmailThrough(): void {
+		$this->enable(true);
+		$user = $this->createMock(IUser::class);
+		$this->userSession->method('getUser')->willReturn($user);
+		$workflow = new PublicWorkflow();
+		$this->workflowService->method('resolveForClaim')->willReturn($workflow);
+		$file = $this->createMock(\OCA\Libresign\Db\File::class);
+		$file->method('getUuid')->willReturn('file-uuid');
+		$this->workflowService->expects($this->once())->method('claim')
+			->with($workflow, $user, 'bruno@gopaperless.co.ke')
+			->willReturn($file);
+
+		$response = $this->controller->claim('bruno@gopaperless.co.ke');
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+	}
+
+	public function testClaimMapsEmailVerificationFailureToNonRevealingForbidden(): void {
+		$this->enable(true);
+		$user = $this->createMock(IUser::class);
+		$this->userSession->method('getUser')->willReturn($user);
+		$workflow = new PublicWorkflow();
+		$this->workflowService->method('resolveForClaim')->willReturn($workflow);
+		$this->workflowService->method('claim')
+			->willThrowException(new EmailVerificationException('We could not verify that email.'));
+
+		$response = $this->controller->claim('wrong@example.com');
+		$message = (string)$response->getData()['message'];
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertStringNotContainsString('wrong@example.com', $message);
+	}
+
+	public function testClaimStillMapsOtherFailuresToConflict(): void {
+		$this->enable(true);
+		$user = $this->createMock(IUser::class);
+		$this->userSession->method('getUser')->willReturn($user);
+		$workflow = new PublicWorkflow();
+		$this->workflowService->method('resolveForClaim')->willReturn($workflow);
+		$this->workflowService->method('claim')
+			->willThrowException(new LibresignException('This document has already been claimed'));
+
+		$response = $this->controller->claim();
+
+		$this->assertSame(Http::STATUS_CONFLICT, $response->getStatus());
+	}
+
+	public function testResumeMasksRequesterEmailInsteadOfFull(): void {
+		$this->enable(true);
+		$workflow = new PublicWorkflow();
+		$workflow->setStatus(PublicWorkflow::STATUS_ACTIVE);
+		$workflow->setExpiresAt(new \DateTime('+72 hours'));
+		$workflow->setRequesterEmail('bruno@gopaperless.co.ke');
+		$this->workflowService->method('resolveFromToken')->willReturn($workflow);
+		$this->workflowService->method('hasDocument')->willReturn(false);
+
+		$data = $this->controller->resume()->getData();
+
+		$this->assertArrayNotHasKey('requesterEmail', $data);
+		$this->assertSame('br•••••@g•••••.co.ke', $data['requesterEmailMasked']);
+	}
+
 	public function testDeleteVisibleElementInertWhenDisabled(): void {
 		$this->enable(false);
 		$this->workflowService->expects($this->never())->method('deleteVisibleElement');

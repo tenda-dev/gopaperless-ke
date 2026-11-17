@@ -105,10 +105,10 @@ export async function deleteVisibleElement(elementId: number): Promise<WorkflowD
 
 export interface ClaimStatus {
 	claimable: boolean
-	status?: string
-	requesterEmail?: string | null
-	accountEmail?: string | null
-	emailMatches?: boolean
+	/** Masked hint of the stored requester email (never the full address). */
+	requesterEmailMasked?: string | null
+	/** True when claim() will require a matching email as a second factor. */
+	emailVerificationRequired?: boolean
 	alreadyClaimedByMe?: boolean
 }
 
@@ -132,9 +132,14 @@ export async function getClaimStatus(): Promise<ClaimStatus> {
 	return data.ocs.data
 }
 
-/** Perform the claim after explicit confirmation; returns the signing redirect. */
-export async function claimWorkflow(): Promise<ClaimResult> {
-	const { data } = await axios.post(generateOcsUrl(`${BASE}/claim`))
+/**
+ * Claim the workflow after explicit confirmation and return the signing redirect.
+ *
+ * Always sends the submitted email; the server determines whether email
+ * verification is required for the workflow and performs the comparison.
+ */
+export async function claimWorkflow(email?: string | null): Promise<ClaimResult> {
+	const { data } = await axios.post(generateOcsUrl(`${BASE}/claim`), { email })
 	return data.ocs.data
 }
 

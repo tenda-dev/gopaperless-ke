@@ -15,6 +15,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Db\PublicWorkflowMapper;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Exception\EmailVerificationException;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\FileElementService;
@@ -608,6 +609,61 @@ final class PublicWorkflowServiceTest extends TestCase {
 
 		$this->expectException(\RuntimeException::class);
 		$this->service->transferDocumentOwnership($this->workflowWithDoc(), $this->claimant('alice'));
+	}
+
+	// --- claim() email verification (second factor) ---
+
+	public function testClaimRejectsMismatchedEmailBeforeAnyMutation(): void {
+		$workflow = $this->workflowWithDoc();
+		$workflow->setRequesterEmail('bruno@gopaperless.co.ke');
+		// A failed email match must never reach the lock, let alone beginClaim.
+		$this->lockingProvider->expects($this->never())->method('acquireLock');
+		$this->mapper->expects($this->never())->method('findByTokenHashForUpdate');
+		$this->expectException(EmailVerificationException::class);
+		$this->service->claim($workflow, $this->claimant('alice'), 'someone-else@example.com');
+	}
+
+	public function testClaimRejectsMissingEmailWhenRequesterEmailStored(): void {
+		$workflow = $this->workflowWithDoc();
+		$workflow->setRequesterEmail('bruno@gopaperless.co.ke');
+		$this->lockingProvider->expects($this->never())->method('acquireLock');
+		$this->expectException(EmailVerificationException::class);
+		$this->service->claim($workflow, $this->claimant('alice'), null);
+	}
+
+	public function testClaimNeverRevealsTheStoredEmailOnMismatch(): void {
+		$workflow = $this->workflowWithDoc();
+		$workflow->setRequesterEmail('bruno@gopaperless.co.ke');
+		try {
+			$this->service->claim($workflow, $this->claimant('alice'), 'wrong@example.com');
+			$this->fail('Expected EmailVerificationException');
+		} catch (EmailVerificationException $e) {
+			$this->assertStringNotContainsString('bruno', $e->getMessage());
+			$this->assertStringNotContainsString('gopaperless', $e->getMessage());
+			$this->assertStringNotContainsString('wrong@example.com', $e->getMessage());
+		}
+	}
+
+	public function testClaimAcceptsCaseAndWhitespaceNormalisedEmailMatch(): void {
+		$workflow = $this->workflowWithDoc();
+		$workflow->setRequesterEmail('  Bruno@GoPaperless.co.ke ');
+		// Proving we got PAST the email gate without mocking the rest of the
+		// claim pipeline: acquireLock must be reached exactly once, and we let
+		// it fail the same way testClaimReturnsConflictWhenLockIsHeld does.
+		$this->lockingProvider->expects($this->once())->method('acquireLock')
+			->willThrowException(new LockedException('locked'));
+		$this->expectException(LibresignException::class);
+		$this->service->claim($workflow, $this->claimant('alice'), ' bruno@gopaperless.CO.KE ');
+	}
+
+	public function testClaimSkipsEmailGateForLegacyNullRequesterEmail(): void {
+		// workflowWithDoc() leaves requesterEmail null (legacy row). No submitted
+		// email, and the gate must still let the token-only claim proceed.
+		$workflow = $this->workflowWithDoc();
+		$this->lockingProvider->expects($this->once())->method('acquireLock')
+			->willThrowException(new LockedException('locked'));
+		$this->expectException(LibresignException::class);
+		$this->service->claim($workflow, $this->claimant('alice'), null);
 	}
 
 	public function testClaimReturnsConflictWhenLockIsHeld(): void {
