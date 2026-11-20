@@ -181,9 +181,11 @@ import { getFileSigners, getVisibleElementsFromDocument, idsMatch, isCurrentUser
 import { notifyInfo, notifySuccess, notifyError } from '@/services/toast'
 // import PaymentModal from '@/components/Payments/PaymentModal.vue'
 import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
-import { getPersistedPaymentSession, clearPersistedPaymentSession } from '@/utils/paymentPersistence'
+import { clearPersistedPaymentSession } from '@/utils/paymentPersistence'
 import { resolveUserId } from '@/utils/resolveUserId'
 import { useEntitlementStore } from '@/store/entitlement'
+import { emitAppEvent } from '@/events/appEvents'
+import { entitlementCoordinator } from '@/payment/entitlementCoordinator'
 import { useSignerContextStore } from '@/store/signerContext'
 import { useUserContextStore } from '@/store/userContext'
 import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
@@ -541,37 +543,6 @@ const showSignCreditsBanner = computed(() => {
 	)
 })
 
-async function consumeEntitlementAfterSign() {
-
-	try {
-		const session = getPersistedPaymentSession()
-
-		const productCode = session?.productCode
-			?? signStore.productCode
-			?? DEFAULT_SIGN_PRODUCT_CODE
-
-		const signUuid = signerContextStore.signUuid || signRequestUuid.value
-		const signRequestId = signerContextStore.signRequestId
-			|| currentSigner.value?.signRequestId
-			|| 0
-
-		await entitlementStore.consume({
-			userId: userContextStore.uid,
-			signUuid,
-			signRequestId,
-			productCode,
-		})
-
-		clearPersistedPaymentSession()
-	} catch (err) {
-
-		console.error(
-			'[Sign] entitlement consumption failed',
-			err,
-		)
-	}
-}
-
 /**
  * Show/hide payment modal ref
  */
@@ -851,8 +822,17 @@ let submitSignature = async (methodConfig: SignatureMethodConfig = {}) => {
 				signRequestUuid: signRequestUuid.value,
 			})
 
-			// After a successful signing, check if we need to consume an entitlement (in paywall scenarios)
-			await consumeEntitlementAfterSign()
+			// Clears FE-local payment session state. Entitlement consumption and
+			// settlement are handled exclusively by the backend after signing.
+			clearPersistedPaymentSession()
+
+			// Signals that signing completed so consumers can refresh displayed
+			// entitlement state. This event does not trigger settlement; the backend
+			// handles consumption independently of frontend refresh lifecycle.
+			emitAppEvent('signing:completed', {
+				signRequestUuid: signRequestUuid.value,
+				productCode: signStore.productCode || DEFAULT_SIGN_PRODUCT_CODE,
+			})
 		}
 	} catch (error: unknown) {
 		const signError = isSignSubmissionError(error) ? error : {}
@@ -989,7 +969,20 @@ async function onPaymentSuccess() {
 
 	isProcessingPayment.value = false // IMPORTANT RESET
 
-	await entitlementStore.refresh()
+	// Suppress the coordinator's duplicate refresh only when this direct read
+	// succeeds. Failed reads leave the event to trigger a recovery refresh.
+	const outcome = await entitlementStore.refresh()
+
+	if (outcome.ok) {
+		entitlementCoordinator.notePublisherRefresh(DEFAULT_SIGN_PRODUCT_CODE)
+	}
+
+	// Always emit the verification event. Refresh success is handled through
+	// the suppression token rather than being exposed in the event payload.
+	emitAppEvent('payment:verified', {
+		context: 'purchase',
+		productCode: DEFAULT_SIGN_PRODUCT_CODE,
+	})
 
 	notifySuccess({
 		message: 'Payment successful',

@@ -31,6 +31,7 @@ import {
 
 import { notifySuccess, notifyError } from '@/services/toast'
 import { usePaymentContextStore } from '@/store/paymentContext'
+import { emitAppEvent } from '@/events/appEvents'
 
 const status = ref<'loading' | 'error'>('loading')
 
@@ -134,6 +135,11 @@ onMounted(async () => {
 			notifySuccess({
 				message: 'Payment successful',
 			})
+
+			// Signals a display refresh only. Omitting productCode triggers a refresh
+			// for all tracked products because the return flow cannot reliably identify
+			// which product the payment was for.
+			emitAppEvent('payment:verified', { context: 'return' })
 
 			redirectToSponsorshipWorkflowDraft(
 				res.sponsorshipWorkflowFileUuid ?? undefined,

@@ -99,6 +99,7 @@ import {
 	mdiCreditCardOutline
 } from '@mdi/js'
 import type { PaymentPresentation } from '@/payment'
+import { useEntitlementSync } from '@/composables/useEntitlementSync'
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
 
@@ -106,6 +107,10 @@ const purchasePresentation = CREDIT_PURCHASE_PRESENTATION
 
 const entitlementStore =
 	useEntitlementStore()
+
+// Keeps displayed entitlement state synchronized through visibility-aware
+// polling and event-driven refreshes.
+useEntitlementSync(DEFAULT_PRODUCT_CODE)
 
 const showPurchaseFlow =
 	ref(false)

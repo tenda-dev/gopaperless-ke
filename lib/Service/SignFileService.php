@@ -28,6 +28,7 @@ use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\FileStatus;
+use OCA\Libresign\Events\SignedEvent;
 use OCA\Libresign\Events\SignedEventFactory;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignUnavailable;
@@ -540,13 +541,29 @@ class SignFileService {
 				$this->unlockForSigning($lock);
 			}
 
+			$this->logger->debug(
+				'[EntitlementSettlement][SignFileService] Signing persisted; dispatching SignedEvent.',
+				[
+					'signRequestId' => $signRequest->getId(),
+					'eventType' => SignedEvent::class,
+				],
+			);
+
 			try {
 				$this->dispatchSignedEvent();
 			} catch (\Throwable $e) {
-				// TODO: Find solution later
-				$this->logger->error('SignSingleEvent - DispatchSignedEvent failed', [
-					'exception' => $e
-				]);
+				// Signing has already been persisted. A dispatch failure affects
+				// downstream entitlement settlement, not the completed signature.
+				$this->logger->error(
+					'[EntitlementSettlement][SignFileService] SignedEvent dispatch failed after signSingleFile; signing persistence is unaffected.',
+					[
+						'signRequestId' => $signRequest->getId(),
+						'eventType' => SignedEvent::class,
+						'exceptionClass' => get_class($e),
+						'exception' => $e,
+						'outcome' => 'dispatch_failed',
+					],
+				);
 			}
 
 			$envelopeContext = $this->getEnvelopeContext();
@@ -691,13 +708,29 @@ class SignFileService {
 				$this->unlockForSigning($lock);
 			}
 
+			$this->logger->debug(
+				'[EntitlementSettlement][SignFileService] Signing persisted; dispatching SignedEvent.',
+				[
+					'signRequestId' => $this->signRequest->getId(),
+					'eventType' => SignedEvent::class,
+				],
+			);
+
 			try {
 				$this->dispatchSignedEvent();
 			} catch (\Throwable $e) {
-				// TODO: Find solution later
-				$this->logger->error('SignSequentially - DispatchSignedEvent failed', [
-					'exception' => $e
-				]);
+				// Signing has already been persisted. A dispatch failure affects
+				// downstream entitlement settlement, not the completed signature.
+				$this->logger->error(
+					'[EntitlementSettlement][SignFileService] SignedEvent dispatch failed after signSequentially; signing persistence is unaffected.',
+					[
+						'signRequestId' => $this->signRequest->getId(),
+						'eventType' => SignedEvent::class,
+						'exceptionClass' => get_class($e),
+						'exception' => $e,
+						'outcome' => 'dispatch_failed',
+					],
+				);
 			}
 		}
 
@@ -1012,6 +1045,15 @@ class SignFileService {
 			$certificateSerialNumber,
 		);
 		$this->eventDispatcher->dispatchTyped($event);
+
+		$this->logger->debug(
+			'[EntitlementSettlement][SignFileService] SignedEvent dispatched.',
+			[
+				'signRequestId' => $this->signRequest->getId(),
+				'eventType' => SignedEvent::class,
+				'outcome' => 'dispatched',
+			],
+		);
 	}
 
 	/**

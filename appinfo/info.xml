@@ -63,6 +63,7 @@ Developed with ❤️ by [LibreCode](https://librecode.coop). Help us transform 
 		<job>OCA\Libresign\BackgroundJob\SignSingleFileJob</job>
 		<job>OCA\Libresign\BackgroundJob\PeriodReportJob</job>
 		<job>OCA\Libresign\BackgroundJob\TuandikianeCleanup</job>
+		<job>OCA\Libresign\BackgroundJob\ReconcileUnconsumedSignaturesJob</job>
 	</background-jobs>
 	<repair-steps>
 		<post-migration>

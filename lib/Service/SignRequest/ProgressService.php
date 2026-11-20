@@ -17,6 +17,7 @@ use OCA\Libresign\Enum\SignRequestStatus;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\ICache;
 use OCP\ICacheFactory;
+use OCP\IDBConnection;
 
 class ProgressService {
 	private ICache $cache;
@@ -34,6 +35,7 @@ class ProgressService {
 		private SignRequestMapper $signRequestMapper,
 		private StatusCacheService $statusCacheService,
 		private ProgressPollDecisionPolicy $pollDecisionPolicy,
+		private IDBConnection $db,
 	) {
 		$this->cache = $cacheFactory->createDistributed('libresign_progress');
 	}
@@ -254,19 +256,25 @@ class ProgressService {
 			return;
 		}
 
+		// Read metadata under the row lock to avoid overwriting settlement changes
+		// with a stale snapshot during the read-modify-write.
+		$this->db->beginTransaction();
 		try {
-			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
-		} catch (DoesNotExistException) {
-			return;
-		}
-		if (!$signRequest instanceof SignRequestEntity) {
-			return;
-		}
+			$signRequest = $this->signRequestMapper->findByUuidForUpdate($uuid);
+			if (!$signRequest instanceof SignRequestEntity) {
+				$this->db->rollBack();
+				return;
+			}
 
-		$metadata = $signRequest->getMetadata() ?? [];
-		$metadata['libresign_error'] = $error;
-		$signRequest->setMetadata($metadata);
-		$this->signRequestMapper->update($signRequest);
+			$metadata = $signRequest->getMetadata() ?? [];
+			$metadata['libresign_error'] = $error;
+			$signRequest->setMetadata($metadata);
+			$this->signRequestMapper->update($signRequest);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 	}
 
 	private function getSignRequestErrorFromMetadata(string $uuid): ?array {
@@ -274,6 +282,7 @@ class ProgressService {
 			return null;
 		}
 
+		// This read does not modify metadata, so it does not require a row lock.
 		try {
 			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
 		} catch (DoesNotExistException) {
@@ -293,23 +302,30 @@ class ProgressService {
 			return;
 		}
 
+		// Lock the row before modifying metadata to avoid overwriting concurrent
+		// settlement updates.
+		$this->db->beginTransaction();
 		try {
-			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
-		} catch (DoesNotExistException) {
-			return;
-		}
-		if (!$signRequest instanceof SignRequestEntity) {
-			return;
-		}
+			$signRequest = $this->signRequestMapper->findByUuidForUpdate($uuid);
+			if (!$signRequest instanceof SignRequestEntity) {
+				$this->db->rollBack();
+				return;
+			}
 
-		$metadata = $signRequest->getMetadata() ?? [];
-		if (!array_key_exists('libresign_error', $metadata)) {
-			return;
-		}
+			$metadata = $signRequest->getMetadata() ?? [];
+			if (!array_key_exists('libresign_error', $metadata)) {
+				$this->db->rollBack();
+				return;
+			}
 
-		unset($metadata['libresign_error']);
-		$signRequest->setMetadata($metadata);
-		$this->signRequestMapper->update($signRequest);
+			unset($metadata['libresign_error']);
+			$signRequest->setMetadata($metadata);
+			$this->signRequestMapper->update($signRequest);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 	}
 
 	private function storeFileErrorInMetadata(string $uuid, int $fileId, array $error): void {
@@ -317,25 +333,31 @@ class ProgressService {
 			return;
 		}
 
+		// Lock the row before modifying metadata to avoid overwriting concurrent
+		// settlement updates.
+		$this->db->beginTransaction();
 		try {
-			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
-		} catch (DoesNotExistException) {
-			return;
-		}
-		if (!$signRequest instanceof SignRequestEntity) {
-			return;
-		}
+			$signRequest = $this->signRequestMapper->findByUuidForUpdate($uuid);
+			if (!$signRequest instanceof SignRequestEntity) {
+				$this->db->rollBack();
+				return;
+			}
 
-		$metadata = $signRequest->getMetadata() ?? [];
-		$fileErrors = $metadata['libresign_file_errors'] ?? [];
-		if (!is_array($fileErrors)) {
-			$fileErrors = [];
-		}
+			$metadata = $signRequest->getMetadata() ?? [];
+			$fileErrors = $metadata['libresign_file_errors'] ?? [];
+			if (!is_array($fileErrors)) {
+				$fileErrors = [];
+			}
 
-		$fileErrors[$fileId] = $error;
-		$metadata['libresign_file_errors'] = $fileErrors;
-		$signRequest->setMetadata($metadata);
-		$this->signRequestMapper->update($signRequest);
+			$fileErrors[$fileId] = $error;
+			$metadata['libresign_file_errors'] = $fileErrors;
+			$signRequest->setMetadata($metadata);
+			$this->signRequestMapper->update($signRequest);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
 	}
 
 	private function getFileErrorFromMetadata(string $uuid, int $fileId): ?array {
@@ -343,6 +365,7 @@ class ProgressService {
 			return null;
 		}
 
+		// This read does not modify metadata, so it does not require a row lock.
 		try {
 			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
 		} catch (DoesNotExistException) {
@@ -367,29 +390,36 @@ class ProgressService {
 			return;
 		}
 
+		// Lock the row before modifying metadata to avoid overwriting concurrent
+		// settlement updates.
+		$this->db->beginTransaction();
 		try {
-			$signRequest = $this->signRequestMapper->getByUuidUncached($uuid);
-		} catch (DoesNotExistException) {
-			return;
-		}
-		if (!$signRequest instanceof SignRequestEntity) {
-			return;
-		}
+			$signRequest = $this->signRequestMapper->findByUuidForUpdate($uuid);
+			if (!$signRequest instanceof SignRequestEntity) {
+				$this->db->rollBack();
+				return;
+			}
 
-		$metadata = $signRequest->getMetadata() ?? [];
-		$fileErrors = $metadata['libresign_file_errors'] ?? null;
-		if (!is_array($fileErrors) || !array_key_exists($fileId, $fileErrors)) {
-			return;
-		}
+			$metadata = $signRequest->getMetadata() ?? [];
+			$fileErrors = $metadata['libresign_file_errors'] ?? null;
+			if (!is_array($fileErrors) || !array_key_exists($fileId, $fileErrors)) {
+				$this->db->rollBack();
+				return;
+			}
 
-		unset($fileErrors[$fileId]);
-		if (empty($fileErrors)) {
-			unset($metadata['libresign_file_errors']);
-		} else {
-			$metadata['libresign_file_errors'] = $fileErrors;
+			unset($fileErrors[$fileId]);
+			if (empty($fileErrors)) {
+				unset($metadata['libresign_file_errors']);
+			} else {
+				$metadata['libresign_file_errors'] = $fileErrors;
+			}
+			$signRequest->setMetadata($metadata);
+			$this->signRequestMapper->update($signRequest);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
 		}
-		$signRequest->setMetadata($metadata);
-		$this->signRequestMapper->update($signRequest);
 	}
 
 	/**
