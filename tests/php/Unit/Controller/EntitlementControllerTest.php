@@ -11,6 +11,7 @@ namespace OCA\Libresign\Tests\Unit\Controller;
 use OCA\Libresign\Controller\EntitlementController;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\SettlementSource;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
@@ -279,7 +280,7 @@ final class EntitlementControllerTest extends \OCA\Libresign\Tests\Unit\TestCase
 		$entitlement->setRemainingUses(5);
 		$this->signingSettlementService
 			->method('settle')
-			->with(1, 'signer', 'SIGN_DOCUMENT')
+			->with(1, 'signer', 'SIGN_DOCUMENT', SettlementSource::HTTP_AFTER_SIGN)
 			->willReturn($entitlement);
 		$controller = $this->getController();
 

@@ -11,7 +11,9 @@ namespace OCA\Libresign\Controller;
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Enum\FileStatus;
+use OCA\Libresign\Exception\EmailVerificationException;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Helper\EmailMasker;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\FileService;
@@ -25,6 +27,7 @@ use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\FileDisplayResponse;
 use OCP\IAppConfig;
@@ -118,9 +121,10 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 				'expiresAt' => $workflow->getExpiresAt()->format(\DateTimeInterface::ATOM),
 				'hasDocument' => $hasDocument,
 				'fileUuid' => $workflow->getFileUuid(),
-				// Requester self-signing metadata so the public UI can rehydrate the
-				// requester chip + email after a reload (DRAFT metadata only).
-				'requesterEmail' => $workflow->getRequesterEmail(),
+				// DRAFT requester metadata lets the public UI restore the requester chip
+				// after reload. Since the capability cookie grants bearer access, expose
+				// only a masked email and keep the full address server-side.
+				'requesterEmailMasked' => EmailMasker::mask($workflow->getRequesterEmail()),
 				'requesterIsSigner' => $workflow->getRequesterIsSigner(),
 				// DRAFT document with its signers + visible elements, so the client
 				// can restore the prepared state after a reload. Null when absent or
@@ -361,8 +365,10 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 	/**
 	 * Check whether the authenticated user can claim the workflow.
 	 *
-	 * Resolves the workflow from the capability cookie. The email comparison is
-	 * provided for the confirmation UI only; it does not authorize the claim.
+	 * Resolves the workflow from the capability cookie. Returns a masked hint of
+	 * the stored requester email (never the full address) and whether the claim
+	 * will require email verification; the actual verification happens
+	 * server-side in claim().
 	 */
 	#[NoAdminRequired]
 	#[ApiRoute(verb: 'GET', url: '/api/{apiVersion}/public-workflow/claim', requirements: ['apiVersion' => '(v1)'])]
@@ -380,13 +386,15 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 			// No claimable workflow for this browser — a normal, non-error state.
 			return new DataResponse(['claimable' => false]);
 		}
-		$info = $this->workflowService->describeClaim($workflow, $user, $user->getEMailAddress());
+		// The claimant now enters the email explicitly; the account email is no
+		// longer used for automatic comparison. Passing null keeps describeClaim()
+		// from deriving emailMatches from the authenticated account, ensuring the
+		// backend remains the sole authority for email verification.
+		$info = $this->workflowService->describeClaim($workflow, $user, null);
 		return new DataResponse([
 			'claimable' => $info['claimable'],
-			'status' => $workflow->getStatus(),
-			'requesterEmail' => $info['requesterEmail'],
-			'accountEmail' => $user->getEMailAddress(),
-			'emailMatches' => $info['emailMatches'],
+			'requesterEmailMasked' => EmailMasker::mask($info['requesterEmail']),
+			'emailVerificationRequired' => $info['requesterEmail'] !== null,
 			'alreadyClaimedByMe' => $info['alreadyClaimedByMe'],
 		]);
 	}
@@ -394,15 +402,18 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 	/**
 	 * Claim the workflow after explicit confirmation by the authenticated user.
 	 *
-	 * Claim authorization requires both a valid capability and an authenticated
-	 * session. An email match is neither required nor sufficient. CSRF protection
-	 * remains enabled.
+	 * Claim authorization requires a valid capability and an authenticated
+	 * session; that is the real security boundary. When the workflow has a
+	 * stored requester email, a matching $email is also required (a SECOND
+	 * factor, checked server-side in claim()) — never sufficient on its own.
+	 * CSRF protection remains enabled.
 	 *
 	 * Transfers document ownership and returns the signing-preparation redirect.
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 5, period: 300)]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/public-workflow/claim', requirements: ['apiVersion' => '(v1)'])]
-	public function claim(): DataResponse {
+	public function claim(?string $email = null): DataResponse {
 		if ($disabled = $this->disabledResponse()) {
 			return $disabled;
 		}
@@ -416,7 +427,12 @@ class PublicWorkflowController extends AEnvironmentAwareController {
 			return $this->error($this->l10n->t('Invalid or expired workflow'), Http::STATUS_UNAUTHORIZED);
 		}
 		try {
-			$file = $this->workflowService->claim($workflow, $user);
+			$file = $this->workflowService->claim($workflow, $user, $email);
+		} catch (EmailVerificationException) {
+			// Return the same response for an incorrect email and any row that cannot
+			// be verified. Never expose the stored email or its masked form, or reveal
+			// whether a guessed address belongs to a claim.
+			return $this->error($this->l10n->t('We couldn\'t verify that email.'), Http::STATUS_FORBIDDEN);
 		} catch (LibresignException $e) {
 			// Concurrency / already-claimed / not-ready → actionable conflict.
 			return $this->error($e->getMessage(), Http::STATUS_CONFLICT);

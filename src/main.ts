@@ -14,6 +14,7 @@ import './style/force-light.scss'
 
 import App from './App.vue'
 import router from './router/router'
+import { entitlementCoordinator } from './payment/entitlementCoordinator'
 
 if (window.OCA && !window.OCA.LibreSign) {
 	Object.assign(window.OCA, { LibreSign: {} })
@@ -26,8 +27,18 @@ app.config.globalProperties.n = n
 app.config.globalProperties.OC = OC
 app.config.globalProperties.OCA = OCA
 
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(router)
+
+// Start after Pinia is initialized and before mounting so consumers have a
+// coordinator available from their first render. This only refreshes displayed
+// entitlement state; settlement authority remains on the backend.
+entitlementCoordinator.start(pinia)
+
+if (import.meta.hot) {
+	import.meta.hot.dispose(() => entitlementCoordinator.stop())
+}
 
 router.isReady().then(() => {
 	app.mount('#content')

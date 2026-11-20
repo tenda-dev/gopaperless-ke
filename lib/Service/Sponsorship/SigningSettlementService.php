@@ -1,6 +1,10 @@
 <?php
 
 declare(strict_types=1);
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 
 /**
  * TODO (Architecture):
@@ -13,6 +17,10 @@ use OCA\Libresign\Db\Entitlement;
 use OCA\Libresign\Db\EntitlementMapper;
 use OCA\Libresign\Db\EntitlementReservationMapper;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\SettlementSource;
+use OCA\Libresign\Exception\EntitlementAlreadyConsumedException;
+use OCA\Libresign\Exception\InsufficientEntitlementException;
+use OCA\Libresign\Exception\StaleEntitlementException;
 use OCA\Libresign\Service\Entitlement\EntitlementReservationService;
 use OCA\Libresign\Service\Sponsorship\DTO\SigningSettlementContextDTO;
 use OCP\IDBConnection;
@@ -45,7 +53,13 @@ use Psr\Log\LoggerInterface;
  * entitlement_consumed metadata before any mutation occurs.
  */
 final class SigningSettlementService {
-	private const LOG_PREFIX = '[SigningSettlementService]';
+	private const LOG_PREFIX = '[EntitlementSettlement][SigningSettlementService]';
+
+	/**
+	 * Safety limit for stale self-sponsored retries. Normal exhaustion is bounded
+	 * by the number of available entitlement candidates.
+	 */
+	private const MAX_SELF_SPONSORED_ATTEMPTS = 25;
 
 	public function __construct(
 		private IDBConnection $db,
@@ -69,64 +83,136 @@ final class SigningSettlementService {
 		int $signRequestId,
 		string $signerUserId,
 		string $productCode,
+		SettlementSource $source,
 	): Entitlement {
-		$this->db->beginTransaction();
-		$entitlement = null;
+		$excludedEntitlementIds = [];
 
-		try {
-			$this->logger->info(
-				self::LOG_PREFIX . ' Starting signing settlement.',
-				[
-					'signRequestId' => $signRequestId,
-					'signerUserId' => $signerUserId,
-					'productCode' => $productCode,
-				],
-			);
+		for ($attempt = 1; $attempt <= self::MAX_SELF_SPONSORED_ATTEMPTS; $attempt++) {
+			$this->db->beginTransaction();
+			$entitlement = null;
 
-			$context = $this->validationService->validateCommon(
-				signRequestId: $signRequestId,
-				signerUserId: $signerUserId,
-				productCode: $productCode,
-			);
+			try {
+				$this->logger->info(
+					self::LOG_PREFIX . ' Starting signing settlement.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'productCode' => $productCode,
+						'attempt' => $attempt,
+					],
+				);
 
-			if ($context->sponsorship !== null) {
-				$context = $this->validationService
-					->validateRequesterSponsored($context);
+				$context = $this->validationService->validateCommon(
+					signRequestId: $signRequestId,
+					signerUserId: $signerUserId,
+					productCode: $productCode,
+				);
 
-				$entitlement = $this->settleRequesterSponsored($context);
-			} else {
-				$context = $this->validationService
-					->validateSelfSponsored($context);
+				$settlementPath = $context->sponsorship !== null
+					? 'requester_sponsored'
+					: 'self_sponsored';
 
-				$entitlement = $this->settleSelfSponsored($context);
+				$this->logger->debug(
+					self::LOG_PREFIX . ' Settlement path selected.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'settlementPath' => $settlementPath,
+						'attempt' => $attempt,
+					],
+				);
+
+				if ($context->sponsorship !== null) {
+					$context = $this->validationService
+						->validateRequesterSponsored($context);
+
+					$entitlement = $this->settleRequesterSponsored($context, $source);
+				} else {
+					// Re-select on each attempt so previously stale candidates can become
+					// eligible again if concurrent activity restores their capacity.
+					$context = $this->validationService
+						->validateSelfSponsored($context, $excludedEntitlementIds);
+
+					$entitlement = $this->settleSelfSponsored($context, $source);
+				}
+
+				$this->db->commit();
+
+				// Log success only after commit, when the settlement is durable.
+				$this->logger->info(
+					self::LOG_PREFIX . ' Signing settlement completed successfully.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'productCode' => $productCode,
+						'settlementPath' => $settlementPath,
+						'entitlementId' => $entitlement->getId(),
+						'remainingUses' => $entitlement->getRemainingUses(),
+						'outcome' => 'committed',
+					],
+				);
+
+				return $entitlement;
+			} catch (EntitlementAlreadyConsumedException $e) {
+				// Idempotent no-op: Settlement was already committed. Roll back this attempt and treat
+				// the duplicate as an expected idempotent outcome.
+				$this->db->rollBack();
+
+				$this->logger->info(
+					self::LOG_PREFIX . ' Settlement skipped: sign request was already settled.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'productCode' => $productCode,
+						'outcome' => 'skipped_already_consumed',
+					],
+				);
+
+				throw $e;
+			} catch (StaleEntitlementException $e) {
+				// Roll back before retrying to release the sign request and entitlement
+				// locks. Holding locks across retries could create a deadlock with the
+				// requester-sponsored settlement path.
+				$this->db->rollBack();
+
+				$this->logger->warning(
+					self::LOG_PREFIX . ' Self-sponsored entitlement was stale under lock; retrying with it excluded.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'staleEntitlementId' => $e->getEntitlementId(),
+						'attempt' => $attempt,
+						'outcome' => 'stale_retry',
+					],
+				);
+
+				$excludedEntitlementIds[] = $e->getEntitlementId();
+				continue;
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+
+				$this->logger->error(
+					self::LOG_PREFIX . ' Signing settlement failed.',
+					[
+						'signRequestId' => $signRequestId,
+						'signerUserId' => $signerUserId,
+						'productCode' => $productCode,
+						'attempt' => $attempt,
+						'exceptionClass' => get_class($e),
+						'exception' => $e,
+						'outcome' => 'failed',
+					],
+				);
+
+				throw $e;
 			}
-
-			$this->db->commit();
-
-			$this->logger->info(
-				self::LOG_PREFIX . ' Signing settlement completed successfully.',
-				[
-					'signRequestId' => $signRequestId,
-					'entitlementId' => $entitlement->getId(),
-					'remainingUses' => $entitlement->getRemainingUses(),
-				],
-			);
-
-			return $entitlement;
-		} catch (\Throwable $e) {
-			$this->db->rollBack();
-
-			$this->logger->error(
-				self::LOG_PREFIX . ' Signing settlement failed.',
-				[
-					'signRequestId' => $signRequestId,
-					'userId' => $signerUserId,
-					'exception' => $e,
-				],
-			);
-
-			throw $e;
 		}
+
+		throw new InsufficientEntitlementException(sprintf(
+			'Signing settlement exhausted %d attempt(s) on stale self-sponsored entitlements for sign request %d.',
+			self::MAX_SELF_SPONSORED_ATTEMPTS,
+			$signRequestId,
+		));
 	}
 
 	/**
@@ -143,9 +229,20 @@ final class SigningSettlementService {
 	 */
 	private function settleRequesterSponsored(
 		SigningSettlementContextDTO $context,
+		SettlementSource $source,
 	): Entitlement {
 		$reservation = $context->reservation;
 		$entitlement = $context->entitlement;
+
+		$this->logger->debug(
+			self::LOG_PREFIX . ' Releasing reservation ahead of requester-sponsored consumption.',
+			[
+				'signRequestId' => $context->signRequest->getId(),
+				'reservationId' => $reservation->getId(),
+				'entitlementId' => $entitlement->getId(),
+				'settlementPath' => 'requester_sponsored',
+			],
+		);
 
 		$this->reservationService->applyReservationRelease(
 			$reservation,
@@ -159,7 +256,7 @@ final class SigningSettlementService {
 		$this->entitlementMapper->update($entitlement);
 		$this->reservationMapper->update($reservation);
 
-		$this->markEntitlementConsumed($context);
+		$this->markEntitlementConsumed($context, 'requester_sponsored', $source);
 
 		return $entitlement;
 	}
@@ -172,6 +269,7 @@ final class SigningSettlementService {
 	 */
 	private function settleSelfSponsored(
 		SigningSettlementContextDTO $context,
+		SettlementSource $source,
 	): Entitlement {
 		$entitlement = $context->entitlement;
 
@@ -179,7 +277,7 @@ final class SigningSettlementService {
 
 		$this->entitlementMapper->update($entitlement);
 
-		$this->markEntitlementConsumed($context);
+		$this->markEntitlementConsumed($context, 'self_sponsored', $source);
 
 		return $entitlement;
 	}
@@ -197,6 +295,8 @@ final class SigningSettlementService {
 	 */
 	private function markEntitlementConsumed(
 		SigningSettlementContextDTO $context,
+		string $settlementPath,
+		SettlementSource $source,
 	): void {
 		$signRequest = $context->signRequest;
 
@@ -206,8 +306,27 @@ final class SigningSettlementService {
 		$metadata['productCode'] = $context->product->getCode();
 		$metadata['entitlementId'] = $context->entitlement->getId();
 
+		// Record the settlement source only within the committing transaction.
+		// The first successful settlement owns the attribution; later attempts
+		// must not overwrite it.
+		if (!isset($metadata['settlement_source'])) {
+			$metadata['settlement_source'] = $source->value;
+		}
+
 		$signRequest->setMetadata($metadata);
 
 		$this->signRequestMapper->update($signRequest);
+
+		// This confirms the marker was written within the transaction, not yet
+		// committed. Durable settlement is logged after commit in settle().
+		$this->logger->debug(
+			self::LOG_PREFIX . ' Entitlement-consumed marker persisted within transaction (pending commit).',
+			[
+				'signRequestId' => $signRequest->getId(),
+				'entitlementId' => $context->entitlement->getId(),
+				'settlementPath' => $settlementPath,
+				'outcome' => 'marker_written_pending_commit',
+			],
+		);
 	}
 }

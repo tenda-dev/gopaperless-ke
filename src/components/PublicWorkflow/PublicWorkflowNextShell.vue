@@ -384,7 +384,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
 import PwAddSignerDialog from './PwAddSignerDialog.vue'
 import PwContextualHint from './PwContextualHint.vue'
-import PwDocumentStage from './PwDocumentStage.vue'
+import { asyncRetry } from '../../utils/asyncRetry'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
@@ -394,6 +394,8 @@ import { buildSignerPayload, isPlausibleEmail } from './signerPayload'
 import { MAX_FILE_SIZE_MB, validatePublicUploadFile } from './uploadValidation'
 
 defineOptions({ name: 'PublicWorkflowNextShell' })
+
+const PwDocumentStage = asyncRetry(() => import('./PwDocumentStage.vue'))
 
 const sponsorshipEnabled = (
 	loadState('libresign', 'config', {}) as { sponsorship_enabled?: boolean }

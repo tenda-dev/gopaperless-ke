@@ -184,11 +184,16 @@ import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 import { PaymentFlowType, usePaymentContextStore } from '@/store/paymentContext'
 import { useSignerContextStore } from '@/store/signerContext'
 import { useUserContextStore } from '@/store/userContext'
+import { useEntitlementSync } from '@/composables/useEntitlementSync'
 
 const entitlementStore = useEntitlementStore()
 const paymentContext = usePaymentContextStore()
 const signerContext = useSignerContextStore()
 const userContextStore = useUserContextStore()
+
+// Keeps displayed entitlement state up to date through visibility-aware
+// polling and event-bus updates. This is simply a UI synchronization mechanism
+useEntitlementSync(DEFAULT_PRODUCT_CODE)
 
 // Admin toggle: when disabled, the "Buy just what you need" (one-time) option is
 // hidden so users are guided to signing credit packs instead. Defaults to true.

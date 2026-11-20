@@ -64,6 +64,8 @@ import { type PaymentState } from '@/payment/usePayment'
 import type { HydratedPayment, PaymentPresentation, PaymentPurpose } from '@/payment/types'
 import { notifyInfo } from '@/services/toast'
 import { useProductPricing } from '@/composables/useProductPricing';
+import { emitAppEvent } from '@/events/appEvents'
+import { DEFAULT_SIGN_PRODUCT_CODE } from '@/constants/product'
 
 type CreditPurchaseStep =
 	| 'quantity'
@@ -229,6 +231,14 @@ function handleStartOver() {
 function onSuccess() {
   discardRecovery()
   canClose.value = true
+
+  // Signals that payment completed so the coordinator can refresh entitlement
+  // state. No entitlement data is refreshed directly here; the coordinator
+  // performs the authoritative read.
+  emitAppEvent('payment:verified', {
+    context: 'purchase',
+    productCode: DEFAULT_SIGN_PRODUCT_CODE,
+  })
 
   emit('success')
 }

@@ -18,6 +18,7 @@ use OCA\Libresign\Service\SignRequest\ProgressPollDecisionPolicy;
 use OCA\Libresign\Service\SignRequest\ProgressService;
 use OCA\Libresign\Service\SignRequest\StatusCacheService;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IDBConnection;
 use OCP\ICache;
 use OCP\ICacheFactory;
 use OCP\IMemcache;
@@ -33,6 +34,7 @@ class ProgressServiceTest extends TestCase {
 	private SignRequestMapper&MockObject $signRequestMapper;
 	private StatusCacheService&MockObject $statusCacheService;
 	private ProgressPollDecisionPolicy $pollDecisionPolicy;
+	private IDBConnection&MockObject $db;
 
 	protected function setUp(): void {
 		$this->fileMapper = $this->createMock(FileMapper::class);
@@ -45,6 +47,7 @@ class ProgressServiceTest extends TestCase {
 			->willReturn($this->cache);
 		$this->statusCacheService = $this->createMock(StatusCacheService::class);
 		$this->pollDecisionPolicy = new ProgressPollDecisionPolicy();
+		$this->db = $this->createMock(IDBConnection::class);
 
 		$this->service = new ProgressService(
 			$this->fileMapper,
@@ -52,6 +55,7 @@ class ProgressServiceTest extends TestCase {
 			$this->signRequestMapper,
 			$this->statusCacheService,
 			$this->pollDecisionPolicy,
+			$this->db,
 		);
 	}
 
@@ -373,7 +377,8 @@ class ProgressServiceTest extends TestCase {
 			$cacheFactory,
 			$this->signRequestMapper,
 			$this->statusCacheService,
-			$this->pollDecisionPolicy
+			$this->pollDecisionPolicy,
+			$this->db,
 		);
 
 		$uuid = 'real-cache-uuid';
@@ -410,7 +415,8 @@ class ProgressServiceTest extends TestCase {
 			$this->cacheFactory,
 			$this->signRequestMapper,
 			$this->statusCacheService,
-			$this->pollDecisionPolicy
+			$this->pollDecisionPolicy,
+			$this->db,
 		);
 
 		$retrieved = $service->getSignRequestError($uuid);
@@ -444,7 +450,8 @@ class ProgressServiceTest extends TestCase {
 			$this->cacheFactory,
 			$this->signRequestMapper,
 			$this->statusCacheService,
-			$this->pollDecisionPolicy
+			$this->pollDecisionPolicy,
+			$this->db,
 		);
 
 		$retrieved = $service->getFileError($uuid, $fileId);
@@ -759,7 +766,8 @@ class ProgressServiceTest extends TestCase {
 			$cacheFactory,
 			$this->signRequestMapper,
 			$this->statusCacheService,
-			$this->pollDecisionPolicy
+			$this->pollDecisionPolicy,
+			$this->db,
 		);
 
 		$service->setFileError($uuid, $fileId, $error);
@@ -783,6 +791,92 @@ class ProgressServiceTest extends TestCase {
 
 		$this->assertIsArray($retrieved);
 		$this->assertEquals('Persistent error', $retrieved['message']);
+	}
+
+	public function testStoreSignRequestErrorInMetadataLocksBeforeReading(): void {
+		// §5 invariant: the sign request must be read AFTER the lock, never
+		// via an unlocked getByUuidUncached, so a concurrent
+		// SigningSettlementService::settle() TX B can never be clobbered by
+		// a stale pre-lock snapshot written here.
+		$uuid = 'lock-order-uuid';
+		$error = ['message' => 'Locked write', 'code' => 500];
+		$signRequest = new SignRequestEntity();
+		$signRequest->setUuid($uuid);
+
+		$calls = [];
+		$this->db->expects($this->once())->method('beginTransaction')
+			->willReturnCallback(function () use (&$calls) {
+				$calls[] = 'beginTransaction';
+			});
+		$this->db->expects($this->once())->method('commit')
+			->willReturnCallback(function () use (&$calls) {
+				$calls[] = 'commit';
+			});
+		$this->db->expects($this->never())->method('rollBack');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('findByUuidForUpdate')
+			->with($uuid)
+			->willReturnCallback(function () use (&$calls, $signRequest) {
+				$calls[] = 'findByUuidForUpdate';
+				return $signRequest;
+			});
+		$this->signRequestMapper->expects($this->once())
+			->method('update')
+			->with($signRequest)
+			->willReturnCallback(function () use (&$calls) {
+				$calls[] = 'update';
+			});
+		$this->signRequestMapper->expects($this->never())
+			->method('getByUuidUncached');
+
+		$this->service->setSignRequestError($uuid, $error);
+
+		$this->assertSame(
+			['beginTransaction', 'findByUuidForUpdate', 'update', 'commit'],
+			$calls,
+		);
+		$this->assertSame($error, $signRequest->getMetadata()['libresign_error']);
+	}
+
+	public function testStoreSignRequestErrorInMetadataRollsBackWhenSignRequestMissing(): void {
+		$uuid = 'missing-sign-request-uuid';
+
+		$this->db->expects($this->once())->method('beginTransaction');
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('findByUuidForUpdate')
+			->with($uuid)
+			->willReturn(null);
+		$this->signRequestMapper->expects($this->never())->method('update');
+
+		$this->service->setSignRequestError($uuid, ['message' => 'unused']);
+	}
+
+	public function testClearFileErrorInMetadataLocksBeforeReading(): void {
+		$uuid = 'clear-file-lock-order-uuid';
+		$fileId = 909;
+		$signRequest = new SignRequestEntity();
+		$signRequest->setUuid($uuid);
+		$signRequest->setMetadata(['libresign_file_errors' => [$fileId => ['message' => 'x']]]);
+
+		$this->db->expects($this->once())->method('beginTransaction');
+		$this->db->expects($this->once())->method('commit');
+		$this->db->expects($this->never())->method('rollBack');
+
+		$this->signRequestMapper->expects($this->once())
+			->method('findByUuidForUpdate')
+			->with($uuid)
+			->willReturn($signRequest);
+		$this->signRequestMapper->expects($this->once())
+			->method('update')
+			->with($signRequest);
+
+		$this->service->clearFileError($uuid, $fileId);
+
+		$this->assertArrayNotHasKey('libresign_file_errors', $signRequest->getMetadata());
 	}
 
 	public function testClearSignRequestErrorRemovesFromCacheAndMetadata(): void {

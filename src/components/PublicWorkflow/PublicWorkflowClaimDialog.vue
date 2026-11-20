@@ -3,14 +3,14 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <!--
-  Authenticated claim prompt. Mounted globally for logged-in users (App.vue);
-  on mount it asks the server whether THIS browser's capability cookie maps to a
-  claimable public draft. If so, it offers an explicit confirmation to transfer
-  the prepared draft to the signed-in account and continue to the authenticated
-  signing-request page. It never transfers silently: the POST runs only on the
-  user's explicit click. The capability cookie + authenticated session are the
-  authorization; the requester email is shown for reassurance/mismatch only and
-  is not an authorization factor.
+  Authenticated claim prompt for public workflows. Checks whether the current
+  browser's capability cookie identifies a claimable draft and requires
+  explicit confirmation before transferring it to the authenticated account.
+
+  The capability token and authenticated session authorize the claim. When
+  a requester email is stored, the server additionally verifies the
+  claimant-submitted email. The UI receives only a masked hint; the account
+  email is never used for comparison.
 -->
 <template>
 	<NcDialog v-if="open"
@@ -26,25 +26,36 @@
 			<NcNoteCard v-if="status.alreadyClaimedByMe" type="success">
 				{{ t('libresign', 'You’ve already claimed this document. Continue to review and send it from your account.') }}
 			</NcNoteCard>
-			<NcNoteCard v-else-if="mismatch" type="warning">
-				{{ t('libresign', 'This draft was prepared with the email {requester}, which is different from your account email {account}. You can still claim it with this account, or switch accounts.', { requester: status.requesterEmail || '—', account: status.accountEmail || '—' }) }}
-			</NcNoteCard>
-			<NcNoteCard v-else-if="status.requesterEmail" type="info">
-				{{ t('libresign', 'Prepared for {requester}.', { requester: status.requesterEmail }) }}
-			</NcNoteCard>
 
-			<p v-if="error" class="pwc__err">{{ error }}</p>
+			<template v-if="status.emailVerificationRequired">
+				<NcNoteCard type="info">
+					{{ t('libresign', 'This draft was prepared with the email {masked}. Enter it below to confirm it’s yours.', { masked: status.requesterEmailMasked || '—' }) }}
+				</NcNoteCard>
+				<div class="pwc__field">
+					<label for="pwc-email">{{ t('libresign', 'Email this draft was prepared with') }}</label>
+					<input id="pwc-email"
+						ref="emailInputRef"
+						v-model.trim="email"
+						type="email"
+						autocomplete="email"
+						:disabled="submitting"
+						:aria-invalid="emailShowError || undefined"
+						:aria-describedby="emailShowError ? 'pwc-email-err' : undefined"
+						@blur="emailTouched = true"
+						@keydown.enter="confirm">
+					<p v-if="emailShowError" id="pwc-email-err" class="pw-err" role="alert">
+						{{ t('libresign', 'Enter the email this draft was prepared with.') }}
+					</p>
+				</div>
+			</template>
+
+			<p v-if="error" class="pwc__err" role="alert">{{ error }}</p>
 
 			<div class="pwc__actions">
 				<NcButton :disabled="submitting" @click="dismiss">
 					{{ t('libresign', 'Not now') }}
 				</NcButton>
-				<NcButton v-if="mismatch && !status.alreadyClaimedByMe"
-					:disabled="submitting"
-					@click="switchAccount">
-					{{ t('libresign', 'Use a different account') }}
-				</NcButton>
-				<NcButton variant="primary" :disabled="submitting" @click="confirm">
+				<NcButton variant="primary" :disabled="submitting || !canSubmit" @click="confirm">
 					<template v-if="submitting" #icon>
 						<NcLoadingIcon :size="20" />
 					</template>
@@ -55,7 +66,7 @@
 	</NcDialog>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -63,6 +74,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 
 import { claimWorkflow, getClaimStatus, type ClaimStatus } from '../../services/publicWorkflow'
+import { isPlausibleEmail } from './signerPayload'
 
 defineOptions({ name: 'PublicWorkflowClaimDialog' })
 
@@ -71,7 +83,15 @@ const submitting = ref(false)
 const error = ref('')
 const status = ref<ClaimStatus>({ claimable: false })
 
-const mismatch = computed(() => status.value.requesterEmail != null && status.value.emailMatches === false)
+const email = ref('')
+const emailTouched = ref(false)
+const emailInputRef = ref<HTMLInputElement | null>(null)
+
+// Nothing to submit as a second factor when the workflow has no stored
+// requester email (legacy / token-only claim) — the server skips the gate
+// entirely in that case, so the button is never blocked on it here either.
+const canSubmit = computed(() => !status.value.emailVerificationRequired || isPlausibleEmail(email.value))
+const emailShowError = computed(() => emailTouched.value && status.value.emailVerificationRequired === true && !isPlausibleEmail(email.value))
 
 onMounted(async () => {
 	try {
@@ -79,6 +99,11 @@ onMounted(async () => {
 		if (result.claimable) {
 			status.value = result
 			open.value = true
+			// Focus the one thing the claimant actually needs to act on: the email
+			// input when there is one, so keyboard/AT users land there immediately
+			// rather than on the dialog chrome.
+			await nextTick()
+			emailInputRef.value?.focus()
 		}
 	} catch {
 		// No claimable workflow for this browser, or not authenticated — stay closed.
@@ -93,25 +118,26 @@ function onDialogToggle(value: boolean): void {
 function dismiss(): void {
 	open.value = false
 }
-function switchAccount(): void {
-	// Leave the capability cookie in place; after re-login the prompt re-appears
-	// for the newly signed-in account.
-	const oc = (window as unknown as { OC?: { logout?: () => void } }).OC
-	if (typeof oc?.logout === 'function') {
-		oc.logout()
-	}
-}
 async function confirm(): Promise<void> {
 	if (submitting.value) {
+		return
+	}
+	if (!canSubmit.value) {
+		emailTouched.value = true
+		await nextTick()
+		emailInputRef.value?.focus()
 		return
 	}
 	submitting.value = true
 	error.value = ''
 	try {
-		const result = await claimWorkflow()
+		const result = await claimWorkflow(status.value.emailVerificationRequired ? email.value : null)
 		// Full navigation to the authenticated signing-preparation page.
 		window.location.href = result.redirectUrl
 	} catch (e: unknown) {
+		// Whatever the server sent (including the generic, non-revealing 403 for
+		// a failed email match) is safe to surface verbatim — it never carries
+		// the stored or submitted address.
 		const message = (e as { response?: { data?: { ocs?: { data?: { message?: string } } } } })
 			?.response?.data?.ocs?.data?.message
 		error.value = message || t('libresign', 'Could not claim the document. Please try again.')
@@ -134,6 +160,35 @@ async function confirm(): Promise<void> {
 		line-height: 1.55;
 		color: var(--color-main-text);
 	}
+	&__field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+
+		label {
+			font-size: 0.85rem;
+			font-weight: 600;
+			color: var(--color-main-text);
+		}
+		input {
+			width: 100%;
+			height: 44px;
+			padding: 0 12px;
+			border: 2px solid var(--color-border-maxcontrast);
+			border-radius: var(--border-radius-large);
+			background: var(--color-main-background);
+			color: var(--color-main-text);
+			font-size: 0.95rem;
+
+			&:focus-visible {
+				border-color: var(--color-primary-element);
+				outline: none;
+			}
+			&[aria-invalid="true"] {
+				border-color: var(--color-error);
+			}
+		}
+	}
 	&__err {
 		margin: 0;
 		font-size: 0.85rem;
@@ -145,6 +200,24 @@ async function confirm(): Promise<void> {
 		justify-content: flex-end;
 		gap: 10px;
 		margin-top: 4px;
+
+		// Stack actions on narrow screens to avoid uneven wrapping. Keep the primary
+		// action visually first without changing DOM or keyboard navigation order.
+		@media (max-width: 400px) {
+			flex-direction: column-reverse;
+			align-items: stretch;
+
+			:deep(.button-vue) {
+				width: 100%;
+				justify-content: center;
+			}
+		}
 	}
+}
+
+.pw-err {
+	margin: 0;
+	font-size: 0.85rem;
+	color: var(--color-error);
 }
 </style>

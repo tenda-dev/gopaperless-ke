@@ -5,7 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createL10nMock } from './testHelpers/l10n.js'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 import { initialActionCode, ACTION_CODES } from '../helpers/ActionMapping'
 
@@ -47,6 +47,22 @@ vi.mock('@nextcloud/vue/components/NcEmptyContent', () => ({
 	default: { name: 'NcEmptyContent', template: '<div class="nc-empty-content"><slot /></div>', props: ['description'] },
 }))
 
+vi.mock('../components/LeftSidebar/LeftSidebar.vue', () => ({
+	default: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
+}))
+vi.mock('../components/RightSidebar/RightSidebar.vue', () => ({
+	default: { name: 'RightSidebar', template: '<div class="right-sidebar" />' },
+}))
+vi.mock('../components/Sponsorship/SponsorshipWorkflow.vue', () => ({
+	default: { name: 'SponsorshipWorkflow', template: '<div />' },
+}))
+vi.mock('../components/Certificate/CertificateGate.vue', () => ({
+	default: { name: 'CertificateGate', template: '<div />' },
+}))
+vi.mock('../components/PublicWorkflow/PublicWorkflowClaimDialog.vue', () => ({
+	default: { name: 'PublicWorkflowClaimDialog', template: '<div />' },
+}))
+
 import App from '../App.vue'
 
 describe('App', () => {
@@ -58,7 +74,7 @@ describe('App', () => {
 		initialActionCode.value = 0
 	})
 
-	it('shows left sidebar on regular internal routes', () => {
+	it('shows left sidebar on regular internal routes', async () => {
 		const wrapper = mount(App, {
 			global: {
 				stubs: {
@@ -67,12 +83,16 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
 			},
 		})
 
+		await flushPromises()
 		expect(wrapper.find('.left-sidebar').exists()).toBe(true)
 	})
 
@@ -89,6 +109,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -111,6 +134,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -133,6 +159,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -153,6 +182,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -173,6 +205,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -193,6 +228,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: { name: 'DefaultPageError', template: '<div class="default-page-error" />' },
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -211,6 +249,9 @@ describe('App', () => {
 					NcEmptyContent: { template: '<div><slot /></div>' },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: { name: 'DefaultPageError', template: '<div class="default-page-error" />' },
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -231,6 +272,9 @@ describe('App', () => {
 					NcEmptyContent: { name: 'NcEmptyContent', template: '<div class="nc-empty-content"><slot /></div>', props: ['description'] },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},
@@ -251,6 +295,9 @@ describe('App', () => {
 					NcEmptyContent: { name: 'NcEmptyContent', template: '<div class="nc-empty-content"><slot /></div>', props: ['description'] },
 					LeftSidebar: true,
 					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
 					DefaultPageError: true,
 					RouterView: { template: '<div class="router-view" />' },
 				},

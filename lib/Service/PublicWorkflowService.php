@@ -15,6 +15,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\PublicWorkflow;
 use OCA\Libresign\Db\PublicWorkflowMapper;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Exception\EmailVerificationException;
 use OCA\Libresign\Exception\LibresignException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -362,7 +363,12 @@ class PublicWorkflowService {
 	 * (idempotent physical copy + File re-point) -> completeClaim (CLAIMED + temp-user
 	 * deletion). A failed transfer leaves the row CLAIMING (recoverable), never CLAIMED.
 	 */
-	public function claim(PublicWorkflow $workflow, IUser $claimant): File {
+	public function claim(PublicWorkflow $workflow, IUser $claimant, ?string $submittedEmail = null): File {
+		// Require the requester email as an additional claim condition, without
+		// weakening the capability-token and authenticated-session checks. Verify
+		// before acquiring the claim lock so mismatches cannot enter the mutation path.
+		$this->verifyClaimEmail($workflow, $submittedEmail);
+
 		$uid = $claimant->getUID();
 		$fileUuid = (string)$workflow->getFileUuid();
 
@@ -431,6 +437,34 @@ class PublicWorkflowService {
 	 */
 	private function claimLockKey(PublicWorkflow $workflow): string {
 		return self::CLAIM_LOCK_PREFIX . md5($workflow->getTokenHash());
+	}
+
+	/**
+	 * Enforce the stored requester email as an additional condition for claiming.
+	 *
+	 * A missing requester email preserves token-only claiming for legacy
+	 * workflows. Email verification supplements the existing capability-token
+	 * and authenticated-session checks; it does not replace them.
+	 *
+	 * Compares normalised addresses using hash_equals() to avoid leaking
+	 * information through timing differences in the comparison.
+	 *
+	 * @throws EmailVerificationException when the submitted email does not match.
+	 */
+	private function verifyClaimEmail(PublicWorkflow $workflow, ?string $submittedEmail): void {
+		$requesterEmail = $workflow->getRequesterEmail();
+		if ($requesterEmail === null) {
+			return;
+		}
+		if ($submittedEmail === null
+			|| !hash_equals($this->normaliseEmail($requesterEmail), $this->normaliseEmail($submittedEmail))
+		) {
+			throw new EmailVerificationException('We could not verify that email.');
+		}
+	}
+
+	private function normaliseEmail(string $email): string {
+		return mb_strtolower(trim($email));
 	}
 
 	/**

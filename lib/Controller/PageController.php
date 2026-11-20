@@ -25,6 +25,7 @@ use OCA\Libresign\Service\FileService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\TokenService;
 use OCA\Libresign\Service\IdentifyMethodService;
 use OCA\Libresign\Service\Operations\Analytics\OperationsAccessService;
+use OCA\Libresign\Service\PublicBrandedShellService;
 use OCA\Libresign\Service\RequestSignatureService;
 use OCA\Libresign\Service\SecurySignService;
 use OCA\Libresign\Service\SessionService;
@@ -82,6 +83,7 @@ class PageController extends AEnvironmentPageAwareController {
 		private ConfigService $docMdpConfigService,
 		private IAppManager $appManager,
 		private OperationsAccessService $operationsAccessService,
+		private PublicBrandedShellService $publicBrandedShell,
 	) {
 		parent::__construct(
 			request: $request,
@@ -308,7 +310,7 @@ class PageController extends AEnvironmentPageAwareController {
 		Util::addScript(Application::APP_ID, 'gopaperless');
 		Util::addStyle(Application::APP_ID, 'gopaperless');
 
-		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_PUBLIC);
+		$response = new TemplateResponse(Application::APP_ID, 'main', $this->publicBrandedShell->params(), TemplateResponse::RENDER_AS_PUBLIC);
 
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain('\'self\'');
@@ -354,11 +356,13 @@ class PageController extends AEnvironmentPageAwareController {
 		Util::addScript(Application::APP_ID, 'gopaperless');
 		Util::addStyle(Application::APP_ID, 'gopaperless');
 
-		if (class_exists(LoadViewer::class)) {
-			$this->eventDispatcher->dispatchTyped(new LoadViewer());
-		}
+		// The public landing has no Nextcloud Viewer-based document-opening flow.
+		// /p/workflow uses its own PDF.js preview, so keep the Viewer bundle out
+		// of this entry point.
 
-		$response = new TemplateResponse(Application::APP_ID, 'main', [], TemplateResponse::RENDER_AS_PUBLIC);
+		// Render the shared branded shell before Vue mounts, avoiding the
+		// default Nextcloud public chrome on anonymous entry points.
+		$response = new TemplateResponse(Application::APP_ID, 'main', $this->publicBrandedShell->params(), TemplateResponse::RENDER_AS_PUBLIC);
 
 		$policy = new ContentSecurityPolicy();
 		$policy->addAllowedFrameDomain('\'self\'');

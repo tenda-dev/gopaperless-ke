@@ -395,10 +395,16 @@ const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 	gap: 24px;
 }
 
-/* On mobile the sidebar clips the last actions; add room to scroll past. */
+/*
+ * Leave a small scroll clearance after the final action and account for
+ * the device's bottom safe area. The previous 100px padding compensated
+ * for the mobile sidebar's content-driven sizing, which prevented internal
+ * scrolling. With that fixed in RightSidebar.vue, only modest clearance
+ * is needed.
+ */
 @media (max-width: 512px) {
 	.workflow-request-signature-tab {
-		padding-bottom: 100px;
+		padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 	}
 }
 

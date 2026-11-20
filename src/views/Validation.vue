@@ -124,7 +124,6 @@ import {
 	mdiKey,
 	mdiUpload,
 } from '@mdi/js'
-import JSConfetti from 'js-confetti'
 import axios from '@nextcloud/axios'
 import { getCurrentUser } from '@nextcloud/auth'
 import { getCapabilities } from '@nextcloud/capabilities'
@@ -794,6 +793,21 @@ function openUuidDialog() {
 	getUUID.value = true
 }
 
+/**
+ * Fire the celebration confetti. js-confetti is loaded on demand only here,
+ * on the successful, flag-enabled validation path, so it is not in the
+ * validation chunk otherwise. A failed import is swallowed: the celebration is
+ * non-critical and must never affect validation (and never rejects unhandled).
+ */
+async function fireConfetti(): Promise<void> {
+	try {
+		const { default: JSConfetti } = await import('js-confetti')
+		new JSConfetti().addConfetti()
+	} catch {
+		// Confetti is cosmetic; ignore load/render failures.
+	}
+}
+
 function handleValidationSuccess(data: unknown) {
 	if (!isActiveView.value) {
 		return
@@ -836,8 +850,7 @@ function handleValidationSuccess(data: unknown) {
 	if ((isSignedDoc || allFilesSigned || signerCompleted) && (isAfterSigned.value || shouldFireAsyncConfetti.value)) {
 		const capabilities = getCapabilities() as { libresign?: { config?: Record<string, unknown> } } | undefined
 		if (capabilities?.libresign?.config?.['show-confetti'] === true) {
-			const jsConfetti = new JSConfetti()
-			jsConfetti.addConfetti()
+			void fireConfetti()
 		}
 		shouldFireAsyncConfetti.value = false
 	}
