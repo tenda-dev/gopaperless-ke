@@ -64,7 +64,7 @@ class RecoveryCookie {
 	/**
 	 * @param ?int $now Seconds since epoch; only for deterministic tests.
 	 * @return ?array{uuid: string, uidTag: string} Null for anything that is not a
-	 *         well-formed, correctly signed, unexpired cookie.
+	 *                                              well-formed, correctly signed, unexpired cookie.
 	 */
 	public function verify(?string $raw, ?int $now = null): ?array {
 		$secret = $this->secret();

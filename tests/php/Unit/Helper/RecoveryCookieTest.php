@@ -202,12 +202,12 @@ final class RecoveryCookieTest extends TestCase {
 		$tag = self::tag();
 
 		return [
-			'unknown version' => ["2~" . self::UUID . "~$future~$tag"],
-			'empty version' => ["~" . self::UUID . "~$future~$tag"],
+			'unknown version' => ['2~' . self::UUID . "~$future~$tag"],
+			'empty version' => ['~' . self::UUID . "~$future~$tag"],
 			'missing field' => ['1~' . self::UUID . "~$future"],
 			'extra field' => ['1~' . self::UUID . "~$future~$tag~x"],
 			'bad uuid' => ["1~not-a-uuid~$future~$tag"],
-			'uuid with newline' => ["1~" . self::UUID . "\n~$future~$tag"],
+			'uuid with newline' => ['1~' . self::UUID . "\n~$future~$tag"],
 			'non-digit exp' => ['1~' . self::UUID . "~12a4~$tag"],
 			'signed exp' => ['1~' . self::UUID . "~-5~$tag"],
 			'eleven digit exp' => ['1~' . self::UUID . "~12345678901~$tag"],
