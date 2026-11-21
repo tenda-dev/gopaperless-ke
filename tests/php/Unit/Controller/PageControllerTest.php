@@ -15,6 +15,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest as SignRequestEntity;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Helper\RecoveryCookie;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\DocMdp\ConfigService;
@@ -54,10 +55,15 @@ final class PageControllerTest extends TestCase {
 	private FileMapper&MockObject $fileMapper;
 	private FileAccessService&MockObject $fileAccessService;
 	private PageController $controller;
+	/** @var array<string, mixed> initial state provided by the last render, by key */
+	private array $providedState = [];
+	/** @var array<string, string> cookies sent to the controller's request */
+	private array $incomingCookies = [];
 
 	public function setUp(): void {
 		$this->request = $this->createMock(IRequest::class);
 		$this->request->method('getServerHost')->willReturn('localhost:8080');
+		$this->request->method('getCookie')->willReturnCallback(fn (string $name) => $this->incomingCookies[$name] ?? null);
 		$this->userSession = $this->createMock(IUserSession::class);
 		$this->currentUser = $this->createMock(IUser::class);
 		$this->currentUser->method('getUID')->willReturn('requester');
@@ -105,12 +111,18 @@ final class PageControllerTest extends TestCase {
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 
+		$initialStateService = $this->createMock(IInitialStateService::class);
+		$initialStateService->method('provideInitialState')
+			->willReturnCallback(function (string $app, string $key, $value): void {
+				$this->providedState[$key] = $value;
+			});
+
 		$this->controller = new PageController(
 			request: $this->request,
 			userSession: $this->userSession,
 			sessionService: $this->createMock(SessionService::class),
 			initialState: new \OC\AppFramework\Services\InitialState(
-				$this->createMock(IInitialStateService::class),
+				$initialStateService,
 				Application::APP_ID,
 			),
 			accountService: $this->accountService,
@@ -148,6 +160,96 @@ final class PageControllerTest extends TestCase {
 		$response = $this->controller->index();
 
 		self::assertStringContainsString("worker-src 'self'", $response->getContentSecurityPolicy()->buildPolicy());
+	}
+
+	private function recoveryCookieFor(string $uid, ?int $now = null): string {
+		$value = \OCP\Server::get(RecoveryCookie::class)
+			->issue('0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10', $uid, $now);
+		self::assertNotNull($value);
+
+		return $value;
+	}
+
+	private function assertRecoveryCookieCleared(\OCP\AppFramework\Http\Response $response): void {
+		$cookies = $response->getCookies();
+		self::assertArrayHasKey(RecoveryCookie::NAME, $cookies);
+		self::assertSame('expired', $cookies[RecoveryCookie::NAME]['value']);
+		self::assertLessThan(time(), $cookies[RecoveryCookie::NAME]['expireDate']->getTimestamp());
+	}
+
+	public function testIndexWithoutRecoveryCookieProvidesNoRecoveryStateAndTouchesNoCookie(): void {
+		$response = $this->controller->index();
+
+		self::assertArrayNotHasKey('recovery_pending', $this->providedState);
+		self::assertArrayNotHasKey(RecoveryCookie::NAME, $response->getCookies());
+	}
+
+	public function testIndexWithARecoveryCookieForTheSignedInAccountProvidesPendingAndKeepsTheCookie(): void {
+		$this->incomingCookies[RecoveryCookie::NAME] = $this->recoveryCookieFor('requester');
+
+		$response = $this->controller->index();
+
+		self::assertTrue($this->providedState['recovery_pending'] ?? null);
+		self::assertArrayNotHasKey(RecoveryCookie::NAME, $response->getCookies());
+	}
+
+	public function testIndexWithARecoveryCookieForAnotherAccountClearsItAndProvidesNothing(): void {
+		$this->incomingCookies[RecoveryCookie::NAME] = $this->recoveryCookieFor('someone-else');
+
+		$response = $this->controller->index();
+
+		self::assertArrayNotHasKey('recovery_pending', $this->providedState);
+		$this->assertRecoveryCookieCleared($response);
+	}
+
+	public function testIndexWithAnExpiredRecoveryCookieClearsItAndProvidesNothing(): void {
+		$this->incomingCookies[RecoveryCookie::NAME] = $this->recoveryCookieFor('requester', time() - RecoveryCookie::TTL - 60);
+
+		$response = $this->controller->index();
+
+		self::assertArrayNotHasKey('recovery_pending', $this->providedState);
+		$this->assertRecoveryCookieCleared($response);
+	}
+
+	public function testIndexWithATamperedRecoveryCookieClearsItAndProvidesNothing(): void {
+		$value = $this->recoveryCookieFor('requester');
+		$this->incomingCookies[RecoveryCookie::NAME] = substr($value, 0, -1) . (substr($value, -1) === 'A' ? 'B' : 'A');
+
+		$response = $this->controller->index();
+
+		self::assertArrayNotHasKey('recovery_pending', $this->providedState);
+		$this->assertRecoveryCookieCleared($response);
+	}
+
+	public function testIndexWithAMalformedRecoveryCookieClearsItAndProvidesNothing(): void {
+		$this->incomingCookies[RecoveryCookie::NAME] = 'not-a-cookie';
+
+		$response = $this->controller->index();
+
+		self::assertArrayNotHasKey('recovery_pending', $this->providedState);
+		$this->assertRecoveryCookieCleared($response);
+	}
+
+	public function testPendingRecoveryExposesOnlyABooleanToThePage(): void {
+		$cookie = $this->recoveryCookieFor('requester');
+		$this->incomingCookies[RecoveryCookie::NAME] = $cookie;
+
+		$this->controller->index();
+
+		self::assertTrue($this->providedState['recovery_pending']);
+		$everything = json_encode($this->providedState);
+		self::assertStringNotContainsString($cookie, $everything);
+		self::assertStringNotContainsString('0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10', $everything);
+		self::assertStringNotContainsString('requester', $everything);
+		self::assertStringNotContainsString('gp_recover', $everything);
+	}
+
+	public function testTheAuthenticatedFolderShellsRenderRecoveryTheSameWay(): void {
+		$this->incomingCookies[RecoveryCookie::NAME] = $this->recoveryCookieFor('requester');
+
+		$this->controller->indexF();
+
+		self::assertTrue($this->providedState['recovery_pending'] ?? null);
 	}
 
 	public function testIndexRedirectsAnonymousToLoginWhenLandingDisabled(): void {

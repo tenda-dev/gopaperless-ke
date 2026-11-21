@@ -97,6 +97,13 @@ const pdfEditor = ref<PdfEditorRef | null>(null)
 const canRequestSign = ref(loadState('libresign', 'can_request_sign', false))
 const modal = ref(false)
 const loading = ref(false)
+// Local lifecycle of the mandatory modal initialization (document files, PDF blobs,
+// page map, placement seeding). Independent from the global files-store loading flag,
+// which is reserved for file-list loading.
+const initializing = ref(false)
+// Bumped on every showModal()/closeModal(); async work from an older run compares its
+// token and must not mutate shared state or clear a newer run's `initializing`.
+let initToken = 0
 const signerSelected = ref<SignerSummaryRecord | null>(null)
 const capabilities = getCapabilities() as LibresignCapabilities
 const signElementsConfig = capabilities.libresign?.config['sign-elements'] ?? {
@@ -415,6 +422,31 @@ function isSelectedSigner(signer: SignerSummaryRecord): boolean {
 	return idsMatch(signer.signRequestId, signerSelected.value.signRequestId)
 }
 
+class PdfLoadError extends Error {}
+
+// Map a failed PDF response to a message that matches what actually went wrong,
+// preferring the server's own OCS message when the body carries one.
+async function pdfLoadErrorFor(response: Response): Promise<PdfLoadError> {
+	let body: unknown = null
+	try {
+		body = await response.json()
+	} catch {
+		body = null
+	}
+	const serverMessage = getOcsErrorMessage({ response: { data: body } })
+	if (serverMessage) {
+		return new PdfLoadError(serverMessage)
+	}
+	if (response.status === 401 || response.status === 403) {
+		return new PdfLoadError(t('libresign', 'You do not have permission to view this document'))
+	}
+	// A JSON body on an OK response is the backend reporting a missing document.
+	if (response.status === 404 || response.ok) {
+		return new PdfLoadError(t('libresign', 'Document not found'))
+	}
+	return new PdfLoadError(t('libresign', 'Could not load the document. Please try again.'))
+}
+
 async function showModal() {
 	if (!canRequestSign.value) {
 		return
@@ -422,25 +454,57 @@ async function showModal() {
 	if (signElementsConfig['is-available'] === false) {
 		return
 	}
+	const token = ++initToken
+	const targetFileId = filesStore.getEditableFile().id
+	// Current while no newer showModal()/closeModal() ran and the selected document is unchanged.
+	// Reads the store directly rather than the `document` computed, so the guard never depends on cache invalidation.
+	const isCurrent = () => token === initToken && filesStore.getEditableFile().id === targetFileId
+	// If the selection moved under a still-current run, tear the modal down instead of leaving it half-initialized.
+	const abandon = () => {
+		if (token === initToken) {
+			closeModal()
+		}
+	}
+
 	modal.value = true
-	filesStore.loading = true
+	initializing.value = true
 	pdfEditorFiles.value = []
 	focusedSignerId.value = null
 	placing.value = false
 	editMode.value = false
-
-	if (documentFiles.value.length === 0) {
-		await fetchFiles()
-	}
-
 	pdfReady.value = false
 	elementsLoaded.value = false
 
-	await loadPdfEditorFiles()
-	buildFilePagesMap()
-	registerKeys(signerList.value.map((signer) => signer.signRequestId))
-	seedPlacements()
-	filesStore.loading = false
+	try {
+		if (documentFiles.value.length === 0) {
+			await fetchFiles(isCurrent)
+			if (!isCurrent()) {
+				abandon()
+				return
+			}
+		}
+
+		await loadPdfEditorFiles(isCurrent)
+		if (!isCurrent()) {
+			abandon()
+			return
+		}
+
+		buildFilePagesMap()
+		registerKeys(signerList.value.map((signer) => signer.signRequestId))
+		seedPlacements()
+	} catch (error) {
+		if (!isCurrent()) {
+			abandon()
+			return
+		}
+		showError(error instanceof PdfLoadError ? error.message : (getOcsErrorMessage(error) || t('libresign', 'An error occurred')))
+		closeModal()
+	} finally {
+		if (token === initToken) {
+			initializing.value = false
+		}
+	}
 }
 
 // Seed the placement model straight from the server visibleElements so counts
@@ -449,56 +513,69 @@ function seedPlacements() {
 	seed(serialiseSeedRecords(visibleElementsDocument.value, filePagesMap.value))
 }
 
-async function loadPdfEditorFiles() {
+async function loadPdfEditorFiles(isCurrent: () => boolean = () => true) {
 	const urls = pdfFiles.value.filter((file): file is string => typeof file === 'string' && file.length > 0)
 	if (urls.length === 0) {
-		pdfEditorFiles.value = []
-		return
+		// Nothing renderable: the editor would never mount and the modal would sit on
+		// "Preparing document…" forever. Fail initialization so the modal closes and resets.
+		if (!isCurrent()) {
+			return
+		}
+		throw new PdfLoadError(t('libresign', 'No PDF is available for this document'))
 	}
 
 	const blobs: File[] = []
 	for (const [index, url] of urls.entries()) {
 		const response = await fetch(url)
+		if (!isCurrent()) {
+			return
+		}
 		const contentType = response.headers.get('Content-Type') ?? ''
 		if (!response.ok || contentType.includes('application/json')) {
-			showError(t('libresign', 'Document not found'))
-			pdfEditorFiles.value = []
-			return
+			throw await pdfLoadErrorFor(response)
 		}
 
 		const blob = await response.blob()
+		if (!isCurrent()) {
+			return
+		}
 		blobs.push(new File([blob], pdfFileNames.value[index] || `document-${index + 1}.pdf`, { type: 'application/pdf' }))
 	}
 
 	pdfEditorFiles.value = blobs
 }
 
-async function fetchFiles() {
+async function fetchFiles(isCurrent: () => boolean = () => true) {
+	// Capture the document this request is for BEFORE awaiting: the response must only
+	// ever be written to this document's draft, even if the selection changes meanwhile.
+	const target = filesStore.getEditableFile()
 	const response = await axios.get(generateOcsUrl('/apps/libresign/api/v1/file/list'), {
 		params: {
-			parentFileId: document.value.id,
+			parentFileId: target.id,
 			details: true,
 			force_fetch: true,
 		},
 	})
+	if (!isCurrent()) {
+		return
+	}
 	const childFiles = response?.data?.ocs?.data?.data || []
 	fetchedFiles.value = Array.isArray(childFiles)
 		? childFiles.map(normaliseEditableRequestFile).filter((file): file is EditableRequestChildFile => file !== null)
 		: []
-	const currentFile = filesStore.getEditableFile()
-	if (currentFile) {
-		currentFile.files = fetchedFiles.value as typeof currentFile.files
+	if (target) {
+		target.files = fetchedFiles.value as typeof target.files
 	}
 
 	const allVisibleElements = aggregateVisibleElementsByFiles(visibleElementsFiles.value)
 	if (allVisibleElements.length > 0) {
-		document.value.visibleElements = normaliseVisibleElements(allVisibleElements)
+		target.visibleElements = normaliseVisibleElements(allVisibleElements)
 		return
 	}
 
 	const nestedDocumentElements = getVisibleElementsFromDocument(visibleElementsDocument.value)
 	if (nestedDocumentElements.length > 0) {
-		document.value.visibleElements = normaliseVisibleElements(nestedDocumentElements)
+		target.visibleElements = normaliseVisibleElements(nestedDocumentElements)
 	}
 }
 
@@ -508,7 +585,9 @@ function buildFilePagesMap() {
 
 function closeModal() {
 	modal.value = false
-	filesStore.loading = false
+	// Invalidate any outstanding initialization so it cannot write after the close.
+	initToken++
+	initializing.value = false
 	pdfReady.value = false
 	elementsLoaded.value = false
 	fetchedFiles.value = []
@@ -560,7 +639,6 @@ async function updateSigners() {
 	}
 
 	elementsLoaded.value = true
-	filesStore.loading = false
 }
 
 // Interaction handlers
@@ -786,6 +864,7 @@ return {
 	t,
 	modal,
 	loading,
+	initializing,
 	mode,
 	focusedSignerId,
 	placing,

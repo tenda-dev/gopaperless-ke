@@ -21,6 +21,18 @@ vi.mock('../../../utils/viewer.js', () => ({
 	openDocument: (...args: unknown[]) => openDocumentMock(...args),
 }))
 
+const { showErrorMock } = vi.hoisted(() => ({ showErrorMock: vi.fn() }))
+
+vi.mock('@nextcloud/l10n', () => ({
+	t: (_app: string, text: string) => text,
+}))
+
+vi.mock('../../../services/toast', () => ({
+	showError: (...args: unknown[]) => showErrorMock(...args),
+	showSuccess: vi.fn(),
+	showInfo: vi.fn(),
+}))
+
 function makeRow(overrides: Partial<FilesNextRow> = {}): FilesNextRow {
 	return {
 		key: 'uuid-1',
@@ -47,10 +59,11 @@ function makeRow(overrides: Partial<FilesNextRow> = {}): FilesNextRow {
 function createActions() {
 	const filesStore = {
 		selectFile: vi.fn(),
-		fetchFileDetail: vi.fn(async () => ({
+		isOriginalFileDeleted: vi.fn((raw: any) => !!raw?.metadata?.original_file_deleted),
+		fetchFileDetail: vi.fn(async (): Promise<any> => ({
 			id: 1,
 			uuid: 'uuid-1',
-			signers: [{ me: true, sign_request_uuid: 'sign-uuid-1' }],
+			signers: [{ me: true, sign_uuid: 'sign-uuid-1' }],
 			settings: { isApprover: false },
 		})),
 	}
@@ -96,6 +109,68 @@ describe('useFilesNextActions', () => {
 		openFile(makeRow({ nodeType: 'envelope' }))
 
 		expect(openDocumentMock).not.toHaveBeenCalled()
+	})
+
+	describe('openRow', () => {
+		it('selects the row, activates the Action Centre, then opens the viewer in that order', () => {
+			const { openRow, filesStore, sidebarStore } = createActions()
+
+			openRow(makeRow({ id: 42 }))
+
+			expect(filesStore.selectFile).toHaveBeenCalledWith(42)
+			expect(sidebarStore.activeRequestSignatureTab).toHaveBeenCalledTimes(1)
+			expect(openDocumentMock).toHaveBeenCalledWith({
+				fileUrl: '/apps/libresign/p/pdf/uuid-1',
+				filename: 'contract.pdf',
+				nodeId: 17,
+			})
+			const select = filesStore.selectFile.mock.invocationCallOrder[0]
+			const sidebar = sidebarStore.activeRequestSignatureTab.mock.invocationCallOrder[0]
+			const viewer = openDocumentMock.mock.invocationCallOrder[0]
+			expect(select).toBeLessThan(sidebar)
+			expect(sidebar).toBeLessThan(viewer)
+		})
+
+		it('selects an envelope and activates the sidebar without opening the viewer', () => {
+			const { openRow, filesStore, sidebarStore } = createActions()
+
+			openRow(makeRow({ id: 7, nodeType: 'envelope' }))
+
+			expect(filesStore.selectFile).toHaveBeenCalledWith(7)
+			expect(sidebarStore.activeRequestSignatureTab).toHaveBeenCalledTimes(1)
+			expect(openDocumentMock).not.toHaveBeenCalled()
+		})
+
+		it('selects a deleted original and activates the sidebar without opening the viewer', () => {
+			const { openRow, filesStore, sidebarStore } = createActions()
+
+			openRow(makeRow({ id: 8, raw: { metadata: { original_file_deleted: true } } }))
+
+			expect(filesStore.isOriginalFileDeleted).toHaveBeenCalledWith({ metadata: { original_file_deleted: true } })
+			expect(filesStore.selectFile).toHaveBeenCalledWith(8)
+			expect(sidebarStore.activeRequestSignatureTab).toHaveBeenCalledTimes(1)
+			expect(openDocumentMock).not.toHaveBeenCalled()
+		})
+
+		it('never hides the sidebar or activates another tab', () => {
+			const { openRow, sidebarStore } = createActions()
+
+			openRow(makeRow())
+			openRow(makeRow({ nodeType: 'envelope' }))
+
+			expect(sidebarStore.hideSidebar).not.toHaveBeenCalled()
+			expect(sidebarStore.activeSignTab).not.toHaveBeenCalled()
+		})
+
+		it('openFile stays viewer-only (no selection, no sidebar)', () => {
+			const { openFile, filesStore, sidebarStore } = createActions()
+
+			openFile(makeRow())
+
+			expect(openDocumentMock).toHaveBeenCalledTimes(1)
+			expect(filesStore.selectFile).not.toHaveBeenCalled()
+			expect(sidebarStore.activeRequestSignatureTab).not.toHaveBeenCalled()
+		})
 	})
 
 	it('downloadRow opens the file URL in a new tab', () => {
@@ -171,5 +246,47 @@ describe('useFilesNextActions', () => {
 		renameRow(makeRow({ uuid: null }))
 
 		expect(openDialog).not.toHaveBeenCalled()
+	})
+
+	it('signRow shows an error and does not navigate when no signer uuid resolves', async () => {
+		const { filesStore, signStore, signRow } = createActions()
+		filesStore.fetchFileDetail.mockImplementation(async () => ({
+			id: 1,
+			uuid: 'uuid-1',
+			signers: [{ me: true }],
+			settings: { isApprover: false },
+		}))
+
+		await signRow(makeRow())
+
+		expect(showErrorMock).toHaveBeenCalledTimes(1)
+		expect(routerPushMock).not.toHaveBeenCalled()
+		expect(signStore.setFileToSign).not.toHaveBeenCalled()
+	})
+
+	it('signRow does not substitute the file uuid for a missing signer uuid', async () => {
+		const { filesStore, signRow } = createActions()
+		filesStore.fetchFileDetail.mockImplementation(async () => ({
+			id: 1,
+			uuid: 'file-uuid',
+			signers: [{ me: true }],
+			settings: { isApprover: false },
+		}))
+
+		await signRow(makeRow({ uuid: 'file-uuid' }))
+
+		expect(routerPushMock).not.toHaveBeenCalled()
+	})
+
+	it('signRow shows an error when fetchFileDetail rejects', async () => {
+		const { filesStore, signRow } = createActions()
+		filesStore.fetchFileDetail.mockImplementation(async () => {
+			throw new Error('network')
+		})
+
+		await signRow(makeRow())
+
+		expect(showErrorMock).toHaveBeenCalledTimes(1)
+		expect(routerPushMock).not.toHaveBeenCalled()
 	})
 })

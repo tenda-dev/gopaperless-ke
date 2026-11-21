@@ -7,6 +7,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { interpolateL10n } from '../testHelpers/l10n.js'
 import type { Mock } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { watch } from 'vue'
 import axios from '@nextcloud/axios'
 import { emit } from '@nextcloud/event-bus'
 import { generateOCSResponse } from '../test-helpers'
@@ -266,6 +267,233 @@ describe('files store - critical business rules', () => {
 
 			expect(detailedFile?.uuid).toBe('file-uuid')
 			expect(detailedFile?.signers?.[0]?.sign_request_uuid).toBe('sign-request-uuid')
+		})
+	})
+
+	describe('RULE: file detail retrieval is deduplicated with per-document loading state', () => {
+		const detailResponse = (id: number, extra: Record<string, unknown> = {}) => generateOCSResponse({
+			payload: { id, uuid: `uuid-${id}`, status: 1, name: `doc-${id}.pdf`, signers: [], ...extra },
+		})
+		const deferred = () => {
+			let resolve!: (value: unknown) => void
+			let reject!: (reason: unknown) => void
+			const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+			return { promise, resolve, reject }
+		}
+
+		it('issues a single request for concurrent calls on the same document', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const first = store.fetchFileDetail({ fileId: 1 })
+			const second = store.fetchFileDetail({ fileId: 1 })
+			gate.resolve(detailResponse(1))
+			const [a, b] = await Promise.all([first, second])
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(a).toBe(b)
+			expect(a?.id).toBe(1)
+		})
+
+		it('fetches different documents independently', async () => {
+			const store = useFilesStore()
+			const gates = { 1: deferred(), 2: deferred() }
+			axiosMock.get.mockImplementation((url: string) => (url.endsWith('/1') ? gates[1] : gates[2]).promise)
+
+			const first = store.fetchFileDetail({ fileId: 1 })
+			const second = store.fetchFileDetail({ fileId: 2 })
+			expect(store.isLoadingDetail(1)).toBe(true)
+			expect(store.isLoadingDetail(2)).toBe(true)
+			gates[2].resolve(detailResponse(2))
+			await second
+			expect(store.isLoadingDetail(2)).toBe(false)
+			expect(store.isLoadingDetail(1)).toBe(true)
+			gates[1].resolve(detailResponse(1))
+			await first
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(2)
+			expect(store.files[1]).toBeDefined()
+			expect(store.files[2]).toBeDefined()
+		})
+
+		it('exposes reactive per-document loading state', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+			const seen: boolean[] = []
+			const stop = watch(() => store.isLoadingDetail(1), (value) => seen.push(value), { flush: 'sync' })
+
+			expect(store.isLoadingDetail(1)).toBe(false)
+			const request = store.fetchFileDetail({ fileId: 1 })
+			expect(store.isLoadingDetail(1)).toBe(true)
+			gate.resolve(detailResponse(1))
+			await request
+			stop()
+
+			expect(store.isLoadingDetail(1)).toBe(false)
+			expect(seen).toEqual([true, false])
+		})
+
+		it('does not touch the global list loading flag', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const request = store.fetchFileDetail({ fileId: 1 })
+			expect(store.loading).toBe(false)
+			gate.resolve(detailResponse(1))
+			await request
+			expect(store.loading).toBe(false)
+		})
+
+		it('clears loading state and rejects on failure, allowing a fresh retry', async () => {
+			const store = useFilesStore()
+			axiosMock.get.mockRejectedValue(new Error('network down'))
+
+			await expect(store.fetchFileDetail({ fileId: 1 })).rejects.toThrow('network down')
+			expect(store.isLoadingDetail(1)).toBe(false)
+
+			axiosMock.get.mockResolvedValue(detailResponse(1))
+			const retried = await store.fetchFileDetail({ fileId: 1 })
+			expect(axiosMock.get).toHaveBeenCalledTimes(2)
+			expect(retried?.id).toBe(1)
+		})
+
+		it('lets a forced call join an in-flight request for the same document', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const first = store.fetchFileDetail({ fileId: 1 })
+			const forced = store.fetchFileDetail({ fileId: 1, force: true })
+			gate.resolve(detailResponse(1))
+			const [a, b] = await Promise.all([first, forced])
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(a).toBe(b)
+		})
+
+		it('commits the response to its own document even if selection changed mid-flight', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation((url: string) => (url.endsWith('/1') ? gate.promise : new Promise(() => {})))
+
+			const request = store.fetchFileDetail({ fileId: 1 })
+			store.selectFile(2)
+			gate.resolve(detailResponse(1, { name: 'late.pdf' }))
+			const result = await request
+
+			expect(result?.id).toBe(1)
+			expect(store.files[1].name).toBe('late.pdf')
+			expect(store.files[1].detailsLoaded).toBe(true)
+			expect(store.selectedFileId).toBe(2)
+		})
+
+		it('recovers from a synchronous axios failure and allows a successful retry', async () => {
+			const store = useFilesStore()
+			axiosMock.get.mockImplementation(() => { throw new Error('sync boom') })
+
+			await expect(store.fetchFileDetail({ fileId: 1 })).rejects.toThrow('sync boom')
+			expect(store.isLoadingDetail(1)).toBe(false)
+
+			axiosMock.get.mockReset()
+			axiosMock.get.mockResolvedValue(detailResponse(1))
+			const retried = await store.fetchFileDetail({ fileId: 1 })
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(retried?.id).toBe(1)
+		})
+
+		it('rejects every caller that joined a failed request', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const first = store.fetchFileDetail({ fileId: 1 })
+			const joined = store.fetchFileDetail({ fileId: 1, force: true })
+			const settled = Promise.allSettled([first, joined])
+			gate.reject(new Error('server down'))
+			const results = await settled
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(results.map(result => result.status)).toEqual(['rejected', 'rejected'])
+			expect(store.isLoadingDetail(1)).toBe(false)
+		})
+
+		it('deduplicates concurrent uuid-only calls when the store is cold', async () => {
+			const store = useFilesStore()
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const first = store.fetchFileDetail({ uuid: 'uuid-7', force: true })
+			const second = store.fetchFileDetail({ uuid: 'uuid-7', force: true })
+			gate.resolve(detailResponse(7))
+			const [a, b] = await Promise.all([first, second])
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(a).toBe(b)
+			expect(a?.id).toBe(7)
+		})
+
+		it('deduplicates file-uuid and numeric-id calls when the file is already in the store', async () => {
+			const store = useFilesStore()
+			store.files[7] = { id: 7, uuid: 'uuid-7', detailsLoaded: true }
+			const gate = deferred()
+			axiosMock.get.mockImplementation(() => gate.promise)
+
+			const byUuid = store.fetchFileDetail({ uuid: 'uuid-7', force: true })
+			const byId = store.fetchFileDetail({ fileId: 7, force: true })
+			expect(store.isLoadingDetail(7)).toBe(true)
+			gate.resolve(detailResponse(7))
+			const [a, b] = await Promise.all([byUuid, byId])
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
+			expect(a).toBe(b)
+			expect(store.isLoadingDetail(7)).toBe(false)
+		})
+
+		it('may issue two requests for a sign-request uuid and a numeric id (accepted limitation), both committing to the same document', async () => {
+			const store = useFilesStore()
+			// The store only resolves file.uuid; a sign-request uuid is not resolvable to an id,
+			// so the two calls use different in-flight keys and are not deduplicated.
+			store.files[7] = { id: 7, uuid: 'uuid-7', detailsLoaded: true, signers: [{ sign_request_uuid: 'sign-req-uuid' }] }
+			const gates = [deferred(), deferred()]
+			let calls = 0
+			axiosMock.get.mockImplementation(() => gates[calls++].promise)
+
+			const bySignUuid = store.fetchFileDetail({ uuid: 'sign-req-uuid', force: true })
+			const byId = store.fetchFileDetail({ fileId: 7, force: true })
+			gates[0].resolve(detailResponse(7, { name: 'first.pdf' }))
+			gates[1].resolve(detailResponse(7, { name: 'second.pdf' }))
+			const [a, b] = await Promise.all([bySignUuid, byId])
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(2)
+			expect(a?.id).toBe(7)
+			expect(b?.id).toBe(7)
+			expect(Object.keys(store.files)).toEqual(['7'])
+			expect(store.files[7].detailsLoaded).toBe(true)
+			expect(store.isLoadingDetail(7)).toBe(false)
+		})
+
+		it('keeps the detailsLoaded cache short-circuit when not forced', async () => {
+			const store = useFilesStore()
+			store.files[1] = { id: 1, uuid: 'uuid-1', detailsLoaded: true }
+
+			const result = await store.fetchFileDetail({ fileId: 1 })
+
+			expect(result).toBe(store.files[1])
+			expect(axiosMock.get).not.toHaveBeenCalled()
+		})
+
+		it('bypasses the cache when forced and nothing is in flight', async () => {
+			const store = useFilesStore()
+			store.files[1] = { id: 1, uuid: 'uuid-1', detailsLoaded: true }
+			axiosMock.get.mockResolvedValue(detailResponse(1))
+
+			await store.fetchFileDetail({ fileId: 1, force: true })
+
+			expect(axiosMock.get).toHaveBeenCalledTimes(1)
 		})
 	})
 
@@ -654,6 +882,50 @@ describe('files store - critical business rules', () => {
 	})
 
 	describe('RULE: signer operations maintain consistency', () => {
+		it('sequential signer deletes do not resurrect an already deleted signer (stale request draft)', async () => {
+			const store = useFilesStore()
+			store.selectedFileId = 144
+			store.files[144] = {
+				id: 144,
+				signatureFlow: 'none',
+				signers: [255, 256, 311, 312].map((id) => ({ localKey: `signer:${id}`, signRequestId: id })),
+			}
+			axiosMock.delete.mockResolvedValue({})
+
+			const ids = () => (store.files[144].signers as Array<{ signRequestId: number }>).map((s) => s.signRequestId)
+			const byId = (id: number) => (store.files[144].signers as Array<{ signRequestId: number }>).find((s) => s.signRequestId === id)
+
+			await store.deleteSigner(byId(312)!)
+			expect(ids()).toEqual([255, 256, 311])
+			await store.deleteSigner(byId(311)!)
+
+			expect(ids()).toEqual([255, 256])
+			expect(store.files[144].signersCount).toBe(2)
+			expect(store.getEditableFile(144).signers).toHaveLength(2)
+			expect(axiosMock.delete).toHaveBeenCalledTimes(2)
+		})
+
+		it('a delete in flight is written to the file it was issued for, even if the selection moves', async () => {
+			const store = useFilesStore()
+			store.selectedFileId = 144
+			store.files[144] = {
+				id: 144,
+				signatureFlow: 'none',
+				signers: [{ localKey: 'signer:1', signRequestId: 1 }, { localKey: 'signer:2', signRequestId: 2 }],
+			}
+			store.files[200] = { id: 200, signatureFlow: 'none', signers: [{ localKey: 'signer:9', signRequestId: 9 }] }
+			let release!: () => void
+			axiosMock.delete.mockImplementation(() => new Promise((resolve) => { release = () => resolve({}) }))
+
+			const pending = store.deleteSigner({ localKey: 'signer:2', signRequestId: 2 })
+			store.selectedFileId = 200
+			release()
+			await pending
+
+			expect((store.files[144].signers as unknown[]).length).toBe(1)
+			expect((store.files[200].signers as Array<{ signRequestId: number }>).map((s) => s.signRequestId)).toEqual([9])
+		})
+
 		it('deleting signer updates signing order for remaining signers', async () => {
 			const store = useFilesStore()
 			store.selectedFileId = 1

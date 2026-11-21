@@ -13,11 +13,13 @@ import type { Ref } from 'vue'
 import type { Router } from 'vue-router'
 
 import { generateUrl } from '@nextcloud/router'
+import { t } from '@nextcloud/l10n'
 
 import type { FilesNextRow } from '../useFilesNextRows.ts'
 import type { DialogKind } from './useFilesNextDialog.ts'
 import { getSigningRouteUuid } from '../../../utils/signRequestUuid.ts'
 import { openDocument } from '../../../utils/viewer.js'
+import { showError } from '../../../services/toast'
 
 type SidebarStoreLike = {
 	activeRequestSignatureTab: () => void
@@ -49,6 +51,21 @@ export function useFilesNextActions(opts: Options) {
 		openDocument({ fileUrl, filename: row.name, nodeId: row.nodeId ?? 0 })
 	}
 
+	/**
+	 * Row click / tap: select the document, activate the existing Action Centre,
+	 * then open the viewer where supported. Envelopes and deleted originals keep
+	 * their special handling (never opened in the viewer). `openFile` stays
+	 * viewer-only for the menu "Open" action.
+	 */
+	function openRow(row: FilesNextRow) {
+		filesStore.selectFile(row.id as number)
+		sidebarStore.activeRequestSignatureTab()
+		if (row.nodeType === 'envelope' || filesStore.isOriginalFileDeleted(row.raw)) {
+			return
+		}
+		openFile(row)
+	}
+
 	function downloadRow(row: FilesNextRow) {
 		const url = row.raw?.file || generateUrl('/apps/libresign/p/pdf/{uuid}', { uuid: row.uuid })
 		window.open(url, '_blank', 'noopener')
@@ -60,9 +77,18 @@ export function useFilesNextActions(opts: Options) {
 	}
 
 	async function signRow(row: FilesNextRow) {
-		const detailed = await filesStore.fetchFileDetail({ fileId: row.id as number, force: true })
+		let detailed
+		try {
+			detailed = await filesStore.fetchFileDetail({ fileId: row.id as number, force: true })
+		} catch (error) {
+			showError(t('libresign', 'Could not load this document for signing. Please try again.'))
+			return
+		}
+		// Resolve the signer's own signing-request UUID (approver falls back to the
+		// document UUID inside the resolver). No file UUID is substituted here.
 		const uuid = getSigningRouteUuid(detailed)
 		if (!uuid || !detailed) {
+			showError(t('libresign', 'This document cannot be signed with your account.'))
 			return
 		}
 		filesStore.selectFile(row.id as number)
@@ -91,7 +117,7 @@ export function useFilesNextActions(opts: Options) {
 		opts.openDialog('rename', row)
 	}
 
-	return { openFile, downloadRow, openDetails, signRow, validateRow, deleteRow, renameRow }
+	return { openFile, openRow, downloadRow, openDetails, signRow, validateRow, deleteRow, renameRow }
 }
 
 export type FilesNextActions = ReturnType<typeof useFilesNextActions>

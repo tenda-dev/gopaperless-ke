@@ -1,115 +1,138 @@
 <template>
-	<div class="workflow-request-signature-tab">
+	<div class="workflow-request-signature-tab" :aria-busy="isDetailLoading">
 		<!-- ========================================= -->
-		<!-- HEADER -->
-		<!-- ========================================= -->
-		<WorkflowHeaderCard
-		    v-if="!state.signers.value?.length"
-			:file="state.file.value"
-			:state="state.snapshot.value"
-			:can-validate="state.canValidate.value"
-			@open-file="openFile"
-			@manage-files="openManageFiles"
-			@validate-file="validationFile" />
-
-		<!-- ========================================= -->
-		<!-- STEPPER -->
-		<!-- ========================================= -->
-		<WorkflowStepper
-			:steps="state.steps.value" />
-
-		<!-- ========================================= -->
-		<!-- LOADING DETAIL -->
-		<!-- ========================================= -->
-		<NcNoteCard
-			v-if="state.shouldLoadDetail.value && isLoadingFileDetail"
-			type="info">
-			{{ t('libresign', 'Loading signer details...') }}
-		</NcNoteCard>
-
-		<!-- ========================================= -->
-		<!-- WARNINGS -->
+		<!-- LOADING DETAIL (not animated out: it must never coexist with the body) -->
 		<!-- ========================================= -->
 		<div
-			v-if="hasWarnings"
-			class="workflow-warning-stack">
-			<NcNoteCard
-				v-if="state.showDocMdpWarning.value"
-				type="warning">
-				{{ t('libresign', 'This document has been certified with no changes allowed. You cannot add more signers to this document.') }}
-			</NcNoteCard>
-
-			<NcNoteCard
-				v-if="state.isOriginalFileDeleted.value"
-				type="warning">
-				{{ t('libresign', 'The original file was deleted. You can no longer add signers or open it.') }}
-			</NcNoteCard>
-
-			<NcNoteCard
-				v-if="state.hasSignersWithDisabledMethods.value"
-				type="warning">
-				{{ t('libresign', 'Some signers use identification methods that have been disabled. Please remove or update them before requesting signatures.') }}
-			</NcNoteCard>
+			v-if="isDetailLoading"
+			class="workflow-detail-loading"
+			role="status"
+			aria-live="polite">
+			<NcLoadingIcon :size="20" />
+			<span>{{ t('libresign', 'Loading document details...') }}</span>
 		</div>
 
 		<!-- ========================================= -->
-		<!-- SIGNERS -->
+		<!-- DETAIL FAILED: error + Retry only, no partial workflow -->
 		<!-- ========================================= -->
-		<WorkflowSigners
-		    v-if="state.signers.value.length > 0"
-		    :can-manage-signers="canManageSigners"
-		    :signers="state.signers.value"
-			:event="state.isOriginalFileDeleted.value ? '' : 'libresign:edit-signer'"
-			@add-signer="addSigner"
-			@edit-signer="editSigner"
-			@delete-signer="filesStore.deleteSigner"
-			@request-signature="requestSignatureForSigner"
-			@send-reminder="sendNotify"
-			@send-whatsapp="sendWhatsApp"
-			@toggle-sign-order="onPreserveOrderChange"
-			@signing-order-changed="debouncedSave"
-			@customize-message="customizeMessage" />
-
-
-		<WorkflowSignatureSetup
-		    v-if="canManageSigners"
-			:file="state.file.value"
-			:is-loading="hasLoading"
-			@edit-positions="save" />
+		<Transition name="gp-reveal">
+			<div
+				v-if="hasDetailFailed"
+				class="workflow-detail-error">
+				<NcNoteCard type="error">
+					{{ t('libresign', 'Document details could not be loaded.') }}
+				</NcNoteCard>
+				<NcButton variant="secondary" @click="retryDetail">
+					{{ t('libresign', 'Retry') }}
+				</NcButton>
+			</div>
+		</Transition>
 
 		<!-- ========================================= -->
-		<!-- SIGNING PROGRESS -->
+		<!-- DETAIL BODY: everything that depends on loaded details.
+		     One wrapper so the reveal covers the whole cluster; children keep
+		     their original order and their own conditions. -->
 		<!-- ========================================= -->
-		<SigningProgress
-			v-if="state.showSigningProgress.value"
-			:status="signingProgressStatus ?? FILE_STATUS.SIGNING_IN_PROGRESS"
-			:status-text="signingProgressStatusText"
-			:progress="signingProgress ?? undefined"
-			:is-loading="hasLoading" />
+		<Transition name="gp-reveal">
+			<div v-if="isDetailReady" class="workflow-detail-body">
+				<!-- HEADER -->
+				<WorkflowHeaderCard
+					v-if="!state.signers.value?.length"
+					:file="state.file.value"
+					:state="state.snapshot.value"
+					:can-validate="state.canValidate.value"
+					@open-file="openFile"
+					@manage-files="openManageFiles"
+					@validate-file="validationFile" />
 
-		<!-- ========================================= -->
-		<!-- FILE ACTIONS -->
-		<!-- ========================================= -->
-		<WorkflowFileActions
-			:file="state.file.value"
-			:is-envelope="state.isEnvelope.value"
-			:can-validate="state.canValidate.value"
-			@open-file="openFile"
-			@manage-files="openManageFiles"
-			@validate-file="validationFile" />
+				<!-- STEPPER -->
+				<WorkflowStepper
+					:steps="state.steps.value"
+					:motion-key="currentFileId" />
 
-		<!-- ========================================= -->
-		<!-- PRIMARY ACTION -->
-		<!-- ========================================= -->
-		<WorkflowActions
-			:workflow="state.snapshot.value"
-			:loading="hasLoading"
-			@add-signer="addSigner"
-			@setup-positions="save"
-			@request-signatures="request"
-			@sign-document="sign"
-			@view-progress="validationFile"
-			@secondary-action="showOrderDiagram = true" />
+				<!-- WARNINGS -->
+				<div
+					v-if="hasWarnings"
+					class="workflow-warning-stack">
+					<NcNoteCard
+						v-if="state.showDocMdpWarning.value"
+						type="warning">
+						{{ t('libresign', 'This document has been certified with no changes allowed. You cannot add more signers to this document.') }}
+					</NcNoteCard>
+
+					<NcNoteCard
+						v-if="state.isOriginalFileDeleted.value"
+						type="warning">
+						{{ t('libresign', 'The original file was deleted. You can no longer add signers or open it.') }}
+					</NcNoteCard>
+
+					<NcNoteCard
+						v-if="state.hasSignersWithDisabledMethods.value"
+						type="warning">
+						{{ t('libresign', 'Some signers use identification methods that have been disabled. Please remove or update them before requesting signatures.') }}
+					</NcNoteCard>
+				</div>
+
+				<!-- SIGNERS -->
+				<WorkflowSigners
+					v-if="state.signers.value.length > 0"
+					:can-manage-signers="canManageSigners"
+					:signers="state.signers.value"
+					:event="state.isOriginalFileDeleted.value ? '' : 'libresign:edit-signer'"
+					:pending-actions="pendingSignerActions"
+					:request-busy="isDeleteBlocked"
+					:request-loading="hasLoading"
+					:motion-key="currentFileId"
+					@add-signer="addSigner"
+					@edit-signer="editSigner"
+					@delete-signer="deleteSigner"
+					@request-signature="requestSignatureForSigner"
+					@send-reminder="sendNotify"
+					@send-whatsapp="sendWhatsApp"
+					@toggle-sign-order="onPreserveOrderChange"
+					@signing-order-changed="debouncedSave"
+					@customize-message="customizeMessage" />
+
+				<!-- Animates only when signature fields are introduced after the body mounts.
+				Without `appear`, the initial body reveal remains the only animation. -->
+				<Transition name="gp-reveal">
+					<WorkflowSignatureSetup
+						v-if="canManageSigners && state.hasSignaturePositions.value"
+						:file="state.file.value"
+						:is-loading="isRequestBusy"
+						@edit-positions="save" />
+				</Transition>
+
+				<!-- SIGNING PROGRESS -->
+				<SigningProgress
+					v-if="state.showSigningProgress.value"
+					:status="signingProgressStatus ?? FILE_STATUS.SIGNING_IN_PROGRESS"
+					:status-text="signingProgressStatusText"
+					:progress="signingProgress ?? undefined"
+					:is-loading="hasLoading" />
+
+				<!-- FILE ACTIONS -->
+				<WorkflowFileActions
+					:file="state.file.value"
+					:is-envelope="state.isEnvelope.value"
+					:can-validate="state.canValidate.value"
+					@open-file="openFile"
+					@manage-files="openManageFiles"
+					@validate-file="validationFile" />
+
+				<!-- PRIMARY ACTION -->
+				<WorkflowActions
+					:workflow="state.snapshot.value"
+					:loading="isRequestBusy"
+					:motion-key="currentFileId"
+					@add-signer="addSigner"
+					@setup-positions="save"
+					@request-signatures="request"
+					@sign-document="sign"
+					@view-progress="validationFile"
+					@secondary-action="showOrderDiagram = true" />
+			</div>
+		</Transition>
 
 		<!-- ========================================= -->
 		<!-- VISIBLE ELEMENTS (signature field editor) -->
@@ -171,10 +194,10 @@
 
 				<NcButton
 					variant="primary"
-					:disabled="hasLoading"
+					:disabled="isRequestBusy"
 					@click="confirmRequest">
 					<template #icon>
-						<NcLoadingIcon v-if="hasLoading" :size="20" />
+						<NcLoadingIcon v-if="isRequestBusy" :size="20" />
 						<NcIconSvgWrapper v-else :path="mdiSend" :size="20" />
 					</template>
 					{{ t('libresign', 'Send') }}
@@ -197,10 +220,10 @@
 
 				<NcButton
 					variant="primary"
-					:disabled="hasLoading"
+					:disabled="isRequestBusy"
 					@click="confirmRequestSigner">
 					<template #icon>
-						<NcLoadingIcon v-if="hasLoading" :size="20" />
+						<NcLoadingIcon v-if="isRequestBusy" :size="20" />
 						<NcIconSvgWrapper v-else :path="mdiSend" :size="20" />
 					</template>
 					{{ t('libresign', 'Send') }}
@@ -291,7 +314,9 @@ const {
 
 	// local UI refs
 	hasLoading,
-	isLoadingFileDetail,
+	pendingSignerActions,
+	isRequestBusy,
+	isDeleteBlocked,
 	signerToEdit,
 	modalSrc,
 	methods,
@@ -331,9 +356,11 @@ const {
 	openManageFiles,
 	sendNotify,
 	sendWhatsApp,
+	deleteSigner,
 	requestSignatureForSigner,
 	confirmRequestSigner,
 	closeModal,
+	ensureCurrentFileDetail,
 
 	// helpers
 	debouncedSave,
@@ -358,6 +385,41 @@ const visibleElementsNextEnabled = (
 const VisibleElements = visibleElementsNextEnabled
 	? defineAsyncComponent(() => import('../../Request/VisibleElementsNext/VisibleElementsNext.vue'))
 	: defineAsyncComponent(() => import('../../Request/VisibleElements.vue'))
+
+/* Document-detail presentation
+ *
+ * Presentation reflects store state only; fetching, deduplication and caching
+ * remain owned by the files store.
+ *
+ * Every persisted document without loaded details requires detail data.
+ * Do not use state.shouldLoadDetail here: list payloads contain `signers: []`,
+ * which the store normalises into a zero signers count. This makes the
+ * workflow appear to have no signers until the detail request resolves,
+ * causing shouldLoadDetail to remain false during the initial load.
+ * */
+const currentFileId = computed(() => state.file.value?.id)
+
+const isDetailRequired = computed(() =>
+	typeof currentFileId.value === 'number'
+	&& currentFileId.value > 0
+	&& !state.isCurrentFileDetailed.value,
+)
+
+const isDetailLoading = computed(() =>
+	isDetailRequired.value
+	&& filesStore.isLoadingDetail(currentFileId.value as number),
+)
+
+const hasDetailFailed = computed(() =>
+	isDetailRequired.value && !isDetailLoading.value,
+)
+
+const isDetailReady = computed(() => !isDetailRequired.value)
+
+/** Same forced path the controller already uses; the store dedups against an in-flight request. */
+function retryDetail(): void {
+	void ensureCurrentFileDetail(true)
+}
 
 /* ── Derived template helpers ─────────────────────────────────────────────── */
 
@@ -390,9 +452,58 @@ const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 
 <style lang="scss" scoped>
 .workflow-request-signature-tab {
+   /*
+	* Shared motion tokens for this tab and its child components. The reduced-
+	* motion override below disables token-driven transitions throughout the
+	* component tree. Keyframe animations are not covered because the animation
+	* property does not inherit; they must define their own reduced-motion rules.
+	*/
+	--gp-motion-fast: 120ms;
+	--gp-motion-base: 180ms;
+	--gp-motion-slow: 260ms;
+	--gp-ease: cubic-bezier(0.2, 0, 0, 1);
+
 	display: flex;
 	flex-direction: column;
 	gap: 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.workflow-request-signature-tab {
+		--gp-motion-fast: 0.001ms;
+		--gp-motion-base: 0.001ms;
+		--gp-motion-slow: 0.001ms;
+	}
+}
+
+/* Preserves the spacing of the tab's original direct children. */
+.workflow-detail-body {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+/*
+ * Reveal incoming content only. Removing outgoing content immediately avoids
+ * overlapping it with the loader or error state that replaces it.
+ */
+.gp-reveal-enter-active {
+	transition:
+		opacity var(--gp-motion-base) var(--gp-ease),
+		transform var(--gp-motion-base) var(--gp-ease);
+}
+
+.gp-reveal-enter-from {
+	opacity: 0;
+	transform: translateY(4px);
+}
+
+/*
+ * Vue retains leaving elements briefly even without a leave transition.
+ * Hide them immediately to prevent a transient overlap with the replacement.
+ */
+.gp-reveal-leave-active {
+	display: none;
 }
 
 /* On mobile the sidebar clips the last actions; add room to scroll past. */
@@ -400,6 +511,24 @@ const noEnabledMethods = computed(() => enabledMethods.value.length === 0)
 	.workflow-request-signature-tab {
 		padding-bottom: 100px;
 	}
+}
+
+.workflow-detail-loading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 14px;
+	border: 1px solid var(--color-border);
+	border-radius: 14px;
+	font-size: 13px;
+	color: var(--color-text-maxcontrast);
+}
+
+.workflow-detail-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
 }
 
 .workflow-warning-stack {

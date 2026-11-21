@@ -259,4 +259,32 @@ describe('App', () => {
 
 		expect(wrapper.find('.nc-empty-content').exists()).toBe(false)
 	})
+	describe('recovery prompt mount', () => {
+		function mountApp() {
+			return mount(App, {
+				global: {
+					stubs: {
+						NcContent: { template: '<div><slot /></div>' },
+						NcAppContent: { template: '<main><slot /></main>' },
+						NcEmptyContent: { template: '<div><slot /></div>' },
+						LeftSidebar: true,
+						RightSidebar: true,
+						DefaultPageError: true,
+						RecoveryContinueDialog: { name: 'RecoveryContinueDialog', template: '<i class="rcd-stub" />' },
+						RouterView: { template: '<div class="router-view" />' },
+					},
+				},
+			})
+		}
+
+		it('mounts the recovery prompt for a signed-in user on an internal route', () => {
+			routeState.path = '/f/request'
+			expect(mountApp().find('.rcd-stub').exists()).toBe(true)
+		})
+
+		it('does not mount the recovery prompt on external signing pages', () => {
+			routeState.path = '/p/sign/0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10'
+			expect(mountApp().find('.rcd-stub').exists()).toBe(false)
+		})
+	})
 })

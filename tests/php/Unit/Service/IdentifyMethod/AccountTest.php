@@ -11,6 +11,8 @@ use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\IdentifyMethod;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Exception\LibresignException;
+use OCA\Libresign\Helper\JSActions;
+use OCA\Libresign\Service\AccountRecovery\RecoveryProviderVerifier;
 use OCA\Libresign\Service\IdentifyMethod\Account;
 use OCA\Libresign\Service\IdentifyMethod\IdentifyService;
 use OCA\Libresign\Service\IdentifyMethod\SignatureMethod\ISignatureMethod;
@@ -189,6 +191,149 @@ class AccountTest extends \OCA\Libresign\Tests\Unit\TestCase {
 				],
 			],
 		];
+	}
+
+	public function tearDown(): void {
+		$this->getMockAppConfigWithReset();
+		parent::tearDown();
+	}
+
+	private function signedInAs(string $uid, string $backend = 'Database'): IUser&MockObject {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($uid);
+		$user->method('getBackendClassName')->willReturn($backend);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		return $user;
+	}
+
+	private function intendedSigner(string $uid, ?string $email, string $backend = 'Database'): IUser&MockObject {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($uid);
+		$user->method('getBackendClassName')->willReturn($backend);
+		$user->method('getEMailAddress')->willReturn($email);
+
+		return $user;
+	}
+
+	private function mismatchPayload(IUser $signer): string {
+		$method = new \ReflectionMethod(Account::class, 'authenticatedUserIsTheSigner');
+		try {
+			$method->invoke($this->getClass(), $signer);
+		} catch (LibresignException $e) {
+			return $e->getMessage();
+		}
+		$this->fail('Expected a LibresignException');
+	}
+
+	private function enableWhatsApp(): void {
+		$config = $this->getMockAppConfigWithReset();
+		$config->setValueBool(Application::APP_ID, 'whatsapp_enabled', true);
+		$config->setValueString(Application::APP_ID, 'whatsapp_api_url', 'https://wa.example.test');
+		$config->setValueString(Application::APP_ID, 'whatsapp_api_key', 'key');
+	}
+
+	public function testWhatsAppOnPayloadIsByteForByteTheGoldenOne(): void {
+		$this->enableWhatsApp();
+		$this->signedInAs('signer2');
+
+		$payload = $this->mismatchPayload($this->intendedSigner('signer1', 'bruno@gmail.com'));
+
+		self::assertSame(
+			json_encode([
+				'action' => JSActions::ACTION_DO_NOTHING,
+				'errors' => [['message' => 'This document was sent to a different account.', 'switchAccount' => true]],
+			]),
+			$payload,
+		);
+		self::assertStringNotContainsString('maskedEmail', $payload);
+		self::assertStringNotContainsString('switchAccountPath', $payload);
+		self::assertStringNotContainsString('gmail', $payload);
+	}
+
+	public function testWhatsAppOffNativeSignerGetsMaskAndServerPath(): void {
+		$this->getMockAppConfigWithReset();
+		$this->signedInAs('signer2');
+		$this->urlGenerator->method('linkToRoute')->with('libresign.accountRecovery.switchAccount')->willReturn('/index.php/apps/libresign/account/switch');
+
+		$payload = $this->mismatchPayload($this->intendedSigner('signer1', 'bruno@gmail.com'));
+
+		self::assertSame(
+			json_encode([
+				'action' => JSActions::ACTION_DO_NOTHING,
+				'errors' => [[
+					'message' => 'This document was sent to a different account.',
+					'switchAccount' => true,
+					'switchAccountPath' => '/index.php/apps/libresign/account/switch',
+					'maskedEmail' => 'br•••••@g•••••.com',
+				]],
+			]),
+			$payload,
+		);
+		self::assertStringNotContainsString('bruno@gmail.com', $payload);
+	}
+
+	public function testNullOrMalformedSignerEmailOmitsMaskedEmail(): void {
+		$this->getMockAppConfigWithReset();
+		$this->signedInAs('signer2');
+		$this->urlGenerator->method('linkToRoute')->willReturn('/switch');
+
+		foreach ([null, '', 'not-an-email'] as $email) {
+			$payload = $this->mismatchPayload($this->intendedSigner('signer1', $email));
+			self::assertStringNotContainsString('maskedEmail', $payload);
+			self::assertStringContainsString('"switchAccount":true', $payload);
+		}
+	}
+
+	public function testClientSlsPlanOmitsServerPath(): void {
+		$this->getMockAppConfigWithReset()->setValueInt(Application::APP_ID, 'securysign_provider_id', 5);
+		$this->providerVerifiedAs(5);
+		$this->signedInAs('signer2', 'user_oidc');
+		$this->urlGenerator->expects(self::never())->method('linkToRoute');
+
+		$payload = $this->mismatchPayload($this->intendedSigner('signer1', 'bruno@gmail.com', 'user_oidc'));
+
+		self::assertStringNotContainsString('switchAccountPath', $payload);
+		self::assertStringContainsString('"maskedEmail":"br•••••@g•••••.com"', $payload);
+	}
+
+	public function testConfiguredButUnavailableProviderKeepsServerPath(): void {
+		$this->getMockAppConfigWithReset()->setValueInt(Application::APP_ID, 'securysign_provider_id', 5);
+		$this->providerVerifiedAs(0);
+		$this->signedInAs('signer2', 'user_oidc');
+		$this->urlGenerator->method('linkToRoute')
+			->with('libresign.accountRecovery.switchAccount')
+			->willReturn('/index.php/apps/libresign/account/switch');
+
+		$payload = $this->mismatchPayload($this->intendedSigner('signer1', 'bruno@gmail.com', 'user_oidc'));
+
+		self::assertStringContainsString('"switchAccountPath":"\/index.php\/apps\/libresign\/account\/switch"', $payload);
+	}
+
+	private function providerVerifiedAs(int $id): void {
+		$verifier = $this->createMock(RecoveryProviderVerifier::class);
+		$verifier->method('verifiedId')->willReturn($id);
+		$this->overwriteService(RecoveryProviderVerifier::class, $verifier);
+	}
+
+	public function testSameUidWithDistinctInstancesIsNotAMismatch(): void {
+		$this->signedInAs('signer1');
+		$signer = $this->intendedSigner('signer1', 'bruno@gmail.com');
+
+		$method = new \ReflectionMethod(Account::class, 'authenticatedUserIsTheSigner');
+		$method->invoke($this->getClass(), $signer);
+
+		$this->addToAssertionCount(1);
+	}
+
+	public function testNoSessionUserStillGetsNoServerSwitchForAnUnresolvedSession(): void {
+		$this->getMockAppConfigWithReset();
+		$this->userSession->method('getUser')->willReturn(null);
+		$this->urlGenerator->method('linkToRoute')->willReturn('/switch');
+
+		$payload = $this->mismatchPayload($this->intendedSigner('signer1', 'bruno@gmail.com'));
+
+		self::assertStringNotContainsString('bruno@gmail.com', $payload);
 	}
 
 	private function createSignatureMethod(string $name, bool $enabled): ISignatureMethod {

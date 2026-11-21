@@ -123,12 +123,24 @@ export type WorkflowControllerOptions = {
  * RETURN SHAPE
  * ───────────────────────────────────────────────────────────────────────────── */
 
+export type SignerPendingAction = 'notify' | 'whatsapp' | 'delete'
+
 export type WorkflowController = {
 	// ── State proxy (all ComputedRefs from useWorkflowState) ────────────────
 	state: WorkflowStateRefs
 
 	// ── Local UI refs ────────────────────────────────────────────────────────
 	hasLoading:               Ref<boolean>
+	/** Per-signer pending row action, keyed by signer.localKey (UI feedback only). */
+	pendingSignerActions:     Ref<Record<string, SignerPendingAction>>
+	/** True while a signer delete is in flight. Independent of hasLoading. */
+	isDeletePending:          ComputedRef<boolean>
+	/** hasLoading || isDeletePending: gate for request-level mutations. */
+	isRequestBusy:            ComputedRef<boolean>
+	/** True while the debounced signer-list autosave is executing. */
+	isAutoSaving:             Ref<boolean>
+	/** A delete must not start: request busy, autosave executing, or the signer dialog is open. */
+	isDeleteBlocked:          ComputedRef<boolean>
 	isLoadingFileDetail:      Ref<boolean>
 	signerToEdit:             Ref<IdentifySignerToEdit>
 	modalSrc:                 Ref<string>
@@ -187,6 +199,7 @@ export type WorkflowController = {
 
 	sendNotify:                (signer: EditableSignerDraft) => Promise<void>
 	sendWhatsApp:              (signer: EditableSignerDraft) => Promise<void>
+	deleteSigner:              (signer: EditableSignerDraft) => Promise<void>
 	requestSignatureForSigner: (signer: EditableSignerDraft) => void
 	confirmRequestSigner:      () => Promise<void>
 
@@ -207,7 +220,7 @@ export type WorkflowController = {
 	getSvgIcon:                 (name: string) => string
 	registerSvgIcons:           (map: Record<string, string>) => void
 	showRequestError:           (error: unknown, fallbackMessage: string) => void
-	debouncedSave:              ReturnType<typeof debounce>
+	debouncedSave:              () => void
 	hasAnyDraftSigner:          (file: EditableRequestFile | null | undefined) => boolean
 	getCurrentSigningOrder:     (signersNotSigned: EditableRequestSigner[]) => number
 	hasOrderDraftSigners:       (file: EditableRequestFile | null | undefined, order: number) => boolean
@@ -258,6 +271,12 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	const hasLoading               = ref(false)
+	const pendingSignerActions     = ref<Record<string, SignerPendingAction>>({})
+	const isDeletePending          = computed(() => Object.values(pendingSignerActions.value).includes('delete'))
+	const isRequestBusy            = computed(() => hasLoading.value || isDeletePending.value)
+	const isAutoSaving             = ref(false)
+	// The signer dialog exists iff identifyingSigner is true (tab: NcDialog v-if).
+	const isDeleteBlocked          = computed(() => isRequestBusy.value || isAutoSaving.value || Boolean(filesStore.identifyingSigner))
 	const isLoadingFileDetail      = ref(false)
 	const signerToEdit             = ref<IdentifySignerToEdit>({})
 	const modalSrc                 = ref('')
@@ -549,16 +568,76 @@ export function useWorkflowController(
 	 * DEBOUNCED SAVE
 	 * ───────────────────────────────────────────────────────────────────────── */
 
-	const debouncedSave = debounce(async () => {
+	// An autosave must not submit the signer list while a delete or another
+	// request-level mutation is active, nor overlap another autosave. It is
+	// recorded and re-armed by the watcher below once nothing is active.
+	const autoSaveBlocked = computed(() => isRequestBusy.value || isAutoSaving.value)
+	let autoSaveDeferred  = false
+
+	// Pending autosave *intents*, one per file: fileId -> sequence number of that
+	// file's latest unsaved reorder / order toggle. An intent is only ever acted
+	// on while its own file is selected, so a save scheduled for A can never
+	// write B. It is removed only after its own save succeeded (or a successful
+	// submission persisted it); failures and file switches retain it.
+	let autoSaveSeq = 0
+	const autoSaveIntent = new Map<unknown, number>()
+
+	const runAutoSave = debounce(async () => {
+		const fileId = filesStore.selectedFileId
+		if (!fileId) return
+		const seq = autoSaveIntent.get(fileId)
+		if (seq === undefined) return
+		if (autoSaveBlocked.value) {
+			autoSaveDeferred = true
+			return
+		}
+		isAutoSaving.value = true
+		let saved = false
 		try {
+			// seq and the signer list are read in the same synchronous step.
 			const f             = filesStore.getFile()
 			const signers       = state.isOrderedNumeric.value ? f?.signers : null
 			const flow          = normalizeSignatureFlow(f?.signatureFlow)
-			await filesStore.saveOrUpdateSignatureRequest({ signers, signatureFlow: flow })
+			const response = await filesStore.saveOrUpdateSignatureRequest({ signers, signatureFlow: flow })
+			// The store resolves { success: false } for request failures instead of
+			// throwing; that is a failed save and must keep its intent.
+			saved = (response as any)?.success !== false
 		} catch (error: unknown) {
 			showRequestError(error, t('libresign', 'Failed to save signature request'))
+		} finally {
+			isAutoSaving.value = false
 		}
+		if (!saved) return // intent retained; retried by the next trigger, never in a loop
+		// Clear only the exact intent this save covered. A newer intent keeps its
+		// own timer (or the blocked-deferral drain) and is saved by that path.
+		if (autoSaveIntent.get(fileId) === seq) autoSaveIntent.delete(fileId)
 	}, 1000)
+
+	function debouncedSave(): void {
+		const fileId = filesStore.selectedFileId
+		if (!fileId) return
+		autoSaveIntent.set(fileId, ++autoSaveSeq)
+		runAutoSave()
+	}
+
+	// Drops the intent a successful submission has already persisted. A newer
+	// intent (recorded after the payload was serialized) is left in place.
+	function discardAutoSaveCoveredBy(fileId: unknown, intentAtSubmit: number | undefined): void {
+		if (intentAtSubmit === undefined) return
+		if (autoSaveIntent.get(fileId) !== intentAtSubmit) return
+		autoSaveIntent.delete(fileId)
+		if (autoSaveIntent.size === 0) {
+			runAutoSave.clear()
+			autoSaveDeferred = false
+		}
+	}
+
+	watch(autoSaveBlocked, (blocked) => {
+		if (!blocked && autoSaveDeferred) {
+			autoSaveDeferred = false
+			runAutoSave()
+		}
+	})
 
 	const debouncedTabChange = debounce((tabId: string) => {
 		userConfigStore.update?.('files_list_signer_identify_tab', tabId)
@@ -692,6 +771,7 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	function addSigner(): void {
+		if (isDeletePending.value) return
 		if (enabledMethods.value.length === 0) {
 			showWarning(
 				t('libresign', 'No identification methods are enabled. Enable them in Administration settings.'),
@@ -704,6 +784,7 @@ export function useWorkflowController(
 	}
 
 	function editSigner(signer: EditableSignerDraft): void {
+		if (isDeletePending.value) return
 		signerToEdit.value = {
 			localKey:        signer.localKey,
 			displayName:     signer.displayName,
@@ -721,6 +802,7 @@ export function useWorkflowController(
 	}
 
 	function customizeMessage(signer: EditableSignerDraft): void {
+		if (isDeletePending.value) return
 		signerToEdit.value = {
 			localKey:        signer.localKey,
 			displayName:     signer.displayName,
@@ -801,9 +883,10 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	async function save(): Promise<void> {
-		await ensureCurrentFileDetail()
+		if (isRequestBusy.value) return
 		hasLoading.value = true
 		try {
+			await ensureCurrentFileDetail()
 			await filesStore.saveOrUpdateSignatureRequest({})
 			emitEventBus(
 				'libresign:show-visible-elements',
@@ -821,9 +904,14 @@ export function useWorkflowController(
 	}
 
 	async function confirmRequest(): Promise<void> {
-		await ensureCurrentFileDetail()
+		if (isRequestBusy.value) return
 		hasLoading.value = true
 		try {
+			await ensureCurrentFileDetail()
+			// The store serializes the signer list synchronously on call, so any
+			// autosave intent recorded up to here is part of this payload.
+			const fileIdAtSubmit = filesStore.selectedFileId
+			const intentAtSubmit = autoSaveIntent.get(fileIdAtSubmit)
 			const response = await filesStore.saveOrUpdateSignatureRequest({ status: 1 })
 
 			if ((response as any)?.success === false) {
@@ -841,6 +929,9 @@ export function useWorkflowController(
 				return
 			}
 
+			// Genuine success: a pending/deferred draft autosave must not run
+			// afterwards with status 0 against the submitted request.
+			discardAutoSaveCoveredBy(fileIdAtSubmit, intentAtSubmit)
 			showSuccess(t('libresign', (response as any)?.message ?? 'Signature requested'), true, true)
 			showConfirmRequest.value = false
 		} catch (error: unknown) {
@@ -881,9 +972,14 @@ export function useWorkflowController(
 	 * ───────────────────────────────────────────────────────────────────────── */
 
 	async function openManageFiles(): Promise<void> {
+		if (isRequestBusy.value) return
+		let response
 		hasLoading.value = true
-		const response   = await filesStore.saveOrUpdateSignatureRequest({})
-		hasLoading.value = false
+		try {
+			response = await filesStore.saveOrUpdateSignatureRequest({})
+		} finally {
+			hasLoading.value = false
+		}
 
 		if ((response as any)?.success === false && (response as any)?.message) {
 			showError((response as any).message)
@@ -897,7 +993,36 @@ export function useWorkflowController(
 	 * NOTIFY / PER-SIGNER REQUEST
 	 * ───────────────────────────────────────────────────────────────────────── */
 
-	async function sendNotify(signer: EditableSignerDraft): Promise<void> {
+	function signerPendingKey(signer: EditableSignerDraft): string {
+		return String(signer.localKey ?? signer.signRequestId ?? '')
+	}
+
+	/**
+	 * Per-signer pending feedback. No-op when this signer already has a pending
+	 * action; other signers are unaffected. Never touches hasLoading.
+	 */
+	async function runSignerAction(
+		signer: EditableSignerDraft,
+		action: SignerPendingAction,
+		fn: () => Promise<void>,
+	): Promise<void> {
+		const key = signerPendingKey(signer)
+		if (!key || pendingSignerActions.value[key]) return
+		pendingSignerActions.value = { ...pendingSignerActions.value, [key]: action }
+		try {
+			await fn()
+		} finally {
+			const { [key]: _done, ...rest } = pendingSignerActions.value
+			pendingSignerActions.value = rest
+		}
+	}
+
+	function sendNotify(signer: EditableSignerDraft): Promise<void> {
+		return runSignerAction(signer, 'notify', () => sendNotifyRequest(signer))
+	}
+
+	/** Sends the reminder. Tracked per signer through sendNotify. */
+	async function sendNotifyRequest(signer: EditableSignerDraft): Promise<void> {
 		if (!signer.signRequestId) {
 			showError(t('libresign', 'Signer request not found'))
 			return
@@ -991,6 +1116,33 @@ export function useWorkflowController(
 		}
 	}
 
+	/**
+	 * Per-signer pending feedback around the unchanged sendWhatsApp flow.
+	 * sendWhatsApp keeps owning hasLoading, its sequence, payloads and toasts.
+	 */
+	async function sendWhatsAppTracked(signer: EditableSignerDraft): Promise<void> {
+		// Symmetric with deleteSigner (which is refused while hasLoading is held by
+		// WhatsApp). Only a pending delete is checked, so WhatsApp on different
+		// signers stays independent.
+		if (isDeletePending.value) return
+		return runSignerAction(signer, 'whatsapp', () => sendWhatsApp(signer))
+	}
+
+	/**
+	 * UI-level serialization: files store deleteSigner snapshots the file before
+	 * its await, so it must not overlap other deletes or request-level saves.
+	 */
+	async function deleteSigner(signer: EditableSignerDraft): Promise<void> {
+		if (isDeleteBlocked.value) return
+		await runSignerAction(signer, 'delete', async () => {
+			try {
+				await filesStore.deleteSigner(signer)
+			} catch (error: unknown) {
+				showRequestError(error, t('libresign', 'Failed to delete signer'))
+			}
+		})
+	}
+
 	function requestSignatureForSigner(signer: EditableSignerDraft): void {
 		selectedSigner.value           = signer
 		showConfirmRequestSigner.value = true
@@ -998,6 +1150,7 @@ export function useWorkflowController(
 
 	async function confirmRequestSigner(): Promise<void> {
 		if (!selectedSigner.value) return
+		if (isRequestBusy.value) return
 
 		hasLoading.value = true
 		try {
@@ -1007,7 +1160,14 @@ export function useWorkflowController(
 				return
 			}
 
-			await activateSigner(selectedSignRequestId)
+			// Same intent bookkeeping as confirmRequest, at the call site only:
+			// activateSigner is shared with sendWhatsApp and stays untouched.
+			const fileIdAtSubmit = filesStore.selectedFileId
+			const intentAtSubmit = autoSaveIntent.get(fileIdAtSubmit)
+			const response = await activateSigner(selectedSignRequestId)
+			if ((response as any)?.success !== false) {
+				discardAutoSaveCoveredBy(fileIdAtSubmit, intentAtSubmit)
+			}
 			showSuccess(t('libresign', 'Signature requested'), true, true)
 			showConfirmRequestSigner.value = false
 			selectedSigner.value           = null
@@ -1080,6 +1240,8 @@ export function useWorkflowController(
 			if (newId) {
 				syncPreserveOrderWithFile()
 				void ensureCurrentFileDetail()
+				// Returning to a file that kept an unsaved reorder re-arms its save.
+				if (autoSaveIntent.has(newId)) runAutoSave()
 			}
 		},
 		{ immediate: true },
@@ -1109,6 +1271,16 @@ export function useWorkflowController(
 	})
 
 	onBeforeUnmount(() => {
+		// The timer outlives the component and the blocker watcher stops with
+		// it. Settle any pending autosave now: persist it only if nothing is
+		// active and the selected file itself has an intent; otherwise drop the
+		// timer (the local reorder stays in the store). Idempotent.
+		if (runAutoSave.isPending) {
+			const selected = filesStore.selectedFileId
+			if (autoSaveBlocked.value || !selected || !autoSaveIntent.has(selected)) runAutoSave.clear()
+			else runAutoSave.flush()
+		}
+		autoSaveDeferred = false
 		unsubscribe('libresign:edit-signer', handleEditSigner)
 		if (stopPollingFunction.value) stopSigningProgressPolling()
 	})
@@ -1123,6 +1295,11 @@ export function useWorkflowController(
 
 		// ── Local UI refs ─────────────────────────────────────────────────────
 		hasLoading,
+		pendingSignerActions,
+		isDeletePending,
+		isRequestBusy,
+		isAutoSaving,
+		isDeleteBlocked,
 		isLoadingFileDetail,
 		signerToEdit,
 		modalSrc,
@@ -1180,7 +1357,8 @@ export function useWorkflowController(
 		openManageFiles,
 
 		sendNotify,
-		sendWhatsApp,
+		sendWhatsApp: sendWhatsAppTracked,
+		deleteSigner,
 		requestSignatureForSigner,
 		confirmRequestSigner,
 

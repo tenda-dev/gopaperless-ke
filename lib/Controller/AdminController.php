@@ -1512,6 +1512,20 @@ class AdminController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Enable or disable the cross-account recovery flow.
+	 *
+	 * 200: Configuration saved successfully
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/account-recovery-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setAccountRecoveryConfig(bool $enabled = true): DataResponse {
+		$this->appConfig->setValueBool(Application::APP_ID, 'account_recovery_enabled', $enabled);
+		return new DataResponse([
+			'message' => $this->l10n->t('Account recovery settings saved'),
+		]);
+	}
+
+	/**
 	 * Persist FX provider API credentials.
 	 *
 	 * @param string|null $exchangeRateApiKey ExchangeRate-API key

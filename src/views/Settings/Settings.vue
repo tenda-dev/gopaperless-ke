@@ -40,6 +40,7 @@
 		<ProductPricing />
 		<PublicLanding />
 		<PublicWorkflow />
+		<AccountRecovery />
 		<SsoSettings />
 		<SecurySignSettings />
 		<WhatsAppSettings />
@@ -84,6 +85,7 @@ import ProductPricing from './ProductPricing.vue'
 import PublicLanding from './PublicLanding.vue'
 import PublicWorkflow from './PublicWorkflow.vue'
 import SsoSettings from './SsoSettings.vue'
+import AccountRecovery from './AccountRecovery.vue'
 import SecurySignSettings from './SecurySignSettings.vue'
 import WhatsAppSettings from './WhatsAppSettings.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'

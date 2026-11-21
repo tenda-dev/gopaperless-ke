@@ -75,6 +75,7 @@ import { generateUrl } from '@nextcloud/router'
 
 import { openDocument } from '../../../utils/viewer.js'
 import { getSigningRouteUuid } from '../../../utils/signRequestUuid.ts'
+import { showError } from '../../../services/toast'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -184,9 +185,16 @@ async function onActionClick(action: Pick<MenuAction, 'id'>) {
 		filesStore.selectFile(props.source.id)
 		sidebarStore.activeRequestSignatureTab()
 	} else if (action.id === 'sign') {
-		const detailedFile = await filesStore.fetchFileDetail({ fileId: props.source.id, force: true }) as SourceFile | undefined
+		let detailedFile: SourceFile | undefined
+		try {
+			detailedFile = await filesStore.fetchFileDetail({ fileId: props.source.id, force: true }) as SourceFile | undefined
+		} catch (error) {
+			showError(t('libresign', 'Could not load this document for signing. Please try again.'))
+			return
+		}
 		const signRequestUuid = getSignRouteUuid(detailedFile)
 		if (!signRequestUuid || !detailedFile) {
+			showError(t('libresign', 'This document cannot be signed with your account.'))
 			return
 		}
 		filesStore.selectFile(props.source.id)

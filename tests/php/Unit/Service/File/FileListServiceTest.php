@@ -380,16 +380,16 @@ final class FileListServiceTest extends TestCase {
 
 		$this->assertArrayNotHasKey('signUuid', $result);
 		$this->assertCount(1, $result['signers']);
-		$this->assertArrayNotHasKey('sign_uuid', $result['signers'][0]);
+		$this->assertArrayNotHasKey('sign_request_uuid', $result['signers'][0]);
 
 		if ($expectSignerScopedUuid) {
-			$this->assertSame('sign-request-uuid', $result['signers'][0]['sign_request_uuid']);
+			$this->assertSame('sign-request-uuid', $result['signers'][0]['sign_uuid']);
 			$this->assertArrayHasKey('url', $result);
 			$this->assertStringContainsString('sign-request-uuid', $result['url']);
 			return;
 		}
 
-		$this->assertArrayNotHasKey('sign_request_uuid', $result['signers'][0]);
+		$this->assertArrayNotHasKey('sign_uuid', $result['signers'][0]);
 	}
 
 	public static function provideSignerUuidExposureScenarios(): array {
@@ -424,8 +424,8 @@ final class FileListServiceTest extends TestCase {
 		$result = $service->formatFileWithChildren($file, [], $this->user);
 
 		$this->assertArrayNotHasKey('signUuid', $result);
-		$this->assertSame('sign-request-uuid', $result['signers'][0]['sign_request_uuid']);
-		$this->assertArrayNotHasKey('sign_uuid', $result['signers'][0]);
+		$this->assertSame('sign-request-uuid', $result['signers'][0]['sign_uuid']);
+		$this->assertArrayNotHasKey('sign_request_uuid', $result['signers'][0]);
 		$this->assertArrayHasKey('url', $result);
 		$this->assertStringContainsString('sign-request-uuid', $result['url']);
 	}

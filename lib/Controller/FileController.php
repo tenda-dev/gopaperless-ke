@@ -1113,7 +1113,7 @@ class FileController extends AEnvironmentAwareController {
 			if (!empty($signer['me'])) {
 				return new DataResponse([
 					'signRequestId' => $signer['signRequestId'],
-					'signUuid' => $signer['sign_request_uuid'],
+					'signUuid' => $signer['sign_uuid'] ?? null,
 					'email' => $signer['email'] ?? null,
 				]);
 			}

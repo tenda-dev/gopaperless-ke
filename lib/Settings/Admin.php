@@ -184,6 +184,11 @@ class Admin implements ISettings {
 		//	user_oidc. Disabled by default until the IdP integration is ready.
 		$this->initialState->provideInitialState('oidc_sso_handoff_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'oidc_sso_handoff_enabled', false));
 
+		// ACCOUNT RECOVERY
+		// Keep cross-account recovery opt-out; disabling it restores the original
+		// wrong-account response without changing the underlying signing checks.
+		$this->initialState->provideInitialState('account_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', false));
+
 		//	SECURYSIGN
 		//	Only whether a signing secret is stored reaches the page, never the secret.
 		$this->initialState->provideInitialState('securysign_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));
