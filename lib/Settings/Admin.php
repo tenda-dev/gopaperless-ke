@@ -187,7 +187,7 @@ class Admin implements ISettings {
 		// ACCOUNT RECOVERY
 		// Keep cross-account recovery opt-out; disabling it restores the original
 		// wrong-account response without changing the underlying signing checks.
-		$this->initialState->provideInitialState('account_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true));
+		$this->initialState->provideInitialState('account_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', false));
 
 		//	SECURYSIGN
 		//	Only whether a signing secret is stored reaches the page, never the secret.

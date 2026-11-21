@@ -156,7 +156,7 @@ class Account extends AbstractIdentifyMethod {
 			$appConfig = $this->identifyService->getAppConfig();
 			if (WhatsAppService::on($appConfig)) {
 				$error = ['message' => $this->identifyService->getL10n()->t('This document was sent to a different account.'), 'switchAccount' => true];
-			} elseif ($appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', true)) {
+			} elseif ($appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', false)) {
 				$error = $this->differentAccountError($signer);
 			} else {
 				// Preserve the original mismatch behaviour when account recovery is disabled.

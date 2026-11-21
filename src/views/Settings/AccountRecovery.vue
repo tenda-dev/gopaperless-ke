@@ -5,7 +5,7 @@
 <template>
 	<NcSettingsSection
 		:name="t('libresign', 'Account recovery')"
-		:description="t('libresign', 'Let a signer who opens a signing link while logged in to the wrong account switch to the intended one. The flow shows a masked email hint, signs the user out, and returns them to the signing link after they authenticate as the correct account. When disabled, a wrong-account link shows a plain \'Invalid user\' message. Enabled by default.')">
+		:description="t('libresign', 'Let a signer who opens a signing link while logged in to the wrong account switch to the intended one. The flow shows a masked email hint, signs the user out, and returns them to the signing link after they authenticate as the correct account. When disabled, a wrong-account link shows a plain \'Invalid user\' message. Off by default; enable here once the flow is verified.')">
 		<NcCheckboxRadioSwitch
 			type="switch"
 			v-model="recoveryEnabled"
@@ -32,7 +32,7 @@ defineOptions({
 	name: 'AccountRecoverySettings',
 })
 
-const recoveryEnabled = ref(loadState<AdminInitialState['account_recovery_enabled']>('libresign', 'account_recovery_enabled', true))
+const recoveryEnabled = ref(loadState<AdminInitialState['account_recovery_enabled']>('libresign', 'account_recovery_enabled', false))
 
 // Use the admin endpoint to preserve the boolean config type.
 async function save() {
