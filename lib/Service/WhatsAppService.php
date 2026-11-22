@@ -246,26 +246,6 @@ class WhatsAppService {
 		if ($sub === null) {
 			return ['status' => 'failed', 'error' => $reason, 'availableAgainAt' => null];
 		}
-		return $this->deliver($file, $signRequest, $sender, $sub, $this->choice($signRequest)['to'] ?? null);
-	}
-
-	/**
-	 * The card for a Tuandikiane signer, who may have no account yet and so no
-	 * sub: $sub then names their slot, and the number is the one Tuandikiane
-	 * gave. The card's code leads such a signer to sign in and take the slot
-	 * first (TuandikianeController::sign).
-	 *
-	 * @return array{status: string, error: ?string, availableAgainAt: ?string, waitReason?: ?string}
-	 */
-	public function sendTo(FileEntity $file, SignRequest $signRequest, IUser $sender, string $sub, string $to): array {
-		if (!$this->enabled()) {
-			return ['status' => 'failed', 'error' => 'disabled', 'availableAgainAt' => null];
-		}
-		return $this->deliver($file, $signRequest, $sender, $sub, $to);
-	}
-
-	/** @return array{status: string, error: ?string, availableAgainAt: ?string, waitReason?: ?string} */
-	private function deliver(FileEntity $file, SignRequest $signRequest, IUser $sender, string $sub, ?string $to): array {
 		$message = [
 			'sub' => $sub,
 			'sign_request_uuid' => $signRequest->getUuid(),
@@ -274,8 +254,9 @@ class WhatsAppService {
 			// The card's "Sign with MIMI.ke" button opens /p/whatsapp/<link_code>.
 			'link_code' => $this->linkCode($signRequest),
 		];
-		if ($to !== null) {
-			$message['to'] = $to;
+		$typed = $this->choice($signRequest)['to'] ?? null;
+		if ($typed !== null) {
+			$message['to'] = $typed;
 		}
 		try {
 			// The PDF with their box outlined, which the payments service puts on the card.
