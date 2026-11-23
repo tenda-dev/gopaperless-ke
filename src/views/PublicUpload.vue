@@ -4,7 +4,7 @@
 -->
 
 <template>
-	<div class="pu" :class="{ 'pu--dark': theme === 'dark', 'pu--fit': !document }">
+	<div class="pu" :class="{ 'pu--fit': !document }">
 		<div class="pu__fold">
 			<PublicUploadHeader :theme="theme" :show-theme-toggle="false" @sign-in="gateToLogin" />
 			<PublicUploadHero v-if="!document"
