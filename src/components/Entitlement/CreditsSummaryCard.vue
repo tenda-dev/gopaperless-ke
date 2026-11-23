@@ -60,9 +60,14 @@ import { CREDIT_PURCHASE_PRESENTATION } from '@/constants/purchasePresentation'
 import { useUserContextStore } from '@/store/userContext'
 import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
 import type { PaymentPresentation } from '@/payment'
+import { useEntitlementSync } from '@/composables/useEntitlementSync'
 
 const entitlementStore = useEntitlementStore()
 const userContext = useUserContextStore()
+
+// Keeps displayed entitlement state up to date through visibility-aware
+// polling and event-bus updates. This is simply a UI synchronization mechanism
+useEntitlementSync(DEFAULT_PRODUCT_CODE)
 
 const showPurchaseFlow = ref(false)
 const countClass = ref('')

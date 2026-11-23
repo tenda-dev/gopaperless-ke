@@ -1,3 +1,7 @@
+/**
+ * SPDX-FileCopyrightText: 2026 LibreCode coop and LibreCode contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -11,7 +15,12 @@ import {
 	getSigningSponsorship,
 } from '@/payment/entitlement'
 
-import { DEFAULT_PRODUCT_CODE } from '@/constants/product'
+import { DEFAULT_PRODUCT_CODE, type ProductCode } from '@/constants/product'
+
+export interface RefreshOutcome {
+	ok: boolean
+	error?: string
+}
 
 export const useEntitlementStore = defineStore(
 	'entitlement',
@@ -35,6 +44,18 @@ export const useEntitlementStore = defineStore(
 			new Set<string>(),
 		)
 
+	   /**
+		* Timestamp of the last successful entitlement load per product.
+		*
+		* Updated only after a successful load and before loading state is cleared,
+		* allowing synchronous observers to distinguish a completed successful refresh
+		* from a failed one. The entitlement coordinator relies on this to determine
+		* whether an external refresh serviced an invalidation.
+		*/
+		const lastSuccessfulLoadAt = ref<
+			Record<string, number>
+		>({})
+
 		const sponsorships = ref<
 			Record<number, SigningSponsorship | null>
 		>({})
@@ -56,7 +77,7 @@ export const useEntitlementStore = defineStore(
 		>({})
 
 		async function initialise(
-			productCode = DEFAULT_PRODUCT_CODE,
+			productCode: ProductCode = DEFAULT_PRODUCT_CODE,
 		): Promise<void> {
 			if (
 				loadedProducts.value.has(
@@ -97,8 +118,8 @@ export const useEntitlementStore = defineStore(
 		}
 
 		async function load(
-			productCode = DEFAULT_PRODUCT_CODE,
-		): Promise<void> {
+			productCode: ProductCode = DEFAULT_PRODUCT_CODE,
+		): Promise<RefreshOutcome> {
 			loading.value[
 				productCode
 			] = true
@@ -113,12 +134,24 @@ export const useEntitlementStore = defineStore(
 				] = await getCurrentEntitlement(
 					productCode,
 				)
-			} catch (err: any) {
-				errors.value[
+
+				// Update before clearing `loading` so synchronous observers see the
+				// final success timestamp when the loading state transitions.
+				lastSuccessfulLoadAt.value[
 					productCode
-				] =
+				] = Date.now()
+
+				return { ok: true }
+			} catch (err: any) {
+				const message =
 					err?.message ??
 					'Failed to load entitlement'
+
+				errors.value[
+					productCode
+				] = message
+
+				return { ok: false, error: message }
 			} finally {
 				loading.value[
 					productCode
@@ -126,10 +159,15 @@ export const useEntitlementStore = defineStore(
 			}
 		}
 
+	   /**
+		* Refreshes entitlement state and returns the outcome without propagating
+		* load failures. Callers that only need the refresh side effect can
+		* continue using `await refresh()` or `void refresh()`.
+		*/
 		async function refresh(
-			productCode = DEFAULT_PRODUCT_CODE,
-		): Promise<void> {
-			await load(productCode)
+			productCode: ProductCode = DEFAULT_PRODUCT_CODE,
+		): Promise<RefreshOutcome> {
+			return load(productCode)
 		}
 
 		function decrementLocally(
@@ -155,9 +193,12 @@ export const useEntitlementStore = defineStore(
 		async function consume(
 			payload: ConsumeEntitlementPayload,
 		): Promise<boolean> {
-			const productCode =
+			// The API payload exposes productCode as a string, but this store only
+			// consumes entitlements for products tracked by the coordinator.
+			const productCode = (
 				payload.productCode ??
 				DEFAULT_PRODUCT_CODE
+			) as ProductCode
 
 			try {
 				const result = await consumeEntitlement(payload)
@@ -237,6 +278,16 @@ export const useEntitlementStore = defineStore(
 			return computed(() =>
 				errors.value[
 				productCode
+				] ?? null,
+			)
+		}
+
+		function getLastSuccessfulLoadAt(
+			productCode: ProductCode = DEFAULT_PRODUCT_CODE,
+		) {
+			return computed(() =>
+				lastSuccessfulLoadAt.value[
+					productCode
 				] ?? null,
 			)
 		}
@@ -395,6 +446,7 @@ export const useEntitlementStore = defineStore(
 
 			isLoading,
 			getError,
+			getLastSuccessfulLoadAt,
 		}
 	},
 )

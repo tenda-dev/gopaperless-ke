@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\Sponsorship;
 
+use OCA\Libresign\Db\Entitlement;
 use OCA\Libresign\Db\EntitlementMapper;
 use OCA\Libresign\Db\EntitlementReservationMapper;
 use OCA\Libresign\Db\ProductMapper;
@@ -11,8 +12,10 @@ use OCA\Libresign\Db\SignerSponsorshipMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Enum\SponsorshipType;
+use OCA\Libresign\Exception\EntitlementAlreadyConsumedException;
+use OCA\Libresign\Exception\InsufficientEntitlementException;
+use OCA\Libresign\Exception\StaleEntitlementException;
 use OCA\Libresign\Helper\ValidateHelper;
-use OCA\Libresign\Service\Entitlement\EntitlementService;
 use OCA\Libresign\Service\Sponsorship\DTO\SigningSettlementContextDTO;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -25,13 +28,14 @@ use RuntimeException;
  * the selected settlement path. No state is modified by this service.
  */
 class SigningSettlementValidationService {
+	private const LOG_PREFIX = '[EntitlementSettlement][SigningSettlementValidationService]';
+
 	public function __construct(
 		private SignRequestMapper $signRequestMapper,
 		private ProductMapper $productMapper,
 		private EntitlementMapper $entitlementMapper,
 		private EntitlementReservationMapper $reservationMapper,
 		private SignerSponsorshipMapper $signerSponsorshipMapper,
-		private EntitlementService $entitlementService,
 		private LoggerInterface $logger,
 		private ValidateHelper $validateHelper,
 	) {
@@ -155,6 +159,16 @@ class SigningSettlementValidationService {
 			);
 		}
 
+		$this->logger->debug(
+			self::LOG_PREFIX . ' Requester-sponsored reservation validated; entitlement selected for consumption.',
+			[
+				'signRequestId' => $signRequestId,
+				'reservationId' => $reservation->getId(),
+				'entitlementId' => $entitlement->getId(),
+				'outcome' => 'reservation_validated',
+			],
+		);
+
 		return $context
 			->withReservation($reservation)
 			->withEntitlement($entitlement)
@@ -162,27 +176,99 @@ class SigningSettlementValidationService {
 	}
 
 	/**
-	 * Validates self-sponsored settlement.
+	 * Validates self-sponsored settlement by selecting and revalidating an
+	 * entitlement under lock.
 	 *
-	 * Resolves the signer's active entitlement for the requested product.
+	 * Candidates are selected in priority/FIFO order without locking. Only the
+	 * selected candidate is locked and revalidated, avoiding multiple
+	 * entitlement locks within the same transaction.
+	 *
+	 * A stale candidate triggers a transaction rollback and retry with that
+	 * candidate excluded, releasing the sign request and entitlement locks
+	 * before another candidate is attempted.
+	 *
+	 * @param list<int> $excludedEntitlementIds Candidates found stale during
+	 *                                          earlier attempts in the current settlement.
+	 *
+	 * @throws StaleEntitlementException The selected candidate is no longer usable.
+	 * @throws InsufficientEntitlementException No untried candidate remains.
 	 */
 	public function validateSelfSponsored(
 		SigningSettlementContextDTO $context,
+		array $excludedEntitlementIds = [],
 	): SigningSettlementContextDTO {
-		$entitlement = $this->entitlementService->getValid(
-			userId: $context->signerUserId,
-			productCode: $context->product->getCode(),
+		$candidates = $this->entitlementMapper->findActiveByUserAndProduct(
+			$context->signerUserId,
+			$context->product->getCode(),
 		);
 
-		if ($entitlement === null) {
-			$this->fail(
-				'Signing settlement validation failed: signer entitlement not found.',
+		$untried = array_values(array_filter(
+			$candidates,
+			static fn (Entitlement $candidate): bool => !in_array(
+				$candidate->getId(),
+				$excludedEntitlementIds,
+				true,
+			),
+		));
+
+		if ($untried === []) {
+			$this->logger->warning(
+				self::LOG_PREFIX . ' Signing settlement validation failed: no usable self-sponsored entitlement remains.',
 				[
-					'userId' => $context->signerUserId,
+					'signerUserId' => $context->signerUserId,
 					'productCode' => $context->product->getCode(),
+					'excludedEntitlementIds' => $excludedEntitlementIds,
 				],
 			);
+
+			throw new InsufficientEntitlementException();
 		}
+
+		// TODO (known limitation — self-sponsored reservations):
+		// Self-sponsored signing does not reserve entitlement capacity when the
+		// signing request is created. Concurrent pending requests may therefore
+		// pass the coverage check against the same balance and compete at settlement.
+		// Settlement remains atomic and prevents double consumption, but it cannot
+		// prevent this request-time over-commitment.
+		$candidate = $untried[0];
+
+		$this->logger->debug(
+			self::LOG_PREFIX . ' Self-sponsored entitlement candidate selected; acquiring lock.',
+			[
+				'signerUserId' => $context->signerUserId,
+				'productCode' => $context->product->getCode(),
+				'entitlementId' => $candidate->getId(),
+				'untriedCandidateCount' => count($untried),
+			],
+		);
+
+		$entitlement = $this->entitlementMapper->findByIdForUpdate($candidate->getId());
+
+		$quantity = 1;
+		if ($entitlement === null
+			|| !$entitlement->canUse()
+			|| ($entitlement->getRemainingUses() !== null && $entitlement->getRemainingUses() < $quantity)
+		) {
+			$this->logger->warning(
+				self::LOG_PREFIX . ' Self-sponsored entitlement candidate was stale after lock; revalidation failed.',
+				[
+					'signerUserId' => $context->signerUserId,
+					'entitlementId' => $candidate->getId(),
+					'outcome' => 'stale_candidate',
+				],
+			);
+
+			throw new StaleEntitlementException($candidate->getId(), count($untried));
+		}
+
+		$this->logger->debug(
+			self::LOG_PREFIX . ' Self-sponsored entitlement lock acquired and revalidated.',
+			[
+				'signerUserId' => $context->signerUserId,
+				'entitlementId' => $entitlement->getId(),
+				'outcome' => 'revalidated',
+			],
+		);
 
 		return $context->withEntitlement($entitlement);
 	}
@@ -222,14 +308,23 @@ class SigningSettlementValidationService {
 		$metadata = $signRequest->getMetadata() ?? [];
 
 		if (!empty($metadata['entitlement_consumed'])) {
-			$this->fail(
-				'Signing settlement validation failed: entitlement already consumed.',
+			// Duplicate settlement is an expected idempotent outcome, not a failure.
+			// Keep it out of error-level logging to avoid misrepresenting successful
+			// prior settlement as a failure.
+			$this->logger->info(
+				self::LOG_PREFIX . ' Settlement skipped: entitlement already consumed for this sign request.',
 				[
 					'signRequestId' => $signRequestId,
-					'userId' => $context->signerUserId,
-					'entitlementConsumed' => $metadata['entitlement_consumed'],
+					'signerUserId' => $context->signerUserId,
+					'entitlementId' => $metadata['entitlementId'] ?? null,
+					'outcome' => 'skipped_already_consumed',
 				],
 			);
+
+			throw new EntitlementAlreadyConsumedException(sprintf(
+				'%s Signing settlement validation failed: entitlement already consumed.',
+				self::LOG_PREFIX,
+			));
 		}
 
 		return $context->withSignRequest($signRequest);
@@ -300,8 +395,7 @@ class SigningSettlementValidationService {
 		string $message,
 		array $context = [],
 	): never {
-		$logPrefix = '[SigningSettlementValidationService]';
-		$message = sprintf('%s %s', $logPrefix, $message);
+		$message = sprintf('%s %s', self::LOG_PREFIX, $message);
 
 		$this->logger->error($message, $context);
 

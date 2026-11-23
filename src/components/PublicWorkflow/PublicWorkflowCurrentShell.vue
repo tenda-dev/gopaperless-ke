@@ -447,7 +447,8 @@ import PwActionCard from './PwActionCard.vue'
 import PwAddSignerDialog from './PwAddSignerDialog.vue'
 import PwContextualHint from './PwContextualHint.vue'
 import PwDocumentCard from './PwDocumentCard.vue'
-import PwDocumentInlinePreview from './PwDocumentInlinePreview.vue'
+import { asyncRetry } from '../../utils/asyncRetry'
+import { loadFieldEditor } from './pwPreload'
 import PwReassurance from './PwReassurance.vue'
 import PwSignerList from './PwSignerList.vue'
 import PublicVisibleElements from './PublicVisibleElements.vue'
@@ -457,6 +458,11 @@ import { buildSignerPayload, isPlausibleEmail } from './signerPayload'
 import { MAX_FILE_SIZE_MB, validatePublicUploadFile } from './uploadValidation'
 
 defineOptions({ name: 'PublicWorkflowCurrentShell' })
+
+// Keep the PDF.js preview outside the shell's critical chunk, but load it
+// as soon as the shell mounts. The shell remains mounted via v-show, so the
+// preview is ready when Prepare is shown rather than waiting for a Preview click.
+const PwDocumentInlinePreview = asyncRetry(() => import('./PwDocumentInlinePreview.vue'))
 
 const sponsorshipEnabled = (
 	loadState('libresign', 'config', {}) as { sponsorship_enabled?: boolean }
@@ -656,6 +662,9 @@ watch(signers, (list) => {
 
 // --- navigation ---
 function goToView(view: View): void {
+	// Warm the field-placement editor (pdf-elements) on intent, before the
+	// editor opens, so entering Fields has no avoidable extra wait.
+	if (view === 'fields') { void loadFieldEditor() }
 	activeView.value = view
 }
 function stepReachable(i: number): boolean {
@@ -951,6 +960,9 @@ function openEditor(): void {
 .pwn__stepper {
 	flex: none;
 	margin-bottom: 6px;
+	// Preserve this rail's tighter stepper spacing without imposing it on
+	// other WorkflowStepper consumers.
+	margin-top: -14px;
 }
 
 .pwn__peek-fab {
@@ -1630,11 +1642,24 @@ function openEditor(): void {
 	gap: 9px;
 }
 
+// Give the summary cards consistent spacing without relying on block-level
+// gap support. Match the spacing used by other stacked bordered-card lists.
+.pw-summary {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
 .pw-sumrow {
 	display: flex;
 	align-items: center;
 	gap: 12px;
-	padding: 12px 13px;
+	// Provide enough room for the icon, two-line text and edit action on desktop.
+	// Narrow layouts restore tighter padding in the container query below.
+	padding: 16px 18px;
 	border: 1px solid var(--age-border, var(--color-border));
 	border-radius: var(--age-radius-sm, 9px);
 }
@@ -1821,6 +1846,11 @@ function openEditor(): void {
 		min-height: 0;
 		border-inline-start: none;
 		border-top: 1px solid var(--age-border, var(--color-border));
+	}
+
+	// Desktop-only padding bump above; mobile keeps the original, tighter fit.
+	.pw-sumrow {
+		padding: 12px 13px;
 	}
 
 	// Shared clearance for the fixed CTA and the rail's bottom scroll padding.

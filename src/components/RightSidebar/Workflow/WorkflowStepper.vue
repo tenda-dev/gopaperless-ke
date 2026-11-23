@@ -126,7 +126,13 @@ function isConnectorActive(index: number): boolean {
 	justify-content: space-between;
 
 	padding: 8px 0 4px;
-	margin-top: -14px;
+	// Keep vertical positioning context-specific. The public workflow rail
+    // applies its own -14px adjustment, while the authenticated sidebar
+    // relies on this component staying within NcAppSidebarTab's scroll area.
+    // A shared negative margin pushed the step circles above the scroll
+    // container's top boundary, where overflow:auto could not recover them
+    // (scrollTop clamps at 0), leaving the labels visible but clipping the
+    // circles on mobile.
 }
 
 .workflow-step-wrapper {

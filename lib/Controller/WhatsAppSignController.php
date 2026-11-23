@@ -16,6 +16,7 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\UserElementMapper;
 use OCA\Libresign\Enum\ProductCode;
+use OCA\Libresign\Enum\SettlementSource;
 use OCA\Libresign\Enum\SignRequestStatus;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Exception\SecurySignApprovalRequired;
@@ -252,6 +253,7 @@ class WhatsAppSignController extends Controller {
 					signRequestId: $signRequest->getId(),
 					signerUserId: $signer->getUID(),
 					productCode: ProductCode::SIGN_DOCUMENT->value,
+					source: SettlementSource::WHATSAPP,
 				);
 			} catch (\Throwable $e) {
 				// The document is signed; a credit that failed to settle is for the log.

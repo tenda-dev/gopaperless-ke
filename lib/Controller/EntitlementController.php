@@ -11,6 +11,7 @@ namespace OCA\Libresign\Controller;
 
 use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\SignRequestMapper;
+use OCA\Libresign\Enum\SettlementSource;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Entitlement\EntitlementService;
@@ -355,6 +356,7 @@ class EntitlementController extends AEnvironmentAwareController {
 				signRequestId: $signRequestId,
 				signerUserId: $userId,
 				productCode: $productCode,
+				source: SettlementSource::HTTP_AFTER_SIGN,
 			);
 
 			return new DataResponse([

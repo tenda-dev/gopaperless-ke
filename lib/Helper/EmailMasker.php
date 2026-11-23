@@ -10,13 +10,11 @@ declare(strict_types=1);
 namespace OCA\Libresign\Helper;
 
 /**
- * Masks email addresses for display during account recovery.
+ * Produces privacy-preserving email representations for user-facing flows.
  *
- * Returns null when an address cannot be masked confidently. The full
- * address is never logged or included in the masked output.
- *
- * The local part and domain are partially masked, while the public
- * suffix is retained to help users recognise the intended address.
+ * Retains enough of the address for recognition without exposing the full
+ * value. Returns null when the address cannot be masked safely. The full
+ * address must never be logged or included in the masked output.
  */
 final class EmailMasker {
 	public const DOTS = '•••••';

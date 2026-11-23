@@ -17,6 +17,7 @@ use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\DB\Exception;
+use OCP\DB\QueryBuilder\IParameter;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\ICacheFactory;
 use OCP\IDBConnection;
@@ -76,7 +77,14 @@ class SignRequestMapper extends CachedQBMapper {
 	public function incrementNotificationCounter(SignRequest $signRequest, string $method): bool {
 		$this->db->beginTransaction();
 		try {
-			$fromDatabase = $this->getById($signRequest->getId());
+			// Read the notification metadata after acquiring the row lock. An unlocked
+			// read could race with settlement and overwrite entitlement_consumed using
+			// a stale metadata snapshot.
+			$fromDatabase = $this->findByIdForUpdate($signRequest->getId());
+			if ($fromDatabase === null) {
+				$this->db->rollBack();
+				return $this->firstNotification;
+			}
 			$metadata = $fromDatabase->getMetadata();
 			if (!isset($metadata['notify'])) {
 				$this->firstNotification = true;
@@ -224,10 +232,11 @@ class SignRequestMapper extends CachedQBMapper {
 	}
 
 	/**
-	 * Sign-request ids for UNSIGNED, public-workflow-originated email signer rows
-	 * matching $email. Used by login-time signer self-reconciliation. Scoped to
-	 * files that have a gopaperless_public_workflows row, so deliberate email
-	 * signers in ordinary authenticated flows are never touched.
+	 * Returns unsigned sign requests for public-workflow email signers matching
+	 * the given email address.
+	 *
+	 * Restricts results to public workflows so ordinary authenticated signing
+	 * requests are not affected by signer reconciliation.
 	 *
 	 * @return int[]
 	 */
@@ -901,6 +910,207 @@ class SignRequestMapper extends CachedQBMapper {
 		} catch (DoesNotExistException) {
 			return null;
 		}
+	}
+
+	/**
+	 * Returns the sign request under a row lock, or null if it does not exist.
+	 *
+	 * Reads directly from the database so metadata updates operate on the latest
+	 * committed state before merging changes. This prevents stale writes from
+	 * overwriting metadata updated by concurrent settlement.
+	 *
+	 * @throws MultipleObjectsReturnedException
+	 * @throws Exception
+	 */
+	public function findByUuidForUpdate(string $uuid): ?SignRequest {
+		$qb = $this->db->getQueryBuilder();
+
+		$qb->select('*')
+			->from($this->getTableName())
+			->where(
+				$qb->expr()->eq('uuid', $qb->createNamedParameter($uuid))
+			)
+			->setMaxResults(1);
+
+		$qb->forUpdate();
+
+		try {
+			/** @var SignRequest */
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException) {
+			return null;
+		}
+	}
+
+	/**
+	 * Returns a keyset page of signed requests ordered by `(signed, id)`.
+	 *
+	 * Supports bounded forward scans and full recovery scans. The expanded
+	 * two-column predicate is used instead of a row-value comparison because
+	 * the QueryBuilder does not provide a portable equivalent.
+	 *
+	 * Cursor timestamps are whole-second UTC epochs and are bound as UTC
+	 * datetimes to match the SQL DATETIME column.
+	 *
+	 * Metadata-based settlement and retry classification is performed by the
+	 * reconciliation job after loading the page.
+	 *
+	 * @return list<SignRequest>
+	 */
+	public function findReconcileKeysetPage(
+		?int $afterSigned,
+		?int $afterId,
+		?int $upperSignedExclusive,
+		int $limit,
+	): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->isNotNull('signed'));
+
+		if ($afterSigned !== null && $afterId !== null) {
+			$qb->andWhere($this->keysetAfter($qb, $afterSigned, $afterId));
+		}
+		if ($upperSignedExclusive !== null) {
+			$qb->andWhere($qb->expr()->lt('signed', $this->reconcileSignedParam($qb, $upperSignedExclusive)));
+		}
+
+		$qb->orderBy('signed', 'ASC')
+			->addOrderBy('id', 'ASC')
+			->setMaxResults($limit);
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Returns a keyset page starting at an inclusive signing-time boundary.
+	 *
+	 * The initial page includes every ID at the boundary timestamp, ensuring
+	 * records with lower IDs are not missed when subsequent pages advance using
+	 * the composite cursor.
+	 *
+	 * @return list<SignRequest>
+	 */
+	public function findReconcileAtOrAbovePage(
+		int $fromSignedInclusive,
+		?int $afterSigned,
+		?int $afterId,
+		int $limit,
+	): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->isNotNull('signed'));
+
+		if ($afterSigned !== null && $afterId !== null) {
+			$qb->andWhere($this->keysetAfter($qb, $afterSigned, $afterId));
+		} else {
+			$qb->andWhere($qb->expr()->gte('signed', $this->reconcileSignedParam($qb, $fromSignedInclusive)));
+		}
+
+		$qb->orderBy('signed', 'ASC')
+			->addOrderBy('id', 'ASC')
+			->setMaxResults($limit);
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Returns a page of requests sharing an exact signing timestamp, ordered by ID.
+	 *
+	 * This independent scan allows late-arriving records at the boundary timestamp
+	 * to be discovered even after the main cursor has advanced.
+	 *
+	 * @return list<SignRequest>
+	 */
+	public function findReconcileEqualsPage(int $signedValue, ?int $afterId, int $limit): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('signed', $this->reconcileSignedParam($qb, $signedValue)));
+
+		if ($afterId !== null) {
+			$qb->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)));
+		}
+
+		$qb->orderBy('id', 'ASC')
+			->setMaxResults($limit);
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Records settlement retry or dead-letter state on the sign request.
+	 *
+	 * Re-reads the row under lock and skips bookkeeping if settlement has
+	 * already completed. Only settlement-related metadata is updated, leaving
+	 * the entitlement_consumed marker untouched.
+	 *
+	 * @param bool $needsIntervention Dead-letter immediately when retrying
+	 *                                cannot succeed without external intervention.
+	 */
+	public function recordSettlementFailure(
+		int $id,
+		string $failureClass,
+		bool $needsIntervention,
+		int $maxAttempts,
+		int $now,
+	): void {
+		$this->db->beginTransaction();
+		try {
+			$signRequest = $this->findByIdForUpdate($id);
+			if ($signRequest === null) {
+				$this->db->rollBack();
+				return;
+			}
+
+			$metadata = $signRequest->getMetadata() ?? [];
+			if (($metadata['entitlement_consumed'] ?? false) === true) {
+				$this->db->rollBack();
+				return;
+			}
+
+			$attempts = (int)($metadata['settlement_attempts'] ?? 0) + 1;
+			$metadata['settlement_attempts'] = $attempts;
+			$metadata['settlement_last_attempt_at'] = $now;
+			$metadata['settlement_last_error'] = $failureClass;
+
+			if ($needsIntervention || $attempts >= $maxAttempts) {
+				$metadata['settlement_dead_letter'] = $now;
+			}
+
+			$signRequest->setMetadata($metadata);
+			$this->update($signRequest);
+			$this->db->commit();
+		} catch (\Throwable $e) {
+			$this->db->rollBack();
+			throw $e;
+		}
+	}
+
+	private function keysetAfter(IQueryBuilder $qb, int $afterSigned, int $afterId): object {
+		// Advance strictly beyond the cursor, using ID to break timestamp ties.
+		// The expanded predicate is used because the QueryBuilder does not support
+		// portable row-value comparisons.
+		return $qb->expr()->orX(
+			$qb->expr()->gt('signed', $this->reconcileSignedParam($qb, $afterSigned)),
+			$qb->expr()->andX(
+				$qb->expr()->eq('signed', $this->reconcileSignedParam($qb, $afterSigned)),
+				$qb->expr()->gt('id', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)),
+			),
+		);
+	}
+
+	/**
+	 * Binds a reconciliation cursor timestamp as a UTC datetime for comparison
+	 * with the SQL DATETIME column.
+	 *
+	 * Binding the epoch as an integer would cause MariaDB to compare incompatible
+	 * representations and produce incorrect boundary results. Cursor values remain
+	 * integer epochs internally; conversion happens only when building the query.
+	 */
+	private function reconcileSignedParam(IQueryBuilder $qb, int $epoch): IParameter {
+		return $qb->createNamedParameter(new \DateTime('@' . $epoch), IQueryBuilder::PARAM_DATETIME_MUTABLE);
 	}
 
 	private function getFilesAssociatedFilesWithMeStmt(

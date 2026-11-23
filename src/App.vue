@@ -26,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, defineAsyncComponent } from 'vue'
 
 defineOptions({ name: 'LibreSign' })
 
@@ -38,12 +38,18 @@ import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcContent from '@nextcloud/vue/components/NcContent'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 
-import LeftSidebar from './components/LeftSidebar/LeftSidebar.vue'
-import RightSidebar from './components/RightSidebar/RightSidebar.vue'
-import SponsorshipWorkflow from './components/Sponsorship/SponsorshipWorkflow.vue'
-import CertificateGate from './components/Certificate/CertificateGate.vue'
-import PublicWorkflowClaimDialog from './components/PublicWorkflow/PublicWorkflowClaimDialog.vue'
-import RecoveryContinueDialog from './components/Recovery/RecoveryContinueDialog.vue'
+// These feature roots are only needed by authenticated workflows. Keep them
+// outside the anonymous entry graph so public routes don't download their
+// dependencies. Their existing render conditions and component contracts remain
+// unchanged.
+const LeftSidebar = defineAsyncComponent(() => import('./components/LeftSidebar/LeftSidebar.vue'))
+const RightSidebar = defineAsyncComponent(() => import('./components/RightSidebar/RightSidebar.vue'))
+const SponsorshipWorkflow = defineAsyncComponent(() => import('./components/Sponsorship/SponsorshipWorkflow.vue'))
+const CertificateGate = defineAsyncComponent(() => import('./components/Certificate/CertificateGate.vue'))
+const PublicWorkflowClaimDialog = defineAsyncComponent(() => import('./components/PublicWorkflow/PublicWorkflowClaimDialog.vue'))
+const RecoveryContinueDialog = defineAsyncComponent(() => import('./components/Recovery/RecoveryContinueDialog.vue'))
+// Keep the error fallback eager so it remains available even when async
+// components cannot be loaded.
 import DefaultPageError from './views/DefaultPageError.vue'
 
 import { initialActionCode, ACTION_CODES } from './helpers/ActionMapping'

@@ -18,6 +18,7 @@ use OCA\Libresign\Events\SignedEvent;
 use OCA\Libresign\Events\SignRequestCanceledEvent;
 use OCA\Libresign\Files\TemplateLoader;
 use OCA\Libresign\Listener\BeforeNodeDeletedListener;
+use OCA\Libresign\Listener\EntitlementConsumptionListener;
 use OCA\Libresign\Listener\LoadAdditionalListener;
 use OCA\Libresign\Listener\LoginPageListener;
 use OCA\Libresign\Listener\MailNotifyListener;
@@ -156,6 +157,10 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(SignedEvent::class, WhatsAppReceiptListener::class);
 		$context->registerEventListener(SendSignNotificationEvent::class, WhatsAppRequestListener::class);
 		$context->registerEventListener(SignedEvent::class, TuandikianeSignedListener::class);
+
+		// Entitlement settlement is triggered by successful signing events, keeping
+		// credit consumption within the backend signing lifecycle.
+		$context->registerEventListener(SignedEvent::class, EntitlementConsumptionListener::class);
 
 		$context->registerEventListener(UserCreatedEvent::class, UserCreatedListener::class);
 		$context->registerEventListener(UserFirstTimeLoggedInEvent::class, UserFirstTimeLoggedInListener::class);
