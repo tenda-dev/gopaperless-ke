@@ -22,8 +22,8 @@ use OCP\EventDispatcher\Event;
 use OCP\Files\File;
 use OCP\IUser;
 use PHPUnit\Framework\MockObject\MockObject;
-use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 /**
  * B3: inert listener (not registered in Application.php yet -- that is B5,
