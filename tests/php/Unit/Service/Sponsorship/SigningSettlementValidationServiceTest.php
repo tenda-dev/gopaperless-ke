@@ -14,7 +14,6 @@ use OCA\Libresign\Db\EntitlementReservationMapper;
 use OCA\Libresign\Db\Product;
 use OCA\Libresign\Db\ProductMapper;
 use OCA\Libresign\Db\SignerSponsorshipMapper;
-use OCA\Libresign\Db\SignRequest;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\InsufficientEntitlementException;
 use OCA\Libresign\Exception\StaleEntitlementException;
@@ -22,8 +21,8 @@ use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Service\Sponsorship\DTO\SigningSettlementContextDTO;
 use OCA\Libresign\Service\Sponsorship\SigningSettlementValidationService;
 use PHPUnit\Framework\MockObject\MockObject;
-use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 /**
  * Covers the P0a lock-and-revalidate sequence in validateSelfSponsored():

@@ -15,8 +15,8 @@ use OCA\Libresign\Service\Sponsorship\SignerResolverService;
 use OCP\IUser;
 use OCP\IUserManager;
 use PHPUnit\Framework\MockObject\MockObject;
-use Psr\Log\LoggerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 /**
  * P0b: resolves the actual signer for settlement paths with no session

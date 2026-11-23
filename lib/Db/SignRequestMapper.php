@@ -1047,7 +1047,7 @@ class SignRequestMapper extends CachedQBMapper {
 	 * the entitlement_consumed marker untouched.
 	 *
 	 * @param bool $needsIntervention Dead-letter immediately when retrying
-	 *   cannot succeed without external intervention.
+	 *                                cannot succeed without external intervention.
 	 */
 	public function recordSettlementFailure(
 		int $id,

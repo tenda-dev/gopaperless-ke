@@ -188,7 +188,7 @@ class SigningSettlementValidationService {
 	 * before another candidate is attempted.
 	 *
 	 * @param list<int> $excludedEntitlementIds Candidates found stale during
-	 *   earlier attempts in the current settlement.
+	 *                                          earlier attempts in the current settlement.
 	 *
 	 * @throws StaleEntitlementException The selected candidate is no longer usable.
 	 * @throws InsufficientEntitlementException No untried candidate remains.

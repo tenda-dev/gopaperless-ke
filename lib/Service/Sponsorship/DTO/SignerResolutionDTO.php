@@ -31,7 +31,7 @@ final class SignerResolutionDTO {
 	 * Creates a result representing an unresolved signer identity.
 	 *
 	 * @param string $reason Machine-readable, e.g. 'account_not_found',
-	 *   'email_unprovisioned', 'email_ambiguous', 'no_identity'.
+	 *                       'email_unprovisioned', 'email_ambiguous', 'no_identity'.
 	 */
 	public static function unresolved(string $reason): self {
 		return new self(false, null, $reason);
