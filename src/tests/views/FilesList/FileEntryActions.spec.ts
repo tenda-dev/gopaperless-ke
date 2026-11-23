@@ -30,7 +30,7 @@ const filesStoreMock = {
 	canDelete: vi.fn(() => true),
 	isOriginalFileDeleted: vi.fn(() => false),
 	selectFile: vi.fn(),
-	fetchFileDetail: vi.fn(async () => ({
+	fetchFileDetail: vi.fn(async (): Promise<any> => ({
 		id: 1,
 		uuid: 'file-uuid',
 		name: 'contract.pdf',
@@ -76,6 +76,14 @@ vi.mock('@nextcloud/router', () => ({
 
 vi.mock('../../../utils/viewer.js', () => ({
 	openDocument: vi.fn((...args: unknown[]) => openDocumentMock(...args)),
+}))
+
+const { showErrorMock } = vi.hoisted(() => ({ showErrorMock: vi.fn() }))
+
+vi.mock('../../../services/toast', () => ({
+	showError: (...args: unknown[]) => showErrorMock(...args),
+	showSuccess: vi.fn(),
+	showInfo: vi.fn(),
 }))
 
 vi.mock('../../../store/actionsmenu.js', () => ({
@@ -184,6 +192,7 @@ describe('FileEntryActions.vue', () => {
 		signStoreMock.setFileToSign.mockReset()
 		routerPushMock.mockReset()
 		openDocumentMock.mockReset()
+		showErrorMock.mockReset()
 	})
 
 	it('registers the default action menu on mount', async () => {
@@ -344,4 +353,37 @@ describe('FileEntryActions.vue', () => {
 		expect(filesStoreMock.delete).toHaveBeenCalledWith(source, false)
 		expect(wrapper.vm.deleting).toBe(false)
 	})
+	it('sign shows an error and does not navigate when no signer uuid resolves', async () => {
+		filesStoreMock.fetchFileDetail.mockResolvedValueOnce({
+			id: 1,
+			uuid: 'file-uuid',
+			signers: [{ me: true }],
+			settings: { isApprover: false },
+		})
+		const wrapper = createWrapper()
+		await wrapper.vm.$nextTick()
+
+		await wrapper.vm.onActionClick({ id: 'sign' })
+
+		expect(showErrorMock).toHaveBeenCalledTimes(1)
+		expect(routerPushMock).not.toHaveBeenCalled()
+		expect(signStoreMock.setFileToSign).not.toHaveBeenCalled()
+	})
+
+	it('sign navigates to SignPDF for a normal signer exposing sign_uuid', async () => {
+		filesStoreMock.fetchFileDetail.mockResolvedValueOnce({
+			id: 1,
+			uuid: 'file-uuid',
+			signers: [{ me: true, sign_uuid: 'legacy-sign-uuid' }],
+			settings: { isApprover: false },
+		})
+		const wrapper = createWrapper()
+		await wrapper.vm.$nextTick()
+
+		await wrapper.vm.onActionClick({ id: 'sign' })
+
+		expect(signStoreMock.setFileToSign).toHaveBeenCalledTimes(1)
+		expect(routerPushMock).toHaveBeenCalledWith({ name: 'SignPDF', params: { uuid: 'legacy-sign-uuid' } })
+	})
+
 })

@@ -21,6 +21,7 @@
 	<SponsorshipWorkflow v-if="isLoggedIn" />
 	<CertificateGate v-if="isLoggedIn" />
 	<PublicWorkflowClaimDialog v-if="isLoggedIn && !isSignExternalPage" />
+	<RecoveryContinueDialog v-if="isLoggedIn && !isSignExternalPage" />
 	<Toaster richColors position="top-right" />
 </template>
 
@@ -46,6 +47,7 @@ const RightSidebar = defineAsyncComponent(() => import('./components/RightSideba
 const SponsorshipWorkflow = defineAsyncComponent(() => import('./components/Sponsorship/SponsorshipWorkflow.vue'))
 const CertificateGate = defineAsyncComponent(() => import('./components/Certificate/CertificateGate.vue'))
 const PublicWorkflowClaimDialog = defineAsyncComponent(() => import('./components/PublicWorkflow/PublicWorkflowClaimDialog.vue'))
+const RecoveryContinueDialog = defineAsyncComponent(() => import('./components/Recovery/RecoveryContinueDialog.vue'))
 // Keep the error fallback eager so it remains available even when async
 // components cannot be loaded.
 import DefaultPageError from './views/DefaultPageError.vue'

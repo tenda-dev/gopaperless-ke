@@ -15,7 +15,7 @@
 		:close-button-outside="true"
 		size="full"
 		@close="closeModal">
-		<div v-if="filesStore.loading">
+		<div v-if="initializing">
 			<NcLoadingIcon :size="64" :name="t('libresign', 'Loading …')" />
 		</div>
 		<div v-else class="ven" :class="{ 'ven--mobile': isMobile }">
@@ -94,7 +94,7 @@
 						<NcLoadingIcon :size="64"
 							:name="t('libresign', 'Preparing document for signature placement…')" />
 					</div>
-					<PdfEditor v-if="!filesStore.loading && pdfEditorFiles.length > 0"
+					<PdfEditor v-if="!initializing && pdfEditorFiles.length > 0"
 						ref="pdfEditor"
 						width="100%"
 						height="100%"
@@ -178,6 +178,7 @@ const {
 	t,
 	modal,
 	loading,
+	initializing,
 	mode,
 	focusedSignerId,
 	placing,
@@ -250,6 +251,7 @@ defineExpose({
 	t,
 	modal,
 	loading,
+	initializing,
 	mode,
 	focusedSignerId,
 	placing,

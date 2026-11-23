@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Transition } from 'vue'
 import { mount } from '@vue/test-utils'
 
 import {
@@ -93,7 +94,7 @@ describe('WorkflowActions.vue', () => {
 		vi.clearAllMocks()
 	})
 
-	function mountComponent(props: { workflow: WorkflowState; loading?: boolean }) {
+	function mountComponent(props: { workflow: WorkflowState; loading?: boolean; motionKey?: number }) {
 		return mount(WorkflowActions, {
 			props,
 		})
@@ -176,6 +177,24 @@ describe('WorkflowActions.vue', () => {
 		})
 	})
 
+	describe('signature-positions helper text', () => {
+		const missingFields = { hasSigners: true, hasVisibleElements: false, isReady: false }
+
+		it('is shown while positions are still to be set up', () => {
+			const wrapper = mountComponent({
+				workflow: createWorkflowState({ ...missingFields, primaryAction: 'setup-positions' }),
+			})
+			expect(wrapper.text()).toContain('Visible signature positions must be configured.')
+		})
+
+		it.each(['completed', 'view-progress'] as WorkflowPrimaryAction[])('is not shown once the workflow is past positions (%s)', (primaryAction) => {
+			const wrapper = mountComponent({
+				workflow: createWorkflowState({ ...missingFields, primaryAction }),
+			})
+			expect(wrapper.text()).not.toContain('Visible signature positions must be configured.')
+		})
+	})
+
 	describe('blocked state', () => {
 		it('adds the blocked class when the workflow is not ready and primary action is not request-signatures', () => {
 			const wrapper = mountComponent({
@@ -252,6 +271,121 @@ describe('WorkflowActions.vue', () => {
 			await wrapper.find('.workflow-secondary-action-button').trigger('click')
 
 			expect(wrapper.emitted('secondary-action')).toHaveLength(1)
+		})
+	})
+	describe('stage-change motion (Phase 2)', () => {
+		let frames: Array<() => void>
+
+		beforeEach(() => {
+			frames = []
+			vi.stubGlobal('requestAnimationFrame', (cb: () => void) => {
+				frames.push(cb)
+				return frames.length
+			})
+			vi.stubGlobal('cancelAnimationFrame', () => {
+				frames = []
+			})
+		})
+
+		afterEach(() => {
+			vi.unstubAllGlobals()
+		})
+
+		const flushFrames = () => {
+			for (let i = 0; i < 2; i++) {
+				const queued = frames
+				frames = []
+				queued.forEach((cb) => cb())
+			}
+		}
+
+		const stage = (primaryAction: WorkflowPrimaryAction, status: number = FILE_STATUS.DRAFT) => createWorkflowState({
+			primaryAction,
+			file: { status },
+			signers: [{ me: false, signed: false, status: SIGN_REQUEST_STATUS.DRAFT }],
+			hasSigners: true,
+		})
+
+		const bodyTransition = (wrapper: ReturnType<typeof mountComponent>) => wrapper.findAll('transition-stub')[0]
+
+		it('wraps icon + content in one block keyed on the stage, keeping the buttons outside it', () => {
+			const wrapper = mountComponent({ workflow: stage('request-signatures'), motionKey: 1 })
+			const body = wrapper.find('.workflow-primary-action-body')
+
+			expect(body.exists()).toBe(true)
+			expect(body.find('.workflow-primary-action-icon').exists()).toBe(true)
+			expect(body.find('.workflow-primary-action-title').exists()).toBe(true)
+			expect(body.find('.workflow-primary-action-button').exists()).toBe(false)
+			expect(wrapper.find('.workflow-primary-action-button').exists()).toBe(true)
+		})
+
+		it('does not run css transitions without a motion-key', () => {
+			const wrapper = mountComponent({ workflow: stage('request-signatures') })
+
+			expect(bodyTransition(wrapper).attributes('css')).toBe('false')
+		})
+
+		it('uses the plain swap for an ordinary stage change of the same document', async () => {
+			const wrapper = mountComponent({ workflow: stage('setup-positions'), motionKey: 1 })
+
+			await wrapper.setProps({ workflow: stage('request-signatures') })
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-swap')
+			expect(bodyTransition(wrapper).attributes('css')).toBe('true')
+		})
+
+		it('arms the one-shot completion enter when the SAME document becomes completed', async () => {
+			const wrapper = mountComponent({ workflow: stage('view-progress', FILE_STATUS.ABLE_TO_SIGN), motionKey: 1 })
+
+			await wrapper.setProps({ workflow: stage('completed', FILE_STATUS.SIGNED) })
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-complete')
+		})
+
+		it('disarms after the completed block has entered', async () => {
+			const wrapper = mountComponent({ workflow: stage('view-progress', FILE_STATUS.ABLE_TO_SIGN), motionKey: 1 })
+			await wrapper.setProps({ workflow: stage('completed', FILE_STATUS.SIGNED) })
+
+			const transition = wrapper.findAllComponents(Transition)[0] as unknown as { vm: { $emit: (e: string) => void } }
+			transition.vm.$emit('after-enter')
+			await wrapper.vm.$nextTick()
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-swap')
+		})
+
+		it('does not arm when opening an already-completed document', () => {
+			const wrapper = mountComponent({ workflow: stage('completed', FILE_STATUS.SIGNED), motionKey: 1 })
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-swap')
+		})
+
+		it('does not arm (and is still) when the document changes in the same update', async () => {
+			const wrapper = mountComponent({ workflow: stage('view-progress', FILE_STATUS.ABLE_TO_SIGN), motionKey: 1 })
+
+			await wrapper.setProps({ workflow: stage('completed', FILE_STATUS.SIGNED), motionKey: 2 })
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-swap')
+			expect(bodyTransition(wrapper).attributes('css')).toBe('false')
+
+			flushFrames()
+			await wrapper.vm.$nextTick()
+			expect(bodyTransition(wrapper).attributes('css')).toBe('true')
+		})
+
+		it('does not arm without a motion-key', async () => {
+			const wrapper = mountComponent({ workflow: stage('view-progress', FILE_STATUS.ABLE_TO_SIGN) })
+
+			await wrapper.setProps({ workflow: stage('completed', FILE_STATUS.SIGNED) })
+
+			expect(bodyTransition(wrapper).attributes('name')).toBe('gp-swap')
+		})
+
+		it('swaps the button label through its own transition', () => {
+			const wrapper = mountComponent({ workflow: stage('request-signatures'), motionKey: 1 })
+			const label = wrapper.find('.workflow-primary-action-button .workflow-primary-action-label')
+
+			expect(label.exists()).toBe(true)
+			expect(label.text().length).toBeGreaterThan(0)
 		})
 	})
 })

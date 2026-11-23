@@ -117,20 +117,25 @@
 		<div
 		    v-if="canEdit || canShare"
 			class="workflow-signer-actions"
+			:class="{ 'workflow-signer-actions--pending': pendingAction }"
 			@click.stop>
+			<NcLoadingIcon v-if="pendingAction"
+				:size="16"
+				:name="pendingLabel"
+				class="workflow-signer-pending" />
 			<NcActions
 				:open="isActionsOpen"
 				@update:open="isActionsOpen = $event"
 				@close="isActionsOpen = false"
 				@closed="isActionsOpen = false">
 				<NcActionCaption name="Signer Actions" />
-				<NcActionButton @click="$emit('customize-message', signer)" v-if="canCustomizeMessage" :close-after-click="true">
+				<NcActionButton @click="$emit('customize-message', signer)" v-if="canCustomizeMessage" :disabled="deletePending" :close-after-click="true">
 							<template #icon>
 								<NcIconSvgWrapper :path="mdiMessageTextOutline" :size="15" />
 							</template>
 							{{ t('libresign', 'Customise message') }}
 				</NcActionButton>
-				<NcActionButton @click="$emit('edit', signer)" v-if="canEdit" :close-after-click="true">
+				<NcActionButton @click="$emit('edit', signer)" v-if="canEdit" :disabled="deletePending" :close-after-click="true">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiPencilOutline"
@@ -146,7 +151,7 @@
 					</template>
 					Request Signature
 				</NcActionButton>
-				<NcActionButton @click="$emit('send-reminder', signer)" v-if="canSendReminder" :close-after-click="true">
+				<NcActionButton @click="$emit('send-reminder', signer)" v-if="canSendReminder" :disabled="Boolean(pendingAction)" :close-after-click="true">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiBellOutline"
@@ -155,7 +160,7 @@
 					Send Reminder
 				</NcActionButton>
 				<NcActionButton v-if="showWhatsApp"
-					:disabled="!whatsAppReady"
+					:disabled="!whatsAppReady || Boolean(pendingAction) || deletePending"
 					:close-after-click="true"
 					@click="$emit('send-whatsapp', signer)">
 					<template #icon>
@@ -175,7 +180,7 @@
 					</template>
 					{{ t('libresign', 'Show QR') }}
 				</NcActionButton>
-				<NcActionButton @click="$emit('delete', signer)" v-if="canDelete" :close-after-click="true" variant="danger">
+				<NcActionButton @click="$emit('delete', signer)" v-if="canDelete" :disabled="Boolean(pendingAction) || deleteBlocked" :close-after-click="true" variant="danger">
 					<template #icon>
 						<NcIconSvgWrapper
 							:path="mdiTrashCanOutline"
@@ -215,6 +220,7 @@ import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionCaption from '@nextcloud/vue/components/NcActionCaption'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper
 	from '@nextcloud/vue/components/NcIconSvgWrapper'
@@ -274,7 +280,16 @@ const props = withDefaults(defineProps<{
 
 	requireRequestPermission?: boolean
 	methods?: IdentifyMethodSetting[]
+	/** In-flight row action for this signer, owned by the tab's controller. */
+	pendingAction?: 'notify' | 'whatsapp' | 'delete' | null
+	/** Another delete or a request-level mutation is in flight. */
+	deleteBlocked?: boolean
+	/** Any signer delete is in flight: locks Edit, Customise and WhatsApp. */
+	deletePending?: boolean
 }>(), {
+	deletePending: false,
+	pendingAction: null,
+	deleteBlocked: false,
 	event: '',
 	isOrderedNumeric: false,
 	showDragHandle: false,
@@ -483,6 +498,14 @@ onBeforeUnmount(() => {
 	clearTimeout(recheck)
 })
 
+const pendingLabel = computed(() => {
+	switch (props.pendingAction) {
+	case 'notify': return t('libresign', 'Sending reminder…')
+	case 'whatsapp': return t('libresign', 'Sending on WhatsApp…')
+	case 'delete': return t('libresign', 'Deleting…')
+	default: return ''
+	}
+})
 const showWhatsApp = computed(() => Boolean(recipient.value && !['disabled', 'envelope', 'signed'].includes(recipient.value.reason ?? '')))
 const availableAgainAt = computed(() => {
 	const at = recipient.value?.availableAgainAt ?? lastSend.value?.availableAgainAt
@@ -640,11 +663,11 @@ function handlePrimaryAction() {
 		);
 
 	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease,
-		border-color 180ms ease,
-		background 180ms ease,
-		opacity 180ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease,
+		border-color var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease,
+		opacity var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer--interactive {
@@ -652,8 +675,6 @@ function handlePrimaryAction() {
 }
 
 .workflow-signer--interactive:hover {
-	transform: translateY(-2px);
-
 	border-color:
 		rgba(0, 201, 105, 0.16);
 
@@ -691,8 +712,8 @@ function handlePrimaryAction() {
 	cursor: grab;
 
 	transition:
-		opacity 160ms ease,
-		transform 160ms ease;
+		opacity var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer:hover .workflow-signer-drag-handle {
@@ -732,9 +753,9 @@ function handlePrimaryAction() {
 	flex-shrink: 0;
 
 	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease,
-		background 180ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer-order--active {
@@ -846,6 +867,12 @@ function handlePrimaryAction() {
 	font-weight: 700;
 
 	flex-shrink: 0;
+
+	/* Colour only, no transform. Rows are keyed per signer request, so a
+	   document switch remounts them and never animates this. */
+	transition:
+		background-color var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		color var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
 }
 
 .workflow-signer-status-dot {
@@ -934,10 +961,11 @@ function handlePrimaryAction() {
 	transform: translateX(8px);
 
 	transition:
-		opacity 180ms ease,
-		transform 180ms ease;
+		opacity var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 }
 
+.workflow-signer-actions--pending,
 .workflow-signer:hover .workflow-signer-actions {
 	opacity: 1;
 	transform: translateX(0);
@@ -959,10 +987,10 @@ function handlePrimaryAction() {
 	cursor: pointer;
 
 	transition:
-		transform 160ms ease,
-		background 160ms ease,
-		border-color 160ms ease,
-		box-shadow 160ms ease;
+		transform var(--gp-motion-base, 180ms) ease,
+		background var(--gp-motion-base, 180ms) ease,
+		border-color var(--gp-motion-base, 180ms) ease,
+		box-shadow var(--gp-motion-base, 180ms) ease;
 }
 
 .workflow-signer-action:hover {

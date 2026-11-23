@@ -110,7 +110,6 @@ export function useFileEntry(
 	function openDetailsIfAvailable(event: Event) {
 		event.preventDefault()
 		event.stopPropagation()
-		console.log(`xxxx checking`, props.source);
 		options.filesStore.selectFile(props.source.id)
 		sidebarStore.activeRequestSignatureTab()
 	}

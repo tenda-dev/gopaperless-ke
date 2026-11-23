@@ -40,7 +40,7 @@
 				<FilesNextDesktopTable v-if="!isMobile" :columns="columns" :display-rows="displayRows"
 					:selected-ids="selectedIds" :is-mobile="isMobile"
 					@toggle-one="toggleOne" @select-all="toggleSelectAll" @context-menu="onRowContextMenu"
-					@kebab="onKebab" @open="openFile" />
+					@kebab="onKebab" @open="openRow" />
 
 				<FilesNextMobileList v-else :display-rows="displayRows" :selected-ids="selectedIds"
 					:select-mode="selectMode" @row-tap="onMobileRowTap" @press-start="onPressStart"
@@ -145,7 +145,7 @@ const {
 	displayRows,
 	filesStore,
 	sidebarStore,
-	openFile: (row) => actions.openFile(row),
+	openFile: (row) => actions.openRow(row),
 	downloadRow: (row) => actions.downloadRow(row),
 	deleteRow: (row) => actions.deleteRow(row),
 	openBulkDelete: () => dialogApi.openDialog('bulkDelete', null),
@@ -179,7 +179,7 @@ const actions = useFilesNextActions({
 	openDialog: dialogApi.openDialog,
 	renameValue,
 })
-const { openFile, signRow } = actions
+const { openRow, signRow } = actions
 
 /**
  * Action surface: desktop menu / mobile sheet (shared map)

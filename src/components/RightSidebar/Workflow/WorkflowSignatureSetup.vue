@@ -18,10 +18,13 @@
 		</div>
 
 		<NcButton v-if="!isBlocked" class="workflow-signature-positions__btn" variant="tertiary" size="small"
+			:disabled="isLoading"
+			:aria-busy="isLoading"
 			@click="$emit('edit-positions')">
 
 			<template #icon>
-				<NcIconSvgWrapper :path="mdiPencilOutline" :size="16" />
+				<NcLoadingIcon v-if="isLoading" :size="16" />
+				<NcIconSvgWrapper v-else :path="mdiPencilOutline" :size="16" />
 			</template>
 
 			{{ t('libresign', 'Edit') }}
@@ -40,6 +43,7 @@ import { t } from '@nextcloud/l10n'
 
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
 import {
 	mdiPencilOutline,
@@ -52,9 +56,9 @@ defineOptions({ name: 'WorkflowSignatureSetup' })
 
 const props = defineProps<{
 	file: any | null
+	/** Parent's request-busy signal (covers detail load, draft save and editor open). */
+	isLoading?: boolean
 }>()
-
-console.log('WorkflowSignatureSetup mounted', props.file)
 
 defineEmits<{
 	(e: 'edit-positions'): void
@@ -88,14 +92,12 @@ const lockedMessage = computed(() => {
 })
 
 const hasPositions = computed(() => {
-	console.log('Checking visible elements:', props.file?.visibleElements)
 	return (props.file?.visibleElements?.length ?? 0) > 0
 })
 
 const hasUnsignedSigners = computed(() => {
 	const signers = props.file?.signers ?? []
 	const unsignedSigners = signers.filter((s: any) => !isSignerSigned(s))
-	console.log('Unsigned signers:', unsignedSigners)
 	return unsignedSigners.length > 0
 })
 
@@ -159,17 +161,6 @@ const summaryLine = computed(() => {
 	background: linear-gradient(160deg,
 			rgba(34, 197, 94, 0.07),
 			rgba(34, 197, 94, 0.03));
-
-	transition:
-		border-color 180ms ease,
-		box-shadow 180ms ease,
-		transform 180ms ease;
-
-	&:hover {
-		border-color: rgba(34, 197, 94, 0.22);
-		box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
-		transform: translateY(-1px);
-	}
 }
 
 /* ── body ──────────────────────────────────────────────────────────────────── */
@@ -243,8 +234,8 @@ const summaryLine = computed(() => {
 	border: 1px solid var(--color-border) !important;
 
 	transition:
-		border-color 180ms ease,
-		transform 180ms ease;
+		border-color var(--gp-motion-base, 180ms) ease,
+		transform var(--gp-motion-base, 180ms) ease;
 
 	&:hover:not(:disabled) {
 		border-color: rgba(34, 197, 94, 0.22) !important;

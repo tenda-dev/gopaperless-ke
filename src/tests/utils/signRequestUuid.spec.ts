@@ -65,4 +65,51 @@ describe('signRequestUuid utils', () => {
 	it('falls back to numeric id for validation routes when uuid is unavailable', () => {
 		expect(getValidationRouteUuid({ id: 42 })).toBe(42)
 	})
+
+	it('resolves the signer sign_uuid field (actual backend contract)', () => {
+		expect(getSigningRouteUuid({
+			signers: [{ me: true, sign_uuid: 'backend-sign-uuid' }],
+		})).toBe('backend-sign-uuid')
+	})
+
+	it('resolves the signer signUuid field', () => {
+		expect(getSigningRouteUuid({
+			signers: [{ me: true, signUuid: 'camel-sign-uuid' }],
+		})).toBe('camel-sign-uuid')
+	})
+
+	it('prefers sign_request_uuid, then sign_uuid, then signUuid', () => {
+		expect(getCurrentSignerSignRequestUuid({
+			signers: [{ me: true, sign_request_uuid: 'a', sign_uuid: 'b', signUuid: 'c' }],
+		})).toBe('a')
+		expect(getCurrentSignerSignRequestUuid({
+			signers: [{ me: true, sign_uuid: 'b', signUuid: 'c' }],
+		})).toBe('b')
+		expect(getCurrentSignerSignRequestUuid({
+			signers: [{ me: true, signUuid: 'c' }],
+		})).toBe('c')
+	})
+
+	it('returns null for a normal signer with no supported uuid', () => {
+		expect(getSigningRouteUuid({
+			settings: { isApprover: false },
+			signers: [{ me: true }],
+		})).toBeNull()
+	})
+
+	it('does not fall back to the document uuid for a non-approver', () => {
+		expect(getSigningRouteUuid({
+			uuid: 'file-uuid',
+			settings: { isApprover: false },
+			signers: [{ me: true }],
+		})).toBeNull()
+	})
+
+	it('still resolves the document uuid for an approver without a signer uuid', () => {
+		expect(getSigningRouteUuid({
+			uuid: 'file-uuid',
+			settings: { isApprover: true },
+			signers: [{ me: true }],
+		})).toBe('file-uuid')
+	})
 })

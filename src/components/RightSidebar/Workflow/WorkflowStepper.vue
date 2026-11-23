@@ -3,7 +3,12 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="workflow-stepper">
+	<div
+		class="workflow-stepper"
+		:class="{
+			'workflow-stepper--motion': optedIn,
+			'workflow-stepper--still': optedIn && !motionEnabled,
+		}">
 		<div
 			v-for="(step, index) in steps"
 			:key="step.id"
@@ -34,14 +39,19 @@
 				@keydown.enter="onStepClick(index)"
 				@keydown.space.prevent="onStepClick(index)">
 				<div class="workflow-step-circle">
-					<NcIconSvgWrapper
-						v-if="step.completed"
-						:path="mdiCheck"
-						:size="18" />
+					<Transition
+						name="gp-glyph"
+						:css="motionEnabled">
+						<NcIconSvgWrapper
+							v-if="step.completed"
+							key="check"
+							:path="mdiCheck"
+							:size="18" />
 
-					<span v-else>
-						{{ index + 1 }}
-					</span>
+						<span v-else key="number">
+							{{ index + 1 }}
+						</span>
+					</Transition>
 				</div>
 
 				<div class="workflow-step-label">
@@ -63,6 +73,8 @@ import {
 import type {
 	WorkflowStep,
 } from '../../../composables/useWorkflowState'
+import { useMotionGuard } from '../../../composables/useMotionGuard'
+import type { MotionKey } from '../../../composables/useMotionGuard'
 
 defineOptions({
 	name: 'WorkflowStepper',
@@ -75,7 +87,16 @@ const props = withDefaults(defineProps<{
 	 * Disabled by default to preserve existing authenticated behaviour.
 	 */
 	clickable?: boolean
-}>(), { clickable: false })
+	/**
+	 * Opts in to step-change motion (glyph, circle, connector fill). Omit it to
+	 * keep the previous, unanimated behaviour (e.g. the public workflow). When
+	 * the key changes (a different document) motion is suppressed for that
+	 * render, so a document switch never animates.
+	 */
+	motionKey?: MotionKey
+}>(), { clickable: false, motionKey: undefined })
+
+const { optedIn, motionEnabled } = useMotionGuard(() => props.motionKey)
 
 const emit = defineEmits<{ select: [index: number] }>()
 
@@ -210,6 +231,105 @@ function isConnectorActive(index: number): boolean {
 
 .workflow-step-connector--active {
 	background: var(--color-primary-element);
+}
+
+/* =========================================
+ * MOTION (opt-in via motion-key)
+ * ========================================= */
+
+/*
+ * Keep stepper transitions limited to visual state changes. Shared tokens
+ * provide consistent timing, with fallbacks for contexts outside the sidebar.
+ */
+
+.workflow-stepper--motion {
+	.workflow-step-circle {
+		transition:
+			background-color var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			border-color var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			color var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			transform var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			box-shadow var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			opacity var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	.workflow-step-label {
+		transition:
+			color var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+			opacity var(--gp-motion-base, 180ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	/* The base line stays neutral; the active colour is a scaleX fill. */
+	.workflow-step-connector {
+		transition: none;
+	}
+
+	.workflow-step-connector--active {
+		background: var(--color-border);
+	}
+
+	.workflow-step-connector::after {
+		content: '';
+
+		position: absolute;
+		inset: 0;
+
+		background: var(--color-primary-element);
+
+		transform: scaleX(0);
+		transform-origin: left center;
+
+		transition: transform var(--gp-motion-slow, 260ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+	}
+
+	.workflow-step-connector--active::after {
+		transform: scaleX(1);
+	}
+}
+
+/*
+ * Suppress transitions while applying a different document's state so the
+ * stepper updates immediately rather than animating between documents.
+ */
+.workflow-stepper--still {
+	.workflow-step-circle,
+	.workflow-step-label,
+	.workflow-step-connector,
+	.workflow-step-connector::after {
+		transition: none;
+	}
+}
+
+/* Enter the replacement glyph without delaying its mount behind a leave. */
+.gp-glyph-enter-active {
+	transition:
+		opacity var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1)),
+		transform var(--gp-motion-fast, 120ms) var(--gp-ease, cubic-bezier(0.2, 0, 0, 1));
+}
+
+.gp-glyph-enter-from {
+	opacity: 0;
+	transform: scale(0.8);
+}
+
+/* Remove the outgoing glyph immediately to avoid interrupted leave transitions. */
+.gp-glyph-leave-active {
+	display: none;
+}
+
+/* Keep reduced-motion support when the stepper is used outside the sidebar. */
+@media (prefers-reduced-motion: reduce) {
+	.workflow-stepper--motion {
+		.workflow-step-circle,
+		.workflow-step-label,
+		.workflow-step-connector::after {
+			transition-duration: 0.001ms;
+		}
+	}
+
+	.gp-glyph-enter-active {
+		transition-duration: 0.001ms;
+	}
 }
 
 /* =========================================
