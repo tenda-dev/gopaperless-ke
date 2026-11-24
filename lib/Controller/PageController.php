@@ -194,6 +194,9 @@ class PageController extends AEnvironmentPageAwareController {
 		// Visibility only (nav/route); the operations endpoints enforce access server-side.
 		$this->initialState->provideInitialState('operations_dashboard_enabled', $this->operationsAccessService->canAccess($this->userSession->getUser()));
 
+		// Availability only; acceptance is read client-side from the ToS OCS endpoint.
+		$this->initialState->provideInitialState('tos_app_enabled', $this->appManager->isEnabledForUser('terms_of_service', $this->userSession->getUser()));
+
 		// Only the pending-recovery state reaches the frontend; the signing UUID
 		// and account identity remain server-side.
 		$recovery = $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', false)

@@ -55,6 +55,9 @@ final class PageControllerTest extends TestCase {
 	private FileMapper&MockObject $fileMapper;
 	private FileAccessService&MockObject $fileAccessService;
 	private PageController $controller;
+	private IAppManager&MockObject $appManager;
+	/** @var array<string, bool> per-app overrides for isEnabledForUser; other apps use the real manager */
+	private array $appEnabledOverrides = [];
 	/** @var array<string, mixed> initial state provided by the last render, by key */
 	private array $providedState = [];
 	/** @var array<string, string> cookies sent to the controller's request */
@@ -117,6 +120,11 @@ final class PageControllerTest extends TestCase {
 				$this->providedState[$key] = $value;
 			});
 
+		$realAppManager = \OCP\Server::get(IAppManager::class);
+		$this->appManager = $this->createMock(IAppManager::class);
+		$this->appManager->method('isEnabledForUser')
+			->willReturnCallback(fn ($appId, $user = null) => $this->appEnabledOverrides[$appId] ?? $realAppManager->isEnabledForUser($appId, $user));
+
 		$this->controller = new PageController(
 			request: $this->request,
 			userSession: $this->userSession,
@@ -146,7 +154,7 @@ final class PageControllerTest extends TestCase {
 			docMdpConfigService: $this->createConfiguredMock(ConfigService::class, [
 				'getConfig' => [],
 			]),
-			appManager: \OCP\Server::get(IAppManager::class),
+			appManager: $this->appManager,
 			operationsAccessService: $this->createMock(OperationsAccessService::class),
 		);
 	}
@@ -154,6 +162,22 @@ final class PageControllerTest extends TestCase {
 	private function setUserLoggedIn(bool $loggedIn): void {
 		$this->userSession->method('isLoggedIn')->willReturn($loggedIn);
 		$this->userSession->method('getUser')->willReturn($loggedIn ? $this->currentUser : null);
+	}
+
+	public function testIndexProvidesTosAppEnabledTrueWhenTheAppIsEnabledForTheUser(): void {
+		$this->appEnabledOverrides['terms_of_service'] = true;
+
+		$this->controller->index();
+
+		self::assertTrue($this->providedState['tos_app_enabled'] ?? null);
+	}
+
+	public function testIndexProvidesTosAppEnabledFalseWhenTheAppIsNotEnabledForTheUser(): void {
+		$this->appEnabledOverrides['terms_of_service'] = false;
+
+		$this->controller->index();
+
+		self::assertFalse($this->providedState['tos_app_enabled'] ?? null);
 	}
 
 	public function testIndexAllowsSelfWorkerSrcDomain(): void {

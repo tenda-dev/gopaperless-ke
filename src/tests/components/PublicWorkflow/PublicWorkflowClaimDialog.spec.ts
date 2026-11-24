@@ -17,6 +17,24 @@ import { createL10nMock } from '../../testHelpers/l10n.js'
 const getClaimStatusMock = vi.fn()
 const claimWorkflowMock = vi.fn()
 
+// Participant behaviour is tested independently of the coordinator: a stubbed
+// composable lets each test decide whether the coordinator grants presentation.
+const managed = vi.hoisted(() => ({ allow: true, canPresent: { value: true } as { value: boolean }, opts: null as null | { id: string, priority: number, eligible: { value: boolean } } }))
+vi.mock('../../../composables/useManagedDialog', async () => {
+	const { computed, ref } = await import('vue')
+	const gate = ref(managed.allow)
+	managed.canPresent = gate
+	return {
+		useManagedDialog: (opts: { id: string, priority: number, eligible: { value: boolean } }) => {
+			managed.opts = opts
+			// Re-read per mount: the factory result is cached across resetModules().
+			gate.value = managed.allow
+			managed.canPresent = gate
+			return { canPresent: computed(() => gate.value) }
+		},
+	}
+})
+
 vi.mock('@nextcloud/l10n', () => createL10nMock())
 
 vi.mock('../../../services/publicWorkflow', () => ({
@@ -47,7 +65,58 @@ async function mountDialog() {
 }
 
 describe('PublicWorkflowClaimDialog.vue', () => {
+	describe('coordinator gating', () => {
+		it('registers as "pw-claim" with priority 30', async () => {
+			getClaimStatusMock.mockResolvedValue({ claimable: false })
+			await mountDialog()
+			expect(managed.opts).toMatchObject({ id: 'pw-claim', priority: 30 })
+		})
+
+		it('is ineligible until the server says the draft is claimable', async () => {
+			getClaimStatusMock.mockResolvedValue({ claimable: false })
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+
+		it('is eligible but stays closed while the coordinator withholds presentation', async () => {
+			managed.allow = false
+			getClaimStatusMock.mockResolvedValue({ claimable: true })
+			const wrapper = await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(true)
+			expect(wrapper.find('.pwc').exists()).toBe(false)
+		})
+
+		it('opens when the coordinator later grants presentation', async () => {
+			managed.allow = false
+			getClaimStatusMock.mockResolvedValue({ claimable: true })
+			const wrapper = await mountDialog()
+			managed.canPresent.value = true
+			await flushPromises()
+			expect(wrapper.find('.pwc').exists()).toBe(true)
+		})
+
+		it('Not now makes it ineligible so ownership is released and it does not reopen', async () => {
+			getClaimStatusMock.mockResolvedValue({ claimable: true })
+			const wrapper = await mountDialog()
+			await wrapper.findAll('button')[0].trigger('click')
+			expect(wrapper.find('.pwc').exists()).toBe(false)
+			expect(managed.opts!.eligible.value).toBe(false)
+			managed.canPresent.value = false
+			managed.canPresent.value = true
+			await flushPromises()
+			expect(wrapper.find('.pwc').exists()).toBe(false)
+		})
+
+		it('a failed status check leaves it closed and ineligible', async () => {
+			getClaimStatusMock.mockRejectedValue(new Error('401'))
+			const wrapper = await mountDialog()
+			expect(wrapper.find('.pwc').exists()).toBe(false)
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+	})
+
 	beforeEach(() => {
+		managed.allow = true
 		getClaimStatusMock.mockReset()
 		claimWorkflowMock.mockReset()
 	})

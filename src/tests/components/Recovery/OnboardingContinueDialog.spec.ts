@@ -12,6 +12,24 @@ import { mount } from '@vue/test-utils'
 const VALID = '/apps/libresign/p/sign/0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10'
 const state = vi.hoisted(() => ({ resume: '/apps/libresign/p/sign/0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10', path: '/f/request' }))
 
+// Participant behaviour is tested independently of the coordinator: a stubbed
+// composable lets each test decide whether the coordinator grants presentation.
+const managed = vi.hoisted(() => ({ allow: true, canPresent: { value: true } as { value: boolean }, opts: null as null | { id: string, priority: number, eligible: { value: boolean } } }))
+vi.mock('../../../composables/useManagedDialog', async () => {
+	const { computed, ref } = await import('vue')
+	const gate = ref(managed.allow)
+	managed.canPresent = gate
+	return {
+		useManagedDialog: (opts: { id: string, priority: number, eligible: { value: boolean } }) => {
+			managed.opts = opts
+			// Re-read per mount: the factory result is cached across resetModules().
+			gate.value = managed.allow
+			managed.canPresent = gate
+			return { canPresent: computed(() => gate.value) }
+		},
+	}
+})
+
 vi.mock('@nextcloud/initial-state', () => ({
 	loadState: (_app: string, key: string, def: unknown) => (key === 'onboarding_resume' ? state.resume : def),
 }))
@@ -23,7 +41,9 @@ vi.mock('vue-router', () => ({
 	useRoute: () => ({ path: state.path }),
 }))
 
-const LATCH_KEY = 'gopaperless.onboarding.resumed'
+const UUID = '0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10'
+const OTHER_UUID = '7f3d9a10-1b2c-4d5e-8f60-a1b2c3d4e5f6'
+const LATCH_KEY = `gopaperless.onboarding.resumed:${UUID}`
 
 const NcDialogStub = {
 	props: ['name'],
@@ -47,6 +67,7 @@ let assign: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
+	managed.allow = true
 	state.resume = VALID
 	state.path = '/f/request'
 	window.sessionStorage.clear()
@@ -60,6 +81,63 @@ afterEach(() => {
 })
 
 describe('OnboardingContinueDialog.vue', () => {
+	describe('per-uuid latch', () => {
+		it('a latch for one resume uuid does not suppress a different one', async () => {
+			window.sessionStorage.setItem(`gopaperless.onboarding.resumed:${OTHER_UUID}`, '1')
+			const w = await mountDialog()
+			expect(w.find('.dlg').exists()).toBe(true)
+		})
+
+		it('a different uuid is presentable after the first was resumed', async () => {
+			let w = await mountDialog()
+			const buttons = w.findAll('button.btn')
+			await buttons[buttons.length - 1].trigger('click')
+			expect(window.sessionStorage.getItem(LATCH_KEY)).toBe('1')
+
+			state.resume = `/apps/libresign/p/sign/${OTHER_UUID}`
+			w = await mountDialog()
+			expect(w.find('.dlg').exists()).toBe(true)
+		})
+
+		it('the legacy global latch key no longer suppresses', async () => {
+			window.sessionStorage.setItem('gopaperless.onboarding.resumed', '1')
+			expect((await mountDialog()).find('.dlg').exists()).toBe(true)
+		})
+	})
+
+	describe('coordinator gating', () => {
+		it('registers as "onboarding" with priority 11', async () => {
+			await mountDialog()
+			expect(managed.opts).toMatchObject({ id: 'onboarding', priority: 11 })
+		})
+
+		it('does not present while the coordinator withholds presentation', async () => {
+			managed.allow = false
+			expect((await mountDialog()).find('.dlg').exists()).toBe(false)
+		})
+
+		it('eligibility excludes latched, invalid-path and signing-route cases', async () => {
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(true)
+
+			window.sessionStorage.setItem(LATCH_KEY, '1')
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+
+			window.sessionStorage.clear()
+			state.resume = '/apps/libresign/f/account'
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+
+		it('dismissal makes it ineligible (releasing ownership) without latching', async () => {
+			const w = await mountDialog()
+			await w.findAll('button.btn')[0].trigger('click')
+			expect(managed.opts!.eligible.value).toBe(false)
+			expect(window.sessionStorage.getItem(LATCH_KEY)).toBeNull()
+		})
+	})
+
 	it('is not shown when the server exposes no resume path', async () => {
 		state.resume = ''
 		expect((await mountDialog()).find('.dlg').exists()).toBe(false)

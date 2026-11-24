@@ -48,22 +48,28 @@ vi.mock('@nextcloud/vue/components/NcEmptyContent', () => ({
 }))
 
 vi.mock('../components/LeftSidebar/LeftSidebar.vue', () => ({
+	__esModule: true,
 	default: { name: 'LeftSidebar', template: '<aside class="left-sidebar" />' },
 }))
 vi.mock('../components/RightSidebar/RightSidebar.vue', () => ({
+	__esModule: true,
 	default: { name: 'RightSidebar', template: '<div class="right-sidebar" />' },
 }))
 vi.mock('../components/Sponsorship/SponsorshipWorkflow.vue', () => ({
+	__esModule: true,
 	default: { name: 'SponsorshipWorkflow', template: '<div />' },
 }))
 vi.mock('../components/Certificate/CertificateGate.vue', () => ({
+	__esModule: true,
 	default: { name: 'CertificateGate', template: '<div />' },
 }))
 vi.mock('../components/PublicWorkflow/PublicWorkflowClaimDialog.vue', () => ({
+	__esModule: true,
 	default: { name: 'PublicWorkflowClaimDialog', template: '<div />' },
 }))
 
 import App from '../App.vue'
+import { useDialogCoordinatorStore } from '../store/dialogCoordinator'
 
 describe('App', () => {
 	beforeEach(() => {
@@ -72,6 +78,32 @@ describe('App', () => {
 		routeState.params = {}
 		routeState.matched = []
 		initialActionCode.value = 0
+	})
+
+	it('resolves the ToS prerequisite once into the dialog coordinator for a signed-in user', async () => {
+		const coordinator = useDialogCoordinatorStore()
+		coordinator.setPrerequisite('unknown')
+
+		mount(App, {
+			global: {
+				stubs: {
+					NcContent: { template: '<div><slot /></div>' },
+					NcAppContent: { template: '<main><slot /></main>' },
+					NcEmptyContent: { template: '<div><slot /></div>' },
+					LeftSidebar: true,
+					RightSidebar: true,
+					SponsorshipWorkflow: true,
+					CertificateGate: true,
+					PublicWorkflowClaimDialog: true,
+					DefaultPageError: true,
+					RouterView: { template: '<div class="router-view" />' },
+				},
+			},
+		})
+		await flushPromises()
+
+		// tos_app_enabled is absent in tests -> 'not-enabled' without any request.
+		expect(coordinator.prerequisite).toBe('not-enabled')
 	})
 
 	it('shows left sidebar on regular internal routes', async () => {

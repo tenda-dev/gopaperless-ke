@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe('OnboardingRecovery.vue', () => {
 	it('renders the toggle label', async () => {
-		expect((await mountSection()).text()).toContain('Enable onboarding recovery')
+		expect((await mountSection()).text()).toContain('Enable Tendaworld onboarding for unregistered signers')
 	})
 
 	it('posts the new value to the dedicated admin endpoint on toggle', async () => {

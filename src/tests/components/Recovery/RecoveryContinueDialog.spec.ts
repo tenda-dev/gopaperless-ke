@@ -12,6 +12,24 @@ import { mount } from '@vue/test-utils'
 
 const state = vi.hoisted(() => ({ pending: true as unknown, path: '/f/request' }))
 
+// Participant behaviour is tested independently of the coordinator: a stubbed
+// composable lets each test decide whether the coordinator grants presentation.
+const managed = vi.hoisted(() => ({ allow: true, canPresent: { value: true } as { value: boolean }, opts: null as null | { id: string, priority: number, eligible: { value: boolean } } }))
+vi.mock('../../../composables/useManagedDialog', async () => {
+	const { computed, ref } = await import('vue')
+	const gate = ref(managed.allow)
+	managed.canPresent = gate
+	return {
+		useManagedDialog: (opts: { id: string, priority: number, eligible: { value: boolean } }) => {
+			managed.opts = opts
+			// Re-read per mount: the factory result is cached across resetModules().
+			gate.value = managed.allow
+			managed.canPresent = gate
+			return { canPresent: computed(() => gate.value) }
+		},
+	}
+})
+
 vi.mock('@nextcloud/initial-state', () => ({
 	loadState: (_app: string, key: string, def: unknown) => (key === 'recovery_pending' ? state.pending : def),
 }))
@@ -51,6 +69,7 @@ let assign: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
+	managed.allow = true
 	state.pending = true
 	state.path = '/f/request'
 	window.sessionStorage.clear()
@@ -64,6 +83,53 @@ afterEach(() => {
 })
 
 describe('RecoveryContinueDialog.vue', () => {
+	describe('coordinator gating', () => {
+		it('registers as "recovery" with priority 10', async () => {
+			await mountDialog()
+			expect(managed.opts).toMatchObject({ id: 'recovery', priority: 10 })
+		})
+
+		it('does not present while the coordinator withholds presentation', async () => {
+			managed.allow = false
+			const w = await mountDialog()
+			expect(w.find('.dlg').exists()).toBe(false)
+		})
+
+		it('presents once the coordinator grants it', async () => {
+			managed.allow = false
+			const w = await mountDialog()
+			managed.canPresent.value = true
+			await w.vm.$nextTick()
+			expect(w.find('.dlg').exists()).toBe(true)
+		})
+
+		it('eligibility reflects business state, dismissal and signing routes (not the gate)', async () => {
+			managed.allow = false
+			const w = await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(true)
+			managed.canPresent.value = true
+			await w.vm.$nextTick()
+			await w.find('.dlg-close').trigger('click')
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+
+		it('is ineligible when nothing is pending or on a signing route', async () => {
+			state.pending = false
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+			state.pending = true
+			state.path = '/sign/0b5c2b2e-8a4f-4c9e-9d55-2f1a7c3e9b10'
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+
+		it('a dismissal persisted for the tab keeps it ineligible', async () => {
+			window.sessionStorage.setItem(DISMISSED_KEY, '1')
+			await mountDialog()
+			expect(managed.opts!.eligible.value).toBe(false)
+		})
+	})
+
 	it('is not shown when the server reports nothing pending', async () => {
 		state.pending = false
 		expect((await mountDialog()).find('.dlg').exists()).toBe(false)

@@ -59,9 +59,12 @@ import TendaworldSign from '../img/tenda-icon.png'
 import { useNetworkState } from '@/composables/useNetworkState'
 import { useForceLightMode } from '@/composables/useForceLightMode'
 import { useUserContextStore } from '@/store/userContext'
+import { useDialogCoordinatorStore } from '@/store/dialogCoordinator'
+import { useTermsPrerequisite } from '@/composables/useTermsPrerequisite'
 
 const route = useRoute()
 const userContext = useUserContextStore()
+const dialogCoordinator = useDialogCoordinatorStore()
 
 const loading = ref(false)
 
@@ -85,6 +88,10 @@ onMounted(async () => {
 	// so /account/me would 401/404 on load. Only hydrate when a user is present;
 	// the authed path is unchanged.
 	if (getCurrentUser()) {
+		// Resolve the ToS prerequisite once before automatic dialogs can be presented.
+		// Until resolution completes, the prerequisite remains 'unknown', suppressing
+		// automatic dialogs. resolve() handles failures internally and never rejects.
+		void useTermsPrerequisite().resolve().then(state => dialogCoordinator.setPrerequisite(state))
 		await userContext.initialise()
 	}
 })

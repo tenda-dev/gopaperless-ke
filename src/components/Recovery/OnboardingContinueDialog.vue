@@ -42,11 +42,12 @@ import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 
+import { useManagedDialog } from '../../composables/useManagedDialog'
 import { isSigningPath } from '../../utils/signingPath'
 
 defineOptions({ name: 'OnboardingContinueDialog' })
 
-const LATCH_KEY = 'gopaperless.onboarding.resumed'
+const LATCH_KEY_PREFIX = 'gopaperless.onboarding.resumed'
 
 const route = useRoute()
 
@@ -57,16 +58,20 @@ const resumePath = (() => {
 	return isSigningPath(path) ? path : ''
 })()
 
+// Scope the resume latch to the signing instance so recovering one document
+// does not suppress onboarding recovery for a different document.
+const latchKey = `${LATCH_KEY_PREFIX}:${resumePath.split('/').filter(Boolean).pop() ?? ''}`
+
 function readLatched(): boolean {
 	try {
-		return window.sessionStorage.getItem(LATCH_KEY) === '1'
+		return window.sessionStorage.getItem(latchKey) === '1'
 	} catch {
 		return false
 	}
 }
 function writeLatched(): void {
 	try {
-		window.sessionStorage.setItem(LATCH_KEY, '1')
+		window.sessionStorage.setItem(latchKey, '1')
 	} catch {
 		// Storage unavailable: the in-memory flag below still prevents re-show.
 	}
@@ -81,7 +86,10 @@ const onSigningRoute = computed(() => {
 	return path.startsWith('/p/') || /^\/f\/sign(\/|$)/.test(path) || /^\/sign(\/|$)/.test(path)
 })
 
-const visible = computed(() => resumePath !== '' && !latched.value && !dismissed.value && !onSigningRoute.value)
+const eligible = computed(() => resumePath !== '' && !latched.value && !dismissed.value && !onSigningRoute.value)
+const { canPresent } = useManagedDialog({ id: 'onboarding', priority: 11, eligible })
+
+const visible = computed(() => canPresent.value && eligible.value)
 
 function dismiss(): void {
 	dismissed.value = true
