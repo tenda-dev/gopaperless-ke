@@ -2,6 +2,7 @@
 	<NcDialog
 	:name="presentation.modalTitle || 'Complete Payment'"
 	size="normal"
+	:can-close="!isPaymentActive"
 	@closing="handleClose"
 >
 
@@ -138,6 +139,16 @@ const canClose = ref(false)
 
 // track PaymentStep state to prevent closing during critical phases
 const currentState = ref<PaymentState>('idle')
+
+// Prevent dismissal while payment is in progress. Allowing NcDialog to close
+// itself without updating the host's visibility state can leave the flow stuck
+// closed, preventing it from being reopened if the payment attempt needs retrying.
+const isPaymentActive = computed(() =>
+  currentState.value === 'processing'
+  || currentState.value === 'initiating'
+  || currentState.value === 'requesting'
+  || currentState.value === 'hydrating',
+)
 
 
 const isLoading = computed(() =>

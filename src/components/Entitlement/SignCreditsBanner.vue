@@ -244,8 +244,16 @@ const isSponsorshipLoading =
 		signerContext.signRequestId,
 	)
 
+// After the first successful load, background polls may toggle isLoading without
+// needing to re-show the skeleton. Sponsorship isn't polled by useEntitlementSync,
+// so its loading state only reflects the initial load.
+const lastSuccessfulLoadAt = entitlementStore.getLastSuccessfulLoadAt(
+	DEFAULT_PRODUCT_CODE,
+)
+
 const isInitialising = computed(() =>
-	isLoading.value || isSponsorshipLoading.value,
+	(isLoading.value && lastSuccessfulLoadAt.value === null)
+	|| isSponsorshipLoading.value,
 )
 
 onMounted(async () => {
