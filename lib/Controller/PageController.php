@@ -13,12 +13,14 @@ use OCA\Libresign\Db\FileMapper;
 use OCA\Libresign\Db\SignRequestMapper;
 use OCA\Libresign\Exception\LibresignException;
 use OCA\Libresign\Helper\JSActions;
+use OCA\Libresign\Helper\OnboardingRecoveryCookie;
 use OCA\Libresign\Helper\RecoveryCookie;
 use OCA\Libresign\Helper\ValidateHelper;
 use OCA\Libresign\Middleware\Attribute\PrivateValidation;
 use OCA\Libresign\Middleware\Attribute\RequireSetupOk;
 use OCA\Libresign\Middleware\Attribute\RequireSignRequestUuid;
 use OCA\Libresign\Service\AccountRecovery\PendingRecovery;
+use OCA\Libresign\Service\OnboardingRecovery\PendingOnboardingRecovery;
 use OCA\Libresign\Service\AccountService;
 use OCA\Libresign\Service\DocMdp\ConfigService;
 use OCA\Libresign\Service\File\FileListService;
@@ -119,7 +121,32 @@ class PageController extends AEnvironmentPageAwareController {
 			}
 			return new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.publicUpload'));
 		}
+
+		// Restore the signing context when onboarding returns to the default landing.
+		// renderMainApp() handles recovery if authentication returns to another route.
+		$onboarding = $this->evaluateOnboardingRecovery();
+		if ($onboarding['pending'] && $onboarding['uuid'] !== null) {
+			$response = new RedirectResponse($this->urlGenerator->linkToRoute('libresign.page.sign', ['uuid' => $onboarding['uuid']]));
+			// Consume the recovery context once the signer has been redirected back to
+			// their signing request, preventing it from being reused on later visits.
+			$response->invalidateCookie(OnboardingRecoveryCookie::NAME);
+			return $response;
+		}
+
 		return $this->renderMainApp();
+	}
+
+	/**
+	 * Evaluates the onboarding recovery context only when the feature is enabled.
+	 *
+	 * @return array{pending: bool, uuid: ?string, clear: bool}
+	 */
+	private function evaluateOnboardingRecovery(): array {
+		if (!$this->appConfig->getValueBool(Application::APP_ID, 'onboarding_recovery_enabled', false)) {
+			return ['pending' => false, 'uuid' => null, 'clear' => false];
+		}
+		return (new PendingOnboardingRecovery($this->request, \OCP\Server::get(OnboardingRecoveryCookie::class)))
+			->evaluate($this->userSession->getUser());
 	}
 
 	/**
@@ -177,6 +204,13 @@ class PageController extends AEnvironmentPageAwareController {
 			$this->initialState->provideInitialState('recovery_pending', true);
 		}
 
+		// Fallback resume for onboarding returns that land on a non-default authed
+		// route: expose only the signing path; a one-shot dialog navigates there.
+		$onboarding = $this->evaluateOnboardingRecovery();
+		if ($onboarding['pending'] && $onboarding['uuid'] !== null) {
+			$this->initialState->provideInitialState('onboarding_resume', $this->urlGenerator->linkToRoute('libresign.page.sign', ['uuid' => $onboarding['uuid']]));
+		}
+
 		Util::addScript(Application::APP_ID, 'libresign-main');
 		Util::addStyle(Application::APP_ID, 'libresign-main');
 
@@ -196,6 +230,9 @@ class PageController extends AEnvironmentPageAwareController {
 
 		if ($recovery['clear']) {
 			$response->invalidateCookie(RecoveryCookie::NAME);
+		}
+		if ($onboarding['clear']) {
+			$response->invalidateCookie(OnboardingRecoveryCookie::NAME);
 		}
 
 		return $response;

@@ -189,6 +189,12 @@ class Admin implements ISettings {
 		// wrong-account response without changing the underlying signing checks.
 		$this->initialState->provideInitialState('account_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'account_recovery_enabled', false));
 
+		// ONBOARDING RECOVERY
+		// Route unregistered signers through Tendaworld onboarding instead of the
+		// legacy native account-creation flow, preserving their signing context.
+		// Off by default until the onboarding return flow is verified.
+		$this->initialState->provideInitialState('onboarding_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'onboarding_recovery_enabled', false));
+
 		//	SECURYSIGN
 		//	Only whether a signing secret is stored reaches the page, never the secret.
 		$this->initialState->provideInitialState('securysign_provider_id', $this->appConfig->getValueInt(Application::APP_ID, 'securysign_provider_id', 0));

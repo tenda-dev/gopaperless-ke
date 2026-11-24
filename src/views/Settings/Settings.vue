@@ -41,6 +41,7 @@
 		<PublicLanding />
 		<PublicWorkflow />
 		<AccountRecovery />
+		<OnboardingRecovery />
 		<SsoSettings />
 		<SecurySignSettings />
 		<WhatsAppSettings />
@@ -86,6 +87,7 @@ import PublicLanding from './PublicLanding.vue'
 import PublicWorkflow from './PublicWorkflow.vue'
 import SsoSettings from './SsoSettings.vue'
 import AccountRecovery from './AccountRecovery.vue'
+import OnboardingRecovery from './OnboardingRecovery.vue'
 import SecurySignSettings from './SecurySignSettings.vue'
 import WhatsAppSettings from './WhatsAppSettings.vue'
 import IdentificationDocuments from './IdentificationDocuments.vue'

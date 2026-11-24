@@ -1526,6 +1526,20 @@ class AdminController extends AEnvironmentAwareController {
 	}
 
 	/**
+	 * Enable or disable routing unregistered signers through Tendaworld onboarding.
+	 *
+	 * 200: Configuration saved successfully
+	 */
+	#[NoCSRFRequired]
+	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/onboarding-recovery-config', requirements: ['apiVersion' => '(v1)'])]
+	public function setOnboardingRecoveryConfig(bool $enabled = false): DataResponse {
+		$this->appConfig->setValueBool(Application::APP_ID, 'onboarding_recovery_enabled', $enabled);
+		return new DataResponse([
+			'message' => $this->l10n->t('Onboarding recovery settings saved'),
+		]);
+	}
+
+	/**
 	 * Persist FX provider API credentials.
 	 *
 	 * @param string|null $exchangeRateApiKey ExchangeRate-API key
