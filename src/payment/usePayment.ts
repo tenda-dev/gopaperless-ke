@@ -613,21 +613,11 @@ export function usePayment() {
 				DPO_VERIFY_INTERVAL
 
 
-			console.log('[Payment] poll tick', {
-				reference,
-				retryCount: retryCount.value,
-				elapsed: pollingElapsedMs.value,
-			})
-
 			// If we believe we are offline we still attempt the poll.
 			// Relying only on the browser `online` event can deadlock when
 			// the event fires but the server is still unreachable, or when
 			// the browser's online state is out of sync. A failed request
 			// is caught below and marks us offline again.
-			if (isOffline.value) {
-				console.warn('[Payment] offline - attempting poll tick anyway')
-			}
-
 			// Prevent overlapping requests
 			if (isPolling) {
 				return
@@ -642,7 +632,7 @@ export function usePayment() {
 				if (shouldTriggerDarajaQuery) {
 					lastDarajaQueryAt = Date.now()
 					try {
-						console.log('[Payment] triggering daraja reconciliation')
+						console.debug('[Payment] triggering daraja reconciliation')
 
 						res = await paymentDriver.queryDarajaPayment(reference)
 
@@ -658,7 +648,7 @@ export function usePayment() {
 
 						try {
 
-							console.log('[Payment] triggering backup reconciliation')
+							console.debug('[Payment] triggering backup reconciliation')
 
 							await paymentDriver.verifyPayment(reference)
 
@@ -785,7 +775,7 @@ export function usePayment() {
 				pollingWasInterrupted = false
 			}
 
-			console.log(
+			console.debug(
 				'[Payment] recovery trigger → immediate poll'
 			)
 

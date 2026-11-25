@@ -16,7 +16,7 @@
 	<NcDialog v-if="open"
 		:name="t('libresign', 'Finish your signature request')"
 		size="normal"
-		:can-close="!submitting"
+		:no-close="submitting"
 		@update:open="onDialogToggle">
 		<div class="pwc">
 			<p class="pwc__lead">

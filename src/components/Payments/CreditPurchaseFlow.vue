@@ -2,7 +2,7 @@
 	<NcDialog
 	:name="presentation.modalTitle || 'Complete Payment'"
 	size="normal"
-	:can-close="!isPaymentActive"
+	:no-close="isPaymentActive"
 	@closing="handleClose"
 >
 
@@ -134,9 +134,6 @@ const pricing = useProductPricing(
 
 const hasAcceptedRecovery = ref(false)
 
-// controls whether modal can close
-const canClose = ref(false)
-
 // track PaymentStep state to prevent closing during critical phases
 const currentState = ref<PaymentState>('idle')
 
@@ -241,7 +238,6 @@ function handleStartOver() {
 // called when payment completes successfully
 function onSuccess() {
   discardRecovery()
-  canClose.value = true
 
   // Signals that payment completed so the coordinator can refresh entitlement
   // state. No entitlement data is refreshed directly here; the coordinator
@@ -260,7 +256,6 @@ function onStateChange(state: typeof currentState.value) {
 }
 
 function onPaymentRuntimeInvalid() {
-   canClose.value = true
    emit('close')
 }
 
