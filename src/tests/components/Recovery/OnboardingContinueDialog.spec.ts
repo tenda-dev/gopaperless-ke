@@ -130,11 +130,11 @@ describe('OnboardingContinueDialog.vue', () => {
 			expect(managed.opts!.eligible.value).toBe(false)
 		})
 
-		it('dismissal makes it ineligible (releasing ownership) without latching', async () => {
+		it('dismissal makes it ineligible (releasing ownership) and latches for the session', async () => {
 			const w = await mountDialog()
 			await w.findAll('button.btn')[0].trigger('click')
 			expect(managed.opts!.eligible.value).toBe(false)
-			expect(window.sessionStorage.getItem(LATCH_KEY)).toBeNull()
+			expect(window.sessionStorage.getItem(LATCH_KEY)).toBe('1')
 		})
 	})
 
@@ -187,6 +187,26 @@ describe('OnboardingContinueDialog.vue', () => {
 		await w.findAll('button.btn')[0].trigger('click')
 		expect(w.find('.dlg').exists()).toBe(false)
 		expect(assign).not.toHaveBeenCalled()
+	})
+
+	it('Not now persists across a reload for the same signing request', async () => {
+		let w = await mountDialog()
+		await w.findAll('button.btn')[0].trigger('click')
+		expect(window.sessionStorage.getItem(LATCH_KEY)).toBe('1')
+		expect(assign).not.toHaveBeenCalled()
+
+		// Fresh mount simulating a full page reload within the same session.
+		w = await mountDialog()
+		expect(w.find('.dlg').exists()).toBe(false)
+	})
+
+	it('a dismissal for one uuid does not suppress a different signing request', async () => {
+		const w = await mountDialog()
+		await w.findAll('button.btn')[0].trigger('click')
+		expect(window.sessionStorage.getItem(LATCH_KEY)).toBe('1')
+
+		state.resume = `/apps/libresign/p/sign/${OTHER_UUID}`
+		expect((await mountDialog()).find('.dlg').exists()).toBe(true)
 	})
 
 	it('closing the dialog has the same effect as Not now', async () => {

@@ -120,4 +120,14 @@ function proceed(): void {
 		margin-top: 4px;
 	}
 }
+
+/* Stack the actions full-width on narrow screens (same 480px breakpoint the
+   payment dialogs use) so the buttons never wrap or right-align awkwardly and
+   stay full-width and touch-friendly — mirrors OnboardingContinueDialog. */
+@media (max-width: 480px) {
+	.rcd__actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+}
 </style>

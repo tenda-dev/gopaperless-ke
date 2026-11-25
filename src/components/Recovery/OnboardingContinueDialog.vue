@@ -92,6 +92,13 @@ const { canPresent } = useManagedDialog({ id: 'onboarding', priority: 11, eligib
 const visible = computed(() => canPresent.value && eligible.value)
 
 function dismiss(): void {
+	// Persist the dismissal for this browser session, scoped to the signing
+	// request via the same latch Continue writes, so a reload within the
+	// recovery window does not re-prompt for this document. A new browser
+	// session clears sessionStorage and may present the prompt again while the
+	// recovery context is still valid.
+	latched.value = true
+	writeLatched()
 	dismissed.value = true
 }
 function onDialogToggle(value: boolean): void {
@@ -125,6 +132,16 @@ function proceed(): void {
 		justify-content: flex-end;
 		gap: 10px;
 		margin-top: 4px;
+	}
+}
+
+/* Stack the actions full-width on narrow screens (same 480px breakpoint the
+   payment dialogs use) so the long "Continue to document" label never wraps or
+   right-aligns awkwardly and both controls stay full-width and touch-friendly. */
+@media (max-width: 480px) {
+	.ocd__actions {
+		flex-direction: column;
+		align-items: stretch;
 	}
 }
 </style>
