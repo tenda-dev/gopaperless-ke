@@ -27,11 +27,14 @@ export function useTermsPrerequisite(): { resolve: () => Promise<ToSPrereq> } {
 	async function resolve(): Promise<ToSPrereq> {
 		const enabled = loadState<boolean>('libresign', 'tos_app_enabled', false)
 		if (!enabled) {
+			// Retained diagnostic for the server-side ToS state used by the dialog gate.
+			console.debug('[gp-dialogs] ToS prereq → not-enabled (app not enabled for this user)')
 			return 'not-enabled'
 		}
 		try {
 			const response = await axios.get(generateOcsUrl('/apps/terms_of_service/terms'))
 			const data = response?.data?.ocs?.data
+			console.debug('[gp-dialogs] ToS /terms', { termsCount: Array.isArray(data?.terms) ? data.terms.length : '(not array)', hasSigned: data?.hasSigned })
 			if (Array.isArray(data?.terms) && data.terms.length === 0) {
 				return 'accepted'
 			}

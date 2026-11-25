@@ -100,6 +100,8 @@ export const useDialogCoordinatorStore = defineStore('dialogCoordinator', () => 
 
 	function setPrerequisite(state: ToSPrereq): void {
 		prerequisite.value = state
+		// Retained diagnostic for the server-side ToS state used by the dialog gate.
+		console.debug('[gp-dialogs] coordinator prerequisite', state, '→ allowAutoDialogs', allowAutoDialogs.value)
 	}
 
 	/** Ownership-based suspension: the token identifies the suspender. */

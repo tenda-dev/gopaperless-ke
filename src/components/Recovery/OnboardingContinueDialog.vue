@@ -10,9 +10,6 @@
   context when returning to the application. A session latch prevents the
   resume action from being triggered repeatedly during the same browser session,
   while the destination is validated again before navigation.
-
-  Independent of RecoveryContinueDialog: onboarding recovery and Switch Session
-  recovery use separate initial state, destinations, and latches.
 -->
 <template>
 	<NcDialog v-if="visible"
@@ -134,14 +131,15 @@ function proceed(): void {
 		margin-top: 4px;
 	}
 }
-
-/* Stack the actions full-width on narrow screens (same 480px breakpoint the
-   payment dialogs use) so the long "Continue to document" label never wraps or
-   right-aligns awkwardly and both controls stay full-width and touch-friendly. */
 @media (max-width: 480px) {
 	.ocd__actions {
 		flex-direction: column;
 		align-items: stretch;
+	}
+
+	.ocd__actions :deep(.button-vue) {
+		width: 100%;
+		max-width: 100%;
 	}
 }
 </style>
