@@ -16,7 +16,7 @@
 	<NcDialog v-if="open"
 		:name="t('libresign', 'Finish your signature request')"
 		size="normal"
-		:can-close="!submitting"
+		:no-close="submitting"
 		@update:open="onDialogToggle">
 		<div class="pwc">
 			<p class="pwc__lead">
@@ -66,19 +66,27 @@
 	</NcDialog>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 
+import { useManagedDialog } from '../../composables/useManagedDialog'
 import { claimWorkflow, getClaimStatus, type ClaimStatus } from '../../services/publicWorkflow'
 import { isPlausibleEmail } from './signerPayload'
 
 defineOptions({ name: 'PublicWorkflowClaimDialog' })
 
-const open = ref(false)
+// Server-reported claimability is the business eligibility; dismissal is
+// local to this page lifecycle. The coordinator independently controls when
+// an eligible dialog is permitted to present.
+const claimable = ref(false)
+const dismissed = ref(false)
+const eligible = computed(() => claimable.value && !dismissed.value)
+const { canPresent } = useManagedDialog({ id: 'pw-claim', priority: 30, eligible })
+const open = computed(() => canPresent.value && eligible.value)
 const submitting = ref(false)
 const error = ref('')
 const status = ref<ClaimStatus>({ claimable: false })
@@ -98,25 +106,29 @@ onMounted(async () => {
 		const result = await getClaimStatus()
 		if (result.claimable) {
 			status.value = result
-			open.value = true
-			// Focus the one thing the claimant actually needs to act on: the email
-			// input when there is one, so keyboard/AT users land there immediately
-			// rather than on the dialog chrome.
-			await nextTick()
-			emailInputRef.value?.focus()
+			claimable.value = true
 		}
 	} catch {
 		// No claimable workflow for this browser, or not authenticated — stay closed.
 	}
 })
 
+// Focus the email field when the dialog opens, including when presentation is
+// delayed by coordinator arbitration after claimability has been resolved.
+watch(open, async (isOpen) => {
+	if (isOpen) {
+		await nextTick()
+		emailInputRef.value?.focus()
+	}
+})
+
 function onDialogToggle(value: boolean): void {
 	if (!value && !submitting.value) {
-		open.value = false
+		dismissed.value = true
 	}
 }
 function dismiss(): void {
-	open.value = false
+	dismissed.value = true
 }
 async function confirm(): Promise<void> {
 	if (submitting.value) {

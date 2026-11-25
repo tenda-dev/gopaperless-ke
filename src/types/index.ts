@@ -171,6 +171,8 @@ export type AdminInitialState = {
 	user_oidc_providers: Array<{ id: number, label: string }>
 	oidc_sso_handoff_enabled: boolean
 	account_recovery_enabled: boolean
+	onboarding_recovery_enabled: boolean
+	register_url: string
 	securysign_provider_id: number
 	securysign_url: string
 	tendaworld_url: string

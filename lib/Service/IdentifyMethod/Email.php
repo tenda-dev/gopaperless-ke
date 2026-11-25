@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Libresign\Service\IdentifyMethod;
 
+use OCA\Libresign\AppInfo\Application;
 use OCA\Libresign\Db\FileElementMapper;
 use OCA\Libresign\Db\IdentifyMethodMapper;
 use OCA\Libresign\Exception\LibresignException;
@@ -100,6 +101,18 @@ class Email extends AbstractIdentifyMethod {
 
 		$signer = $this->identifyService->getUserManager()->getByEmail($email);
 		if (!$signer) {
+			// Route unregistered signers through Tendaworld onboarding while preserving
+			// their signing context. Signing authorization is still enforced on return;
+			// the legacy account-creation flow remains unchanged when this is disabled.
+			if ($this->identifyService->getAppConfig()->getValueBool(Application::APP_ID, 'onboarding_recovery_enabled', false)) {
+				$signRequest = $this->identifyService->getSignRequestMapper()->getById($this->getEntity()->getSignRequestId());
+				throw new LibresignException(json_encode([
+					'action' => JSActions::ACTION_REDIRECT,
+					'redirect' => $this->identifyService->getUrlGenerator()->linkToRoute('libresign.onboardingRecovery.start', [
+						'uuid' => $signRequest->getUuid(),
+					]),
+				]));
+			}
 			throw new LibresignException(json_encode([
 				'action' => JSActions::ACTION_CREATE_ACCOUNT,
 				'settings' => ['accountHash' => md5($email)],

@@ -35,8 +35,6 @@ export async function getProductByCode(code: string): Promise<Product> {
 
   const product = data?.ocs?.data?.product
 
-  console.log('[Product]:', product)
-
   // store in cache
   productCache.set(code, {
     data: product,

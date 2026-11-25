@@ -59,6 +59,10 @@ use Psr\Log\LoggerInterface;
  */
 class Application extends App implements IBootstrap {
 	public const APP_ID = 'libresign';
+	/** App-config key for the external onboarding destination. */
+	public const CONFIG_REGISTER_URL = 'register_url';
+	/** Canonical production onboarding destination, used as the default when no override is configured. */
+	public const DEFAULT_REGISTER_URL = 'https://tendaworld.com/get-started';
 
 	public function __construct() {
 		parent::__construct(self::APP_ID);

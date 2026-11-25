@@ -42,6 +42,8 @@ import { generateUrl } from '@nextcloud/router'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 
+import { useManagedDialog } from '../../composables/useManagedDialog'
+
 defineOptions({ name: 'RecoveryContinueDialog' })
 
 const DISMISSED_KEY = 'gopaperless.recovery.dismissed'
@@ -77,7 +79,12 @@ const onSigningRoute = computed(() => {
 	return path.startsWith('/p/') || /^\/f\/sign(\/|$)/.test(path) || /^\/sign(\/|$)/.test(path)
 })
 
-const visible = computed(() => pending && !dismissed.value && !onSigningRoute.value)
+// Recovery is eligible only while pending, not dismissed, and outside signing
+// routes. The coordinator controls when an eligible dialog may be presented.
+const eligible = computed(() => pending && !dismissed.value && !onSigningRoute.value)
+const { canPresent } = useManagedDialog({ id: 'recovery', priority: 10, eligible })
+
+const visible = computed(() => canPresent.value && eligible.value)
 
 function dismiss(): void {
 	dismissed.value = true
@@ -111,6 +118,17 @@ function proceed(): void {
 		justify-content: flex-end;
 		gap: 10px;
 		margin-top: 4px;
+	}
+}
+@media (max-width: 480px) {
+	.rcd__actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.rcd__actions :deep(.button-vue) {
+		width: 100%;
+		max-width: 100%;
 	}
 }
 </style>

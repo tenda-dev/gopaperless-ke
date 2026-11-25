@@ -29,17 +29,19 @@ vi.mock('@vueuse/core', async () => {
 	const pause = vi.fn()
 	const resume = vi.fn()
 	let intervalCallback: (() => void) | null = null
+	const useIntervalFn = vi.fn((cb: () => void) => {
+		intervalCallback = cb
+		return { pause, resume, isActive: ref(true) }
+	})
 
 	return {
 		useDocumentVisibility: () => visibility,
-		useIntervalFn: (cb: () => void) => {
-			intervalCallback = cb
-			return { pause, resume, isActive: ref(true) }
-		},
+		useIntervalFn,
 		__visibility: visibility,
 		__pause: pause,
 		__resume: resume,
 		__getIntervalCallback: () => intervalCallback,
+		__useIntervalFn: useIntervalFn,
 	}
 })
 
@@ -53,6 +55,7 @@ const visibility = (vueuseMock as any).__visibility
 const pause = (vueuseMock as any).__pause as ReturnType<typeof vi.fn>
 const resume = (vueuseMock as any).__resume as ReturnType<typeof vi.fn>
 const getIntervalCallback = (vueuseMock as any).__getIntervalCallback as () => (() => void) | null
+const useIntervalFnMock = (vueuseMock as any).__useIntervalFn as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
 	vi.clearAllMocks()
@@ -120,6 +123,31 @@ describe('useEntitlementSync', () => {
 		getIntervalCallback()!()
 
 		expect(refreshIfStale).toHaveBeenCalledWith('SIGN_DOCUMENT')
+
+		scope.stop()
+	})
+
+	it('installs no polling interval when poll is false', () => {
+		const scope = effectScope()
+		scope.run(() => useEntitlementSync('SIGN_DOCUMENT', { poll: false }))
+
+		expect(useIntervalFnMock).not.toHaveBeenCalled()
+
+		scope.stop()
+	})
+
+	it('still forces a refresh on hidden -> visible when poll is false, touching no interval', async () => {
+		const scope = effectScope()
+		scope.run(() => useEntitlementSync('SIGN_DOCUMENT', { poll: false }))
+
+		visibility.value = 'hidden'
+		await nextTick()
+		visibility.value = 'visible'
+		await nextTick()
+
+		expect(refreshNow).toHaveBeenCalledWith('SIGN_DOCUMENT')
+		expect(pause).not.toHaveBeenCalled()
+		expect(resume).not.toHaveBeenCalled()
 
 		scope.stop()
 	})

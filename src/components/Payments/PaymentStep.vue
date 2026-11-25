@@ -230,6 +230,7 @@
  * usePaymentSession, usePaymentDisplay, useMnoDetection, usePaymentPhoneResolution
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
 import {
@@ -320,6 +321,41 @@ const isDaraja = computed(() => {
 
 const normalisedPhone = computed(() => resolution.value?.e164 ?? '')
 const isProcessing = payment.isProcessing
+
+/**
+ * Tracks whether a payment transaction is currently in flight.
+ *
+ * Uses the same states as CreditPurchaseFlow's `isPaymentActive`, excluding
+ * the offline-but-idle condition included in `payment.isProcessing`. The
+ * unload guard should only apply while a transaction is awaiting resolution.
+ */
+const isTransactionInFlight = computed(() =>
+	payment.state.value === 'initiating'
+	|| payment.state.value === 'requesting'
+	|| payment.state.value === 'processing'
+	|| payment.state.value === 'hydrating',
+)
+
+/**
+ * Prevents accidental tab closure, reloads, or external navigation while a
+ * payment is in flight, since the charge may still settle after the client
+ * leaves and stops reconciling its status.
+ *
+ * The browser displays its own generic confirmation; custom prompt text is
+ * not supported. The listener is automatically removed on unmount.
+ *
+ * This only guards full-page unloads. In-app navigation is handled by the
+ * dialog's `no-close` lock; an `onBeforeRouteLeave` guard would provide
+ * additional protection if needed.
+ */
+useEventListener(window, 'beforeunload', (e: BeforeUnloadEvent) => {
+	if (!isTransactionInFlight.value) {
+		return
+	}
+	e.preventDefault()
+	// Chrome/Edge require returnValue to be set for the prompt to appear.
+	e.returnValue = ''
+})
 
 const isMethodLocked = computed(() => isProcessing.value || !!payment.activeReference.value)
 const hasActivePaymentSession = computed(() => !!payment.activeReference.value)

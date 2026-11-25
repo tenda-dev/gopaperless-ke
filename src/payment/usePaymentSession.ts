@@ -765,7 +765,6 @@ export function usePaymentSession({
 	 * provider re-detection while we're restoring values programmatically.
 	 */
 	function applyHydratedPayment(hydratedPayment: HydratedPayment) {
-		console.log('[PaymentSession] hydrating payment session', hydratedPayment)
 
 		isHydrating.value   = true
 

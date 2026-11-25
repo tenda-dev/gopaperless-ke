@@ -13,7 +13,7 @@ export function usePaywall() {
       return data?.ocs?.data ?? { allowed: false }
 
     } catch (err) {
-      console.error('Entitlement check failed', err)
+      console.error('[Paywall] Entitlement check failed', err)
 
       // Fail CLOSED (safer for monetization)
       return { allowed: false }
