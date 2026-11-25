@@ -44,6 +44,8 @@ import { isSigningPath } from '../../utils/signingPath'
 
 defineOptions({ name: 'OnboardingContinueDialog' })
 
+// Session-scoped recovery latch namespace. Both dismissal and resume use the same
+// latch so a document cannot repeatedly prompt or trigger recovery in one session.
 const LATCH_KEY_PREFIX = 'gopaperless.onboarding.resumed'
 
 const route = useRoute()

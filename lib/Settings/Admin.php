@@ -194,6 +194,8 @@ class Admin implements ISettings {
 		// legacy native account-creation flow, preserving their signing context.
 		// Off by default until the onboarding return flow is verified.
 		$this->initialState->provideInitialState('onboarding_recovery_enabled', $this->appConfig->getValueBool(Application::APP_ID, 'onboarding_recovery_enabled', false));
+		// Shared with the onboarding Register link; shown in the onboarding admin panel.
+		$this->initialState->provideInitialState('register_url', $this->appConfig->getValueString(Application::APP_ID, Application::CONFIG_REGISTER_URL, Application::DEFAULT_REGISTER_URL));
 
 		//	SECURYSIGN
 		//	Only whether a signing secret is stored reaches the page, never the secret.

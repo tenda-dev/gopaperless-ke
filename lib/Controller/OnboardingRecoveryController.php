@@ -61,7 +61,7 @@ class OnboardingRecoveryController extends Controller {
 		}
 
 		$email = $this->resolveIntendedSignerEmail($uuid);
-		$registerUrl = $this->appConfig->getValueString(Application::APP_ID, 'register_url', 'https://tendaworld.com/get-started');
+		$registerUrl = $this->appConfig->getValueString(Application::APP_ID, Application::CONFIG_REGISTER_URL, Application::DEFAULT_REGISTER_URL);
 		if ($email === null || $registerUrl === '') {
 			// Recovery requires both a trusted signer identity and a valid destination.
 			// Without either, preserve the existing signing experience.

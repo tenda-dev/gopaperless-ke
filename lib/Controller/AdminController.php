@@ -1526,13 +1526,34 @@ class AdminController extends AEnvironmentAwareController {
 	}
 
 	/**
-	 * Enable or disable routing unregistered signers through Tendaworld onboarding.
+	 * Configure onboarding recovery and optionally update its destination.
+	 *
+	 * The onboarding register link is shared with the login page. A null URL leaves
+	 * the existing configuration unchanged.
+	 *
+	 * @param bool $enabled Whether unregistered signers are routed through onboarding
+	 * @param ?string $registerUrl New onboarding destination URL, or null to leave it unchanged
+	 * @return DataResponse<Http::STATUS_OK, LibresignMessageResponse, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, LibresignMessageResponse, array{}>
 	 *
 	 * 200: Configuration saved successfully
+	 * 400: Validation error
 	 */
 	#[NoCSRFRequired]
 	#[ApiRoute(verb: 'POST', url: '/api/{apiVersion}/admin/onboarding-recovery-config', requirements: ['apiVersion' => '(v1)'])]
-	public function setOnboardingRecoveryConfig(bool $enabled = false): DataResponse {
+	public function setOnboardingRecoveryConfig(bool $enabled = false, ?string $registerUrl = null): DataResponse {
+		if ($registerUrl !== null) {
+			$trimmedUrl = trim($registerUrl);
+			if ($trimmedUrl === ''
+				|| !filter_var($trimmedUrl, FILTER_VALIDATE_URL)
+				|| !in_array(parse_url($trimmedUrl, PHP_URL_SCHEME), ['http', 'https'], true)) {
+				return new DataResponse([
+					'status' => 'error',
+					'message' => $this->l10n->t('Enter a valid absolute http(s) onboarding URL.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+			$this->appConfig->setValueString(Application::APP_ID, Application::CONFIG_REGISTER_URL, $trimmedUrl);
+		}
+
 		$this->appConfig->setValueBool(Application::APP_ID, 'onboarding_recovery_enabled', $enabled);
 		return new DataResponse([
 			'message' => $this->l10n->t('Onboarding recovery settings saved'),

@@ -33,7 +33,7 @@ class RegisterLoginProvider implements IAlternativeLoginProvider {
 
 	#[\Override]
 	public function getAlternativeLogins(): array {
-		$url = $this->appConfig->getValueString(Application::APP_ID, 'register_url', 'https://tendaworld.com/get-started');
+		$url = $this->appConfig->getValueString(Application::APP_ID, Application::CONFIG_REGISTER_URL, Application::DEFAULT_REGISTER_URL);
 		if ($url === '') {
 			return [];
 		}
